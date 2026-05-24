@@ -1,0 +1,22 @@
+{
+  "name": "template-monorepo",
+  "private": true,
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "check": "turbo run lint typecheck",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\" --ignore-path .gitignore",
+    "deploy:preview": "node scripts/deploy-preview.js"
+  },
+  "devDependencies": {
+    "prettier": "3.7.4",
+    "turbo": "2.6.2"
+  },
+  "engines": {
+    "node": ">=20.19.4"
+  },
+  "packageManager": "pnpm@9.0.0"
+}
