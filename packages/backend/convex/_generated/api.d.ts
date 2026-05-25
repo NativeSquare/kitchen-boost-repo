@@ -14,6 +14,8 @@ import type * as emails from "../emails.js";
 import type * as http from "../http.js";
 import type * as lib_auth_ResendOTP from "../lib/auth/ResendOTP.js";
 import type * as lib_auth_ResendOTPPasswordReset from "../lib/auth/ResendOTPPasswordReset.js";
+import type * as lib_auth_getCurrentActor from "../lib/auth/getCurrentActor.js";
+import type * as lib_auth_index from "../lib/auth/index.js";
 import type * as migrations from "../migrations.js";
 import type * as storage from "../storage.js";
 import type * as table_admin from "../table/admin.js";
@@ -40,6 +42,8 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   "lib/auth/ResendOTP": typeof lib_auth_ResendOTP;
   "lib/auth/ResendOTPPasswordReset": typeof lib_auth_ResendOTPPasswordReset;
+  "lib/auth/getCurrentActor": typeof lib_auth_getCurrentActor;
+  "lib/auth/index": typeof lib_auth_index;
   migrations: typeof migrations;
   storage: typeof storage;
   "table/admin": typeof table_admin;
