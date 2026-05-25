@@ -79,7 +79,7 @@ type UserData = {
   name?: string;
   email?: string;
   image?: string;
-  role?: "user" | "admin";
+  role?: "customer" | "kb_admin";
   emailVerificationTime?: number;
   banned?: boolean;
   banExpires?: number;
@@ -115,7 +115,9 @@ function getAvatarColor(name: string | undefined): string {
     "bg-pink-500",
     "bg-rose-500",
   ];
-  const hash = name.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  const hash = name
+    .split("")
+    .reduce((acc, char) => acc + char.charCodeAt(0), 0);
   return colors[hash % colors.length];
 }
 
@@ -131,7 +133,7 @@ interface UserTableProps {
   /** Base path for user detail links (e.g. "/users" -> "/users/{id}"). Defaults to "/team" */
   basePath?: string;
   /** Filter users by role. If set, only users with this role are shown */
-  roleFilter?: "user" | "admin";
+  roleFilter?: "customer" | "kb_admin";
 }
 
 export function UserTable({ basePath = "/team", roleFilter }: UserTableProps) {
@@ -144,19 +146,22 @@ export function UserTable({ basePath = "/team", roleFilter }: UserTableProps) {
   } = usePaginatedQuery(api.table.admin.listUsers, {}, { initialNumItems: 50 });
 
   const users = roleFilter
-    ? allUsers.filter((u) => (u.role ?? "user") === roleFilter)
+    ? allUsers.filter((u) => (u.role ?? "customer") === roleFilter)
     : allUsers;
 
   const deleteUser = useMutation(api.table.admin.deleteUser);
   const updateUser = useMutation(api.table.admin.updateUser);
 
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false);
-  const [userToDelete, setUserToDelete] = React.useState<Id<"users"> | null>(null);
-  const [sorting, setSorting] = React.useState<SortingState>([]);
-  const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
-  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>(
-    roleFilter ? { role: false } : {}
+  const [userToDelete, setUserToDelete] = React.useState<Id<"users"> | null>(
+    null,
   );
+  const [sorting, setSorting] = React.useState<SortingState>([]);
+  const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
+    [],
+  );
+  const [columnVisibility, setColumnVisibility] =
+    React.useState<VisibilityState>(roleFilter ? { role: false } : {});
   const [globalFilter, setGlobalFilter] = React.useState("");
 
   const handleDelete = async () => {
@@ -165,20 +170,27 @@ export function UserTable({ basePath = "/team", roleFilter }: UserTableProps) {
       await deleteUser({ userId: userToDelete });
       toast.success("User deleted successfully");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to delete user");
+      toast.error(
+        error instanceof Error ? error.message : "Failed to delete user",
+      );
     } finally {
       setDeleteDialogOpen(false);
       setUserToDelete(null);
     }
   };
 
-  const handleToggleRole = async (userId: Id<"users">, currentRole: "user" | "admin" | undefined) => {
-    const newRole = currentRole === "admin" ? "user" : "admin";
+  const handleToggleRole = async (
+    userId: Id<"users">,
+    currentRole: "customer" | "kb_admin" | undefined,
+  ) => {
+    const newRole = currentRole === "kb_admin" ? "customer" : "kb_admin";
     try {
       await updateUser({ userId, updates: { role: newRole } });
       toast.success(`User role updated to ${newRole}`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to update user");
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update user",
+      );
     }
   };
 
@@ -190,7 +202,9 @@ export function UserTable({ basePath = "/team", roleFilter }: UserTableProps) {
         cell: ({ row }) => (
           <Avatar className="h-8 w-8">
             <AvatarImage src={row.original.image} alt={row.original.name} />
-            <AvatarFallback className={`${getAvatarColor(row.original.name)} text-white text-xs`}>
+            <AvatarFallback
+              className={`${getAvatarColor(row.original.name)} text-white text-xs`}
+            >
               {getInitials(row.original.name)}
             </AvatarFallback>
           </Avatar>
@@ -223,7 +237,7 @@ export function UserTable({ basePath = "/team", roleFilter }: UserTableProps) {
         header: "Role",
         cell: ({ row }) => (
           <span className="text-muted-foreground">
-            {row.original.role === "admin" ? "Administrator" : "User"}
+            {row.original.role === "kb_admin" ? "Administrator" : "Customer"}
           </span>
         ),
       },
@@ -237,7 +251,10 @@ export function UserTable({ basePath = "/team", roleFilter }: UserTableProps) {
 
           if (isBanned) {
             return (
-              <Badge variant="outline" className="border-red-200 bg-red-50 text-red-700">
+              <Badge
+                variant="outline"
+                className="border-red-200 bg-red-50 text-red-700"
+              >
                 <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-red-500" />
                 Banned
               </Badge>
@@ -245,12 +262,18 @@ export function UserTable({ basePath = "/team", roleFilter }: UserTableProps) {
           }
 
           return row.original.emailVerificationTime ? (
-            <Badge variant="outline" className="border-green-200 bg-green-50 text-green-700">
+            <Badge
+              variant="outline"
+              className="border-green-200 bg-green-50 text-green-700"
+            >
               <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-green-500" />
               Active
             </Badge>
           ) : (
-            <Badge variant="outline" className="border-gray-200 bg-gray-50 text-gray-600">
+            <Badge
+              variant="outline"
+              className="border-gray-200 bg-gray-50 text-gray-600"
+            >
               <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-gray-400" />
               Inactive
             </Badge>
@@ -261,7 +284,9 @@ export function UserTable({ basePath = "/team", roleFilter }: UserTableProps) {
         accessorKey: "_creationTime",
         header: "Joined",
         cell: ({ row }) => (
-          <span className="text-muted-foreground">{formatDate(row.original._creationTime)}</span>
+          <span className="text-muted-foreground">
+            {formatDate(row.original._creationTime)}
+          </span>
         ),
       },
       {
@@ -286,9 +311,15 @@ export function UserTable({ basePath = "/team", roleFilter }: UserTableProps) {
                   Edit
                 </Link>
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleToggleRole(row.original._id, row.original.role)}>
+              <DropdownMenuItem
+                onClick={() =>
+                  handleToggleRole(row.original._id, row.original.role)
+                }
+              >
                 <IconUserShield className="mr-2 h-4 w-4" />
-                {row.original.role === "admin" ? "Remove Admin" : "Make Admin"}
+                {row.original.role === "kb_admin"
+                  ? "Remove Admin"
+                  : "Make Admin"}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
@@ -306,7 +337,7 @@ export function UserTable({ basePath = "/team", roleFilter }: UserTableProps) {
         ),
       },
     ],
-    []
+    [],
   );
 
   const table = useReactTable({
@@ -342,7 +373,13 @@ export function UserTable({ basePath = "/team", roleFilter }: UserTableProps) {
     if (isNearEnd && status === "CanLoadMore") {
       loadMore(50);
     }
-  }, [table.getState().pagination, users.length, allUsers.length, status, loadMore]);
+  }, [
+    table.getState().pagination,
+    users.length,
+    allUsers.length,
+    status,
+    loadMore,
+  ]);
 
   if (isLoading && allUsers.length === 0) {
     return (
@@ -378,13 +415,19 @@ export function UserTable({ basePath = "/team", roleFilter }: UserTableProps) {
             <DropdownMenuContent align="end" className="w-56">
               {table
                 .getAllColumns()
-                .filter((column) => typeof column.accessorFn !== "undefined" && column.getCanHide())
+                .filter(
+                  (column) =>
+                    typeof column.accessorFn !== "undefined" &&
+                    column.getCanHide(),
+                )
                 .map((column) => (
                   <DropdownMenuCheckboxItem
                     key={column.id}
                     className="capitalize"
                     checked={column.getIsVisible()}
-                    onCheckedChange={(value) => column.toggleVisibility(!!value)}
+                    onCheckedChange={(value) =>
+                      column.toggleVisibility(!!value)
+                    }
                   >
                     {column.id}
                   </DropdownMenuCheckboxItem>
@@ -404,7 +447,10 @@ export function UserTable({ basePath = "/team", roleFilter }: UserTableProps) {
                   <TableHead key={header.id} colSpan={header.colSpan}>
                     {header.isPlaceholder
                       ? null
-                      : flexRender(header.column.columnDef.header, header.getContext())}
+                      : flexRender(
+                          header.column.columnDef.header,
+                          header.getContext(),
+                        )}
                   </TableHead>
                 ))}
               </TableRow>
@@ -421,14 +467,20 @@ export function UserTable({ basePath = "/team", roleFilter }: UserTableProps) {
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      {flexRender(
+                        cell.column.columnDef.cell,
+                        cell.getContext(),
+                      )}
                     </TableCell>
                   ))}
                 </TableRow>
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={columns.length} className="h-24 text-center">
+                <TableCell
+                  colSpan={columns.length}
+                  className="h-24 text-center"
+                >
                   No users found.
                 </TableCell>
               </TableRow>
@@ -453,7 +505,9 @@ export function UserTable({ basePath = "/team", roleFilter }: UserTableProps) {
               onValueChange={(value) => table.setPageSize(Number(value))}
             >
               <SelectTrigger size="sm" className="w-20" id="rows-per-page">
-                <SelectValue placeholder={table.getState().pagination.pageSize} />
+                <SelectValue
+                  placeholder={table.getState().pagination.pageSize}
+                />
               </SelectTrigger>
               <SelectContent side="top">
                 {[10, 20, 30, 40, 50].map((pageSize) => (
@@ -465,7 +519,8 @@ export function UserTable({ basePath = "/team", roleFilter }: UserTableProps) {
             </Select>
           </div>
           <div className="flex w-fit items-center justify-center text-sm font-medium">
-            Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
+            Page {table.getState().pagination.pageIndex + 1} of{" "}
+            {table.getPageCount()}
           </div>
           <div className="ml-auto flex items-center gap-2 lg:ml-0">
             <Button
@@ -516,8 +571,9 @@ export function UserTable({ basePath = "/team", roleFilter }: UserTableProps) {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete User</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this user? This action cannot be undone. All user
-              data, sessions, and associated accounts will be permanently removed.
+              Are you sure you want to delete this user? This action cannot be
+              undone. All user data, sessions, and associated accounts will be
+              permanently removed.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

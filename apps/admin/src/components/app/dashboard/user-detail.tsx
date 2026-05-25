@@ -48,7 +48,7 @@ import { Separator } from "@/components/ui/separator";
 const formSchema = z.object({
   name: z.string().optional(),
   bio: z.string().optional(),
-  role: z.enum(["user", "admin"]),
+  role: z.enum(["customer", "kb_admin"]),
 });
 
 interface UserDetailProps {
@@ -78,7 +78,7 @@ export function UserDetail({ userId, backPath = "/team" }: UserDetailProps) {
     defaultValues: {
       name: "",
       bio: "",
-      role: "user",
+      role: "customer",
     },
   });
 
@@ -88,7 +88,7 @@ export function UserDetail({ userId, backPath = "/team" }: UserDetailProps) {
       form.reset({
         name: user.name ?? "",
         bio: user.bio ?? "",
-        role: user.role ?? "user",
+        role: user.role ?? "customer",
       });
     }
   }, [user, form]);
@@ -107,7 +107,7 @@ export function UserDetail({ userId, backPath = "/team" }: UserDetailProps) {
       toast.success("User updated successfully");
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to update user"
+        error instanceof Error ? error.message : "Failed to update user",
       );
     } finally {
       setIsSubmitting(false);
@@ -122,7 +122,7 @@ export function UserDetail({ userId, backPath = "/team" }: UserDetailProps) {
       router.push(backPath);
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to delete user"
+        error instanceof Error ? error.message : "Failed to delete user",
       );
       setIsDeleting(false);
     }
@@ -148,7 +148,7 @@ export function UserDetail({ userId, backPath = "/team" }: UserDetailProps) {
       setBanDuration("permanent");
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to ban user"
+        error instanceof Error ? error.message : "Failed to ban user",
       );
     } finally {
       setIsBanning(false);
@@ -162,7 +162,7 @@ export function UserDetail({ userId, backPath = "/team" }: UserDetailProps) {
       toast.success("User has been unbanned");
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to unban user"
+        error instanceof Error ? error.message : "Failed to unban user",
       );
     } finally {
       setIsUnbanning(false);
@@ -224,15 +224,15 @@ export function UserDetail({ userId, backPath = "/team" }: UserDetailProps) {
             </Badge>
           )}
           <Badge
-            variant={user.role === "admin" ? "default" : "outline"}
+            variant={user.role === "kb_admin" ? "default" : "outline"}
             className="capitalize"
           >
-            {user.role === "admin" ? (
+            {user.role === "kb_admin" ? (
               <IconUserShield className="mr-1 h-3 w-3" />
             ) : (
               <IconUser className="mr-1 h-3 w-3" />
             )}
-            {user.role || "user"}
+            {user.role || "customer"}
           </Badge>
         </div>
       </div>
@@ -316,8 +316,8 @@ export function UserDetail({ userId, backPath = "/team" }: UserDetailProps) {
                         <SelectValue placeholder="Select role" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="user">User</SelectItem>
-                        <SelectItem value="admin">Admin</SelectItem>
+                        <SelectItem value="customer">Customer</SelectItem>
+                        <SelectItem value="kb_admin">Admin</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -334,7 +334,7 @@ export function UserDetail({ userId, backPath = "/team" }: UserDetailProps) {
       </div>
 
       {/* Moderation */}
-      {user.role !== "admin" && (
+      {user.role !== "kb_admin" && (
         <Card className={isBanned ? "border-destructive" : ""}>
           <CardHeader>
             <CardTitle>Moderation</CardTitle>
@@ -395,8 +395,8 @@ export function UserDetail({ userId, backPath = "/team" }: UserDetailProps) {
                     <AlertDialogHeader>
                       <AlertDialogTitle>Ban User</AlertDialogTitle>
                       <AlertDialogDescription>
-                        This will prevent the user from signing in and revoke all
-                        their active sessions immediately.
+                        This will prevent the user from signing in and revoke
+                        all their active sessions immediately.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <div className="space-y-4 py-2">
@@ -424,9 +424,7 @@ export function UserDetail({ userId, backPath = "/team" }: UserDetailProps) {
                             <SelectValue placeholder="Select duration" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="permanent">
-                              Permanent
-                            </SelectItem>
+                            <SelectItem value="permanent">Permanent</SelectItem>
                             <SelectItem value="1d">1 day</SelectItem>
                             <SelectItem value="7d">7 days</SelectItem>
                             <SelectItem value="30d">30 days</SelectItem>

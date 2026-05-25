@@ -60,7 +60,7 @@ type AdminData = {
   name?: string;
   email?: string;
   image?: string;
-  role?: "user" | "admin";
+  role?: "customer" | "kb_admin";
   emailVerificationTime?: number;
 };
 
@@ -94,7 +94,9 @@ function getAvatarColor(name: string | undefined): string {
     "bg-pink-500",
     "bg-rose-500",
   ];
-  const hash = name.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  const hash = name
+    .split("")
+    .reduce((acc, char) => acc + char.charCodeAt(0), 0);
   return colors[hash % colors.length];
 }
 
@@ -112,7 +114,9 @@ export function AdminTable() {
   const deleteUser = useMutation(api.table.admin.deleteUser);
 
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false);
-  const [userToDelete, setUserToDelete] = React.useState<Id<"users"> | null>(null);
+  const [userToDelete, setUserToDelete] = React.useState<Id<"users"> | null>(
+    null,
+  );
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = React.useState("");
 
@@ -122,7 +126,9 @@ export function AdminTable() {
       await deleteUser({ userId: userToDelete });
       toast.success("Team member removed successfully");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to remove team member");
+      toast.error(
+        error instanceof Error ? error.message : "Failed to remove team member",
+      );
     } finally {
       setDeleteDialogOpen(false);
       setUserToDelete(null);
@@ -137,7 +143,9 @@ export function AdminTable() {
         cell: ({ row }) => (
           <Avatar className="h-8 w-8">
             <AvatarImage src={row.original.image} alt={row.original.name} />
-            <AvatarFallback className={`${getAvatarColor(row.original.name)} text-white text-xs`}>
+            <AvatarFallback
+              className={`${getAvatarColor(row.original.name)} text-white text-xs`}
+            >
               {getInitials(row.original.name)}
             </AvatarFallback>
           </Avatar>
@@ -170,12 +178,18 @@ export function AdminTable() {
         header: "Status",
         cell: ({ row }) =>
           row.original.emailVerificationTime ? (
-            <Badge variant="outline" className="border-green-200 bg-green-50 text-green-700">
+            <Badge
+              variant="outline"
+              className="border-green-200 bg-green-50 text-green-700"
+            >
               <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-green-500" />
               Active
             </Badge>
           ) : (
-            <Badge variant="outline" className="border-gray-200 bg-gray-50 text-gray-600">
+            <Badge
+              variant="outline"
+              className="border-gray-200 bg-gray-50 text-gray-600"
+            >
               <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-gray-400" />
               Inactive
             </Badge>
@@ -185,7 +199,9 @@ export function AdminTable() {
         accessorKey: "_creationTime",
         header: "Joined",
         cell: ({ row }) => (
-          <span className="text-muted-foreground">{formatDate(row.original._creationTime)}</span>
+          <span className="text-muted-foreground">
+            {formatDate(row.original._creationTime)}
+          </span>
         ),
       },
       {
@@ -226,7 +242,7 @@ export function AdminTable() {
         ),
       },
     ],
-    []
+    [],
   );
 
   const table = useReactTable({
@@ -275,7 +291,10 @@ export function AdminTable() {
                   <TableHead key={header.id} colSpan={header.colSpan}>
                     {header.isPlaceholder
                       ? null
-                      : flexRender(header.column.columnDef.header, header.getContext())}
+                      : flexRender(
+                          header.column.columnDef.header,
+                          header.getContext(),
+                        )}
                   </TableHead>
                 ))}
               </TableRow>
@@ -292,14 +311,20 @@ export function AdminTable() {
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      {flexRender(
+                        cell.column.columnDef.cell,
+                        cell.getContext(),
+                      )}
                     </TableCell>
                   ))}
                 </TableRow>
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={columns.length} className="h-24 text-center">
+                <TableCell
+                  colSpan={columns.length}
+                  className="h-24 text-center"
+                >
                   No team members found.
                 </TableCell>
               </TableRow>
@@ -317,8 +342,9 @@ export function AdminTable() {
           <AlertDialogHeader>
             <AlertDialogTitle>Remove Team Member</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to remove this team member? This action cannot be undone. They
-              will lose admin access and their account data will be permanently removed.
+              Are you sure you want to remove this team member? This action
+              cannot be undone. They will lose admin access and their account
+              data will be permanently removed.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -18,7 +18,12 @@ import type * as migrations from "../migrations.js";
 import type * as storage from "../storage.js";
 import type * as table_admin from "../table/admin.js";
 import type * as table_adminInvites from "../table/adminInvites.js";
+import type * as table_auditLog from "../table/auditLog.js";
 import type * as table_feedback from "../table/feedback.js";
+import type * as table_processedWebhookEvents from "../table/processedWebhookEvents.js";
+import type * as table_tenantCredentials from "../table/tenantCredentials.js";
+import type * as table_tenants from "../table/tenants.js";
+import type * as table_userTenants from "../table/userTenants.js";
 import type * as table_users from "../table/users.js";
 import type * as utils_generateFunctions from "../utils/generateFunctions.js";
 
@@ -39,7 +44,12 @@ declare const fullApi: ApiFromModules<{
   storage: typeof storage;
   "table/admin": typeof table_admin;
   "table/adminInvites": typeof table_adminInvites;
+  "table/auditLog": typeof table_auditLog;
   "table/feedback": typeof table_feedback;
+  "table/processedWebhookEvents": typeof table_processedWebhookEvents;
+  "table/tenantCredentials": typeof table_tenantCredentials;
+  "table/tenants": typeof table_tenants;
+  "table/userTenants": typeof table_userTenants;
   "table/users": typeof table_users;
   "utils/generateFunctions": typeof utils_generateFunctions;
 }>;
