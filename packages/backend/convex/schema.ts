@@ -7,6 +7,10 @@ import { customerOrdersPerTenant } from "./table/customerOrdersPerTenant";
 import { customers } from "./table/customers";
 import { deliveries } from "./table/deliveries";
 import { feedback } from "./table/feedback";
+import {
+  notificationEvents,
+  notificationTemplates,
+} from "./table/notifications";
 import { orderEvents, orderItems, orders } from "./table/orders";
 import { pricingRules } from "./table/pricingRules";
 import { processedWebhookEvents } from "./table/processedWebhookEvents";
@@ -49,4 +53,13 @@ export default defineSchema({
   orders,
   orderItems,
   orderEvents,
+  // 2.7-A — Notifications (PRD 80, ADR 0006 templates pré-validés, ADR 0012 push
+  // split). `notificationTemplates` = pre-validated campaign presets with their
+  // declarative bounds (discount ≤ 50 %, < 200 chars, FR, no alcohol);
+  // `notificationEvents` = the send journal (both carry tenantId, ADR 0010;
+  // events reference customerId BY ID only — the MOAT). The push joignabilité
+  // (Wallet serial / web-push id / per-channel status) is NOT duplicated here —
+  // it lives in `customers.pushEnrollment` (2.1, ADR 0012); 2.7 only sends.
+  notificationTemplates,
+  notificationEvents,
 });
