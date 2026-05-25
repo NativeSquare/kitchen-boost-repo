@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { logAudit } from "./audit";
 import { customerMutation, customerQuery, publicTenantQuery } from "./customer";
 import {
   kbAdminMutation,
@@ -91,4 +92,57 @@ export const publicTenantProbe = publicTenantQuery({
     tenantId: ctx.tenantId,
     tenantName: ctx.tenant.name,
   }),
+});
+
+// --- 1.x-G audit probes ----------------------------------------------------
+
+/** Explicit logAudit call from a handler, with ALL optional fields populated. */
+export const explicitLogProbe = kbAdminMutation({
+  args: { tenantId: v.id("tenants") },
+  // declare a distinct action so this probe's own auto-log doesn't collide.
+  action: "probe.explicitWrapper",
+  handler: async (ctx, args) => {
+    await logAudit(ctx, {
+      actorUserId: ctx.actor.userId,
+      actorRole: ctx.actor.role,
+      action: "probe.explicit",
+      tenantId: args.tenantId,
+      targetType: "tenant",
+      targetId: args.tenantId,
+      metadata: { note: "hello" },
+    });
+  },
+});
+
+/** Explicit logAudit call with only the required fields (no tenant/target/meta). */
+export const explicitLogMinimalProbe = kbAdminMutation({
+  action: "probe.minimalWrapper",
+  handler: async (ctx) => {
+    await logAudit(ctx, {
+      actorUserId: ctx.actor.userId,
+      actorRole: ctx.actor.role,
+      action: "probe.minimal",
+    });
+  },
+});
+
+/** kbAdminMutation that should AUTO-log (declares its action + takes a tenantId). */
+export const adminAuditedMutation = kbAdminMutation({
+  args: { tenantId: v.id("tenants") },
+  action: "admin.audited",
+  handler: async () => null,
+});
+
+/** kbAdminMutation with NO tenantId arg — still auto-logs (tenantId omitted). */
+export const adminProbeNoTenantMutation = kbAdminMutation({
+  action: "admin.noTenant",
+  handler: async () => null,
+});
+
+/** tenantMutation tagged audit:true → MUST auto-log. */
+export const tenantAuditedMutation = tenantMutation({ allow: ["kb_manager"] })({
+  args: {},
+  audit: true,
+  action: "tenant.audited",
+  handler: async () => null,
 });
