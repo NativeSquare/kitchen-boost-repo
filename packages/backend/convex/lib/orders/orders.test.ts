@@ -1,5 +1,4 @@
 import { convexTest } from "convex-test";
-import { ConvexError } from "convex/values";
 import { beforeEach, describe, expect, it } from "vitest";
 import { api } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
@@ -278,7 +277,7 @@ describe("2.3-A orders — schema + tenant-scoped persistence via wrappers", () 
     ).rejects.toThrow();
   });
 
-  it("isolation: tenant B cannot read tenant A's order by id (foreign id ⇒ throw)", async () => {
+  it("isolation: tenant B cannot read tenant A's order (foreign id reads as null, no oracle)", async () => {
     const orderId = await t
       .withIdentity({ subject: seed.tenantA.managerId })
       .mutation(api.lib.orders.orders.placeOrder, {
@@ -286,15 +285,16 @@ describe("2.3-A orders — schema + tenant-scoped persistence via wrappers", () 
         ...orderInput(customerA),
       });
 
-    // B's manager, on B's own (accessible) tenant, must not read A's order.
-    await expect(
-      t
-        .withIdentity({ subject: seed.tenantB.managerId })
-        .query(api.lib.orders.orders.getOrder, {
-          tenantId: seed.tenantB.tenantId,
-          orderId,
-        }),
-    ).rejects.toThrow(ConvexError);
+    // B's manager, on B's own (accessible) tenant, gets `null` for A's order id —
+    // a foreign id is indistinguishable from a missing one (no existence oracle),
+    // and crucially never returns A's data.
+    const leaked = await t
+      .withIdentity({ subject: seed.tenantB.managerId })
+      .query(api.lib.orders.orders.getOrder, {
+        tenantId: seed.tenantB.tenantId,
+        orderId,
+      });
+    expect(leaked).toBeNull();
 
     // And tenant B's order list never includes A's order.
     const bRows = await t
