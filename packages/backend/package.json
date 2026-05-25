@@ -24,6 +24,7 @@
     "@packages/shared": "workspace:*",
     "@packages/transactional": "workspace:*",
     "convex": "^1.29.3",
+    "convex-helpers": "^0.1.111",
     "oslo": "^1.2.1",
     "resend": "3.2.0"
   },
