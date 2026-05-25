@@ -1,6 +1,6 @@
 # Multi-Tenant
 
-Le contexte transverse de l'isolation des établissements et de la sécurité d'accès. **Tous** les contextes métier s'appuient sur ce socle : `tenant_id` sur tout objet métier, table `users` + liaison `user_tenants` N-N, RBAC à 3 rôles, isolation applicative (helpers `withTenant` — pas de RLS, cf. [ADR 0010](../../adr/0010-isolation-multi-tenant-convex-applicative.md)), domaine custom optionnel.
+Le contexte transverse de l'isolation des établissements et de la sécurité d'accès. **Tous** les contextes métier s'appuient sur ce socle : `tenant_id` sur tout objet métier, table `users` + liaison `user_tenants` N-N, RBAC à 3 rôles, isolation applicative (helpers `withTenant` — pas de RLS, cf. [ADR 0010](../../adr/0010-isolation-multi-tenant-convex-applicative.md)), domaine de marque custom par resto (face publique, norme V1).
 
 PRD : [50_multi_tenant_saas.md](../../prd/50_multi_tenant_saas.md)
 
@@ -85,7 +85,7 @@ _Avoid_: Sudo, Login-as
 
 **Alex** : Quand un client tape `commander.bunsbao.fr`, comment on retrouve le tenant ?
 
-**Dev** : DNS → CNAME Vercel → match `custom_domain` en DB tenants → on récupère `tenant_id`. Si match échoue, fallback `<slug>.kitchen-boost.fr`. Le `tenant_id` est injecté dans le contexte de chaque requête backend, et tout WHERE métier filtre dessus. PWA client = pas de user authentifié, scope unique par domain match.
+**Dev** : DNS → CNAME → match `customDomain` (face publique) en DB tenants → on récupère `tenant_id`. Si pas de match, fallback `<slug>.kitchen-boost.fr` (bootstrap technique). Le `tenant_id` est injecté dans le contexte de chaque requête backend, et tout WHERE métier filtre dessus. PWA client = user anonyme Convex Auth (pas de login explicite), scope tenant par domain match.
 
 **Alex** : Khan login KB Admin. Comment on s'assure qu'il voit que son tenant Buns & Bao ?
 
