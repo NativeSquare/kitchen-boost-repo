@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import type { Id } from "../../_generated/dataModel";
 import { logAudit } from "./audit";
 import { customerMutation, customerQuery, publicTenantQuery } from "./customer";
 import {
@@ -145,4 +146,60 @@ export const tenantAuditedMutation = tenantMutation({ allow: ["kb_manager"] })({
   audit: true,
   action: "tenant.audited",
   handler: async () => null,
+});
+
+// --- 2.1-A Customer Data schema probes -------------------------------------
+//
+// These prove the new GLOBAL `customers` table + the per-tenant link table are
+// reachable ONLY through the sanctioned wrappers (root / self / tenant). They
+// live HERE (the exempt `lib/tenancy/**` path) precisely so no raw
+// `ctx.db.query("customers")` is introduced in business code — the access
+// contract of story 2.1-A. No business logic (consent/segments/KPI/RGPD).
+
+/** root (kb_admin) writes a `customers` fiche — the sanctioned GLOBAL write. */
+export const adminCreateCustomerProbe = kbAdminMutation({
+  args: { userId: v.id("users"), firstName: v.optional(v.string()) },
+  action: "customer.create",
+  handler: async (ctx, args): Promise<Id<"customers">> =>
+    ctx.db.insert("customers", {
+      userId: args.userId,
+      firstName: args.firstName,
+      createdAt: Date.now(),
+    }),
+});
+
+/** root (kb_admin) reads any `customers` fiche back — sanctioned GLOBAL read. */
+export const adminGetCustomerProbe = kbAdminQuery({
+  args: { customerId: v.id("customers") },
+  handler: async (ctx, args) => ctx.db.get(args.customerId),
+});
+
+/**
+ * self (customer) reads its OWN fiche via the customer wrapper. Self-scope is
+ * structural: the handler only ever sees `ctx.actor.userId`, so it resolves the
+ * fiche through the GLOBAL `by_user` index keyed on the caller's own id — no
+ * other customer's fiche is reachable from here.
+ */
+export const customerGetSelfFicheProbe = customerQuery({
+  args: {},
+  handler: async (ctx) =>
+    ctx.db
+      .query("customers")
+      .withIndex("by_user", (q) => q.eq("userId", ctx.actor.userId))
+      .unique(),
+});
+
+/**
+ * resto (kb_manager) reads the per-tenant customer stats — `tenantId` is scoped
+ * by the wrapper, so the query is keyed on `ctx.tenantId` and can NEVER read
+ * another tenant's link rows. This is the cross-tenant-fuzzed surface of 2.1-A
+ * (the link table carries `tenantId`, ADR 0010).
+ */
+export const tenantCustomerStatsProbe = tenantQuery()({
+  args: {},
+  handler: async (ctx) =>
+    ctx.db
+      .query("customerOrdersPerTenant")
+      .withIndex("by_tenant", (q) => q.eq("tenantId", ctx.tenantId))
+      .collect(),
 });
