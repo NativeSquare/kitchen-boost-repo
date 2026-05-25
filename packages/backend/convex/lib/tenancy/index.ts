@@ -21,6 +21,12 @@
  *    explicit `tenantId` that must resolve to an existing tenant (else throws).
  *    The handler ctx gains `{ tenantId, tenant }`. No public mutation twin.
  *
+ *  - `logAudit` (1.x-G) — append one `auditLog` row from a mutation handler.
+ *    Most sensitive writes are audited AUTOMATICALLY by the wrappers (every
+ *    `kbAdminMutation`, plus any `tenantMutation` declaring `audit: true`), so
+ *    `logAudit` is exported mainly for the explicit cases the wrappers can't
+ *    infer (richer `targetType`/`metadata`, an action spanning several writes).
+ *
  * The reusable cross-tenant fuzz harness (`runCrossTenantFuzz`,
  * `seedTwoTenantsAllRoles`) lives in `./fuzz` and is imported directly by test
  * suites (it depends on the convex-test handle), not re-exported here — a barrel
