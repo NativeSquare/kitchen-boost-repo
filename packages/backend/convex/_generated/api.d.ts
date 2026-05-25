@@ -27,6 +27,10 @@ import type * as lib_customer_kpi from "../lib/customer/kpi.js";
 import type * as lib_customer_reachability from "../lib/customer/reachability.js";
 import type * as lib_customer_rgpd from "../lib/customer/rgpd.js";
 import type * as lib_customer_segments from "../lib/customer/segments.js";
+import type * as lib_menu_categories from "../lib/menu/categories.js";
+import type * as lib_menu_index from "../lib/menu/index.js";
+import type * as lib_menu_items from "../lib/menu/items.js";
+import type * as lib_menu_modifiers from "../lib/menu/modifiers.js";
 import type * as lib_notifications_categories from "../lib/notifications/categories.js";
 import type * as lib_notifications_engine from "../lib/notifications/engine.js";
 import type * as lib_notifications_index from "../lib/notifications/index.js";
@@ -48,6 +52,7 @@ import type * as lib_tenancy_customerOrdersStore from "../lib/tenancy/customerOr
 import type * as lib_tenancy_deliveriesStore from "../lib/tenancy/deliveriesStore.js";
 import type * as lib_tenancy_fuzz from "../lib/tenancy/fuzz.js";
 import type * as lib_tenancy_index from "../lib/tenancy/index.js";
+import type * as lib_tenancy_menuStore from "../lib/tenancy/menuStore.js";
 import type * as lib_tenancy_notificationsStore from "../lib/tenancy/notificationsStore.js";
 import type * as lib_tenancy_ordersStore from "../lib/tenancy/ordersStore.js";
 import type * as lib_tenancy_pricingRulesStore from "../lib/tenancy/pricingRulesStore.js";
@@ -110,6 +115,10 @@ declare const fullApi: ApiFromModules<{
   "lib/customer/reachability": typeof lib_customer_reachability;
   "lib/customer/rgpd": typeof lib_customer_rgpd;
   "lib/customer/segments": typeof lib_customer_segments;
+  "lib/menu/categories": typeof lib_menu_categories;
+  "lib/menu/index": typeof lib_menu_index;
+  "lib/menu/items": typeof lib_menu_items;
+  "lib/menu/modifiers": typeof lib_menu_modifiers;
   "lib/notifications/categories": typeof lib_notifications_categories;
   "lib/notifications/engine": typeof lib_notifications_engine;
   "lib/notifications/index": typeof lib_notifications_index;
@@ -131,6 +140,7 @@ declare const fullApi: ApiFromModules<{
   "lib/tenancy/deliveriesStore": typeof lib_tenancy_deliveriesStore;
   "lib/tenancy/fuzz": typeof lib_tenancy_fuzz;
   "lib/tenancy/index": typeof lib_tenancy_index;
+  "lib/tenancy/menuStore": typeof lib_tenancy_menuStore;
   "lib/tenancy/notificationsStore": typeof lib_tenancy_notificationsStore;
   "lib/tenancy/ordersStore": typeof lib_tenancy_ordersStore;
   "lib/tenancy/pricingRulesStore": typeof lib_tenancy_pricingRulesStore;

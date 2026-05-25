@@ -266,15 +266,15 @@ describe("2.2-B menuItems CRUD — tenant-scoped via kb_manager", () => {
       tenantId: seed.tenantA.tenantId,
     });
     expect(items.map((i) => i._id)).toEqual([item2]);
-    // item1's link is gone…
-    const links1 = await asManager.query(
-      api.lib.menu.modifiers.listItemGroups,
-      {
-        tenantId: seed.tenantA.tenantId,
-        itemId: item1,
-      },
+    // item1's edges are cascade-deleted (read the link table directly — listing
+    // groups of a now-deleted item legitimately throws NOT_FOUND).
+    const item1Edges = await t.run(async (ctx) =>
+      ctx.db
+        .query("menuItemModifierGroups")
+        .withIndex("by_item", (q) => q.eq("itemId", item1 as never))
+        .collect(),
     );
-    expect(links1).toEqual([]);
+    expect(item1Edges).toEqual([]);
     // …but item2 still has the group, and the group itself survives.
     const links2 = await asManager.query(
       api.lib.menu.modifiers.listItemGroups,
