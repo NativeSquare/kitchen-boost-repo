@@ -229,14 +229,17 @@ describe("2.1-A customers reachable ONLY via sanctioned wrappers", () => {
   });
 
   it("a non-root caller cannot reach the root customer probes (kb_admin gate)", async () => {
+    // Seed a real fiche (valid customers id) via the root path, then try to read
+    // it as a plain customer: the kb_admin gate must refuse BEFORE any read.
+    const customerId = await t
+      .withIdentity({ subject: seed.adminId })
+      .mutation(api.lib.tenancy._probes.adminCreateCustomerProbe, {
+        userId: seed.customerId,
+      });
     await expect(
       t
         .withIdentity({ subject: seed.customerId })
-        .query(api.lib.tenancy._probes.adminGetCustomerProbe, {
-          // a dangling-but-syntactically-valid id is enough: the auth gate fires
-          // before any read.
-          customerId: seed.customerId as unknown as never,
-        }),
+        .query(api.lib.tenancy._probes.adminGetCustomerProbe, { customerId }),
     ).rejects.toThrow(/forbidden/i);
   });
 
