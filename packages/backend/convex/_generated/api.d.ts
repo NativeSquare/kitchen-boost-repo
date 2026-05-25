@@ -20,6 +20,7 @@ import type * as lib_crypto_credentials from "../lib/crypto/credentials.js";
 import type * as lib_crypto_envelope from "../lib/crypto/envelope.js";
 import type * as lib_crypto_index from "../lib/crypto/index.js";
 import type * as lib_tenancy__probes from "../lib/tenancy/_probes.js";
+import type * as lib_tenancy_audit from "../lib/tenancy/audit.js";
 import type * as lib_tenancy_customer from "../lib/tenancy/customer.js";
 import type * as lib_tenancy_fuzz from "../lib/tenancy/fuzz.js";
 import type * as lib_tenancy_index from "../lib/tenancy/index.js";
@@ -58,6 +59,7 @@ declare const fullApi: ApiFromModules<{
   "lib/crypto/envelope": typeof lib_crypto_envelope;
   "lib/crypto/index": typeof lib_crypto_index;
   "lib/tenancy/_probes": typeof lib_tenancy__probes;
+  "lib/tenancy/audit": typeof lib_tenancy_audit;
   "lib/tenancy/customer": typeof lib_tenancy_customer;
   "lib/tenancy/fuzz": typeof lib_tenancy_fuzz;
   "lib/tenancy/index": typeof lib_tenancy_index;
