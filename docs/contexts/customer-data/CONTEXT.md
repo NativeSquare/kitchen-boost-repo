@@ -12,8 +12,9 @@ _Avoid_: User, Mangeur (FR informel), End-customer
 
 **Identité Customer V1** (matching) :
 **Décision actée 2026-05-24** : la fonction d'unification d'identité repose sur **2 layers V1**, dans cet ordre :
-1. **Cookie HttpOnly persistent device** (1 an, refresh à chaque visite) — pose un `customer_id` à la première arrivée sur une PWA tenant. Cookie partagé sur domaine parent → reconnaît même device cross-tenant.
-2. **Liaison [[Wallet pass]]** (cf. [ADR 0003](../../adr/0003-wallet-pass-commun-marque-neutre.md)) — `serial_number` du pass lié au `customer_id` côté backend → suit la personne cross-device si elle a installé le pass.
+
+1. **Cookie HttpOnly persistent device** (1 an, refresh à chaque visite) — pose un `customer_id` à la première arrivée sur la PWA d'un resto. **Portée intra-resto uniquement** : chaque resto a son propre domaine de marque (ex. `bunsbao.fr`), donc le cookie reconnaît le retour **sur le même resto**, jamais cross-resto (domaines cloisonnés ; cf. [ADR 0008](../../adr/0008-identite-customer-cookie-device-only-v1.md) Amendement 2026-05-25).
+2. **Liaison [[Wallet pass]]** (cf. [ADR 0003](../../adr/0003-wallet-pass-commun-marque-neutre.md)) — `serial_number` du pass lié au `customer_id` côté backend → **seule surface cross-resto** : suit la personne cross-device ET cross-resto si elle a installé le pass.
 
 **Pas de match serveur sur email/tel cross-device V1** (cf. [ADR 0008](../../adr/0008-identite-customer-cookie-device-only-v1.md)) — Sophie qui commande depuis 2 devices distincts sans Wallet pass = 2 `customer_id` distincts. Doublon assumé. **Pas d'OTP V1**.
 
@@ -21,8 +22,8 @@ Raison principale : sécurité [[Stripe Customer (cross-tenant)]] / `clone Payme
 _Avoid_: Cross-device match, Customer dedup, Email-based dedup
 
 **Re-engagement channel** (Canal de recontact) :
-Mécanisme par lequel KB peut recontacter un client après une visite. **4 canaux V1** : (1) Email (cross-tenant via `customer_id` global, obligatoire au checkout, consent_marketing bloquant), (2) SMS (cross-tenant, V2 — coût à provisionner), (3) Push Wallet (scopé tenant via pass installé), (4) Push Web PWA (scopé domaine tenant via permission ou A2HS). **Règle d'or V1 acté 2026-05-24** : *tout client qui valide une cmd sur une PWA KB doit avoir au moins UN canal [[Push enrollment]] actif (Wallet pass OU Web Push OU A2HS) + Email + Tel capturés. Sans push enrollment, pas de validation cmd possible (bouton "Payer" bloqué).* Zero touch = jamais possible côté UX V1.
-_Avoid_: Touchpoint, Channel (acceptable EN)
+Mécanisme par lequel KB peut recontacter un client après une visite. **4 canaux V1** : (1) Email (cross-tenant via `customer_id` global, obligatoire au checkout, consent*marketing bloquant), (2) SMS (cross-tenant, V2 — coût à provisionner), (3) Push Wallet (scopé tenant via pass installé), (4) Push Web PWA (scopé domaine tenant via permission ou A2HS). **Règle d'or V1 acté 2026-05-24** : *tout client qui valide une cmd sur une PWA KB doit avoir au moins UN canal [[Push enrollment]] actif (Wallet pass OU Web Push OU A2HS) + Email + Tel capturés. Sans push enrollment, pas de validation cmd possible (bouton "Payer" bloqué).* Zero touch = jamais possible côté UX V1.
+\_Avoid*: Touchpoint, Channel (acceptable EN)
 
 **Push enrollment** :
 Action explicite du client pour autoriser KB à lui pousser des notifs. **3 mécanismes V1** : Add to Wallet (2 taps), Allow notifications browser (1 tap, Android sans A2HS), A2HS install (1-4 taps selon plateforme). Maximiser le push enrollment = objectif V1 prioritaire pour construire le [[Lock-screen reach]]. Pas bloquant techniquement (cohérent UX conversion), mais wording incentif fort + [[Incentive Wallet]] paramétrée par le resto.
@@ -34,11 +35,12 @@ _Avoid_: Push reach
 
 **Cross-tenant reach** :
 Capacité de pousser à un client d'un tenant via un autre tenant. **V1 = scopé canal** (révision 2026-05-24 suite décision carte Wallet commune) :
+
 - **Email / SMS = cross-tenant possible** (scopé `customer_id` global, couvert par consent_marketing KB = responsable de traitement RGPD Article 2 ter)
 - **Push Wallet commun = cross-tenant possible** (1 pass = N restos KB, channel unique géré par KB côté serveur — c'est le mécanisme primaire du moat consumer-side)
-- **Push Web PWA = scopé domaine tenant** (permission web push attachée à origin = `bunsbao.kitchen-boost.fr`, pas de bypass possible — sécurité navigateur). Reach limité au tenant correspondant.
+- **Push Web PWA = scopé domaine tenant** (permission web push attachée à origin = le domaine du resto, ex. `bunsbao.fr`, pas de bypass possible — sécurité navigateur). Reach limité au tenant correspondant.
 
-Conséquence stratégique : **effet réseau cross-tenant V1 est ACTIF dès le premier client** — identité globale + CB partagée + email/SMS cross-tenant + **push lock-screen cross-tenant via carte Wallet commune**. KB peut pousser "Nouveau resto à 5 min de chez toi" à tous les clients du quartier dès l'onboarding d'un nouveau resto. Network effect immédiatement activable.
+Conséquence stratégique : **l'effet réseau cross-tenant V1 est ancré sur la carte Wallet** (cf. [ADR 0008](../../adr/0008-identite-customer-cookie-device-only-v1.md) Amendement 2026-05-25). Une fois le client porteur du pass commun : identité unifiée cross-resto + push lock-screen cross-tenant + (CB partagée via Stripe Customer cross-tenant, chantier 2.5). KB peut alors pousser "Nouveau resto à 5 min de chez toi" à ses porteurs de pass du quartier dès l'onboarding d'un nouveau resto. **Pour les clients sans pass, chaque resto reste une île** (cookie intra-resto, domaines distincts) → maximiser l'enrôlement Wallet est LE levier du moat consumer-side.
 _Avoid_: Cross-resto push, Network push
 
 **Anonymous account (V1)** :
@@ -46,19 +48,19 @@ Pattern type Firebase Anonymous Auth / Spotify : à la première arrivée sur la
 _Avoid_: Login, Sign-up, Authentification client (pas avant V2/V3)
 
 **Table customers (GLOBAL)** :
-Table `customers` SANS `tenant_id`. Exception explicite au principe [[Multi-Tenant]]. La GLOBALITÉ est le MOAT — un client qui commande chez 2 restos KB est le **même** record customer. Liaison via `customer_orders_per_tenant` (customer_id × tenant_id × stats).
-_Avoid_: Customers global, Shared customers
+Table `customers` SANS `tenant_id`. Exception explicite au principe [[Multi-Tenant]]. La GLOBALITÉ est le MOAT — un client qui commande chez 2 restos KB est le **même** record customer. Liaison via `customer_orders_per_tenant` (customer*id × tenant_id × stats).
+\_Avoid*: Customers global, Shared customers
 
 **customer_orders_per_tenant** :
-Table de liaison N-N entre `customers` et `tenants`. Colonnes : customer_id, tenant_id, total_orders, last_order_at, ltv. C'est par cette table que [[KB Admin]] filtre "mes clients" via RLS.
-_Avoid_: Customer-tenant, Membership
+Table de liaison N-N entre `customers` et `tenants`. Colonnes : customer*id, tenant_id, total_orders, last_order_at, ltv. C'est par cette table que [[KB Admin]] filtre "mes clients" via RLS.
+\_Avoid*: Customer-tenant, Membership
 
 **Position géo** (lat/lng) :
 Latitude + longitude captées **dès l'entrée sur la PWA (avant accès au menu, cf. [[Address-first flow]] côté [[Delivery]])**, **obligatoirement** via Google Places autocomplete (saisie libre interdite V1, cf. décision actée 2026-05-23, parcours d'entrée acté 2026-05-24). Garantit format normalisé + fiabilité Uber Direct + déclenchement immédiat du [[Quote]] de livraison. Utilisées pour : (a) [[Pricing]] condition de distance (V2 — retirée V1), (b) partage KB → resto V2 selon proximité, (c) segmentation géo future, (d) déclenchement quote Uber Direct dès l'entrée PWA.
 _Avoid_: Coordinates (acceptable), GPS (technique), Adresse libre
 
 **Consentement par clic sur Payer** :
-**Décision actée 2026-05-24** : V1 = pas de checkbox de consentement au checkout PWA. Le bouton final affiche `Payer <X €>` (ou `Commander`). Sous le bouton, phrase non-cliquable lisible (≥ 12 px) : *"En cliquant sur Payer, tu acceptes les CGV de **\<Resto\>** et le service de fidélité **\<Marque KB\>** (carte commune + offres réseau). Tu peux te désinscrire à tout moment via le lien dans chaque message ; ta prochaine commande vaut nouvelle acceptation."* Le clic sur "Payer" enregistre `cgv_accepted_at` (timestamp) + `cgv_version_hash` (hash SHA-256 du wording CGV actif). Plus de séparation DB `consent_marketing` / `consent_transactional` (supersedé par [ADR 0007](../../adr/0007-consentement-clic-payer-v1.md)). Pattern Uber Eats / Deliveroo / Stripe Checkout. Logique [[marketing_eligible]] : `last_checkout_date > marketing_opt_out_date` (cf. [ADR 0005](../../adr/0005-re-consentement-marketing-par-achat.md)).
+**Décision actée 2026-05-24** : V1 = pas de checkbox de consentement au checkout PWA. Le bouton final affiche `Payer <X €>` (ou `Commander`). Sous le bouton, phrase non-cliquable lisible (≥ 12 px) : _"En cliquant sur Payer, tu acceptes les CGV de **\<Resto\>** et le service de fidélité **\<Marque KB\>** (carte commune + offres réseau). Tu peux te désinscrire à tout moment via le lien dans chaque message ; ta prochaine commande vaut nouvelle acceptation."_ Le clic sur "Payer" enregistre `cgv_accepted_at` (timestamp) + `cgv_version_hash` (hash SHA-256 du wording CGV actif). Plus de séparation DB `consent_marketing` / `consent_transactional` (supersedé par [ADR 0007](../../adr/0007-consentement-clic-payer-v1.md)). Pattern Uber Eats / Deliveroo / Stripe Checkout. Logique [[marketing_eligible]] : `last_checkout_date > marketing_opt_out_date` (cf. [ADR 0005](../../adr/0005-re-consentement-marketing-par-achat.md)).
 _Avoid_: Checkbox consent, Opt-in (terme [[Notifications]] séparé), Consent (anglicisme), Case à cocher
 
 **Archivage CGV horodaté** :
@@ -91,10 +93,11 @@ _Avoid_: Effacement complet, Hard delete, Suppression
 
 **Segment** :
 Cf. [[KB Admin]] CONTEXT.md. V1 — 3 segments calculés automatiquement, seuils figés (paramétrable resto en V2) :
+
 - **Actif** : ≥1 cmd dans les 30 derniers jours
 - **Inactif** : 0 cmd dans les 90 derniers jours
 - **VIP** : ≥5 cmds total OU LTV cumulé ≥ 150€ (peu importe récence)
-V2 : critères fins (montant moyen, période, géo, custom resto).
+  V2 : critères fins (montant moyen, période, géo, custom resto).
 
 **Profil client PWA = absent V1** :
 **Décision actée 2026-05-23** : pas d'écran "Mon profil" / "Mes cmds" / "Mes préférences" en V1 côté PWA client. Les droits RGPD (rectification, opposition, effacement) s'exercent via un lien footer "Vos droits RGPD" qui ouvre un form contact → email à `privacy@kitchenboost.fr`. SLA 30j (RGPD). Pas de back-office RGPD V1 — Alex traite manuellement. Friction client assumée. Risque aggravant CNIL en cas de plainte (Art 12 + 21 RGPD = droits "facilement exerçables") — à arbitrer si volume de plaintes ou seuil base atteint.
@@ -109,13 +112,14 @@ Pattern V1 où le resto choisit un segment + un [[Template campagne]] pré-valid
 _Avoid_: Proxy send, KB-mediated
 
 **Effet réseau** (V1 cross-resto compte unifié) :
-Capacité d'un client de commander chez plusieurs restos KB avec **un seul profil** (même `customer_id`). Conséquence du caractère global de la table customers. **V1 = cookie device cross-tenant + carte CB partagée + carte Wallet commune** (révision 2026-05-24 / [ADR 0008](../../adr/0008-identite-customer-cookie-device-only-v1.md)) :
-- À la 2ᵉ cmd chez un autre resto KB **depuis le même device**, le cookie reconnaît le `customer_id` et **auto-remplit prénom + adresse** (modifiable). Pas de prompt "tu es déjà client ?".
-- La **carte CB sauvegardée** est réutilisable cross-resto KB via [[Stripe Customer (cross-tenant)]] côté [[Payment]] — pattern `clone PaymentMethod` Stripe Connect. Scopée au `customer_id` device-verified pour des raisons de sécurité.
+Capacité d'un client de commander chez plusieurs restos KB avec **un seul profil** (même `customer_id`). Conséquence du caractère global de la table customers. **V1 = unification cross-resto par carte Wallet uniquement + carte CB partagée** (révision 2026-05-25 / [ADR 0008](../../adr/0008-identite-customer-cookie-device-only-v1.md) Amendement) :
+
+- Chaque resto étant sur son **propre domaine de marque**, le cookie device ne traverse PAS les restos. À la 1ʳᵉ cmd chez un 2ᵉ resto, **un nouveau `customer_id` est créé par défaut** (pas d'auto-fill cross-resto, pas de prompt "tu es déjà client ?"). L'auto-fill cross-resto n'existe **que** si le client a installé la carte Wallet (le pass bridge son identité).
+- La **carte CB sauvegardée** est réutilisable cross-resto KB via [[Stripe Customer (cross-tenant)]] côté [[Payment]] — pattern `clone PaymentMethod` Stripe Connect — **pour les clients dont l'identité est bridgée par le pass** ; scopée au `customer_id` pour des raisons de sécurité.
 - **La [[Wallet pass]] est commune à tous les restos KB** sous marque neutre (cf. [ADR 0003](../../adr/0003-wallet-pass-commun-marque-neutre.md)) → push lock-screen cross-tenant activé dès le premier client + **bridge cross-device** pour l'identité (le pass suit la personne entre devices).
 - **Pas de matching cross-device sur email/tel V1** (cf. [[Identité Customer V1]]). Un client multi-device sans Wallet pass installé = 2+ `customer_id`. Doublons cross-device assumés (~10% estimés).
 - **Aucun message "KitchenBoost" littéral brandé** au client (PWA + emails transactionnels = branded resto à 100%) — mais **l'effet réseau devient visible côté Wallet** (carte commune avec logo du resto principal + mention "Membre [Nom carte]" en bas). C'est l'embryon de la marque consumer-side KB nécessaire à la vision long terme "Uber Eats à 2€". **White-label intégral resto-side** sur l'ordering, **marque consumer-side neutre** sur le wallet et marketing cross-tenant.
-_Avoid_: Network effect (acceptable), Cross-resto identity, Account linking
+  _Avoid_: Network effect (acceptable), Cross-resto identity, Account linking
 
 ## Example dialogue
 
@@ -125,7 +129,7 @@ _Avoid_: Network effect (acceptable), Cross-resto identity, Account linking
 
 **Alex** : Un client commande chez Buns & Bao puis chez un autre resto KB du 19e. Qu'est-ce qui se passe ?
 
-**Dev** : Si email/tel match dans la table `customers` (GLOBAL), on lie le même `customer_id` aux 2 tenants via `customer_orders_per_tenant`. Le client a un compte unifié. V1 inclut ça (subject to Q14 PoC Stripe Customer cross-tenant pour la carte).
+**Dev** : Les deux restos sont sur des domaines de marque distincts → par défaut, **2 `customer_id` séparés** (le cookie ne traverse pas les domaines, et on ne matche PAS sur email/tel — [ADR 0008](../../adr/0008-identite-customer-cookie-device-only-v1.md)). **Compte unifié cross-resto uniquement si le client a installé la carte Wallet** : son `serial → customer_id` le rattache au même record global, et `customer_orders_per_tenant` lie alors ce `customer_id` aux 2 tenants. Sinon, doublon cross-resto assumé (réconciliable en V2).
 
 **Alex** : Si KB suspend Khan parce qu'il a pas payé ?
 

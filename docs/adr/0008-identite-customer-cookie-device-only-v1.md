@@ -6,11 +6,22 @@ deciders: Alex
 
 # Identité Customer V1 = cookie device only (pas de matching cross-device email/tel)
 
+## ⚠️ Amendement 2026-05-25 — la reconnaissance cross-resto ne passe PAS par le cookie
+
+Précision d'architecture confirmée le 2026-05-25 : **chaque resto est servi sur son PROPRE domaine de marque** (ex. `bunsbao.fr`), jamais sur un sous-domaine `*.kitchen-boost.fr` côté public (modèle Owner.com). Conséquences directes sur cet ADR :
+
+- **Le cookie device est INTRA-resto uniquement.** Deux restos = deux domaines distincts → un cookie n'est jamais partagé entre eux (cloisonnement navigateur ; aucune techno propre n'y change rien). Le « cookie partagé sur domaine parent » envisagé plus bas est **caduc**. Vérifié techniquement le 2026-05-25 : Convex Auth (intégration Next.js) pose de toute façon un cookie `__Host-` _host-only_, non élargissable à un domaine parent.
+- **La reconnaissance / unification cross-resto en V1 repose donc EXCLUSIVEMENT sur la [[Wallet pass]] commune** (surface #2 ci-dessous : `serial_number` → `customer_id`, indépendant du domaine et du device). Sans pass installé, un même device sur un autre resto = **nouveau `customer_id`** (doublon cross-resto assumé, au même titre que les doublons cross-device).
+- Inchangé : pas de match email/tel V1 (sécurité CB), pas d'OTP V1, table `customers` globale.
+
+Les mentions « cookie partagé sur domaine parent » des lignes ci-dessous sont corrigées en ce sens.
+
 ## Contexte
 
 KitchenBoost capte email/tel/adresse au checkout PWA client. Le MOAT cross-tenant repose sur l'unification de l'identité [[Customer]] entre tenants (cf. [[Customer Data]] CONTEXT). Question : quand un client revient — même device ou autre device, même tenant ou autre tenant — à quoi reconnaît-on que c'est le même `customer_id` ?
 
 3 layers possibles :
+
 1. **Cookie persistent device** (anonymous sign-in pattern, Firebase Auth / Spotify)
 2. **Match serveur sur email OU tel** (Shopify Shop Pay pattern)
 3. **OTP email/SMS** au checkout pour confirmer propriété
@@ -20,13 +31,15 @@ KitchenBoost capte email/tel/adresse au checkout PWA client. Le MOAT cross-tenan
 **V1 = Layer 1 uniquement.** Cookie HttpOnly long-lived (1 an, refresh à chaque visite) avec `customer_id` posé à la première arrivée sur la PWA d'un tenant. **Pas de match serveur sur email/tel cross-device V1. Pas d'OTP V1.**
 
 Conséquences :
+
 - Si Sophie commande chez Buns & Bao depuis son iPhone (Tenant A), puis chez Buns & Bao depuis son MacBook (même Tenant A) → **2 `customer_id` distincts**. Doublon assumé.
-- Si Sophie commande chez Tenant A puis Tenant B depuis le même device → **1 `customer_id` cross-tenant** (cookie partagé sur domaine parent ou via mécanisme SSO léger côté dev lead).
+- Si Sophie commande chez Tenant A puis Tenant B depuis le même device → **2 `customer_id` distincts** (domaines de marque différents = cookies cloisonnés ; cf. Amendement 2026-05-25). Unification cross-resto **uniquement si elle a installé la [[Wallet pass]]** (serial → `customer_id`).
 - Pas de prompt "Cette adresse existe déjà — c'est toi ?" au checkout. Pas de tentative de fusion.
 
-**Cross-tenant matching V1 repose donc sur 2 surfaces uniquement** :
-1. **Cookie device** (couvre les clients sédentaires mono-device — majorité 70-80%)
-2. **[[Wallet pass]] commune** (cf. [ADR 0003](0003-wallet-pass-commun-marque-neutre.md)) — suit la personne cross-device si elle l'a installée. Le `serial_number` du pass est lié au `customer_id` côté backend → reconnaissable peu importe le device qui scanne.
+**Reconnaissance V1 = 2 surfaces, à 2 portées distinctes** (cf. Amendement 2026-05-25) :
+
+1. **Cookie device** — portée **intra-resto uniquement** (retour sur le même domaine de marque). Couvre les retours mono-device chez un resto donné. **Ne traverse PAS les restos.**
+2. **[[Wallet pass]] commune** (cf. [ADR 0003](0003-wallet-pass-commun-marque-neutre.md)) — **seule surface cross-resto** : suit la personne cross-device ET cross-resto si elle l'a installée. Le `serial_number` du pass est lié au `customer_id` côté backend → reconnaissable peu importe le device ou le resto qui scanne.
 
 Si Sophie n'a ni cookie reconnu ni Wallet pass installé → nouveau `customer_id`. Acceptable V1.
 
@@ -65,10 +78,12 @@ Si Sophie n'a ni cookie reconnu ni Wallet pass installé → nouveau `customer_i
 - Sécurité CB acquise V1 = un standard de promesse implicite. Lever cette garantie V2 (en permettant match sur email+tel) = perte de confiance si communiqué.
 
 À l'inverse, **ajouter** Layer 2 + OTP en V2 est trivial sans casser V1 :
+
 - Nouveaux clients V2 → option "Te connecter avec email" affichée (Layer 2 + OTP)
 - Anciens clients V1 → restent sur leur cookie (Layer 1), avec migration douce s'ils s'authentifient
 
 Conditionne aussi :
+
 - Le schéma DB customers (pas de unique constraint email/phone)
 - L'UX checkout PWA (linéaire, pas de prompt identité)
 - La stratégie MOAT cross-tenant (Wallet + Cookie, pas email/tel)
