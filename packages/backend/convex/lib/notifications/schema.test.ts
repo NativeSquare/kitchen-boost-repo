@@ -38,6 +38,7 @@ async function seedTenantAndCustomer(
     const tenantId = await ctx.db.insert("tenants", {
       slug: "buns-bao",
       name: "Buns & Bao",
+      siret: "12345678901234",
       status: "active",
       createdAt: Date.now(),
     });

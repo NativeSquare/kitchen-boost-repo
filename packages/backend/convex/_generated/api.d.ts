@@ -25,6 +25,8 @@ import type * as lib_customer_identity from "../lib/customer/identity.js";
 import type * as lib_customer_index from "../lib/customer/index.js";
 import type * as lib_customer_reachability from "../lib/customer/reachability.js";
 import type * as lib_customer_segments from "../lib/customer/segments.js";
+import type * as lib_notifications_index from "../lib/notifications/index.js";
+import type * as lib_notifications_templateBounds from "../lib/notifications/templateBounds.js";
 import type * as lib_orders_index from "../lib/orders/index.js";
 import type * as lib_orders_orders from "../lib/orders/orders.js";
 import type * as lib_pricing_contradictions from "../lib/pricing/contradictions.js";
@@ -58,6 +60,7 @@ import type * as table_customerOrdersPerTenant from "../table/customerOrdersPerT
 import type * as table_customers from "../table/customers.js";
 import type * as table_deliveries from "../table/deliveries.js";
 import type * as table_feedback from "../table/feedback.js";
+import type * as table_notifications from "../table/notifications.js";
 import type * as table_orders from "../table/orders.js";
 import type * as table_pricingRules from "../table/pricingRules.js";
 import type * as table_processedWebhookEvents from "../table/processedWebhookEvents.js";
@@ -91,6 +94,8 @@ declare const fullApi: ApiFromModules<{
   "lib/customer/index": typeof lib_customer_index;
   "lib/customer/reachability": typeof lib_customer_reachability;
   "lib/customer/segments": typeof lib_customer_segments;
+  "lib/notifications/index": typeof lib_notifications_index;
+  "lib/notifications/templateBounds": typeof lib_notifications_templateBounds;
   "lib/orders/index": typeof lib_orders_index;
   "lib/orders/orders": typeof lib_orders_orders;
   "lib/pricing/contradictions": typeof lib_pricing_contradictions;
@@ -124,6 +129,7 @@ declare const fullApi: ApiFromModules<{
   "table/customers": typeof table_customers;
   "table/deliveries": typeof table_deliveries;
   "table/feedback": typeof table_feedback;
+  "table/notifications": typeof table_notifications;
   "table/orders": typeof table_orders;
   "table/pricingRules": typeof table_pricingRules;
   "table/processedWebhookEvents": typeof table_processedWebhookEvents;
