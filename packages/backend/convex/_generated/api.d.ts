@@ -24,6 +24,8 @@ import type * as lib_tenancy_customer from "../lib/tenancy/customer.js";
 import type * as lib_tenancy_fuzz from "../lib/tenancy/fuzz.js";
 import type * as lib_tenancy_index from "../lib/tenancy/index.js";
 import type * as lib_tenancy_withTenant from "../lib/tenancy/withTenant.js";
+import type * as lib_webhooks_idempotent from "../lib/webhooks/idempotent.js";
+import type * as lib_webhooks_index from "../lib/webhooks/index.js";
 import type * as migrations from "../migrations.js";
 import type * as storage from "../storage.js";
 import type * as table_admin from "../table/admin.js";
@@ -60,6 +62,8 @@ declare const fullApi: ApiFromModules<{
   "lib/tenancy/fuzz": typeof lib_tenancy_fuzz;
   "lib/tenancy/index": typeof lib_tenancy_index;
   "lib/tenancy/withTenant": typeof lib_tenancy_withTenant;
+  "lib/webhooks/idempotent": typeof lib_webhooks_idempotent;
+  "lib/webhooks/index": typeof lib_webhooks_index;
   migrations: typeof migrations;
   storage: typeof storage;
   "table/admin": typeof table_admin;
