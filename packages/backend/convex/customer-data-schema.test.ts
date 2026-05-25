@@ -29,6 +29,8 @@ const modules = import.meta.glob(["./**/*.{ts,js}", "!./**/*.test.*"]);
  *    `tenantId`, anything that reads it ships cross-tenant fuzz coverage.
  */
 
+type Seed = Awaited<ReturnType<typeof seedTwoTenantsAllRoles>>;
+
 describe("2.1-A schema — customers (GLOBAL), cgvVersions, customerOrdersPerTenant", () => {
   it("round-trips a customer row with all V1 fields incl. push enrollment", async () => {
     const t = convexTest(schema, modules);
@@ -208,7 +210,7 @@ describe("2.1-A schema — customers (GLOBAL), cgvVersions, customerOrdersPerTen
  */
 describe("2.1-A customers reachable ONLY via sanctioned wrappers", () => {
   let t: ReturnType<typeof convexTest>;
-  let seed: Awaited<ReturnType<typeof seedTwoTenantsAllRoles>>;
+  let seed: Seed;
   beforeEach(async () => {
     t = convexTest(schema, modules);
     seed = await seedTwoTenantsAllRoles(t);
@@ -270,7 +272,7 @@ describe("2.1-A customers reachable ONLY via sanctioned wrappers", () => {
  */
 describe("2.1-A cross-tenant fuzz — customerOrdersPerTenant (carries tenantId)", () => {
   let t: ReturnType<typeof convexTest>;
-  let seed: Awaited<ReturnType<typeof seedTwoTenantsAllRoles>>;
+  let seed: Seed;
   beforeEach(async () => {
     t = convexTest(schema, modules);
     seed = await seedTwoTenantsAllRoles(t);
