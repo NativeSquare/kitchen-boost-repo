@@ -6,6 +6,7 @@ import { cgvVersions } from "./table/cgvVersions";
 import { customerOrdersPerTenant } from "./table/customerOrdersPerTenant";
 import { customers } from "./table/customers";
 import { feedback } from "./table/feedback";
+import { pricingRules } from "./table/pricingRules";
 import { processedWebhookEvents } from "./table/processedWebhookEvents";
 import { tenantCredentials } from "./table/tenantCredentials";
 import { tenants } from "./table/tenants";
@@ -29,4 +30,8 @@ export default defineSchema({
   customers,
   cgvVersions,
   customerOrdersPerTenant,
+  // 2.4-B — Pricing engine (backend-only, ADR 0013). Tenant-scoped configurable
+  // delivery-fee rules (carries tenantId, by_tenant index, ADR 0010). The rule
+  // shape mirrors the pure engine in @packages/shared/pricing (#29).
+  pricingRules,
 });
