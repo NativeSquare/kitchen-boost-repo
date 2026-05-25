@@ -28,5 +28,12 @@ export const tenants = defineTable({
   // per account, NEVER shared even with a common SIRET; multi-tenant CONTEXT
   // "Uber Direct par tenant"). Set when the Uber credentials are stored (2.6-A).
   uberCustomerId: v.optional(v.string()),
+  // 2.3-A — transient operational pause ("Pause exceptionnelle", PRD 20 §7 /
+  // kb-orders CONTEXT). When set, the PWA checkout is disabled until `until`
+  // (epoch ms). Absent = no pause (distinct from the `status`-driven `fermé` /
+  // `ouvert` lifecycle above). The full open/closed schedule is the slice-F
+  // concern; this slice lays only the transient pause domain field, leaving the
+  // 1.x identity / lifecycle fields untouched.
+  operationalPause: v.optional(v.object({ until: v.number() })),
   createdAt: v.number(),
 }).index("by_slug", ["slug"]); // slug is unique (enforced applicatively)

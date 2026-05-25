@@ -7,6 +7,7 @@ import { customerOrdersPerTenant } from "./table/customerOrdersPerTenant";
 import { customers } from "./table/customers";
 import { deliveries } from "./table/deliveries";
 import { feedback } from "./table/feedback";
+import { orderEvents, orderItems, orders } from "./table/orders";
 import { pricingRules } from "./table/pricingRules";
 import { processedWebhookEvents } from "./table/processedWebhookEvents";
 import { tenantCredentials } from "./table/tenantCredentials";
@@ -40,4 +41,12 @@ export default defineSchema({
   // the existing `tenantCredentials` row (provider = "uber_direct", 1.x-E) — not
   // a new table. `tenants.uberCustomerId` (added above) links the Uber account.
   deliveries,
+  // 2.3-A — Orders (PRD 10 Client Ordering + PRD 20 KB Orders). Tenant-scoped
+  // (all three carry tenantId, ADR 0010). `orderItems` are FROZEN snapshots
+  // (denormalised name/price/modifiers/allergens, NOT FKs into the menu — PRD 10
+  // §7), so an order is self-contained. `orderEvents` is the append-only status
+  // audit. The transient `operationalPause` field is on `tenants` (above).
+  orders,
+  orderItems,
+  orderEvents,
 });

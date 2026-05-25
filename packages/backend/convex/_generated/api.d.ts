@@ -25,6 +25,8 @@ import type * as lib_customer_identity from "../lib/customer/identity.js";
 import type * as lib_customer_index from "../lib/customer/index.js";
 import type * as lib_customer_reachability from "../lib/customer/reachability.js";
 import type * as lib_customer_segments from "../lib/customer/segments.js";
+import type * as lib_orders_index from "../lib/orders/index.js";
+import type * as lib_orders_orders from "../lib/orders/orders.js";
 import type * as lib_pricing_contradictions from "../lib/pricing/contradictions.js";
 import type * as lib_pricing_defaultRule from "../lib/pricing/defaultRule.js";
 import type * as lib_pricing_index from "../lib/pricing/index.js";
@@ -38,6 +40,7 @@ import type * as lib_tenancy_customerOrdersStore from "../lib/tenancy/customerOr
 import type * as lib_tenancy_deliveriesStore from "../lib/tenancy/deliveriesStore.js";
 import type * as lib_tenancy_fuzz from "../lib/tenancy/fuzz.js";
 import type * as lib_tenancy_index from "../lib/tenancy/index.js";
+import type * as lib_tenancy_ordersStore from "../lib/tenancy/ordersStore.js";
 import type * as lib_tenancy_pricingRulesStore from "../lib/tenancy/pricingRulesStore.js";
 import type * as lib_tenancy_withTenant from "../lib/tenancy/withTenant.js";
 import type * as lib_uberDirect_credentials from "../lib/uberDirect/credentials.js";
@@ -55,6 +58,7 @@ import type * as table_customerOrdersPerTenant from "../table/customerOrdersPerT
 import type * as table_customers from "../table/customers.js";
 import type * as table_deliveries from "../table/deliveries.js";
 import type * as table_feedback from "../table/feedback.js";
+import type * as table_orders from "../table/orders.js";
 import type * as table_pricingRules from "../table/pricingRules.js";
 import type * as table_processedWebhookEvents from "../table/processedWebhookEvents.js";
 import type * as table_tenantCredentials from "../table/tenantCredentials.js";
@@ -87,6 +91,8 @@ declare const fullApi: ApiFromModules<{
   "lib/customer/index": typeof lib_customer_index;
   "lib/customer/reachability": typeof lib_customer_reachability;
   "lib/customer/segments": typeof lib_customer_segments;
+  "lib/orders/index": typeof lib_orders_index;
+  "lib/orders/orders": typeof lib_orders_orders;
   "lib/pricing/contradictions": typeof lib_pricing_contradictions;
   "lib/pricing/defaultRule": typeof lib_pricing_defaultRule;
   "lib/pricing/index": typeof lib_pricing_index;
@@ -100,6 +106,7 @@ declare const fullApi: ApiFromModules<{
   "lib/tenancy/deliveriesStore": typeof lib_tenancy_deliveriesStore;
   "lib/tenancy/fuzz": typeof lib_tenancy_fuzz;
   "lib/tenancy/index": typeof lib_tenancy_index;
+  "lib/tenancy/ordersStore": typeof lib_tenancy_ordersStore;
   "lib/tenancy/pricingRulesStore": typeof lib_tenancy_pricingRulesStore;
   "lib/tenancy/withTenant": typeof lib_tenancy_withTenant;
   "lib/uberDirect/credentials": typeof lib_uberDirect_credentials;
@@ -117,6 +124,7 @@ declare const fullApi: ApiFromModules<{
   "table/customers": typeof table_customers;
   "table/deliveries": typeof table_deliveries;
   "table/feedback": typeof table_feedback;
+  "table/orders": typeof table_orders;
   "table/pricingRules": typeof table_pricingRules;
   "table/processedWebhookEvents": typeof table_processedWebhookEvents;
   "table/tenantCredentials": typeof table_tenantCredentials;
