@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { customerMutation, customerQuery, publicTenantQuery } from "./customer";
 import {
   kbAdminMutation,
   kbAdminQuery,
@@ -58,5 +59,36 @@ export const staffProbeQuery = tenantQuery({ allow: ["kb_manager", "staff"] })({
   handler: async (ctx) => ({
     tenantId: ctx.tenantId,
     effectiveRole: ctx.actor.effectiveRole,
+  }),
+});
+
+// --- 1.x-D client-side wrappers -------------------------------------------
+
+/** customer read: echoes the caller's OWN actor + the tenant in scope. */
+export const customerProbeQuery = customerQuery({
+  args: {},
+  handler: async (ctx) => ({
+    userId: ctx.actor.userId,
+    role: ctx.actor.role,
+    tenantId: ctx.tenantId,
+  }),
+});
+
+/** customer write: same shape, write path. */
+export const customerProbeMutation = customerMutation({
+  args: {},
+  handler: async (ctx) => ({
+    userId: ctx.actor.userId,
+    role: ctx.actor.role,
+    tenantId: ctx.tenantId,
+  }),
+});
+
+/** public (no-auth) read of a tenant's public data — echoes name + id. */
+export const publicTenantProbe = publicTenantQuery({
+  args: {},
+  handler: async (ctx) => ({
+    tenantId: ctx.tenantId,
+    tenantName: ctx.tenant.name,
   }),
 });

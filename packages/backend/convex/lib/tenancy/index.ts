@@ -13,6 +13,13 @@
  *    `tenantQuery({ allow: ["kb_manager", "staff"] })({ args, handler })` (or
  *    `tenantQuery()({ args, handler })` for the default allow). The handler ctx
  *    gains `{ actor, tenantId }`.
+ *  - `customerQuery` / `customerMutation` (1.x-D) — client (eater) scope, global
+ *    role `customer`, explicit `tenantId` arg. Used directly:
+ *    `customerQuery({ args, handler })`. The handler ctx gains `{ actor,
+ *    tenantId }` and only ever sees the caller's OWN `actor.userId` (self-scope).
+ *  - `publicTenantQuery` (1.x-D) — read-only PUBLIC tenant data, NO auth,
+ *    explicit `tenantId` that must resolve to an existing tenant (else throws).
+ *    The handler ctx gains `{ tenantId, tenant }`. No public mutation twin.
  *
  * The reusable cross-tenant fuzz harness (`runCrossTenantFuzz`,
  * `seedTwoTenantsAllRoles`) lives in `./fuzz` and is imported directly by test
@@ -29,3 +36,4 @@ export {
   tenantQuery,
   type TenantRole,
 } from "./withTenant";
+export { customerMutation, customerQuery, publicTenantQuery } from "./customer";
