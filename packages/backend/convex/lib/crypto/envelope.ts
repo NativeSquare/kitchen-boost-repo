@@ -71,6 +71,14 @@ function base64ToBytes(b64: string): Bytes {
   return bytes;
 }
 
+/** Encode a string to UTF-8 bytes over a fresh ArrayBuffer (BufferSource-safe). */
+function utf8ToBytes(text: string): Bytes {
+  const encoded = new TextEncoder().encode(text);
+  const bytes = new Uint8Array(new ArrayBuffer(encoded.length)) as Bytes;
+  bytes.set(encoded);
+  return bytes;
+}
+
 // --- master key --------------------------------------------------------------
 
 /**
@@ -112,9 +120,7 @@ export async function encryptForTenant(
   const iv = crypto.getRandomValues(
     new Uint8Array(new ArrayBuffer(IV_BYTES)) as Bytes,
   );
-  const data = new Uint8Array(
-    new TextEncoder().encode(plaintext),
-  ) as unknown as Bytes;
+  const data = utf8ToBytes(plaintext);
 
   // crypto.subtle returns ciphertext WITH the auth tag appended (last 16 bytes).
   const sealed = new Uint8Array(
