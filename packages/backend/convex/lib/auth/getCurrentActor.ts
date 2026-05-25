@@ -26,15 +26,21 @@ export type GlobalRole = "kb_admin" | "customer";
  */
 export type EffectiveRole = "kb_admin" | "kb_manager" | "staff" | null;
 
-/** Normalised identity of the current caller. `null` = unauthenticated. */
-export type CurrentActor = {
+/**
+ * Normalised identity of an AUTHENTICATED caller. The wrappers story (1.x-C)
+ * references this directly once it has narrowed out the unauthenticated case.
+ */
+export type Actor = {
   userId: Id<"users">;
   /** Global role (kb_admin / customer). Resto roles live per-tenant. */
   role: GlobalRole;
   isAnonymous: boolean;
   /** Effective role on the `tenantId` passed to `getCurrentActor`, else null. */
   effectiveRole: EffectiveRole;
-} | null;
+};
+
+/** Result of `getCurrentActor`. `null` = unauthenticated caller. */
+export type CurrentActor = Actor | null;
 
 /**
  * Resolve the normalised identity of the caller, plus — when `tenantId` is

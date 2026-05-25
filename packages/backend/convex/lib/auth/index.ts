@@ -13,6 +13,7 @@
  */
 export {
   getCurrentActor,
+  type Actor,
   type CurrentActor,
   type GlobalRole,
   type EffectiveRole,
