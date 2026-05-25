@@ -1,10 +1,23 @@
 {
   "name": "@packages/shared",
   "version": "1.0.0",
-  "description": "Shared constants and utilities",
+  "description": "Shared constants and utilities (incl. the pure Pricing engine — ADR 0013)",
   "main": "constants.js",
+  "types": "./pricing/index.ts",
   "exports": {
     ".": "./constants.js",
-    "./constants": "./constants.js"
+    "./constants": "./constants.js",
+    "./pricing": "./pricing/index.ts"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@typescript-eslint/parser": "^8.59.4",
+    "eslint": "^9",
+    "typescript": "5.9.3",
+    "vitest": "^4.1.7"
   }
 }
