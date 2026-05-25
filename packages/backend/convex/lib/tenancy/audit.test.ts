@@ -65,18 +65,19 @@ describe("1.x-G logAudit — explicit call", () => {
         tenantId: seed.tenantA.tenantId,
       });
 
+    // The host wrapper is a kbAdminMutation, which ALSO auto-logs; assert on the
+    // explicit row specifically (composition is additive, by design).
     const rows = await readAuditLog(t);
-    expect(rows).toHaveLength(1);
-    const row = rows[0];
-    expect(row.actorUserId).toBe(seed.adminId);
-    expect(row.actorRole).toBe("kb_admin");
-    expect(row.action).toBe("probe.explicit");
-    expect(row.tenantId).toBe(seed.tenantA.tenantId);
-    expect(row.targetType).toBe("tenant");
-    expect(row.targetId).toBe(seed.tenantA.tenantId);
-    expect(row.metadata).toEqual({ note: "hello" });
-    expect(typeof row.timestamp).toBe("number");
-    expect(row.timestamp).toBeGreaterThan(0);
+    const row = rows.find((r) => r.action === "probe.explicit");
+    expect(row).toBeDefined();
+    expect(row?.actorUserId).toBe(seed.adminId);
+    expect(row?.actorRole).toBe("kb_admin");
+    expect(row?.tenantId).toBe(seed.tenantA.tenantId);
+    expect(row?.targetType).toBe("tenant");
+    expect(row?.targetId).toBe(seed.tenantA.tenantId);
+    expect(row?.metadata).toEqual({ note: "hello" });
+    expect(typeof row?.timestamp).toBe("number");
+    expect(row?.timestamp).toBeGreaterThan(0);
   });
 
   it("omits optional fields when not supplied", async () => {

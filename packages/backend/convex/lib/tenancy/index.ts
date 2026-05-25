@@ -37,3 +37,4 @@ export {
   type TenantRole,
 } from "./withTenant";
 export { customerMutation, customerQuery, publicTenantQuery } from "./customer";
+export { logAudit, type AuditEntry } from "./audit";
