@@ -63,5 +63,6 @@ export {
   insertTenantPricingRule,
   listTenantPricingRules,
   patchTenantPricingRuleBody,
+  requireTenantPricingRule,
   setTenantPricingRuleActive,
 } from "./pricingRulesStore";

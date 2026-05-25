@@ -4,10 +4,10 @@ import type { Doc, Id } from "../../_generated/dataModel";
 import { pricingAction, pricingCondition } from "../../table/pricingRules";
 import {
   deleteTenantPricingRule,
-  getTenantPricingRule,
   insertTenantPricingRule,
   listTenantPricingRules,
   patchTenantPricingRuleBody,
+  requireTenantPricingRule,
   setTenantPricingRuleActive,
   tenantMutation,
   tenantQuery,
@@ -79,13 +79,10 @@ export const update = tenantMutation()({
     action: pricingAction,
   },
   handler: async (ctx, args): Promise<void> => {
-    const existing = await getTenantPricingRule(ctx, ctx.tenantId, args.ruleId);
-    if (existing === null) {
-      throw new ConvexError({
-        code: "NOT_FOUND",
-        message: "Pricing rule not found for this tenant.",
-      });
-    }
+    // Ownership (NOT_FOUND for a missing OR foreign rule) is checked BEFORE the
+    // contradiction guard, so an attacker probing a foreign ruleId never learns
+    // anything from a CONTRADICTORY_CONDITIONS error.
+    await requireTenantPricingRule(ctx, ctx.tenantId, args.ruleId);
     assertSatisfiable(args.conditions);
     await patchTenantPricingRuleBody(ctx, ctx.tenantId, args.ruleId, {
       conditions: args.conditions,
@@ -94,17 +91,13 @@ export const update = tenantMutation()({
   },
 });
 
-/** Activate / deactivate a rule WITHOUT deleting it. */
+/**
+ * Activate / deactivate a rule WITHOUT deleting it. The seam throws NOT_FOUND for
+ * a missing or foreign `ruleId` (its `requireTenantPricingRule` ownership gate).
+ */
 export const setActive = tenantMutation()({
   args: { ruleId: v.id("pricingRules"), active: v.boolean() },
   handler: async (ctx, args): Promise<void> => {
-    const existing = await getTenantPricingRule(ctx, ctx.tenantId, args.ruleId);
-    if (existing === null) {
-      throw new ConvexError({
-        code: "NOT_FOUND",
-        message: "Pricing rule not found for this tenant.",
-      });
-    }
     await setTenantPricingRuleActive(
       ctx,
       ctx.tenantId,
@@ -116,18 +109,12 @@ export const setActive = tenantMutation()({
 
 /**
  * Hard-delete one of the tenant's rules. (Named `remove`, not `delete`, which is
- * a reserved word; the public CRUD verb is "delete".)
+ * a reserved word; the public CRUD verb is "delete".) The seam throws NOT_FOUND
+ * for a missing or foreign `ruleId`.
  */
 export const remove = tenantMutation()({
   args: { ruleId: v.id("pricingRules") },
   handler: async (ctx, args): Promise<void> => {
-    const existing = await getTenantPricingRule(ctx, ctx.tenantId, args.ruleId);
-    if (existing === null) {
-      throw new ConvexError({
-        code: "NOT_FOUND",
-        message: "Pricing rule not found for this tenant.",
-      });
-    }
     await deleteTenantPricingRule(ctx, ctx.tenantId, args.ruleId);
   },
 });

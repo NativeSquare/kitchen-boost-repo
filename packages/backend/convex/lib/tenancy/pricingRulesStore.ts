@@ -1,3 +1,4 @@
+import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../../_generated/server";
 import type { PricingAction, PricingCondition } from "../../table/pricingRules";
@@ -53,6 +54,27 @@ export async function getTenantPricingRule(
   return row;
 }
 
+/**
+ * Like `getTenantPricingRule`, but throws a typed `NOT_FOUND` `ConvexError` when
+ * the rule is absent OR belongs to another tenant — so a foreign `ruleId` is
+ * indistinguishable from a missing one (no cross-tenant existence oracle). The
+ * single ownership gate the write mutations share.
+ */
+export async function requireTenantPricingRule(
+  ctx: QueryCtx | MutationCtx,
+  tenantId: Id<"tenants">,
+  ruleId: Id<"pricingRules">,
+): Promise<Doc<"pricingRules">> {
+  const row = await getTenantPricingRule(ctx, tenantId, ruleId);
+  if (row === null) {
+    throw new ConvexError({
+      code: "NOT_FOUND",
+      message: "Pricing rule not found for this tenant.",
+    });
+  }
+  return row;
+}
+
 /** Insert a new ACTIVE rule for `tenantId`. Returns the new row id. */
 export async function insertTenantPricingRule(
   ctx: MutationCtx,
@@ -81,8 +103,7 @@ export async function patchTenantPricingRuleBody(
   ruleId: Id<"pricingRules">,
   body: PricingRuleBody,
 ): Promise<void> {
-  const row = await getTenantPricingRule(ctx, tenantId, ruleId);
-  if (row === null) throw new Error("pricing rule not found for tenant");
+  await requireTenantPricingRule(ctx, tenantId, ruleId);
   await ctx.db.patch(ruleId, {
     conditions: body.conditions,
     action: body.action,
@@ -97,8 +118,7 @@ export async function setTenantPricingRuleActive(
   ruleId: Id<"pricingRules">,
   active: boolean,
 ): Promise<void> {
-  const row = await getTenantPricingRule(ctx, tenantId, ruleId);
-  if (row === null) throw new Error("pricing rule not found for tenant");
+  await requireTenantPricingRule(ctx, tenantId, ruleId);
   await ctx.db.patch(ruleId, { active, updatedAt: Date.now() });
 }
 
@@ -108,7 +128,6 @@ export async function deleteTenantPricingRule(
   tenantId: Id<"tenants">,
   ruleId: Id<"pricingRules">,
 ): Promise<void> {
-  const row = await getTenantPricingRule(ctx, tenantId, ruleId);
-  if (row === null) throw new Error("pricing rule not found for tenant");
+  await requireTenantPricingRule(ctx, tenantId, ruleId);
   await ctx.db.delete(ruleId);
 }
