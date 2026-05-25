@@ -5,6 +5,7 @@ import { auditLog } from "./table/auditLog";
 import { cgvVersions } from "./table/cgvVersions";
 import { customerOrdersPerTenant } from "./table/customerOrdersPerTenant";
 import { customers } from "./table/customers";
+import { deliveries } from "./table/deliveries";
 import { feedback } from "./table/feedback";
 import { pricingRules } from "./table/pricingRules";
 import { processedWebhookEvents } from "./table/processedWebhookEvents";
@@ -34,4 +35,9 @@ export default defineSchema({
   // delivery-fee rules (carries tenantId, by_tenant index, ADR 0010). The rule
   // shape mirrors the pure engine in @packages/shared/pricing (#29).
   pricingRules,
+  // 2.6-A — Delivery (Uber Direct, PRD 40). Tenant-scoped delivery / click &
+  // collect fulfilment rows (carries tenantId, ADR 0010). Uber credentials reuse
+  // the existing `tenantCredentials` row (provider = "uber_direct", 1.x-E) — not
+  // a new table. `tenants.uberCustomerId` (added above) links the Uber account.
+  deliveries,
 });

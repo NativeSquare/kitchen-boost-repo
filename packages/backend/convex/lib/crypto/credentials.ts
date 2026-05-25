@@ -1,6 +1,11 @@
 import { ConvexError, v } from "convex/values";
 import { api } from "../../_generated/api";
-import { action } from "../../_generated/server";
+import type { Id } from "../../_generated/dataModel";
+import {
+  type MutationCtx,
+  type QueryCtx,
+  action,
+} from "../../_generated/server";
 import { tenantMutation, tenantQuery } from "../tenancy";
 import {
   type EncryptedBlob,
@@ -39,6 +44,82 @@ const notFound = (provider: string) =>
   });
 
 // ---------------------------------------------------------------------------
+// Reusable seam helpers — the sanctioned `ctx.db` access to `tenantCredentials`
+// (this `lib/crypto/**` path is exempt from `no-untenanted-query`, ADR 0010).
+// They take an ALREADY-GATED `tenantId` (sourced from `ctx.tenantId` inside a
+// tenant wrapper handler), so a business module can reuse the per-tenant secret
+// store WITHOUT raw `ctx.db` of its own. The encryption itself is done by the
+// caller via `encryptForTenant` so plaintext never crosses this boundary.
+// ---------------------------------------------------------------------------
+
+/**
+ * Upsert one provider's sealed blob for `tenantId` (one row per
+ * (tenantId, provider), index `by_tenant_provider`). Returns the row id.
+ */
+export async function upsertTenantCredentialBlob(
+  ctx: MutationCtx,
+  tenantId: Id<"tenants">,
+  provider: string,
+  blob: EncryptedBlob,
+): Promise<Id<"tenantCredentials">> {
+  const now = Date.now();
+  const existing = await ctx.db
+    .query("tenantCredentials")
+    .withIndex("by_tenant_provider", (q) =>
+      q.eq("tenantId", tenantId).eq("provider", provider),
+    )
+    .unique();
+
+  if (existing !== null) {
+    await ctx.db.patch(existing._id, {
+      ciphertext: blob.ciphertext,
+      iv: blob.iv,
+      authTag: blob.authTag,
+      keyVersion: blob.keyVersion,
+      updatedAt: now,
+    });
+    return existing._id;
+  }
+
+  return ctx.db.insert("tenantCredentials", {
+    tenantId,
+    provider,
+    ciphertext: blob.ciphertext,
+    iv: blob.iv,
+    authTag: blob.authTag,
+    keyVersion: blob.keyVersion,
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
+/**
+ * Read ONLY the encrypted envelope (never plaintext) for `tenantId` + provider,
+ * or `null`. The single tenant-scoped read seam shared by the guarded query and
+ * any business module's blob reader.
+ */
+export async function readTenantCredentialBlob(
+  ctx: QueryCtx | MutationCtx,
+  tenantId: Id<"tenants">,
+  provider: string,
+): Promise<EncryptedBlob | null> {
+  const row = await ctx.db
+    .query("tenantCredentials")
+    .withIndex("by_tenant_provider", (q) =>
+      q.eq("tenantId", tenantId).eq("provider", provider),
+    )
+    .unique();
+  if (row === null) return null;
+  // Project to the envelope only — deliberately no plaintext, no decrypt here.
+  return {
+    iv: row.iv,
+    authTag: row.authTag,
+    ciphertext: row.ciphertext,
+    keyVersion: row.keyVersion,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Write — guarded mutation, encrypts before persisting. (default allow:
 // kb_manager; kb_admin root override). Plaintext never touches the datastore.
 // ---------------------------------------------------------------------------
@@ -47,36 +128,7 @@ export const storeTenantCredential = tenantMutation()({
   args: { provider: v.string(), plaintext: v.string() },
   handler: async (ctx, args) => {
     const blob = await encryptForTenant(args.plaintext);
-    const now = Date.now();
-
-    const existing = await ctx.db
-      .query("tenantCredentials")
-      .withIndex("by_tenant_provider", (q) =>
-        q.eq("tenantId", ctx.tenantId).eq("provider", args.provider),
-      )
-      .unique();
-
-    if (existing !== null) {
-      await ctx.db.patch(existing._id, {
-        ciphertext: blob.ciphertext,
-        iv: blob.iv,
-        authTag: blob.authTag,
-        keyVersion: blob.keyVersion,
-        updatedAt: now,
-      });
-      return existing._id;
-    }
-
-    return ctx.db.insert("tenantCredentials", {
-      tenantId: ctx.tenantId,
-      provider: args.provider,
-      ciphertext: blob.ciphertext,
-      iv: blob.iv,
-      authTag: blob.authTag,
-      keyVersion: blob.keyVersion,
-      createdAt: now,
-      updatedAt: now,
-    });
+    return upsertTenantCredentialBlob(ctx, ctx.tenantId, args.provider, blob);
   },
 });
 
@@ -86,22 +138,8 @@ export const storeTenantCredential = tenantMutation()({
 
 export const getTenantCredentialBlob = tenantQuery()({
   args: { provider: v.string() },
-  handler: async (ctx, args): Promise<EncryptedBlob | null> => {
-    const row = await ctx.db
-      .query("tenantCredentials")
-      .withIndex("by_tenant_provider", (q) =>
-        q.eq("tenantId", ctx.tenantId).eq("provider", args.provider),
-      )
-      .unique();
-    if (row === null) return null;
-    // Project to the envelope only — deliberately no plaintext, no decrypt here.
-    return {
-      iv: row.iv,
-      authTag: row.authTag,
-      ciphertext: row.ciphertext,
-      keyVersion: row.keyVersion,
-    };
-  },
+  handler: async (ctx, args): Promise<EncryptedBlob | null> =>
+    readTenantCredentialBlob(ctx, ctx.tenantId, args.provider),
 });
 
 // ---------------------------------------------------------------------------

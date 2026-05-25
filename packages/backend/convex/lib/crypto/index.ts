@@ -30,3 +30,16 @@ export {
   packBlob,
   unpackBlob,
 } from "./envelope";
+
+/**
+ * Reusable per-tenant credential SEAMS (plain functions, not Convex functions):
+ *  - `upsertTenantCredentialBlob` / `readTenantCredentialBlob` — the sanctioned
+ *    `ctx.db` access to `tenantCredentials`, taking an already-gated `tenantId`.
+ *    A business module (e.g. `lib/uberDirect`, 2.6-A) reuses the secret store
+ *    through these instead of rolling its own raw `ctx.db` (which the
+ *    `no-untenanted-query` rule forbids outside this exempt path).
+ */
+export {
+  readTenantCredentialBlob,
+  upsertTenantCredentialBlob,
+} from "./credentials";

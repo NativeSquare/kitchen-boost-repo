@@ -66,3 +66,14 @@ export {
   requireTenantPricingRule,
   setTenantPricingRuleActive,
 } from "./pricingRulesStore";
+export {
+  type DeliveryPatch,
+  type NewDelivery,
+  getTenantDelivery,
+  getTenantDeliveryByOrder,
+  insertTenantDelivery,
+  listTenantDeliveries,
+  patchTenantDelivery,
+  requireTenantDelivery,
+  setTenantUberCustomerId,
+} from "./deliveriesStore";
