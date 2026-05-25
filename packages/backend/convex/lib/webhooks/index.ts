@@ -8,9 +8,11 @@
  *    at most once per `(provider, eventId)`. CALL FROM A WEBHOOK `httpAction`
  *    (after verifying the HMAC on the raw body), with a write-capable mutation
  *    ctx so the dedup mark and the handler commit/roll back atomically.
+ *  - `WebhookProvider` — the string union of known providers (Stripe, Uber
+ *    Direct, Resend; Hubrise V2), for typing call sites.
  *
  * The dedup ledger table `processedWebhookEvents` and its composite unique
  * index `by_provider_event` (`provider`, `externalId`) are an implementation
  * detail of this module — consumers never touch the ledger directly.
  */
-export { withIdempotence } from "./idempotent";
+export { type WebhookProvider, withIdempotence } from "./idempotent";

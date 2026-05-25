@@ -1,6 +1,19 @@
 import type { MutationCtx } from "../../_generated/server";
 
 /**
+ * Source of a webhook event. V1 ships Stripe, Uber Direct and Resend; Hubrise
+ * lands in V2. Kept as a string union (not a Convex enum) because `provider` is
+ * persisted as `v.string()` in `processedWebhookEvents` and the dedup key is the
+ * `(provider, externalId)` pair — the union just documents the call sites and
+ * gives them autocomplete. STACK.md §2.7.
+ */
+export type WebhookProvider = "stripe" | "uber_direct" | "resend" | "hubrise";
+
+/** The dedup ledger table + its composite `(provider, externalId)` index. */
+const LEDGER_TABLE = "processedWebhookEvents" as const;
+const BY_PROVIDER_EVENT = "by_provider_event" as const;
+
+/**
  * 1.x-F — `withIdempotence`, the single anti-double-processing guard shared by
  * every external webhook (Stripe, Uber Direct, Resend; Hubrise in V2).
  * STACK.md §2.7 / §5.2.
@@ -39,13 +52,13 @@ export async function withIdempotence(
   // The dedup mark and the handler MUST commit/roll back together, so this
   // requires a write-capable ctx (`db.insert`), i.e. a mutation ctx.
   ctx: Pick<MutationCtx, "db">,
-  provider: string,
+  provider: WebhookProvider,
   eventId: string,
   handler: () => Promise<void>,
 ): Promise<void> {
   const existing = await ctx.db
-    .query("processedWebhookEvents")
-    .withIndex("by_provider_event", (q) =>
+    .query(LEDGER_TABLE)
+    .withIndex(BY_PROVIDER_EVENT, (q) =>
       q.eq("provider", provider).eq("externalId", eventId),
     )
     .unique();
@@ -55,7 +68,7 @@ export async function withIdempotence(
 
   // Mark first, then run: on a throw the whole transaction (mark included)
   // rolls back, leaving the event un-processed and safely retryable.
-  await ctx.db.insert("processedWebhookEvents", {
+  await ctx.db.insert(LEDGER_TABLE, {
     provider,
     externalId: eventId,
     processedAt: Date.now(),
