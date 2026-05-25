@@ -23,6 +23,7 @@ import type * as lib_customer_cgv from "../lib/customer/cgv.js";
 import type * as lib_customer_consent from "../lib/customer/consent.js";
 import type * as lib_customer_identity from "../lib/customer/identity.js";
 import type * as lib_customer_index from "../lib/customer/index.js";
+import type * as lib_customer_kpi from "../lib/customer/kpi.js";
 import type * as lib_customer_reachability from "../lib/customer/reachability.js";
 import type * as lib_customer_segments from "../lib/customer/segments.js";
 import type * as lib_notifications_index from "../lib/notifications/index.js";
@@ -93,6 +94,7 @@ declare const fullApi: ApiFromModules<{
   "lib/customer/consent": typeof lib_customer_consent;
   "lib/customer/identity": typeof lib_customer_identity;
   "lib/customer/index": typeof lib_customer_index;
+  "lib/customer/kpi": typeof lib_customer_kpi;
   "lib/customer/reachability": typeof lib_customer_reachability;
   "lib/customer/segments": typeof lib_customer_segments;
   "lib/notifications/index": typeof lib_notifications_index;
