@@ -23,11 +23,19 @@ const rawModules = import.meta.glob([
   "../../**/*.{ts,js}",
   "!../../**/*.test.*",
 ]);
+// Normalise every glob key to the `../../`-from-this-file form convex-test expects
+// (the test lives in convex/lib/notifications/): a same-dir `./X` → this module,
+// a sibling-lib `../<dir>/X` → `../../lib/<dir>/X`, and `../../X` is already root.
 const modules = Object.fromEntries(
-  Object.entries(rawModules).map(([path, loader]) => [
-    path.startsWith("./") ? `../../lib/notifications/${path.slice(2)}` : path,
-    loader,
-  ]),
+  Object.entries(rawModules).map(([path, loader]) => {
+    let key = path;
+    if (path.startsWith("./")) {
+      key = `../../lib/notifications/${path.slice(2)}`;
+    } else if (path.startsWith("../") && !path.startsWith("../../")) {
+      key = `../../lib/${path.slice(3)}`;
+    }
+    return [key, loader];
+  }),
 );
 
 type Seed = Awaited<ReturnType<typeof seedTwoTenantsAllRoles>>;
