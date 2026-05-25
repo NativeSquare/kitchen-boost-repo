@@ -1,5 +1,7 @@
 import { v } from "convex/values";
 import type { Id } from "../../_generated/dataModel";
+import { contractPrestation } from "../../table/contracts";
+import { acquisitionSource } from "../../table/prospects";
 import { logAudit } from "./audit";
 import { customerMutation, customerQuery, publicTenantQuery } from "./customer";
 import {
@@ -292,16 +294,8 @@ export const tenantServiceHoursProbe = tenantQuery()({
 
 /** root (kb_admin) creates a minimal `prospects` row — the sanctioned write. */
 export const adminCreateProspectProbe = kbAdminMutation({
-  args: {
-    name: v.string(),
-    phone: v.string(),
-    source: v.union(
-      v.literal("cold_call"),
-      v.literal("whatsapp"),
-      v.literal("referral"),
-      v.literal("visite_physique"),
-    ),
-  },
+  // Reuse the schema validators (single source of truth — probes can't drift).
+  args: { name: v.string(), phone: v.string(), source: acquisitionSource },
   action: "prospect.create",
   handler: async (ctx, args): Promise<Id<"prospects">> => {
     const now = Date.now();
@@ -330,10 +324,7 @@ export const adminListProspectsProbe = kbAdminQuery({
 
 /** root (kb_admin) creates a minimal draft `contracts` row — sanctioned write. */
 export const adminCreateContractProbe = kbAdminMutation({
-  args: {
-    prospectId: v.id("prospects"),
-    prestation: v.union(v.literal("A"), v.literal("B"), v.literal("A_AND_B")),
-  },
+  args: { prospectId: v.id("prospects"), prestation: contractPrestation },
   action: "contract.create",
   handler: async (ctx, args): Promise<Id<"contracts">> => {
     const now = Date.now();
