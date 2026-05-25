@@ -245,9 +245,10 @@ export const tenantModifierGroupsProbe = tenantQuery()({
 });
 
 /**
- * resto reads its OWN item↔group links. The link table has no `by_tenant` index
- * (its access paths are by_item / by_group / by_item_group), so the probe scopes
- * by reading the tenant's items first — never a cross-tenant read.
+ * resto reads its OWN item↔group links. The link table's access paths are
+ * by_item / by_group / by_item_group (issue spec, no by_tenant), so the probe
+ * scopes through the tenant's own items first — it NEVER reads a row keyed on a
+ * foreign tenant's data, which is exactly the property the fuzz asserts.
  */
 export const tenantMenuItemModifierGroupsProbe = tenantQuery()({
   args: {},
@@ -256,15 +257,15 @@ export const tenantMenuItemModifierGroupsProbe = tenantQuery()({
       .query("menuItems")
       .withIndex("by_tenant", (q) => q.eq("tenantId", ctx.tenantId))
       .collect();
-    const links = [];
-    for (const item of items) {
-      const itemLinks = await ctx.db
-        .query("menuItemModifierGroups")
-        .withIndex("by_item", (q) => q.eq("itemId", item._id))
-        .collect();
-      links.push(...itemLinks);
-    }
-    return links;
+    const linksPerItem = await Promise.all(
+      items.map((item) =>
+        ctx.db
+          .query("menuItemModifierGroups")
+          .withIndex("by_item", (q) => q.eq("itemId", item._id))
+          .collect(),
+      ),
+    );
+    return linksPerItem.flat();
   },
 });
 
