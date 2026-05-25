@@ -51,6 +51,13 @@ export {
   readCustomerFicheByUser,
 } from "./customerFiche";
 export {
+  type CustomerAggregateFields,
+  type PushEnrollmentPatch,
+  listTenantCustomerOrders,
+  patchCustomerPushEnrollment,
+  readCustomerAggregateFields,
+} from "./customerOrdersStore";
+export {
   closeActiveCgvVersions,
   insertCgvVersion,
   readActiveCgvVersion,

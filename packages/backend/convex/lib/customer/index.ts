@@ -17,10 +17,20 @@
  * tenancy seam (ADR 0010). The REAL legal CGV wording (Q90-Q1) is NOT invented
  * here — it is injected later through `publishCgvVersion`.
  *
+ * 2.1-D — Segments (Actif / Inactif / VIP) + joignabilité par canal (push /
+ * email / SMS), READ-ONLY on `customerOrdersPerTenant` (written by 2.3). The pure
+ * rules `computeSegment` / `channelReachability` are unit-testable seams; the
+ * per-tenant aggregates `segmentCounts` / `reachabilityCounts` expose ONLY counts
+ * to a `kb_manager` — never a raw `customer` (the MOAT, ADR 0010). Push
+ * enrollment (`setPushEnrollment`, ADR 0012) is self-scoped (also the seam
+ * Notifications 2.7 drives). All reads/writes go through the sanctioned tenancy
+ * seam (`lib/tenancy/customerOrdersStore`), never raw `ctx.db`.
+ *
  * Convex registers functions by their module PATH, so callers invoke them as
  * `api.lib.customer.identity.*` / `api.lib.customer.consent.*` /
- * `api.lib.customer.cgv.*`; re-exporting here does not change that path, it just
- * states the module's contract in one place.
+ * `api.lib.customer.cgv.*` / `api.lib.customer.segments.*` /
+ * `api.lib.customer.reachability.*`; re-exporting here does not change that path,
+ * it just states the module's contract in one place.
  */
 export { getCurrentCustomer, getOrCreateCurrentCustomer } from "./identity";
 export {
@@ -30,3 +40,18 @@ export {
   recordConsentAtCheckout,
 } from "./consent";
 export { publishCgvVersion, sha256Hex } from "./cgv";
+export {
+  type CustomerOrderStats,
+  type Segment,
+  type SegmentCounts,
+  computeSegment,
+  segmentCounts,
+} from "./segments";
+export {
+  type ChannelReachability,
+  type ReachabilityCounts,
+  type ReachabilityInput,
+  channelReachability,
+  reachabilityCounts,
+  setPushEnrollment,
+} from "./reachability";
