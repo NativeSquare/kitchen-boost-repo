@@ -117,13 +117,13 @@ Pas de KMS externe V1 (V2 si > 5 tenants).
 
 Env vars Convex globales (`STRIPE_SECRET_KEY`, `VAPID_PRIVATE_KEY`, `KMS_MASTER_KEY`, `RESEND_WEBHOOK_SECRET`, etc.) pour les secrets KB-wide.
 
-### 2.6 Sous-domaines multi-tenant `<slug>.kitchen-boost.fr`
+### 2.6 Adressage multi-tenant — domaine de marque custom par resto (norme V1)
 
-- Wildcard DNS + cert SSL : Vercel (auto)
-- **Middleware Next.js** dans `apps/web/middleware.ts` : extrait `slug` depuis hostname → query Convex `tenants.bySlug(slug)` → injecte `tenant_id` dans headers/cookies pour la session
-- **Apple Pay domain verification** : route dynamique `apps/web/app/.well-known/apple-developer-merchantid-domain-association/route.ts` + appel Stripe `paymentMethodDomains.create()` automatique à la création tenant
-- Cookie cross-subdomain : `Domain=.kitchen-boost.fr; HttpOnly; Secure; SameSite=Lax`
-- Domaines custom resto = V2 (Cloudflare for SaaS ou Vercel Domains API)
+- **Face publique = le domaine de marque du resto** (ex. `bunsbao.fr`), apporté par le resto (registrar type OVH) + CNAME vers KB. **Norme V1** (modèle Owner.com). Un **sous-domaine `<slug>.kitchen-boost.fr`** technique sert de bootstrap/preview (URL Day-1, **jamais la face publique**).
+- Wildcard DNS + cert SSL sous-domaines : Vercel (auto). Domaines custom : SSL auto (Vercel/Cloudflare for SaaS).
+- **Middleware Next.js** dans `apps/web/middleware.ts` : match le hostname complet sur `tenants.byCustomDomain(host)` → sinon fallback slug du sous-domaine bootstrap → injecte `tenant_id` dans la session. Cf. §5.6.
+- **Apple Pay domain verification** : route dynamique `apps/web/app/.well-known/apple-developer-merchantid-domain-association/route.ts` + appel Stripe `paymentMethodDomains.create()` automatique à la mise en ligne (par domaine actif du tenant).
+- **Identité = cookie par origine (host-only)**. Chaque resto étant un domaine distinct, **pas de cookie partagé cross-resto** ; reconnaissance cross-resto = carte Wallet ([ADR 0008](../../adr/0008-identite-customer-cookie-device-only-v1.md) Amendement 2026-05-25).
 
 ### 2.7 Webhooks idempotence (Stripe, Uber Direct, Hubrise V2, Resend)
 
@@ -153,11 +153,11 @@ Mode kiosque tablette : `expo-keep-awake` (always-on) + `notifee` Android (lock 
 
 ### 2.9 Anonymous Auth + cookie device 1 an
 
-Cf. [ADR 0008](../../adr/0008-identite-customer-cookie-device-only-v1.md).
+Cf. [ADR 0008](../../adr/0008-identite-customer-cookie-device-only-v1.md) (Amendement 2026-05-25).
 
-- Convex Auth Anonymous adapter (POC sprint 0 obligatoire : cookie cross-subdomain ?)
-- Si adapter natif ne supporte pas `Domain=.kitchen-boost.fr` → session token custom dans table `customer_sessions` + middleware Next.js qui pose le cookie manuellement
-- Bridge cross-device via Wallet pass `serial_number` ↔ `customer_id`
+- Convex Auth Anonymous adapter, **cookie de session natif par origine** (host-only `__Host-`). Portée **intra-resto** : reconnaît le retour sur le même domaine de marque.
+- **Pas de table `customerSessions`, pas de cookie « domaine parent »** : prémisse sous-domaine caduque (chaque resto = domaine distinct). POC #4 abandonné.
+- **Reconnaissance cross-resto = carte Wallet uniquement** : bridge via `serial_number` ↔ `customer_id`.
 
 ### 2.10 Anti-extraction MOAT (Customer Data)
 
@@ -176,7 +176,7 @@ Cf. memory `feedback_db_clients_moat.md`.
 | Contexte                      | Backend (`packages/backend/convex/`)                                                                                                                                        | Frontend                                                                                   |
 | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
 | **Multi-Tenant** (transverse) | `table/tenants.ts`, `table/userTenants.ts`, `table/auditLog.ts`, `lib/tenancy/withTenant.ts`                                                                                | tous                                                                                       |
-| **Customer Data** (MOAT)      | `table/customers.ts`, `table/customerSessions.ts`, `table/consentEvents.ts`, `lib/customer/`                                                                                | `apps/web` (capture), `apps/admin` (KPI vue)                                               |
+| **Customer Data** (MOAT)      | `table/customers.ts`, `table/cgvVersions.ts`, `table/customerOrdersPerTenant.ts`, `lib/customer/`                                                                           | `apps/web` (capture), `apps/admin` (KPI vue)                                               |
 | **Client Ordering**           | `table/orders.ts`, `table/orderItems.ts`, `table/menus.ts`, `table/menuItems.ts`, `table/modifiers.ts`, `lib/cart/`                                                         | `apps/web` (PWA client)                                                                    |
 | **Payment**                   | `table/payments.ts`, `lib/stripe/`, `http.ts` (Stripe webhooks)                                                                                                             | `apps/web` (checkout Stripe Elements), `apps/admin` (refund)                               |
 | **Pricing**                   | `table/pricingRules.ts`, `lib/pricing/evaluate.ts` + `packages/shared/pricing` (module pur **backend-only**, cf. [ADR 0013](../../adr/0013-pricing-engine-backend-only.md)) | `apps/web` (prix reçu via API, **pas d'évaluation locale**), `apps/admin` (éditeur règles) |
@@ -360,21 +360,22 @@ packages/backend/convex/lib/push/
 └── send.ts                         # Convex action → fetch apps/web/api/push/send (HMAC)
 ```
 
-### 5.6 Sous-domaine resolution
+### 5.6 Résolution du tenant (domaine de marque, fallback sous-domaine bootstrap)
 
 ```typescript
 // apps/web/middleware.ts
 export async function middleware(req) {
   const host = req.headers.get("host");
-  const slug = host.split(".")[0]; // bunsbao.kitchen-boost.fr → bunsbao
-  const tenant = await fetchTenantBySlug(slug); // edge-cached 60s
+  // 1. Face publique : domaine de marque du resto (norme V1)
+  let tenant = await fetchTenantByCustomDomain(host); // edge-cached 60s
+  // 2. Fallback : sous-domaine bootstrap <slug>.kitchen-boost.fr
+  if (!tenant && host.endsWith(".kitchen-boost.fr")) {
+    tenant = await fetchTenantBySlug(host.split(".")[0]);
+  }
   if (!tenant) return NextResponse.redirect("/404");
   const res = NextResponse.next();
-  res.cookies.set("kb_tenant_id", tenant._id, {
-    domain: ".kitchen-boost.fr",
-    httpOnly: true,
-    secure: true,
-  });
+  // cookie tenant HOST-ONLY (pas de Domain parent : cookies cloisonnés par resto)
+  res.cookies.set("kb_tenant_id", tenant._id, { httpOnly: true, secure: true });
   return res;
 }
 ```
@@ -424,7 +425,7 @@ Helper `logAudit(ctx, {action, tenantId, targetType, targetId, metadata})` appel
 1. **Convex `httpAction` préserve raw body** pour vérif HMAC Stripe/Uber via `await request.text()` ?
 2. **Convex `"use node"` action supporte `web-push`** (deps natives ECDH AES-GCM) ?
 3. **Convex `"use node"` action supporte `passkit-generator`** (signature PKCS#7 OpenSSL) ?
-4. **Convex Auth Anonymous adapter** supporte cookie `Domain=.kitchen-boost.fr` cross-subdomain ?
+4. ~~Convex Auth Anonymous cookie cross-subdomain~~ — **RETIRÉ 2026-05-25** : prémisse sous-domaine caduque (domaine de marque custom par resto). Identité intra-resto + cross-resto via Wallet ([ADR 0008](../../adr/0008-identite-customer-cookie-device-only-v1.md) Amendement).
 5. **Convex `httpRouter`** supporte path params (`/webhooks/uber/:tenantId`) ?
 
 Délivrable POC = 1 commit par POC avec README "verdict" + benchmark si applicable.
@@ -433,17 +434,16 @@ Délivrable POC = 1 commit par POC avec README "verdict" + benchmark si applicab
 
 ## 8. Décisions différées V2
 
-| Sujet                              | Pourquoi V2                             | Trigger pour bascule            |
-| ---------------------------------- | --------------------------------------- | ------------------------------- |
-| Hubrise (marketplaces)             | ADR 0009                                | 3-5 restos pour mutualiser négo |
-| KMS externe (AWS / Doppler)        | envelope encryption maison suffit V1    | > 5 tenants                     |
-| SMS provider (Twilio / OVH)        | V1 = pas de SMS                         | besoin terrain confirmé         |
-| APNs Critical Alerts               | délai Apple 2-6 sem                     | feedback "cmd ratée"            |
-| Domaines custom resto (CNAME)      | wildcard `*.kitchen-boost.fr` suffit V1 | demande resto explicite         |
-| Audit log UI                       | Q70-Q2 reportée V2                      | requis pour multi-user resto    |
-| Stripe Connect Embedded Components | webhook-driven suffit V1                | UX KYC in-app souhaitée         |
-| MDM tablettes cuisine              | lock task manuel suffit V1              | > 20 restos pilotes             |
-| Map display tracking (Mapbox)      | Lottie SVG suffit V1 (Q40-Q7)           | si client réclame               |
+| Sujet                              | Pourquoi V2                          | Trigger pour bascule            |
+| ---------------------------------- | ------------------------------------ | ------------------------------- |
+| Hubrise (marketplaces)             | ADR 0009                             | 3-5 restos pour mutualiser négo |
+| KMS externe (AWS / Doppler)        | envelope encryption maison suffit V1 | > 5 tenants                     |
+| SMS provider (Twilio / OVH)        | V1 = pas de SMS                      | besoin terrain confirmé         |
+| APNs Critical Alerts               | délai Apple 2-6 sem                  | feedback "cmd ratée"            |
+| Audit log UI                       | Q70-Q2 reportée V2                   | requis pour multi-user resto    |
+| Stripe Connect Embedded Components | webhook-driven suffit V1             | UX KYC in-app souhaitée         |
+| MDM tablettes cuisine              | lock task manuel suffit V1           | > 20 restos pilotes             |
+| Map display tracking (Mapbox)      | Lottie SVG suffit V1 (Q40-Q7)        | si client réclame               |
 
 ---
 

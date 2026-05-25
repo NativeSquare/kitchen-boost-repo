@@ -7,7 +7,7 @@ PRD : [50_multi_tenant_saas.md](../../prd/50_multi_tenant_saas.md)
 ## Language
 
 **Tenant** (= **Établissement**) :
-1 location physique d'un resto. Possède un `slug` unique, un sous-domaine `<slug>.kitchen-boost.fr` (optionnel : custom domain via CNAME), 1 compte Stripe Connect Express (potentiellement **partagé** entre tenants même SIRET — cf. ci-dessous), **1 compte Uber Direct** (toujours par tenant — adresse pickup unique), 1 menu, 1 contrat (ou avenant). Statuts : `active` / `pending` / `suspended` / `disabled`.
+1 location physique d'un resto. Possède un `slug` unique (→ sous-domaine `<slug>.kitchen-boost.fr` **technique de bootstrap**, jamais la face publique) et un **domaine de marque custom** (`customDomain`, ex. `bunsbao.fr` — **face publique, norme V1**), 1 compte Stripe Connect Express (potentiellement **partagé** entre tenants même SIRET — cf. ci-dessous), **1 compte Uber Direct** (toujours par tenant — adresse pickup unique), 1 menu, 1 contrat (ou avenant). Statuts : `active` / `pending` / `suspended` / `disabled`.
 _Avoid_: Account, Workspace, Restaurant (acceptable français pour l'entité physique), Restaurateur (= terme business pour le gérant)
 
 **Restaurateur** :
@@ -19,7 +19,7 @@ Identifiant URL-friendly unique du tenant (ex: `buns-bao`). Immuable après cré
 _Avoid_: ID, Handle
 
 **Custom domain** :
-Domaine personnalisé acheté par le resto (ex: `commander.bunsbao.fr`) pointant vers KB via CNAME Vercel. Optionnel V1. SSL Let's Encrypt auto. Fallback sur sous-domaine KB toujours actif.
+Domaine de marque acheté par le resto (ex: `bunsbao.fr` / `commander.bunsbao.fr`) pointant vers KB via CNAME. **Face publique du resto = norme V1** (modèle Owner.com). SSL auto. Le sous-domaine `<slug>.kitchen-boost.fr` reste un **bootstrap technique** (URL Day-1 / preview), jamais exposé comme face publique. Résolution tenant : match hostname sur `customDomain`, fallback slug.
 _Avoid_: Vanity URL, Branded domain
 
 **users (table)** :
@@ -32,28 +32,30 @@ _Avoid_: user_restaurateurs, memberships
 
 **RBAC** :
 Role-Based Access Control à **4 rôles V1** :
+
 - **`kb_admin`** (root) — voit tous tenants, fait pipeline / CRM KB / monitoring / impersonation. Rôle **global** porté par `users.role`. Aucune ligne `userTenants`.
 - **`kb_manager`** (resto-scoped) — gère menu / cmds / clients / campagnes / pricing. Rôle **per-tenant** porté par `userTenants.role`.
 - **`staff`** (resto-scoped, **opérationnel V1**) — attaché à 1+ tenants, accès limité (consult cmds + toggle out of stock), permissions différenciées vs `kb_manager`. Rôle **per-tenant** porté par `userTenants.role`.
 - **`customer`** — client final mangeur (user anonyme Convex Auth). Rôle **global** porté par `users.role`. Aucune ligne `userTenants` (lié aux tenants via `customer_orders_per_tenant`).
 
-Résolution : `getCurrentActor(ctx, tenantId?)` lit `users.role` pour kb_admin/customer, sinon résout le rôle effectif via `userTenants.role` du tenant courant. Cf. [ADR 0011](../../adr/0011-convex-auth-v1-identite-encapsulee-workos-differe.md).
-_Avoid_: ACL, Permissions, Owner/Manager (utiliser les noms exacts ci-dessus)
+Résolution : `getCurrentActor(ctx, tenantId?)` lit `users.role` pour kb*admin/customer, sinon résout le rôle effectif via `userTenants.role` du tenant courant. Cf. [ADR 0011](../../adr/0011-convex-auth-v1-identite-encapsulee-workos-differe.md).
+\_Avoid*: ACL, Permissions, Owner/Manager (utiliser les noms exacts ci-dessus)
 
 **Isolation tenant (applicative)** :
 Convex n'a **pas de RLS** Postgres. L'isolation repose sur de la **discipline applicative** : toute query/mutation métier passe par un helper `tenantQuery` / `tenantMutation` qui throw si le `tenantId` demandé n'est pas dans les tenants accessibles du user (via `user_tenants` ; accès illimité si `kb_admin`). 3 couches : (1) helpers typés obligatoires, (2) règle ESLint `no-untenanted-query` interdisant `ctx.db.query()` brut, (3) suite Vitest fuzz cross-tenant. Cf. [ADR 0010](../../adr/0010-isolation-multi-tenant-convex-applicative.md).
 _Avoid_: RLS (mécanisme Postgres, n'existe pas dans Convex), Filter, Sharding (différent)
 
 **tenant_id** :
-Colonne `uuid` indexée présente sur **toutes** les tables métier (menus, items, modifiers, orders, payments, customer_orders_per_tenant, push_subscriptions). Aucune query métier sans WHERE tenant_id.
-_Avoid_: org_id, account_id
+Colonne `uuid` indexée présente sur **toutes** les tables métier (menus, items, modifiers, orders, payments, customer*orders_per_tenant, push_subscriptions). Aucune query métier sans WHERE tenant_id.
+\_Avoid*: org_id, account_id
 
 **Cross-tenant** :
 Qualifie une donnée ou un flux qui traverse plusieurs tenants. **Interdit par défaut** (test automatisé V1 : 0 fuite). Exceptions explicites :
+
 - Table `customers` GLOBAL = MOAT (cf. [[Customer Data]])
 - Stripe Customer cross-tenant pour carte sauvegardée client final (V1 subject to Q14)
 - Stripe Connect partagé entre tenants même SIRET (cf. ci-dessous)
-_Avoid_: Multi-tenant query, Shared (trop vague)
+  _Avoid_: Multi-tenant query, Shared (trop vague)
 
 **Stripe Connect partagé** (cas SIRET commun) :
 Si plusieurs tenants partagent le même SIRET (cas Walid Thai Street potentiellement), ils peuvent partager le **même** `stripe_account_id`. La colonne `tenants.stripe_account_id` est **non-unique**. Reporting par boutique vient des `metadata.tenant_id` sur PaymentIntents. Si SIRET distincts → 1 Stripe Connect par tenant standard (cas Khan + futur 2ᵉ resto SAS distincte).

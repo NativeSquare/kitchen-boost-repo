@@ -63,19 +63,22 @@
 
 - Input : slug, name, contact email, adresse resto
 - Action :
-  1. INSERT row dans `tenants`
-  2. Génération sous-domaine `<slug>.kitchen-boost.fr` via Vercel API
-  3. Génération lien onboarding Stripe Connect Express (cf. [30](30_paiement_stripe_connect.md))
-  4. Création repo de config tenant dans `clients/<slug>/` (suivi git)
+  1. INSERT row dans `tenants` (`slug` + `customDomain?`)
+  2. Génération sous-domaine bootstrap `<slug>.kitchen-boost.fr` via Vercel API (URL technique Day-1)
+  3. Rattachement du **domaine de marque custom** = face publique (CNAME, cf. §3) — peut être configuré dès l'onboarding ou juste après
+  4. Génération lien onboarding Stripe Connect Express (cf. [30](30_paiement_stripe_connect.md))
+  5. Création repo de config tenant dans `clients/<slug>/` (suivi git)
 - Output : URL admin tenant + lien Stripe à envoyer au resto
 
-### 3. Custom domain (CNAME)
+### 3. Domaine de marque custom (CNAME) — face publique, **norme V1**
 
-- Resto achète son domaine (ex: `commander.bunsbao.fr`) chez OVH/Gandi/etc.
+**Le domaine de marque du resto EST la face publique (norme V1, modèle Owner.com).** Le sous-domaine `<slug>.kitchen-boost.fr` n'est qu'un **bootstrap technique** (URL Day-1 / preview), jamais exposé comme face publique.
+
+- Resto achète son domaine (ex: `bunsbao.fr` / `commander.bunsbao.fr`) chez OVH/Gandi/etc.
 - Configure CNAME vers `<slug>.kitchen-boost.fr.cdn.vercel-dns.com`
-- KB ajoute le domaine au tenant via API Vercel
-- SSL Let's Encrypt auto-provisionné par Vercel
-- Fallback : sous-domaine KB reste actif en parallèle
+- KB ajoute le domaine au tenant (champ `customDomain`) via API Vercel
+- SSL auto-provisionné
+- Le sous-domaine KB reste actif en parallèle **comme bootstrap technique** (jamais la face publique). Résolution tenant : match hostname sur `customDomain`, fallback slug.
 
 ### 4. Branding par tenant (V1 minimal)
 
@@ -88,7 +91,7 @@
 
 #### 5.1 Côté PWA client ([10](10_pwa_client_commande.md))
 
-- Tenant extrait de `window.location.hostname` (slug du sous-domaine OU custom domain match en DB tenants)
+- Tenant extrait de `window.location.hostname` : **match `customDomain` en DB tenants d'abord** (face publique), fallback slug du sous-domaine bootstrap
 - Backend API : `Host` header validé contre DB tenants → `tenant_id` injecté dans contexte
 - Middleware refuse les requêtes non-scopées
 
@@ -206,14 +209,14 @@
 
 ## Notes / décisions actées
 
-- **Tenant = 1 établissement physique signé** = 1 location, 1 contrat (ou avenant), 1 Uber Direct, 1 menu, 1 sous-domaine. Pas de tenant pour des prospects.
+- **Tenant = 1 établissement physique signé** = 1 location, 1 contrat (ou avenant), 1 Uber Direct, 1 menu, 1 domaine de marque custom (face publique) + 1 sous-domaine bootstrap. Pas de tenant pour des prospects.
 - **Pas de table `restaurateurs` séparée (YAGNI)**. Le "Restaurateur" est un terme business synonyme du user KB Manager. Si Khan a 2 boutiques, c'est 2 tenants + 1 user `kb_manager` Khan avec 2 lignes `user_tenants`.
 - **Multi-tenant per user dès V1** (cas Walid Thai Street). Switcher dans header de KB Admin + KB Orders. Cas typique reste 1-tenant (Khan).
 - **Stripe Connect partageable** entre tenants même SIRET (`tenants.stripe_account_id` non-unique). Reporting par boutique via `metadata.tenant_id`. Si SIRET distincts → 1 Stripe Connect par tenant standard.
 - **Uber Direct toujours 1-par-tenant** (adresse pickup unique par compte). Pas négociable.
 - **4 rôles V1** : `kb_admin` (root, global) / `customer` (client final, global) — sur `users.role` ; `kb_manager` + `staff` (**per-tenant**, sur `userTenants.role`). `staff` est **opérationnel V1** (décision 2026-05-25, cf. 50-Q6) — multi-utilisateur par tenant inclus en V1.
 - **Customers reste global** (cross-tenant) — moat KB. Cf. [90](90_donnees_clients_crm.md) et [feedback_db_clients_moat](../../.claude/memory/feedback_db_clients_moat.md).
-- **Custom domain optionnel V1** : sous-domaine `<slug>.kitchen-boost.fr` suffit pour démarrer.
+- **Domaine de marque custom = norme V1** (face publique de chaque resto, modèle Owner.com). Le sous-domaine `<slug>.kitchen-boost.fr` est un **bootstrap technique** (URL Day-1 / preview), jamais la face publique. Résolution tenant = match `customDomain`, fallback slug ([décision 2026-05-25](../adr/0008-identite-customer-cookie-device-only-v1.md)).
 - **Pas de plan tarifaire différencié V1** (tout le monde paie 2€/cmd).
 - **Cf. [feedback_uber_account_strategy](../../.claude/memory/feedback_uber_account_strategy.md)** : possiblement 1 compte Uber Manager dédié par tenant pour préserver crédits pub Uber (à confirmer call AM).
 
