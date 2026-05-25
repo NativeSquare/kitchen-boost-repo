@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(update-config)",
+      "Skill(update-config:*)",
+      "Edit(~/.claude/skills/work-next-agent-issue/**)",
+      "Edit(~/.claude/skills/work-all-agent-issues/**)"
+    ]
+  }
+}
