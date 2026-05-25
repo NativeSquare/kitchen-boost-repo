@@ -26,11 +26,20 @@
  * Notifications 2.7 drives). All reads/writes go through the sanctioned tenancy
  * seam (`lib/tenancy/customerOrdersStore`), never raw `ctx.db`.
  *
+ * 2.1-E — `aggregateCustomerKPIs`, the SINGLE resto-facing surface on the MOAT
+ * (PRD 90 §3 / Q90-Q2). A `kb_manager` reads ONLY aggregates for their tenant
+ * (segments + reachability + total + new-this-month + return rate) — NEVER a raw
+ * `customer`, coordinate, name or individual id, and the module exposes NO export
+ * / bulk / nominative-list surface (the technical lock, ADR 0010). The companion
+ * `logKpiConsultation` mutation carries the consultation audit (PRD 90 §4) since
+ * a Convex query cannot write. Both go through `tenantQuery` / `tenantMutation`
+ * scoped to the tenant; cross-tenant fuzzed (ADR 0010).
+ *
  * Convex registers functions by their module PATH, so callers invoke them as
  * `api.lib.customer.identity.*` / `api.lib.customer.consent.*` /
  * `api.lib.customer.cgv.*` / `api.lib.customer.segments.*` /
- * `api.lib.customer.reachability.*`; re-exporting here does not change that path,
- * it just states the module's contract in one place.
+ * `api.lib.customer.reachability.*` / `api.lib.customer.kpi.*`; re-exporting here
+ * does not change that path, it just states the module's contract in one place.
  */
 export { getCurrentCustomer, getOrCreateCurrentCustomer } from "./identity";
 export {
@@ -55,3 +64,10 @@ export {
   reachabilityCounts,
   setPushEnrollment,
 } from "./reachability";
+export {
+  type CustomerKPIs,
+  type KpiReachabilityCounts,
+  type KpiSegmentCounts,
+  aggregateCustomerKPIs,
+  logKpiConsultation,
+} from "./kpi";
