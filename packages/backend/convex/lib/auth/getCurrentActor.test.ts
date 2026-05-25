@@ -5,8 +5,20 @@ import type { Id } from "../../_generated/dataModel";
 import schema from "../../schema";
 
 // convex-test needs the function modules; array-negation glob form is required —
-// extglob `!(*.test)` returns ZERO modules (project memory).
-const modules = import.meta.glob(["../../**/*.{ts,js}", "!../../**/*.test.*"]);
+// extglob `!(*.test)` returns ZERO modules (project memory). This file lives in
+// convex/lib/auth/, so Vite keys same-dir matches as "./x" but parent matches as
+// "../../x" — convex-test's findModulesRoot needs ONE common prefix, so we
+// normalise every key to be relative to the convex root (../../).
+const rawModules = import.meta.glob([
+  "../../**/*.{ts,js}",
+  "!../../**/*.test.*",
+]);
+const modules = Object.fromEntries(
+  Object.entries(rawModules).map(([path, loader]) => [
+    path.startsWith("./") ? `../../lib/auth/${path.slice(2)}` : path,
+    loader,
+  ]),
+);
 
 /**
  * 1.x-B — getCurrentActor, the SINGLE sanctioned `getAuthUserId` call site
@@ -206,29 +218,37 @@ describe("1.x-B getCurrentActor — single sanctioned getAuthUserId site (ADR 00
     // The interim template call sites (users.ts, admin.ts) are migrated by the
     // wrappers story (1.x-C); this asserts no NEW leak and that getCurrentActor
     // itself is the sanctioned home. We scan the loaded function modules' source.
+    // Glob is resolved relative to THIS test file (convex/lib/auth/), so the
+    // module's own files appear as "./x.ts" and anything elsewhere as "../...".
     const sources = import.meta.glob("../../**/*.{ts,js}", {
       query: "?raw",
       import: "default",
       eager: true,
     }) as Record<string, string>;
 
+    // Count only files that actually IMPORT the symbol, not mere mentions in
+    // comments (e.g. this module's index.ts documents the rule).
+    const importsAuth = (src: string) =>
+      /import\s[^;]*\bgetAuthUserId\b[^;]*from\s*["']@convex-dev\/auth\/server["']/.test(
+        src,
+      );
+
     const offenders = Object.entries(sources)
       .filter(([path]) => !path.includes(".test."))
-      .filter(([, src]) => /getAuthUserId/.test(src))
+      .filter(([, src]) => importsAuth(src))
       .map(([path]) => path);
 
     // getCurrentActor.ts is the sanctioned site and MUST be among them.
     expect(offenders.some((p) => p.includes("getCurrentActor"))).toBe(true);
 
-    // No site OUTSIDE convex/lib/auth/ may import getAuthUserId. (Interim
-    // template sites in convex/table/ are tracked by 1.x-C; this test pins the
-    // new module's contract and prevents regressions in fresh code.)
-    const outsideAuthLib = offenders.filter((p) => !p.includes("lib/auth/"));
-    // Documented interim exceptions migrated by 1.x-C.
+    // No site OUTSIDE this auth module (paths starting with "../") may import
+    // getAuthUserId, except the documented interim template call sites migrated
+    // by the wrappers story (1.x-C). This pins the contract and stops fresh code
+    // from leaking a new identity call site.
     const interimExceptions = ["table/users.ts", "table/admin.ts"];
-    const unexpected = outsideAuthLib.filter(
-      (p) => !interimExceptions.some((e) => p.endsWith(e)),
-    );
+    const unexpected = offenders
+      .filter((p) => p.startsWith("../"))
+      .filter((p) => !interimExceptions.some((e) => p.endsWith(e)));
     expect(unexpected).toEqual([]);
   });
 });
