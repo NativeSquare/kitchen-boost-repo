@@ -119,25 +119,17 @@ export const engine = {
    * the delivery-fee split. Among matching rules, the winner is the one that
    * MINIMISES the client fee (= maximises the resto's absorbed share), chosen
    * deterministically regardless of array order. No rule matches -> fallback:
-   * the client pays the full gross cost.
+   * the client pays the full gross cost. On an exact tie, the first matching
+   * rule encountered keeps the win (deterministic for a given rule set).
    */
   evaluate(input: PricingInput): PricingResult {
-    const fallback: PricingResult = {
-      winningRuleId: null,
-      fraisLivraisonClientCents: input.grossDeliveryCostCents,
-      fraisLivraisonRestoCents: 0,
-    };
-
     let winner: PricingResult | null = null;
 
     for (const rule of input.rules) {
       if (!ruleMatches(rule, input)) continue;
 
       const { clientCents, restoCents } = splitFor(rule, input);
-      const isStrictlyBetter =
-        winner === null || clientCents < winner.fraisLivraisonClientCents;
-
-      if (isStrictlyBetter) {
+      if (winner === null || clientCents < winner.fraisLivraisonClientCents) {
         winner = {
           winningRuleId: rule.id,
           fraisLivraisonClientCents: clientCents,
@@ -146,6 +138,13 @@ export const engine = {
       }
     }
 
-    return winner ?? fallback;
+    // Fallback (no rule matched): the client pays the full gross cost.
+    return (
+      winner ?? {
+        winningRuleId: null,
+        fraisLivraisonClientCents: input.grossDeliveryCostCents,
+        fraisLivraisonRestoCents: 0,
+      }
+    );
   },
 };
