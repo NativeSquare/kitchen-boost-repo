@@ -5,7 +5,8 @@ import {
   engine,
 } from "@packages/shared/pricing";
 import { v } from "convex/values";
-import type { Doc } from "../../_generated/dataModel";
+import type { Doc, Id } from "../../_generated/dataModel";
+import type { QueryCtx } from "../../_generated/server";
 import { listTenantPricingRules, tenantQuery } from "../tenancy";
 
 /**
@@ -60,13 +61,27 @@ const pricingResultValidator = v.object({
   fraisLivraisonRestoCents: v.number(),
 });
 
-/** Map a persisted ACTIVE rule row onto the pure engine's `Rule` shape. */
+/** Map a persisted rule row onto the pure engine's `Rule` shape. */
 function toEngineRule(row: Doc<"pricingRules">): Rule {
   return {
     id: row._id,
     conditions: row.conditions,
     action: row.action,
   };
+}
+
+/**
+ * The calling tenant's ACTIVE rules, in engine shape. Reads ONLY through the
+ * sanctioned `listTenantPricingRules` seam scoped to `ctx.tenantId` (never raw
+ * `ctx.db`, ADR 0010 / `no-untenanted-query`) and drops inactive rows —
+ * a deactivated rule is configured-but-paused and must never be evaluated.
+ */
+async function loadActiveTenantRules(
+  ctx: QueryCtx,
+  tenantId: Id<"tenants">,
+): Promise<Rule[]> {
+  const rows = await listTenantPricingRules(ctx, tenantId);
+  return rows.filter((row) => row.active).map(toEngineRule);
 }
 
 export const evaluate = tenantQuery()({
@@ -81,11 +96,7 @@ export const evaluate = tenantQuery()({
   },
   returns: pricingResultValidator,
   handler: async (ctx, args): Promise<PricingResult> => {
-    // Load ONLY the calling tenant's rules through the sanctioned seam, then keep
-    // the ACTIVE ones — inactive rules are configured-but-paused, never evaluated.
-    const rules = (await listTenantPricingRules(ctx, ctx.tenantId))
-      .filter((row) => row.active)
-      .map(toEngineRule);
+    const rules = await loadActiveTenantRules(ctx, ctx.tenantId);
 
     const input: PricingInput = {
       items: args.items,
