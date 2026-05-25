@@ -189,3 +189,17 @@ BUILD (pipeline IA NativeSquare)
 - **Owner.com :** https://www.owner.com — le modele qu'on replique pour la France ($1B valorisation)
 - **Virtual Eats France :** Le Club dont on fait partie — formation + communaute restaurants virtuels
 - **Vapi :** https://vapi.ai — agent vocal IA pour la prospection telephonique
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues on `NativeSquare/kitchen-boost-repo` via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Five canonical triage roles mapped 1:1 (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`), plus extended workflow lifecycle states (`in-progress`, `needs-review`, `needs-rework`, `blocked`, `needs-schema-review`, `epic`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Multi-context: `CONTEXT-MAP.md` at root points at one `CONTEXT.md` per bounded context under `docs/contexts/`. ADRs in `docs/adr/`, PRDs in `docs/prd/`. See `docs/agents/domain.md`.

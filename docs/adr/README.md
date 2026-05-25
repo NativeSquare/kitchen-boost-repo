@@ -17,6 +17,8 @@ Format : conforme au skill [`grill-with-docs`](../../../.claude/skills/grill-wit
 | [0007](0007-consentement-clic-payer-v1.md) | Consentement V1 par clic sur "Payer" (pas de checkbox) | accepted | 2026-05-24 |
 | [0008](0008-identite-customer-cookie-device-only-v1.md) | Identité Customer V1 = cookie device only (pas de matching cross-device email/tel) | accepted | 2026-05-24 |
 | [0009](0009-hubrise-reporte-v2.md) | Hubrise reporté V2 (vs V1 envisagé) | accepted | 2026-05-24 |
+| [0010](0010-isolation-multi-tenant-convex-applicative.md) | Isolation multi-tenant Convex applicative (sans RLS) | accepted | 2026-05-25 |
+| [0011](0011-convex-auth-v1-identite-encapsulee-workos-differe.md) | Convex Auth V1, identité encapsulée, WorkOS différé | accepted | 2026-05-25 |
 
 ## Quand créer un ADR
 
@@ -54,7 +56,7 @@ Liste indicative de décisions structurantes **déjà prises** dans les PRDs/con
 - Soft-launch progressif V1 (vs V1.A/V1.B gates rigides)
 - 2€ HT flat KB + pass-through frais Stripe via `on_behalf_of`
 - Uber Direct self-signup par tenant V1, Integration Partner V2
-- Multi-tenant `tenant_id` partout + RLS Postgres
+- ~~Multi-tenant `tenant_id` partout + RLS Postgres~~ — **formalisé en [ADR 0010](0010-isolation-multi-tenant-convex-applicative.md) : isolation applicative Convex, pas de RLS**
 - KB pas KDS tiers V1 (BYOD seulement)
 - Items distincts par parfum (jamais modifier "parfum_X")
 - Stack admin / mobile / backend = décisions dev lead, hors scope PRD

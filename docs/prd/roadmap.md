@@ -144,7 +144,7 @@ La V1 est livrée en **4 phases** thématiques. Chaque phase ajoute des blocs en
 - Wizard public self-serve resto (form public + Stripe Connect auto + activation pending review KB).
 - Tests automatisés extension (couverture 80%+).
 - Audit log RGPD complet par tenant.
-- Multi-utilisateur par tenant + granularité rôles (owner / manager / staff cuisine / staff caisse).
+- ~~Multi-utilisateur par tenant~~ → **base déplacée en V1** (rôles `kb_manager` + `staff` per-tenant, cf. PRD 50 / 50-Q6). V2.A garde la **granularité fine** (sous-rôles staff cuisine / staff caisse) + invites avancées.
 
 ### Phase V2.B — Fallback livraison Stuart (3 semaines)
 

@@ -1,6 +1,6 @@
 # Multi-Tenant
 
-Le contexte transverse de l'isolation des établissements et de la sécurité d'accès. **Tous** les contextes métier s'appuient sur ce socle : `tenant_id` sur tout objet métier, table `users` + liaison `user_tenants` N-N, RBAC à 3 rôles, RLS Postgres, domaine custom optionnel.
+Le contexte transverse de l'isolation des établissements et de la sécurité d'accès. **Tous** les contextes métier s'appuient sur ce socle : `tenant_id` sur tout objet métier, table `users` + liaison `user_tenants` N-N, RBAC à 3 rôles, isolation applicative (helpers `withTenant` — pas de RLS, cf. [ADR 0010](../../adr/0010-isolation-multi-tenant-convex-applicative.md)), domaine custom optionnel.
 
 PRD : [50_multi_tenant_saas.md](../../prd/50_multi_tenant_saas.md)
 
@@ -23,23 +23,26 @@ Domaine personnalisé acheté par le resto (ex: `commander.bunsbao.fr`) pointant
 _Avoid_: Vanity URL, Branded domain
 
 **users (table)** :
-Table d'identité auth du système. Colonnes : `id`, `email` (unique), `name`, `password_hash`, `role` (`kb_admin` / `kb_manager` / `staff`), `created_at`. 1 user = 1 login = 1 humain.
-_Avoid_: accounts, profiles
+Table d'identité du système, fournie par **Convex Auth** (`authTables`) et étendue avec les champs métier KB. Les **credentials sont gérés par Convex Auth** (`authAccounts` / `authSessions`) — il n'y a **pas de `password_hash`** sur `users`. Champs KB : **`role` global (`kb_admin` | `customer`)** — les rôles resto (`kb_manager` / `staff`) sont **per-tenant** sur `userTenants`, pas ici —, `name`, `email` (+ champs Convex Auth). 1 user = 1 login = 1 humain.
+_Avoid_: accounts, profiles, password_hash (Convex Auth possède les credentials)
 
 **user_tenants (table N-N)** :
-Table de liaison qui détermine quels tenants un user `kb_manager` (ou `staff` V2) peut accéder. Colonnes : `user_id`, `tenant_id`, `attached_at`, `attached_by`, `detached_at` (nullable). Un user `kb_admin` (root) n'a aucune ligne ici — accès illimité via role.
+Table de liaison qui détermine quels tenants un user `kb_manager` ou `staff` peut accéder **et avec quel rôle**. Colonnes : `user_id`, `tenant_id`, **`role` (`kb_manager` | `staff`)**, `attached_at`, `attached_by`, `detached_at` (nullable). Le rôle resto est **per-tenant** (porté ici), pas global. Un user `kb_admin` (root) et un `customer` n'ont aucune ligne ici.
 _Avoid_: user_restaurateurs, memberships
 
 **RBAC** :
-Role-Based Access Control à 3 rôles V1 :
-- **`kb_admin`** (root) — voit tous tenants, fait pipeline / CRM KB / monitoring / impersonation
-- **`kb_manager`** (resto-scoped) — voit ses tenants via `user_tenants`, gère menu / cmds / clients / campagnes / pricing
-- **`staff`** (V2) — attaché à 1 tenant précis, accès limité (consult cmds + toggle out of stock)
+Role-Based Access Control à **4 rôles V1** :
+- **`kb_admin`** (root) — voit tous tenants, fait pipeline / CRM KB / monitoring / impersonation. Rôle **global** porté par `users.role`. Aucune ligne `userTenants`.
+- **`kb_manager`** (resto-scoped) — gère menu / cmds / clients / campagnes / pricing. Rôle **per-tenant** porté par `userTenants.role`.
+- **`staff`** (resto-scoped, **opérationnel V1**) — attaché à 1+ tenants, accès limité (consult cmds + toggle out of stock), permissions différenciées vs `kb_manager`. Rôle **per-tenant** porté par `userTenants.role`.
+- **`customer`** — client final mangeur (user anonyme Convex Auth). Rôle **global** porté par `users.role`. Aucune ligne `userTenants` (lié aux tenants via `customer_orders_per_tenant`).
+
+Résolution : `getCurrentActor(ctx, tenantId?)` lit `users.role` pour kb_admin/customer, sinon résout le rôle effectif via `userTenants.role` du tenant courant. Cf. [ADR 0011](../../adr/0011-convex-auth-v1-identite-encapsulee-workos-differe.md).
 _Avoid_: ACL, Permissions, Owner/Manager (utiliser les noms exacts ci-dessus)
 
-**RLS** (Row-Level Security) :
-Mécanisme Postgres qui filtre automatiquement les lignes selon `tenant_id = current_setting('app.tenant_id')`. Couche de défense en profondeur en plus du WHERE applicatif. Le `app.tenant_id` est settable selon le user : `kb_admin` n'importe quel tenant, `kb_manager` uniquement tenants présents dans son `user_tenants`.
-_Avoid_: Filter, Sharding (différent)
+**Isolation tenant (applicative)** :
+Convex n'a **pas de RLS** Postgres. L'isolation repose sur de la **discipline applicative** : toute query/mutation métier passe par un helper `tenantQuery` / `tenantMutation` qui throw si le `tenantId` demandé n'est pas dans les tenants accessibles du user (via `user_tenants` ; accès illimité si `kb_admin`). 3 couches : (1) helpers typés obligatoires, (2) règle ESLint `no-untenanted-query` interdisant `ctx.db.query()` brut, (3) suite Vitest fuzz cross-tenant. Cf. [ADR 0010](../../adr/0010-isolation-multi-tenant-convex-applicative.md).
+_Avoid_: RLS (mécanisme Postgres, n'existe pas dans Convex), Filter, Sharding (différent)
 
 **tenant_id** :
 Colonne `uuid` indexée présente sur **toutes** les tables métier (menus, items, modifiers, orders, payments, customer_orders_per_tenant, push_subscriptions). Aucune query métier sans WHERE tenant_id.
@@ -84,11 +87,11 @@ _Avoid_: Sudo, Login-as
 
 **Alex** : Khan login KB Admin. Comment on s'assure qu'il voit que son tenant Buns & Bao ?
 
-**Dev** : 4 couches. (1) JWT contient `user_id`, `role=kb_manager`, `tenant_ids=[buns-bao]`. (2) Header X-Tenant-Id de la requête doit être dans `tenant_ids`. Sinon 403. (3) Middleware applicatif vérifie le scope. (4) RLS Postgres re-filtre — si bug applicatif, la DB refuse quand même. Test automatisé V1 : 2 tenants créés, accès dashboard A vers B = 403.
+**Dev** : 3 couches **applicatives** (Convex n'a pas de RLS). (1) Le helper `tenantQuery`/`tenantMutation` reçoit le `tenantId` en argument et throw si Khan n'y a pas accès (résolu via `user_tenants` au moment de l'appel ; `kb_admin` = accès illimité). (2) La règle ESLint `no-untenanted-query` empêche tout `ctx.db.query()` brut qui contournerait le helper. (3) La suite Vitest fuzz cross-tenant rejoue chaque mutation avec un `tenantId` non autorisé et exige un throw. Test V1 : 2 tenants créés, accès A→B = erreur Forbidden.
 
 **Alex** : Walid Thai Street. Il login. Combien il voit de tenants ?
 
-**Dev** : 3 (ou plus, selon réalité). JWT `tenant_ids=[saint-michel, chatelet, bastille]`. Switcher en header. Au login, on tape par défaut sur le dernier sélectionné (cookie). Toutes les vues filtrent sur `X-Tenant-Id` = tenant courant. RLS Postgres bloque toute tentative de query un tenant non listé dans son JWT.
+**Dev** : 3 (ou plus, selon réalité). Walid a 3 lignes `user_tenants` (saint-michel, chatelet, bastille). Switcher de tenant courant persisté par device (cookie `kb_current_tenant`). Chaque query passe le `tenantId` courant ; le helper vérifie qu'il est bien dans les `user_tenants` de Walid, sinon throw. Toute tentative de query un tenant non listé est rejetée côté helper.
 
 **Alex** : Walid a même SIRET pour ses 3 restos. Combien de Stripe Connect ?
 

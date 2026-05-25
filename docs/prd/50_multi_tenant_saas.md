@@ -41,6 +41,9 @@
 - **`customers`** reste **GLOBAL** (pas scopé par tenant, c'est le moat KB — cf. [90](90_donnees_clients_crm.md)). Liaison via `customer_orders_per_tenant`.
 
 #### 1.2 RLS Postgres
+
+> ⚠️ **Périmé (2026-05-25)** — Stack = Convex, **pas de RLS Postgres**. Isolation 100 % applicative via helpers `withTenant`. Cf. [ADR 0010](../adr/0010-isolation-multi-tenant-convex-applicative.md). Le mapping des droits par rôle ci-dessous reste valide (qui accède à quel tenant), mais l'enforcement est applicatif (helper qui throw), pas DB.
+
 - `tenant_id = current_setting('app.tenant_id')` sur tables métier
 - Le `app.tenant_id` du contexte est settable selon le user :
   - `KB Admin` : peut set n'importe quel tenant_id (root)
@@ -95,7 +98,7 @@
 - Si user a 1 seul tenant : aucune persistance nécessaire, c'est implicite
 
 ### 6. Isolation des données
-- Aucune query métier sans WHERE `tenant_id = X` (RLS au niveau DB en complément)
+- Aucune query métier sans scope `tenant_id` (via helpers `withTenant` — pas de RLS, cf. [ADR 0010](../adr/0010-isolation-multi-tenant-convex-applicative.md))
 - Tests automatisés : créer 2 tenants, vérifier qu'aucune fuite cross-tenant n'est possible via API
 - Logs scopés par tenant (Sentry tags, etc.)
 
@@ -175,12 +178,12 @@
 
 | Q | Question | Deadline | Owner |
 |---|----------|----------|-------|
-| 50-Q1 | DB Postgres self-hosted ou Supabase managed ? | V1 S0 | Dev lead |
-| 50-Q2 | RLS Postgres ou enforcement applicatif uniquement ? | V1 S1 | Dev lead |
+| 50-Q1 | ~~DB Postgres self-hosted ou Supabase managed ?~~ ✅ **Résolu : Convex** (ADR 0010) | V1 S0 | Dev lead |
+| 50-Q2 | ~~RLS Postgres ou enforcement applicatif uniquement ?~~ ✅ **Résolu : applicatif (helpers `withTenant`)** (ADR 0010) | V1 S1 | Dev lead |
 | 50-Q3 | Custom domain : KB propose un achat groupé `.shop` ou laisse resto acheter ? (Q7 master) | V1 | Alex |
 | 50-Q4 | Politique de suppression data si resto résilie (Article 2 bis.2 contrat : 3 ans post-résil) — comment matérialiser techniquement ? | V2 | Dev + legal |
 | 50-Q5 | Backups : Supabase point-in-time recovery suffit-il ou besoin de backups offsite (S3) ? | V2 | Dev lead |
-| 50-Q6 | Multi-utilisateur par tenant (Staff cuisine + caisse) en V1 ou V2 ? Recommandé V2 (1 KB Manager suffit V1, même cas Walid). | V1 | Alex |
+| 50-Q6 | ~~Multi-utilisateur par tenant (Staff cuisine + caisse) en V1 ou V2 ?~~ ✅ **Résolu : `staff` opérationnel V1** (rôle per-tenant sur `userTenants`). Élargit le scope V1 (invites équipe + permissions différenciées). | V1 | Alex |
 | 50-Q7 | Stripe Connect partagé entre tenants même SIRET : Stripe va-t-il refuser de créer 2 acct distincts pour le même SIRET ? À tester avec un sandbox. Si oui, partage obligatoire ; si non, choix wizard. | V1 S1 | Dev lead (test sandbox) |
 | 50-Q8 | Cas Walid Thai Street : combien de tenants ? Quels SIRET (même ou différents pour ses N restos) ? Pour calibrer le wizard "ajouter un tenant à un user existant". | V1 S0 | Alex (call Walid) |
 | 50-Q9 | Switcher tenant UX dans KB Admin web + KB Orders mobile : sélecteur header, sidebar, ou bottom sheet ? Cohérence entre web et mobile. | V1 | Produit |
@@ -193,7 +196,7 @@
 - **Multi-tenant per user dès V1** (cas Walid Thai Street). Switcher dans header de KB Admin + KB Orders. Cas typique reste 1-tenant (Khan).
 - **Stripe Connect partageable** entre tenants même SIRET (`tenants.stripe_account_id` non-unique). Reporting par boutique via `metadata.tenant_id`. Si SIRET distincts → 1 Stripe Connect par tenant standard.
 - **Uber Direct toujours 1-par-tenant** (adresse pickup unique par compte). Pas négociable.
-- **3 rôles V1** : `kb_admin` (root) / `kb_manager` (resto via `user_tenants`) / `staff` (V2, attaché à 1 tenant précis).
+- **4 rôles V1** : `kb_admin` (root, global) / `customer` (client final, global) — sur `users.role` ; `kb_manager` + `staff` (**per-tenant**, sur `userTenants.role`). `staff` est **opérationnel V1** (décision 2026-05-25, cf. 50-Q6) — multi-utilisateur par tenant inclus en V1.
 - **Customers reste global** (cross-tenant) — moat KB. Cf. [90](90_donnees_clients_crm.md) et [feedback_db_clients_moat](../../.claude/memory/feedback_db_clients_moat.md).
 - **Custom domain optionnel V1** : sous-domaine `<slug>.kitchen-boost.fr` suffit pour démarrer.
 - **Pas de plan tarifaire différencié V1** (tout le monde paie 2€/cmd).
