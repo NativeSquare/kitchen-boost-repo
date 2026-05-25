@@ -26,13 +26,12 @@ import type { MutationCtx, QueryCtx } from "../../_generated/server";
 export async function readActiveCgvVersion(
   ctx: QueryCtx | MutationCtx,
 ): Promise<Doc<"cgvVersions"> | null> {
-  const latest = await ctx.db
+  return ctx.db
     .query("cgvVersions")
     .withIndex("by_activatedAt")
     .order("desc")
     .filter((q) => q.eq(q.field("endedAt"), undefined))
     .first();
-  return latest;
 }
 
 /**
