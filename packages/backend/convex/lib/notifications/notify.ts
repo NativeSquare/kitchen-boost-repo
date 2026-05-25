@@ -1,5 +1,4 @@
 import { v } from "convex/values";
-import type { Id } from "../../_generated/dataModel";
 import { transactionalTrigger } from "../../table/notifications";
 import {
   type TenantRole,
@@ -67,7 +66,7 @@ export const notifyOrderEvent = tenantMutation(OPERATIONAL_ALLOW)({
 
     for (const send of sends) {
       await insertTenantNotificationEvent(ctx, ctx.tenantId, {
-        customerId: order.customerId as Id<"customers">,
+        customerId: order.customerId,
         trigger: args.eventType,
         category: send.category,
         channel: send.channel,
