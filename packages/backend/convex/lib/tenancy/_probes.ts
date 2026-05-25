@@ -278,3 +278,84 @@ export const tenantServiceHoursProbe = tenantQuery()({
       .withIndex("by_tenant", (q) => q.eq("tenantId", ctx.tenantId))
       .collect(),
 });
+
+// --- 2.9-A KB Admin schema probes ------------------------------------------
+//
+// `prospects` + `contracts` are KB-ADMIN-GLOBAL (no tenantId scoping key, like
+// `customers`/`cgvVersions`, ADR 0010): KB's OWN onboarding pipeline, owned by
+// the `kb_admin` (root) role. These test-only probes prove both tables are
+// reachable ONLY through `kbAdminQuery/Mutation` (root) — so the fuzz harness can
+// replay the list probes under unauthorized actors and assert a Forbidden throw
+// before any row is read. They live HERE (the exempt `lib/tenancy/**` path), so
+// no raw `ctx.db.query("prospects"|"contracts")` is introduced in business code.
+// No business logic (CRM CRUD, pipeline transitions, contract generation #64).
+
+/** root (kb_admin) creates a minimal `prospects` row — the sanctioned write. */
+export const adminCreateProspectProbe = kbAdminMutation({
+  args: {
+    name: v.string(),
+    phone: v.string(),
+    source: v.union(
+      v.literal("cold_call"),
+      v.literal("whatsapp"),
+      v.literal("referral"),
+      v.literal("visite_physique"),
+    ),
+  },
+  action: "prospect.create",
+  handler: async (ctx, args): Promise<Id<"prospects">> => {
+    const now = Date.now();
+    return ctx.db.insert("prospects", {
+      name: args.name,
+      phone: args.phone,
+      phase: "acquisition",
+      source: args.source,
+      createdAt: now,
+      updatedAt: now,
+    });
+  },
+});
+
+/** root (kb_admin) reads any `prospects` row back — sanctioned root read. */
+export const adminGetProspectProbe = kbAdminQuery({
+  args: { prospectId: v.id("prospects") },
+  handler: async (ctx, args) => ctx.db.get(args.prospectId),
+});
+
+/** root (kb_admin) lists prospects (root-only — the fuzzed surface). */
+export const adminListProspectsProbe = kbAdminQuery({
+  args: {},
+  handler: async (ctx) => ctx.db.query("prospects").collect(),
+});
+
+/** root (kb_admin) creates a minimal draft `contracts` row — sanctioned write. */
+export const adminCreateContractProbe = kbAdminMutation({
+  args: {
+    prospectId: v.id("prospects"),
+    prestation: v.union(v.literal("A"), v.literal("B"), v.literal("A_AND_B")),
+  },
+  action: "contract.create",
+  handler: async (ctx, args): Promise<Id<"contracts">> => {
+    const now = Date.now();
+    return ctx.db.insert("contracts", {
+      prospectId: args.prospectId,
+      prestation: args.prestation,
+      status: "draft",
+      statusUpdatedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+  },
+});
+
+/** root (kb_admin) reads any `contracts` row back — sanctioned root read. */
+export const adminGetContractProbe = kbAdminQuery({
+  args: { contractId: v.id("contracts") },
+  handler: async (ctx, args) => ctx.db.get(args.contractId),
+});
+
+/** root (kb_admin) lists contracts (root-only — the fuzzed surface). */
+export const adminListContractsProbe = kbAdminQuery({
+  args: {},
+  handler: async (ctx) => ctx.db.query("contracts").collect(),
+});

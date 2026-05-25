@@ -3,6 +3,7 @@ import { defineSchema } from "convex/server";
 import { adminInvites } from "./table/adminInvites";
 import { auditLog } from "./table/auditLog";
 import { cgvVersions } from "./table/cgvVersions";
+import { contracts } from "./table/contracts";
 import { customerOrdersPerTenant } from "./table/customerOrdersPerTenant";
 import { customers } from "./table/customers";
 import { deliveries } from "./table/deliveries";
@@ -19,6 +20,7 @@ import {
 import { orderEvents, orderItems, orders } from "./table/orders";
 import { pricingRules } from "./table/pricingRules";
 import { processedWebhookEvents } from "./table/processedWebhookEvents";
+import { prospects } from "./table/prospects";
 import { tenantCredentials } from "./table/tenantCredentials";
 import { tenants } from "./table/tenants";
 import { userTenants } from "./table/userTenants";
@@ -81,4 +83,18 @@ export default defineSchema({
   modifierGroups,
   menuItemModifierGroups,
   serviceHours,
+  // 2.9-A — KB Admin backend (PRD 70, kb-admin CONTEXT). Both tables are
+  // KB-ADMIN-GLOBAL (NO tenantId scoping key, like `customers`/`cgvVersions`,
+  // ADR 0010): they hold KB's OWN onboarding pipeline, owned by the `kb_admin`
+  // (root) role — accessed via `kbAdminQuery/Mutation`, never raw ctx.db in
+  // business code. `prospects` = a restaurant being prospected (NOT yet a
+  // tenant); its `phase`/`source`/`tabletteMode`/milestone enums are fixed by
+  // the PRD/CONTEXT/contract (none invented). Milestones model both binary checks
+  // (timestamp = achieved) AND oscillating integration statuses (current + dated
+  // history). `contracts` = the A/B/A&B contract lifecycle (dated draft → sent →
+  // signed → expired); the HTML generation itself is #64. The optional `tenantId`
+  // on each is a BACK-LINK (by_tenant index), set once provisioned — not a tenancy
+  // boundary.
+  prospects,
+  contracts,
 });
