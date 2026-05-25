@@ -8,5 +8,7 @@ export default defineConfig({
     environment: "edge-runtime",
     server: { deps: { inline: ["convex-test"] } },
     include: ["convex/**/*.test.ts"],
+    // Injects a test-only KMS_MASTER_KEY (crypto module 1.x-E) — see test.setup.ts.
+    setupFiles: ["./test.setup.ts"],
   },
 });
