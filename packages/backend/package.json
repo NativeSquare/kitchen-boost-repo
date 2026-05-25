@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "convex dev",
     "setup": "convex dev --until-success",
+    "lint": "eslint .",
     "typecheck": "tsc --noEmit -p convex",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -33,9 +34,12 @@
   },
   "devDependencies": {
     "@edge-runtime/vm": "^5.0.0",
+    "@packages/eslint-config-kitchenboost": "workspace:*",
     "@types/react": "~19.1.0",
+    "@typescript-eslint/parser": "^8.59.4",
     "convex-test": "^0.0.53",
     "dotenv-cli": "^11.0.0",
+    "eslint": "^9",
     "typescript": "5.9.3",
     "vitest": "^4.1.7"
   }

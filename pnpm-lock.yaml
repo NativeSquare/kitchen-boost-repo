@@ -599,15 +599,24 @@ importers:
       "@edge-runtime/vm":
         specifier: ^5.0.0
         version: 5.0.0
+      "@packages/eslint-config-kitchenboost":
+        specifier: workspace:*
+        version: link:../eslint-config-kitchenboost
       "@types/react":
         specifier: ~19.1.0
         version: 19.1.17
+      "@typescript-eslint/parser":
+        specifier: ^8.59.4
+        version: 8.59.4(eslint@9.39.2(jiti@2.6.1))(typescript@5.9.3)
       convex-test:
         specifier: ^0.0.53
         version: 0.0.53(convex@1.31.7(@clerk/clerk-react@5.60.0(react-dom@19.2.4(react@18.2.0))(react@18.2.0))(react@18.2.0))
       dotenv-cli:
         specifier: ^11.0.0
         version: 11.0.0
+      eslint:
+        specifier: ^9
+        version: 9.39.2(jiti@2.6.1)
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -15220,7 +15229,7 @@ snapshots:
 
   "@eslint/eslintrc@3.3.3":
     dependencies:
-      ajv: 6.12.6
+      ajv: 6.15.0
       debug: 4.4.3
       espree: 10.4.0
       globals: 14.0.0
@@ -18488,7 +18497,7 @@ snapshots:
       eslint: 9.39.2(jiti@2.6.1)
       ignore: 7.0.5
       natural-compare: 1.4.0
-      ts-api-utils: 2.4.0(typescript@5.9.3)
+      ts-api-utils: 2.5.0(typescript@5.9.3)
       typescript: 5.9.3
     transitivePeerDependencies:
       - supports-color
@@ -18529,10 +18538,22 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  "@typescript-eslint/parser@8.59.4(eslint@9.39.2(jiti@2.6.1))(typescript@5.9.3)":
+    dependencies:
+      "@typescript-eslint/scope-manager": 8.59.4
+      "@typescript-eslint/types": 8.59.4
+      "@typescript-eslint/typescript-estree": 8.59.4(typescript@5.9.3)
+      "@typescript-eslint/visitor-keys": 8.59.4
+      debug: 4.4.3
+      eslint: 9.39.2(jiti@2.6.1)
+      typescript: 5.9.3
+    transitivePeerDependencies:
+      - supports-color
+
   "@typescript-eslint/project-service@8.54.0(typescript@5.9.3)":
     dependencies:
-      "@typescript-eslint/tsconfig-utils": 8.54.0(typescript@5.9.3)
-      "@typescript-eslint/types": 8.54.0
+      "@typescript-eslint/tsconfig-utils": 8.59.4(typescript@5.9.3)
+      "@typescript-eslint/types": 8.59.4
       debug: 4.4.3
       typescript: 5.9.3
     transitivePeerDependencies:
@@ -18572,7 +18593,7 @@ snapshots:
       "@typescript-eslint/utils": 8.54.0(eslint@9.39.2(jiti@1.21.7))(typescript@5.9.3)
       debug: 4.4.3
       eslint: 9.39.2(jiti@1.21.7)
-      ts-api-utils: 2.4.0(typescript@5.9.3)
+      ts-api-utils: 2.5.0(typescript@5.9.3)
       typescript: 5.9.3
     transitivePeerDependencies:
       - supports-color
@@ -18584,7 +18605,7 @@ snapshots:
       "@typescript-eslint/utils": 8.54.0(eslint@9.39.2(jiti@2.6.1))(typescript@5.9.3)
       debug: 4.4.3
       eslint: 9.39.2(jiti@2.6.1)
-      ts-api-utils: 2.4.0(typescript@5.9.3)
+      ts-api-utils: 2.5.0(typescript@5.9.3)
       typescript: 5.9.3
     transitivePeerDependencies:
       - supports-color
@@ -18603,7 +18624,7 @@ snapshots:
       minimatch: 9.0.5
       semver: 7.7.3
       tinyglobby: 0.2.16
-      ts-api-utils: 2.4.0(typescript@5.9.3)
+      ts-api-utils: 2.5.0(typescript@5.9.3)
       typescript: 5.9.3
     transitivePeerDependencies:
       - supports-color
@@ -20023,7 +20044,7 @@ snapshots:
 
   eslint-plugin-expo@1.0.0(eslint@9.39.2(jiti@1.21.7))(typescript@5.9.3):
     dependencies:
-      "@typescript-eslint/types": 8.54.0
+      "@typescript-eslint/types": 8.59.4
       "@typescript-eslint/utils": 8.54.0(eslint@9.39.2(jiti@1.21.7))(typescript@5.9.3)
       eslint: 9.39.2(jiti@1.21.7)
     transitivePeerDependencies:
@@ -23488,7 +23509,7 @@ snapshots:
   terser@5.46.0:
     dependencies:
       "@jridgewell/source-map": 0.3.11
-      acorn: 8.15.0
+      acorn: 8.16.0
       commander: 2.20.3
       source-map-support: 0.5.21
 

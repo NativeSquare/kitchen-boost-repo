@@ -2,7 +2,7 @@
   "name": "@packages/eslint-config-kitchenboost",
   "version": "0.0.0",
   "private": true,
-  "description": "KitchenBoost custom ESLint rules (no-untenanted-query). SCAFFOLDED — activation on packages/backend is part of story 1.x-A. See ADR 0010.",
+  "description": "KitchenBoost custom ESLint rules (no-untenanted-query). Active on packages/backend via configs.backendRecommended (story 1.x-H). See ADR 0010.",
   "type": "module",
   "main": "index.js",
   "exports": {
