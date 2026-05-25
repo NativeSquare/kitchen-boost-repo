@@ -17,6 +17,7 @@ import type * as lib_auth_ResendOTPPasswordReset from "../lib/auth/ResendOTPPass
 import type * as lib_auth_getCurrentActor from "../lib/auth/getCurrentActor.js";
 import type * as lib_auth_index from "../lib/auth/index.js";
 import type * as lib_tenancy__probes from "../lib/tenancy/_probes.js";
+import type * as lib_tenancy_customer from "../lib/tenancy/customer.js";
 import type * as lib_tenancy_fuzz from "../lib/tenancy/fuzz.js";
 import type * as lib_tenancy_index from "../lib/tenancy/index.js";
 import type * as lib_tenancy_withTenant from "../lib/tenancy/withTenant.js";
@@ -49,6 +50,7 @@ declare const fullApi: ApiFromModules<{
   "lib/auth/getCurrentActor": typeof lib_auth_getCurrentActor;
   "lib/auth/index": typeof lib_auth_index;
   "lib/tenancy/_probes": typeof lib_tenancy__probes;
+  "lib/tenancy/customer": typeof lib_tenancy_customer;
   "lib/tenancy/fuzz": typeof lib_tenancy_fuzz;
   "lib/tenancy/index": typeof lib_tenancy_index;
   "lib/tenancy/withTenant": typeof lib_tenancy_withTenant;
