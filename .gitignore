@@ -37,3 +37,6 @@ yarn-error.log*
 
 # turbo
 .turbo
+
+# claude code machine-local settings (bypass mode, local allow rules)
+.claude/settings.local.json
