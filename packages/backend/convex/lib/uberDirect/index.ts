@@ -24,6 +24,15 @@
  *    (encrypted envelope only), `getDecryptedUberCredentials` (ACTION — the only
  *    decrypt). Credential shape: `UberCredentials` / `uberCredentials`.
  *  - deliveries: `createDelivery`, `patchDelivery`, `listDeliveries`,
- *    `getDeliveryByOrder`.
+ *    `getDeliveryByOrder`. The row shape (mode / status / incident) lives in the
+ *    table validators, surfaced here as the module's typed contract.
  */
 export { type UberCredentials, uberCredentials } from "./credentials";
+export {
+  type DeliveryIncidentType,
+  type DeliveryMode,
+  type DeliveryStatus,
+  deliveryIncidentType,
+  deliveryMode,
+  deliveryStatus,
+} from "../../table/deliveries";
