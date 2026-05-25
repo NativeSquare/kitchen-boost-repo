@@ -6,7 +6,9 @@
 
 Ce document décrit la **boucle de production** quotidienne du projet : comment on passe d'un chantier identifié dans STACK.md à du code mergé sur `main`, en optimisant le temps Alex.
 
-Principe : **Alex active 2h le matin → agents Claude Code local autonomes la nuit → Alex review 30-60 min le lendemain**.
+Principe : **Alex active 2h le matin (PRD + issues) → agents Claude Code local autonomes la nuit, qui mergent eux-mêmes sur CI verte → Alex fait des tests e2e + un contrôle qualité à froid, sans gate de merge**.
+
+> **Modèle de merge (acté 2026-05-25, override de la v1.0)** : **auto-merge sur CI verte**, pas de review humaine bloquante. Une story est mergée par l'agent ssi `typecheck + lint + test` passent en local **et** la CI (`check.yml`) est verte. La chaîne de dépendances s'enchaîne donc seule pendant la nuit. Le contrôle qualité d'Alex est **asynchrone et non bloquant** (e2e + spot-check du code mergé). Garde-fous = agent + lint + tests, pas la review. _Réserve à rouvrir un jour : une fois Buns & Bao live avec de la vraie data, on pourra réintroduire un gate humain **uniquement** sur les PR `needs-schema-review` (migrations sur prod), via branch protection si on passe le repo en Pro._
 
 ---
 
@@ -38,24 +40,24 @@ Principe : **Alex active 2h le matin → agents Claude Code local autonomes la n
 │   2. Crée branche agent/<issue-number>                               │
 │   3. TDD : tests → code → refactor                                   │
 │   4. pnpm typecheck && pnpm lint && pnpm test                        │
-│   5. Si vert : gh pr create + label needs-review                     │
-│   6. Si rouge : commentaire + label blocked                          │
-│   7. ScheduleWakeup 60-300s → loop                                   │
+│   5. Si vert local : push + PR + attend CI (gh pr checks --watch)    │
+│   6. CI verte → gh pr merge --squash --delete-branch  (AUTO-MERGE)   │
+│   7. Si CI/local rouge ou bloqué : label blocked (pas de merge)      │
+│   8. ScheduleWakeup 120-270s → story suivante (débloquée par merge)  │
 └──────────────────────────────────────────────────────────────────────┘
                                   ↓
 ┌──────────────────────────────────────────────────────────────────────┐
-│                     PHASE 3 — REVIEW (MATIN)                         │
-│                       (Alex, 30-60 min)                              │
+│         PHASE 3 — QUALITÉ + E2E (ASYNCHRONE, PAS UN GATE)            │
+│               (Alex, quand il veut — déjà mergé)                     │
 │                                                                      │
-│   gh pr list --label needs-review                                    │
+│   Stories vertes : DÉJÀ mergées sur main par l'agent (CI verte)      │
 │         ↓                                                            │
-│   Pour chaque PR :                                                   │
-│   - gh pr diff / review web                                          │
-│   - Test E2E manuel si feature visible                               │
-│   - Merge si OK (gh pr merge --squash)                               │
-│   - Sinon commentaire + label needs-rework                           │
+│   - Tests end-to-end des parcours critiques sur le dev deployment    │
+│   - Spot-check qualité du code mergé (échantillon)                   │
+│   - Souci → issue de correction (/triage) ou git revert du merge     │
+│   - gh issue list --label blocked → /diagnose                        │
 │         ↓                                                            │
-│   /triage sur les HITL en attente                                    │
+│   /triage sur needs-triage / needs-info                              │
 └──────────────────────────────────────────────────────────────────────┘
                                   ↓
                           Retour Phase 1 le lendemain
@@ -69,27 +71,27 @@ Tous installés sur `C:\Users\alexp\.claude\skills\` (workflow Matt Pocock + cus
 
 ### Skills Matt Pocock (déjà installés)
 
-| Skill | Path | Quand l'utiliser |
-|---|---|---|
-| `/setup-matt-pocock-skills` | `C:\Users\alexp\.claude\skills\setup-matt-pocock-skills\` | **Une seule fois** au début du projet pour mapper les labels GitHub aux états canoniques (`ready-for-agent`, `needs-triage`, etc.) |
-| `/grill-with-docs` | `C:\Users\alexp\.claude\skills\grill-with-docs\` | Avant `/to-prd` : interview rapide pour résoudre les open questions du PRD source |
-| `/grill-me` | `C:\Users\alexp\.claude\skills\grill-me\` | Variante : grilling sans focus docs (sessions exploratoires) |
-| `/to-prd` | `C:\Users\alexp\.claude\skills\to-prd\` | Produit le PRD agent-ready et le publie comme issue parent GitHub |
-| `/to-issues` | `C:\Users\alexp\.claude\skills\to-issues\` | Éclate le PRD en tracer bullets verticaux AFK/HITL |
-| `/triage` | `C:\Users\alexp\.claude\skills\triage\` | Gérer issues : `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix` |
-| `/tdd` | `C:\Users\alexp\.claude\skills\tdd\` | Guide pour respecter TDD (à invoquer si Claude code dérive) |
-| `/improve-codebase-architecture` | `C:\Users\alexp\.claude\skills\improve-codebase-architecture\` | Refactor en deep modules avec API publique isolée |
-| `/prototype` | `C:\Users\alexp\.claude\skills\prototype\` | Pour les POCs sprint 0 (les 5 du STACK.md §7) |
-| `/diagnose` | `C:\Users\alexp\.claude\skills\diagnose\` | Quand un agent est `blocked`, debug pourquoi |
-| `/zoom-out` | `C:\Users\alexp\.claude\skills\zoom-out\` | Si on perd la vue d'ensemble en plein chantier |
-| `/handoff` | `C:\Users\alexp\.claude\skills\handoff\` | Si on change de session Claude Code en cours de chantier |
+| Skill                            | Path                                                           | Quand l'utiliser                                                                                                                   |
+| -------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `/setup-matt-pocock-skills`      | `C:\Users\alexp\.claude\skills\setup-matt-pocock-skills\`      | **Une seule fois** au début du projet pour mapper les labels GitHub aux états canoniques (`ready-for-agent`, `needs-triage`, etc.) |
+| `/grill-with-docs`               | `C:\Users\alexp\.claude\skills\grill-with-docs\`               | Avant `/to-prd` : interview rapide pour résoudre les open questions du PRD source                                                  |
+| `/grill-me`                      | `C:\Users\alexp\.claude\skills\grill-me\`                      | Variante : grilling sans focus docs (sessions exploratoires)                                                                       |
+| `/to-prd`                        | `C:\Users\alexp\.claude\skills\to-prd\`                        | Produit le PRD agent-ready et le publie comme issue parent GitHub                                                                  |
+| `/to-issues`                     | `C:\Users\alexp\.claude\skills\to-issues\`                     | Éclate le PRD en tracer bullets verticaux AFK/HITL                                                                                 |
+| `/triage`                        | `C:\Users\alexp\.claude\skills\triage\`                        | Gérer issues : `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`                                                    |
+| `/tdd`                           | `C:\Users\alexp\.claude\skills\tdd\`                           | Guide pour respecter TDD (à invoquer si Claude code dérive)                                                                        |
+| `/improve-codebase-architecture` | `C:\Users\alexp\.claude\skills\improve-codebase-architecture\` | Refactor en deep modules avec API publique isolée                                                                                  |
+| `/prototype`                     | `C:\Users\alexp\.claude\skills\prototype\`                     | Pour les POCs sprint 0 (les 5 du STACK.md §7)                                                                                      |
+| `/diagnose`                      | `C:\Users\alexp\.claude\skills\diagnose\`                      | Quand un agent est `blocked`, debug pourquoi                                                                                       |
+| `/zoom-out`                      | `C:\Users\alexp\.claude\skills\zoom-out\`                      | Si on perd la vue d'ensemble en plein chantier                                                                                     |
+| `/handoff`                       | `C:\Users\alexp\.claude\skills\handoff\`                       | Si on change de session Claude Code en cours de chantier                                                                           |
 
 ### Skills custom à créer (1 seule fois, avant de pouvoir tourner AFK)
 
-| Skill | Path à créer | Effort | Rôle |
-|---|---|---|---|
-| `/work-next-agent-issue` | `C:\Users\alexp\.claude\skills\work-next-agent-issue\SKILL.md` | M | Pick next AFK issue + TDD + PR |
-| `/work-all-agent-issues` | `C:\Users\alexp\.claude\skills\work-all-agent-issues\SKILL.md` | S | Loop sur le précédent via `ScheduleWakeup` |
+| Skill                    | Path à créer                                                   | Effort | Rôle                                       |
+| ------------------------ | -------------------------------------------------------------- | ------ | ------------------------------------------ |
+| `/work-next-agent-issue` | `C:\Users\alexp\.claude\skills\work-next-agent-issue\SKILL.md` | M      | Pick next AFK issue + TDD + PR             |
+| `/work-all-agent-issues` | `C:\Users\alexp\.claude\skills\work-all-agent-issues\SKILL.md` | S      | Loop sur le précédent via `ScheduleWakeup` |
 
 Pour les créer, utiliser le skill `/write-a-skill` déjà installé.
 
@@ -98,12 +100,15 @@ Pour les créer, utiliser le skill `/write-a-skill` déjà installé.
 ## 3. Phase 1 — Session active (toi)
 
 ### Objectif
+
 Produire 3-5 PRDs `/to-prd` (= 3-5 issues epic) qui seront éclatés en 15-40 tracer bullets AFK pour la nuit.
 
 ### Cadence cible
+
 **5-8 PRDs par session de 2h** → 30-35 PRDs en 5-7 sessions = ~2 semaines de prep.
 
 ### Ordre d'attaque (selon plan STACK.md)
+
 1. **Semaine 1** : Phase 0 (POCs) + 1 PRD "Foundation multi-tenant" (Phase 1)
 2. **Semaine 2** : 9 PRDs Phase 2 (backends contexts)
 3. **Semaine 3-5** : ~26 PRDs Phase 3 (apps front)
@@ -129,6 +134,7 @@ Produire 3-5 PRDs `/to-prd` (= 3-5 issues epic) qui seront éclatés en 15-40 tr
 ```
 
 ### Artifacts produits
+
 - **Issues GitHub** : 1 epic (parent) + N tracer bullets (enfants) par chantier
 - **Labels** : `ready-for-agent` sur les tracer bullets AFK
 - **Commits** sur main : aucun (la session active produit du backlog, pas du code)
@@ -138,15 +144,19 @@ Produire 3-5 PRDs `/to-prd` (= 3-5 issues epic) qui seront éclatés en 15-40 tr
 ## 4. Phase 2 — Coding autonome (Claude Code local, nuit)
 
 ### Objectif
+
 Convertir N issues `ready-for-agent` AFK en N PRs `needs-review`, sans intervention humaine.
 
 ### Lancement
+
 Le soir avant de te coucher, dans une session Claude Code locale :
+
 ```
 /work-all-agent-issues
 ```
 
 Ce skill custom :
+
 1. Liste les issues GitHub avec label `ready-for-agent` non-bloquées
 2. Pick la première dans l'ordre des dépendances
 3. Crée la branche `agent/<issue-number>`
@@ -156,56 +166,60 @@ Ce skill custom :
    - Étape 2 : implémente le code minimum pour passer les tests → `commit feat(<id>): implement`
    - Étape 3 : refactor + extraction patterns → `commit refactor(<id>): cleanup`
 6. Lance localement : `pnpm typecheck && pnpm lint && pnpm test`
-7. Si vert :
+7. Si vert en local :
    - `git push origin agent/<issue-number>`
-   - `gh pr create --title "feat: <issue-title>" --body "Closes #<issue-number>" --label needs-review`
-   - Sur l'issue GitHub : retire `ready-for-agent`, ajoute `in-progress`
-8. Si rouge après 2 tentatives de fix :
-   - Commit l'état actuel sur la branche
-   - Sur l'issue : ajoute label `blocked` + commentaire avec la raison + traces
-9. `ScheduleWakeup` 60-300s pour pick la suivante (cache Claude Code reste warm)
+   - `gh pr create --title "feat(<id>): <issue-title>" --body "Closes #<issue-number> ..."`
+   - **Attend la CI** : `gh pr checks <pr> --watch --fail-fast`
+   - **CI verte → auto-merge** : `gh pr merge <pr> --squash --delete-branch` (clôt l'issue, débloque les dépendants), puis `git switch main && git pull --ff-only`
+8. Si CI rouge, ou local encore rouge après 2 fix, ou bloqué sur une décision/spec manquante :
+   - Push la branche WIP (ne pas perdre le travail), **ne merge pas**
+   - Sur l'issue : `blocked` + commentaire avec raison + traces (lu par `/diagnose`)
+9. `ScheduleWakeup` 120-270s pour pick la suivante (cache Claude Code reste warm)
 
 ### Garde-fous appliqués automatiquement
+
 - **TDD ordre commit** : forcé par le skill (test commit avant feat commit)
 - **`withTenant` obligatoire** : ESLint custom rule fait planter le lint
 - **Coverage ≥ 80%** : Vitest config bloque sinon
 - **Multi-tenant fuzz test** : Vitest suite obligatoire pour chaque module touchant `tenant_id`
-- **Schema Convex frozen** : si l'agent modifie `schema.ts`, il flag la PR avec label `needs-schema-review` (= HITL forcé)
+- **Schema Convex** : si l'agent modifie `schema.ts`, il le **mentionne dans le corps de la PR** (pour le spot-check qualité d'Alex à froid). Pas de gate bloquant en V1 pré-launch (pas de data prod). _Réintroduire `needs-schema-review` comme gate humain seulement une fois Buns & Bao live._
 - **Pas de secrets** : pre-commit hook git-secrets (`AKIA*`, `sk_live_*`, etc.)
 
 ### Cible de productivité
+
 **5-10 issues par nuit** (selon complexité) sur ton PC allumé.
 
 ---
 
-## 5. Phase 3 — Review (toi, matin)
+## 5. Phase 3 — Contrôle qualité + e2e (toi, asynchrone, pas un gate)
 
 ### Workflow
 
+Les stories vertes ont **déjà été mergées par l'agent pendant la nuit** (CI verte). Cette phase n'est donc **pas un gate de merge** — c'est un contrôle qualité + e2e à froid, asynchrone, quand Alex veut.
+
 ```
-1. gh pr list --label needs-review
-2. Pour chaque PR :
-   a. gh pr diff #<num>  (ou web UI)
-   b. Vérifier :
-      - L'ordre TDD est respecté dans les commits ?
-      - Les tests couvrent les acceptance criteria de l'issue ?
-      - Les modules deep ont une API publique (index.ts) propre ?
-      - Aucun `ctx.db.query` raw (= `withTenant` utilisé) ?
-      - Aucun secret commité ?
-   c. Si feature UI visible : test E2E manuel rapide sur le preview deployment Convex
-   d. Si OK : gh pr merge --squash --delete-branch
-   e. Si KO :
-      - Commentaire structuré sur la PR
-      - Retire `needs-review`, ajoute `needs-rework`
-      - L'issue retourne en `ready-for-agent` pour la nuit suivante
-3. gh issue list --label blocked
-4. /diagnose sur chaque issue bloquée pour comprendre pourquoi
-5. Soit fix la story, soit la repasse en `needs-triage`
-6. /triage sur tout ce qui est `needs-triage` ou `needs-info`
+1. Voir ce qui a été mergé cette nuit :
+   gh pr list --state merged --search "merged:>=YESTERDAY" --json number,title
+2. Tests end-to-end : lancer l'app sur le preview/dev deployment et valider les
+   parcours critiques (commande, paiement sandbox, KB Orders, etc.).
+3. Spot-check qualité du code mergé (optionnel, échantillon) :
+   - L'ordre TDD est respecté dans les commits ?
+   - withTenant + fuzz cross-tenant présents sur les modules tenant ?
+   - Modules deep avec API publique (index.ts) propre ?
+   - Aucun secret, aucun `ctx.db.query` raw hors helpers ?
+   Si un problème : ouvrir une issue de correction (`/triage`) ou `git revert` le squash-merge fautif.
+4. Traiter les blocages de la nuit :
+   gh issue list --label blocked
+   /diagnose sur chacune → fix + repasse `ready-for-agent`, ou `needs-triage`.
+5. /triage sur tout ce qui est `needs-triage` ou `needs-info`.
 ```
 
+> Pas de label `needs-review` ni `needs-rework` dans le flux nominal : il n'y a plus de PR en attente d'approbation. Ils restent disponibles si Alex veut ponctuellement remettre une story sous revue manuelle.
+
 ### Reset hebdomadaire
+
 Une fois par semaine, **30 min de hygiene** :
+
 - Purge des branches mergées : `git branch -d agent/*`
 - Audit `.out-of-scope/` (rejected enhancements)
 - Update STACK.md si décisions techniques ont évolué
@@ -218,10 +232,12 @@ Une fois par semaine, **30 min de hygiene** :
 À configurer via `/setup-matt-pocock-skills` (voir setup §8).
 
 ### Catégorie (1 par issue)
+
 - `bug`
 - `enhancement`
 
 ### État (1 par issue)
+
 - `needs-triage` — défaut pour issues entrantes
 - `needs-info` — bloqué sur reporter
 - `ready-for-agent` — AFK, prêt à coder
@@ -233,33 +249,33 @@ Une fois par semaine, **30 min de hygiene** :
 - `wontfix` — abandonné, fermé
 
 ### Transitions normales
+
 ```
 [unlabeled] → needs-triage
 needs-triage → ready-for-agent | ready-for-human | needs-info | wontfix
 needs-info → needs-triage (quand reporter répond)
 ready-for-agent → in-progress (agent pick)
-in-progress → needs-review (PR créée) | blocked (échec)
-needs-review → [closed via merge] | needs-rework
-needs-rework → ready-for-agent (retour boucle)
-blocked → needs-triage (après /diagnose)
+in-progress → [closed via auto-merge sur CI verte] | blocked (CI rouge / échec / décision manquante)
+blocked → ready-for-agent (après fix /diagnose) | needs-triage
+# needs-review / needs-rework : hors flux nominal (auto-merge). Conservés pour mise sous revue manuelle ponctuelle.
 ```
 
 ---
 
 ## 7. Source de vérité — où vit quoi
 
-| Artifact | Où | Format | Mutable |
-|---|---|---|---|
-| Vision produit | `docs/prd/00_master.md` | Markdown | Oui, versionné |
-| PRDs produit par contexte | `docs/prd/N_*.md` (10 fichiers) | Markdown | Oui, versionné |
-| Bounded contexts (glossaires) | `docs/contexts/<context>/CONTEXT.md` | Markdown | Oui, versionné |
-| Décisions architecture | `docs/adr/NNNN-*.md` | Markdown | Immutable (sauf superseded) |
-| Stack technique | `docs/contexts/_architecture/STACK.md` | Markdown | Oui, versionné |
-| Workflow (ce doc) | `docs/contexts/_architecture/WORKFLOW.md` | Markdown | Oui, versionné |
-| **PRDs agent-ready (epics)** | **Issues GitHub** | Issue body | Closed quand done |
-| **Tracer bullets (stories)** | **Issues GitHub** | Issue body | Closed quand done |
-| Code dev | Branches `agent/<issue-number>` | Git | Mergées sur main |
-| Code prod | Branche `main` | Git | Protégée |
+| Artifact                      | Où                                        | Format     | Mutable                     |
+| ----------------------------- | ----------------------------------------- | ---------- | --------------------------- |
+| Vision produit                | `docs/prd/00_master.md`                   | Markdown   | Oui, versionné              |
+| PRDs produit par contexte     | `docs/prd/N_*.md` (10 fichiers)           | Markdown   | Oui, versionné              |
+| Bounded contexts (glossaires) | `docs/contexts/<context>/CONTEXT.md`      | Markdown   | Oui, versionné              |
+| Décisions architecture        | `docs/adr/NNNN-*.md`                      | Markdown   | Immutable (sauf superseded) |
+| Stack technique               | `docs/contexts/_architecture/STACK.md`    | Markdown   | Oui, versionné              |
+| Workflow (ce doc)             | `docs/contexts/_architecture/WORKFLOW.md` | Markdown   | Oui, versionné              |
+| **PRDs agent-ready (epics)**  | **Issues GitHub**                         | Issue body | Closed quand done           |
+| **Tracer bullets (stories)**  | **Issues GitHub**                         | Issue body | Closed quand done           |
+| Code dev                      | Branches `agent/<issue-number>`           | Git        | Mergées sur main            |
+| Code prod                     | Branche `main`                            | Git        | Protégée                    |
 
 **Règle d'or** : tout ce qui est **vision / décision / contexte** vit dans le repo (markdown versionné). Tout ce qui est **work in progress** vit dans GitHub Issues.
 
@@ -267,20 +283,20 @@ blocked → needs-triage (après /diagnose)
 
 ## 8. Setup prérequis (1 journée, à faire une fois)
 
-| # | Étape | Effort | Comment |
-|---|---|---|---|
-| 1 | Push `kitchen-boost-repo` sur GitHub (privé) | S | `git remote add origin git@github.com:nativesquare/kitchen-boost.git && git push -u origin main` |
-| 2 | Configurer labels GitHub | S | Via `gh label create` ou UI : tous les labels du §6 |
-| 3 | `/setup-matt-pocock-skills` | S | Configure le mapping labels canoniques ↔ labels réels |
-| 4 | Branch protection sur `main` | S | UI GitHub : PR review obligatoire, status checks `typecheck/lint/test` |
-| 5 | GitHub Actions CI gratuit | M | `.github/workflows/check.yml` : `pnpm typecheck && pnpm lint && pnpm test` sur PR (ne tape PAS l'API Anthropic) |
-| 6 | ESLint custom rule `no-untenanted-query` | M | Dans `packages/eslint-config-kitchenboost/` |
-| 7 | Husky + lint-staged | S | Pre-commit hooks locaux (typecheck + lint files staged) |
-| 8 | Convex test harness | S | `pnpm add -D convex-test` dans `packages/backend` |
-| 9 | Skill `/work-next-agent-issue` | M | Via `/write-a-skill` |
-| 10 | Skill `/work-all-agent-issues` | S | Wrapper loop du précédent |
-| 11 | Template issue GitHub | S | `.github/ISSUE_TEMPLATE/` |
-| 12 | Template PR GitHub | S | `.github/pull_request_template.md` avec checklist agent |
+| #   | Étape                                        | Effort | Comment                                                                                                         |
+| --- | -------------------------------------------- | ------ | --------------------------------------------------------------------------------------------------------------- |
+| 1   | Push `kitchen-boost-repo` sur GitHub (privé) | S      | `git remote add origin git@github.com:nativesquare/kitchen-boost.git && git push -u origin main`                |
+| 2   | Configurer labels GitHub                     | S      | Via `gh label create` ou UI : tous les labels du §6                                                             |
+| 3   | `/setup-matt-pocock-skills`                  | S      | Configure le mapping labels canoniques ↔ labels réels                                                           |
+| 4   | Branch protection sur `main`                 | S      | UI GitHub : PR review obligatoire, status checks `typecheck/lint/test`                                          |
+| 5   | GitHub Actions CI gratuit                    | M      | `.github/workflows/check.yml` : `pnpm typecheck && pnpm lint && pnpm test` sur PR (ne tape PAS l'API Anthropic) |
+| 6   | ESLint custom rule `no-untenanted-query`     | M      | Dans `packages/eslint-config-kitchenboost/`                                                                     |
+| 7   | Husky + lint-staged                          | S      | Pre-commit hooks locaux (typecheck + lint files staged)                                                         |
+| 8   | Convex test harness                          | S      | `pnpm add -D convex-test` dans `packages/backend`                                                               |
+| 9   | Skill `/work-next-agent-issue`               | M      | Via `/write-a-skill`                                                                                            |
+| 10  | Skill `/work-all-agent-issues`               | S      | Wrapper loop du précédent                                                                                       |
+| 11  | Template issue GitHub                        | S      | `.github/ISSUE_TEMPLATE/`                                                                                       |
+| 12  | Template PR GitHub                           | S      | `.github/pull_request_template.md` avec checklist agent                                                         |
 
 **Note importante** : GitHub Actions CI **ne coûte rien** (tier gratuit 2000 min/mois) **et n'utilise pas l'API Anthropic** — c'est juste du Node/pnpm/Convex CLI. La règle "pas de coût Anthropic" est respectée.
 
@@ -288,30 +304,30 @@ blocked → needs-triage (après /diagnose)
 
 ## 9. Coûts du workflow
 
-| Composant | Coût |
-|---|---|
+| Composant                                 | Coût                                           |
+| ----------------------------------------- | ---------------------------------------------- |
 | Claude Code (sessions actives + nuit AFK) | **Abonnement Pro/Max existant** — 0 € marginal |
-| GitHub privé | Gratuit (compte perso) |
-| GitHub Actions CI | Gratuit (2000 min/mois) |
-| Convex preview deployments | Gratuit (dev tier) |
-| Anthropic API direct | **0 €** (jamais utilisée) |
-| Cloud cost agent runner | **0 €** (PC perso, allumé la nuit) |
-| **Total marginal V1** | **0 €** au-delà de l'existant |
+| GitHub privé                              | Gratuit (compte perso)                         |
+| GitHub Actions CI                         | Gratuit (2000 min/mois)                        |
+| Convex preview deployments                | Gratuit (dev tier)                             |
+| Anthropic API direct                      | **0 €** (jamais utilisée)                      |
+| Cloud cost agent runner                   | **0 €** (PC perso, allumé la nuit)             |
+| **Total marginal V1**                     | **0 €** au-delà de l'existant                  |
 
 ---
 
 ## 10. Estimation V1 récapitulative
 
-| Phase | Durée Alex | Durée agent nuit | Output |
-|---|---|---|---|
-| Setup workflow (ce doc + skills custom) | 1 jour | — | infrastructure ready |
-| Phase 0 — POCs (5 spikes) | 2-3 jours | — | 5 commits verdict |
-| Phase 1 — Foundation backend (1 PRD groupé) | 2h session + 2h review | 2-3 nuits | foundation backend mergée |
-| Phase 2 — Backend contexts (9 PRDs) | 4-6 sessions (8-12h) + reviews | 2 semaines de nuits | 9 contexts backend mergés |
-| Phase 3 — Apps front (~26 PRDs) | 10-15 sessions (20-30h) + reviews | 3-4 semaines de nuits | 3 apps frontend mergées |
-| Phase 4 — Polish + soft-launch | 1 semaine active | — | Buns & Bao live |
-| **Total Alex** | **~50-60h actives sur 9 semaines** | — | V1 production |
-| **Total wall-clock** | **9 semaines** (mi-juin → fin août 2026) | | cible PRD master `2026-09-30` tenue |
+| Phase                                       | Durée Alex                               | Durée agent nuit      | Output                              |
+| ------------------------------------------- | ---------------------------------------- | --------------------- | ----------------------------------- |
+| Setup workflow (ce doc + skills custom)     | 1 jour                                   | —                     | infrastructure ready                |
+| Phase 0 — POCs (5 spikes)                   | 2-3 jours                                | —                     | 5 commits verdict                   |
+| Phase 1 — Foundation backend (1 PRD groupé) | 2h session + 2h review                   | 2-3 nuits             | foundation backend mergée           |
+| Phase 2 — Backend contexts (9 PRDs)         | 4-6 sessions (8-12h) + reviews           | 2 semaines de nuits   | 9 contexts backend mergés           |
+| Phase 3 — Apps front (~26 PRDs)             | 10-15 sessions (20-30h) + reviews        | 3-4 semaines de nuits | 3 apps frontend mergées             |
+| Phase 4 — Polish + soft-launch              | 1 semaine active                         | —                     | Buns & Bao live                     |
+| **Total Alex**                              | **~50-60h actives sur 9 semaines**       | —                     | V1 production                       |
+| **Total wall-clock**                        | **9 semaines** (mi-juin → fin août 2026) |                       | cible PRD master `2026-09-30` tenue |
 
 ---
 
@@ -320,6 +336,7 @@ blocked → needs-triage (après /diagnose)
 **Ce document est versionné. Si une étape s'avère sous-dimensionnée ou mal séquencée à l'usage, on amende ici et on commit.**
 
 Premier test du workflow = **chantier 1 (Foundation multi-tenant backend)**. À l'issue de ce premier cycle complet (PRD → tracer bullets → coding nuit → review matin → merge), on rétrospect :
+
 - Cadence PRDs/h tenue ?
 - Cadence issues codées/nuit tenue ?
 - Garde-fous quality suffisants ?
@@ -339,6 +356,6 @@ Update ce doc après la rétrospective.
 
 ## 13. Changelog
 
-| Date | Version | Notes |
-|---|---|---|
-| 2026-05-25 | 1.0 | Création, à tester sur chantier 1 |
+| Date       | Version | Notes                             |
+| ---------- | ------- | --------------------------------- |
+| 2026-05-25 | 1.0     | Création, à tester sur chantier 1 |

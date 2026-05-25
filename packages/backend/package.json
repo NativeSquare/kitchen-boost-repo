@@ -6,6 +6,8 @@
     "dev": "convex dev",
     "setup": "convex dev --until-success",
     "typecheck": "tsc --noEmit -p convex",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "migrate": "convex run migrations:runAll",
     "migrate:dryrun": "convex run migrations:runAll \"{dryRun: true}\"",
     "migrate:status": "convex run --component migrations lib:getStatus",
@@ -19,8 +21,8 @@
     "@convex-dev/auth": "^0.0.90",
     "@convex-dev/migrations": "^0.3.1",
     "@convex-dev/resend": "^0.2.3",
-    "@packages/transactional": "workspace:*",
     "@packages/shared": "workspace:*",
+    "@packages/transactional": "workspace:*",
     "convex": "^1.29.3",
     "oslo": "^1.2.1",
     "resend": "3.2.0"
@@ -29,8 +31,11 @@
     "react": "^18.0.0 || ^19.0.0"
   },
   "devDependencies": {
+    "@edge-runtime/vm": "^5.0.0",
     "@types/react": "~19.1.0",
+    "convex-test": "^0.0.53",
     "dotenv-cli": "^11.0.0",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "vitest": "^4.1.7"
   }
 }

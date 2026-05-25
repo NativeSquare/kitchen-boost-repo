@@ -1,0 +1,44 @@
+name: check
+
+# CI gate: typecheck + lint + test on every PR and on main.
+# Pure Node/pnpm/Convex CLI — does NOT call the Anthropic API (Claude Code runs locally only).
+# Offline-safe: convex/_generated is committed and convex-test runs in-memory (no Convex deploy, no secrets).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      HUSKY: 0 # skip git hook install in CI
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test
+        run: pnpm test

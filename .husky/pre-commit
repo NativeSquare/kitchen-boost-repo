@@ -1,0 +1,15 @@
+# Block obvious secrets from entering git history.
+# Per-tenant secrets must live in Convex env vars / envelope encryption (STACK.md §2.5), never in source.
+staged=$(git diff --cached --name-only --diff-filter=ACM -z)
+if [ -n "$staged" ]; then
+  hits=$(printf '%s' "$staged" | xargs -0 -r grep -lE 'sk_live_[0-9A-Za-z]{8,}|whsec_[0-9A-Za-z]{8,}|AKIA[0-9A-Z]{16}|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----' 2>/dev/null || true)
+  if [ -n "$hits" ]; then
+    echo "✖ Potential secret detected in staged files:"
+    echo "$hits"
+    echo "  Use Convex env vars / envelope encryption instead. Commit aborted."
+    exit 1
+  fi
+fi
+
+# Format staged files (prettier via lint-staged).
+pnpm lint-staged

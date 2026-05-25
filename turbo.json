@@ -13,6 +13,7 @@
     },
     "lint": {},
     "typecheck": {},
+    "test": {},
     "clean": {
       "cache": false
     }

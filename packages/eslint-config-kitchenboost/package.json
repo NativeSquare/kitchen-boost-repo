@@ -1,0 +1,22 @@
+{
+  "name": "@packages/eslint-config-kitchenboost",
+  "version": "0.0.0",
+  "private": true,
+  "description": "KitchenBoost custom ESLint rules (no-untenanted-query). SCAFFOLDED — activation on packages/backend is part of story 1.x-A. See ADR 0010.",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "eslint": ">=9"
+  },
+  "devDependencies": {
+    "@typescript-eslint/parser": "^8.59.4",
+    "eslint": "^10.4.0",
+    "vitest": "^4.1.7"
+  }
+}

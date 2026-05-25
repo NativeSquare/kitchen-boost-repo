@@ -1,0 +1,2 @@
+# Local merge gate — same triple as CI. Mirrors the agent's pre-PR check (WORKFLOW.md §4).
+pnpm typecheck && pnpm lint && pnpm test
