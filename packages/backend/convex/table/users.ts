@@ -1,8 +1,7 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { defineTable } from "convex/server";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { mutation, query } from "../_generated/server";
-import { generateFunctions } from "../utils/generateFunctions";
 
 const documentSchema = {
   // DO NOT REMOVE THESE FIELDS : https://labs.convex.dev/auth/setup/schema#customizing-the-users-table
@@ -18,7 +17,7 @@ const documentSchema = {
   bio: v.optional(v.string()),
   birthDate: v.optional(v.string()),
   hasCompletedOnboarding: v.optional(v.boolean()),
-  role: v.optional(v.union(v.literal("user"), v.literal("admin"))),
+  role: v.optional(v.union(v.literal("kb_admin"), v.literal("customer"))),
 
   // Ban fields
   banned: v.optional(v.boolean()),
@@ -40,7 +39,7 @@ const partialSchema = {
   bio: v.optional(v.string()),
   birthDate: v.optional(v.string()),
   hasCompletedOnboarding: v.optional(v.boolean()),
-  role: v.optional(v.union(v.literal("user"), v.literal("admin"))),
+  role: v.optional(v.union(v.literal("kb_admin"), v.literal("customer"))),
 
   // Ban fields
   banned: v.optional(v.boolean()),
@@ -50,13 +49,45 @@ const partialSchema = {
 
 export const users = defineTable(documentSchema).index("email", ["email"]);
 
-export const {
-  get,
-  insert,
-  patch,
-  replace,
-  delete: del,
-} = generateFunctions("users", documentSchema, partialSchema);
+// Footgun fix (1.x-A): the template generated generic UNGUARDED CRUD for `users`
+// (insert/patch/replace/delete/get via generateFunctions) — a client could call
+// `patch` to set its own `role: "kb_admin"`. Those are removed. The only public
+// write path is the guarded self-update `patch` below. (If a migration/seed ever
+// needs raw access, add it explicitly via internalMutation.)
+
+// Fields a user may update on THEIR OWN profile. Whitelist — never role / ban / email.
+const profileUpdate = v.object({
+  name: v.optional(v.string()),
+  image: v.optional(v.string()),
+  bio: v.optional(v.string()),
+  birthDate: v.optional(v.string()),
+  hasCompletedOnboarding: v.optional(v.boolean()),
+});
+
+/**
+ * Guarded self-only profile update — replaces the unguarded generated `patch`.
+ * A caller may only patch their OWN row, and only whitelisted profile fields.
+ *
+ * Interim: uses `getAuthUserId` directly, consistent with the rest of the
+ * template (currentUser / deleteAccount / requireAdmin). 1.x-B routes all of
+ * these through the single `getCurrentActor` integration point (ADR 0011).
+ */
+export const patch = mutation({
+  args: { id: v.id("users"), data: profileUpdate },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new ConvexError({ message: "Not authenticated" });
+    }
+    if (args.id !== userId) {
+      throw new ConvexError({
+        message: "Forbidden: you can only update your own profile",
+      });
+    }
+    await ctx.db.patch(userId, args.data);
+    return null;
+  },
+});
 
 export const currentUser = query({
   args: {},

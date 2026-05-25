@@ -2,7 +2,13 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { internal } from "../_generated/api";
-import { internalMutation, mutation, MutationCtx, query, QueryCtx } from "../_generated/server";
+import {
+  internalMutation,
+  mutation,
+  MutationCtx,
+  query,
+  QueryCtx,
+} from "../_generated/server";
 import { adminInviteValidator } from "./adminInvites";
 
 /**
@@ -20,7 +26,7 @@ export async function requireAdmin(ctx: QueryCtx | MutationCtx) {
     throw new ConvexError({ message: "User not found" });
   }
 
-  if (user.role !== "admin") {
+  if (user.role !== "kb_admin") {
     throw new ConvexError({ message: "Access denied. Admin role required." });
   }
 
@@ -31,7 +37,8 @@ export async function requireAdmin(ctx: QueryCtx | MutationCtx) {
  * Generate a secure random token for admin invites.
  */
 function generateToken(): string {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  const chars =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   let token = "";
   for (let i = 0; i < 32; i++) {
     token += chars.charAt(Math.floor(Math.random() * chars.length));
@@ -59,12 +66,12 @@ export const currentAdmin = query({
       bio: v.optional(v.string()),
       birthDate: v.optional(v.string()),
       hasCompletedOnboarding: v.optional(v.boolean()),
-      role: v.optional(v.union(v.literal("user"), v.literal("admin"))),
+      role: v.optional(v.union(v.literal("kb_admin"), v.literal("customer"))),
       banned: v.optional(v.boolean()),
       banReason: v.optional(v.string()),
       banExpires: v.optional(v.number()),
     }),
-    v.null()
+    v.null(),
   ),
   handler: async (ctx) => {
     const userId = await getAuthUserId(ctx);
@@ -73,7 +80,7 @@ export const currentAdmin = query({
     const user = await ctx.db.get(userId);
     if (!user) return null;
 
-    if (user.role !== "admin") return null;
+    if (user.role !== "kb_admin") return null;
 
     return user;
   },
@@ -101,7 +108,7 @@ export const listUsers = query({
   //       bio: v.optional(v.string()),
   //       birthDate: v.optional(v.string()),
   //       hasCompletedOnboarding: v.optional(v.boolean()),
-  //       role: v.optional(v.union(v.literal("user"), v.literal("admin"))),
+  //       role: v.optional(v.union(v.literal("kb_admin"), v.literal("customer"))),
   //     })
   //   ),
   //   isDone: v.boolean(),
@@ -143,8 +150,9 @@ export const getUserStats = query({
     const stats = {
       totalUsers: allUsers.length,
       verifiedUsers: allUsers.filter((u) => u.emailVerificationTime).length,
-      adminUsers: allUsers.filter((u) => u.role === "admin").length,
-      recentUsers: allUsers.filter((u) => u._creationTime > sevenDaysAgo).length,
+      adminUsers: allUsers.filter((u) => u.role === "kb_admin").length,
+      recentUsers: allUsers.filter((u) => u._creationTime > sevenDaysAgo)
+        .length,
     };
 
     return stats;
@@ -174,7 +182,9 @@ export const inviteAdmin = mutation({
       .first();
 
     if (existingUser) {
-      throw new ConvexError({ message: "A user with this email already exists" });
+      throw new ConvexError({
+        message: "A user with this email already exists",
+      });
     }
 
     // Check if there's already a pending invite for this email
@@ -183,8 +193,14 @@ export const inviteAdmin = mutation({
       .withIndex("by_email", (q) => q.eq("email", args.email))
       .first();
 
-    if (existingInvite && !existingInvite.acceptedAt && existingInvite.expiresAt > Date.now()) {
-      throw new ConvexError({ message: "An invite has already been sent to this email" });
+    if (
+      existingInvite &&
+      !existingInvite.acceptedAt &&
+      existingInvite.expiresAt > Date.now()
+    ) {
+      throw new ConvexError({
+        message: "An invite has already been sent to this email",
+      });
     }
 
     // Delete expired invite if it exists
@@ -227,7 +243,7 @@ export const getInvite = query({
       invite: adminInviteValidator,
       inviterName: v.optional(v.string()),
     }),
-    v.null()
+    v.null(),
   ),
   handler: async (ctx, args) => {
     const invite = await ctx.db
@@ -272,7 +288,7 @@ export const listInvites = query({
       name: v.string(),
       expiresAt: v.number(),
       inviterName: v.optional(v.string()),
-    })
+    }),
   ),
   handler: async (ctx) => {
     await requireAdmin(ctx);
@@ -282,7 +298,7 @@ export const listInvites = query({
 
     // Filter to only pending (not accepted, not expired)
     const pendingInvites = invites.filter(
-      (invite) => !invite.acceptedAt && invite.expiresAt > now
+      (invite) => !invite.acceptedAt && invite.expiresAt > now,
     );
 
     // Enrich with inviter names
@@ -297,7 +313,7 @@ export const listInvites = query({
           expiresAt: invite.expiresAt,
           inviterName: inviter?.name,
         };
-      })
+      }),
     );
 
     return result;
@@ -321,7 +337,9 @@ export const cancelInvite = mutation({
     }
 
     if (invite.acceptedAt) {
-      throw new ConvexError({ message: "Cannot cancel an already accepted invite" });
+      throw new ConvexError({
+        message: "Cannot cancel an already accepted invite",
+      });
     }
 
     await ctx.db.delete(args.inviteId);
@@ -342,7 +360,9 @@ export const acceptInvite = mutation({
     // Get the currently authenticated user
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError({ message: "Not authenticated. Please sign up first." });
+      throw new ConvexError({
+        message: "Not authenticated. Please sign up first.",
+      });
     }
 
     const user = await ctx.db.get(userId);
@@ -371,13 +391,14 @@ export const acceptInvite = mutation({
     // Verify the email matches
     if (user.email !== invite.email) {
       throw new ConvexError({
-        message: "Email mismatch. Please sign up with the email address the invite was sent to.",
+        message:
+          "Email mismatch. Please sign up with the email address the invite was sent to.",
       });
     }
 
-    // Set the user's role to admin
+    // Set the user's role to kb_admin
     await ctx.db.patch(userId, {
-      role: "admin",
+      role: "kb_admin",
       name: invite.name,
     });
 
@@ -407,7 +428,7 @@ const userValidator = v.object({
   bio: v.optional(v.string()),
   birthDate: v.optional(v.string()),
   hasCompletedOnboarding: v.optional(v.boolean()),
-  role: v.optional(v.union(v.literal("user"), v.literal("admin"))),
+  role: v.optional(v.union(v.literal("kb_admin"), v.literal("customer"))),
   banned: v.optional(v.boolean()),
   banReason: v.optional(v.string()),
   banExpires: v.optional(v.number()),
@@ -436,7 +457,7 @@ export const updateUser = mutation({
     updates: v.object({
       name: v.optional(v.string()),
       bio: v.optional(v.string()),
-      role: v.optional(v.union(v.literal("user"), v.literal("admin"))),
+      role: v.optional(v.union(v.literal("kb_admin"), v.literal("customer"))),
     }),
   },
   returns: v.null(),
@@ -449,7 +470,7 @@ export const updateUser = mutation({
     }
 
     // Prevent admin from demoting themselves
-    if (args.userId === adminId && args.updates.role === "user") {
+    if (args.userId === adminId && args.updates.role === "customer") {
       throw new ConvexError({ message: "You cannot demote yourself" });
     }
 
@@ -471,7 +492,9 @@ export const deleteUser = mutation({
 
     // Prevent admin from deleting themselves
     if (args.userId === adminId) {
-      throw new ConvexError({ message: "You cannot delete your own account from the admin panel" });
+      throw new ConvexError({
+        message: "You cannot delete your own account from the admin panel",
+      });
     }
 
     const user = await ctx.db.get(args.userId);
@@ -514,7 +537,7 @@ export const listAdmins = query({
     await requireAdmin(ctx);
 
     const allUsers = await ctx.db.query("users").collect();
-    return allUsers.filter((user) => user.role === "admin");
+    return allUsers.filter((user) => user.role === "kb_admin");
   },
 });
 
@@ -547,7 +570,7 @@ export const banUser = mutation({
     }
 
     // Prevent banning other admins
-    if (user.role === "admin") {
+    if (user.role === "kb_admin") {
       throw new ConvexError({ message: "You cannot ban another admin" });
     }
 
@@ -568,7 +591,7 @@ export const banUser = mutation({
     await ctx.scheduler.runAfter(
       3000,
       internal.table.admin.revokeUserSessions,
-      { userId: args.userId }
+      { userId: args.userId },
     );
 
     return null;

@@ -6,15 +6,20 @@ import { Progress } from "@/components/ui/progress";
 import { Text } from "@/components/ui/text";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { api } from "@packages/backend/convex/_generated/api";
-import { Doc } from "@packages/backend/convex/_generated/dataModel";
 import { useMutation, useQuery } from "convex/react";
 import { ChevronLeft } from "lucide-react-native";
 import React from "react";
 import { ScrollView, View } from "react-native";
 
-export type OnboardingFormData = Partial<
-  Omit<Doc<"users">, "_id" | "_creationTime">
->;
+// Whitelisted profile fields a user may self-update (matches the guarded
+// api.table.users.patch mutation). Never role / ban / email.
+export type OnboardingFormData = {
+  name?: string;
+  image?: string;
+  bio?: string;
+  birthDate?: string;
+  hasCompletedOnboarding?: boolean;
+};
 
 export default function Onboarding() {
   const { signOut } = useAuthActions();
