@@ -1,0 +1,13 @@
+ordre,name,address,city,lat,lng,rating,reviews,score,promo,uber_eats_url
+1,"Pizza Siciliana","164 Avenue de Verdun","Issy-les-Moulineaux",48.8183243,2.2516576,4.6,"800+",3,"","https://www.ubereats.com/fr-en/store/pizza-siciliana/7vl3k86lSP2m_aWypcCNZQ"
+2,"Tajmahal Express","15 Rue de Paris","Meudon",48.8162734,2.2473883,4.6,"1,500+",2,"","https://www.ubereats.com/fr-en/store/tajmahal-express/2VsW6XleRmed4OoaT8PZrA"
+3,"Patza Pizza","Rue Yves Kermen","Boulogne-Billancourt",48.8270233,2.2427607,4.4,"700+",4,"","https://www.ubereats.com/fr-en/store/patza-pizza/d10_fIOtRqaPxtg3Y5mphg"
+4,"Le Taj Mahal","Rue des Quatre Cheminées","Boulogne-Billancourt",48.832714,2.2429751,4.6,"900+",3,"Top Offer • 20% off (Spend €30)","https://www.ubereats.com/fr-en/store/le-taj-mahal-vanves/P_9L72wVTTK_HIcdE9M7Zw"
+5,"Mr Beef","85 bis Boulevard de la République","Boulogne-Billancourt",48.8332242,2.2449309,4.5,"2,000+",4,"Buy 1, Get 1 Free","https://www.ubereats.com/fr-en/store/mr-beef-boulogne/_m3GT0YXQIeTqJxu4T3OIA"
+6,"Mr. Beef","85 bis Boulevard de la République","Boulogne-Billancourt",48.8332242,2.2449309,4.6,"6,000+",0,"Buy 1, Get 1 Free","https://www.ubereats.com/fr-en/store/mr-beef-paris/tqjC-djLQganvE3iZeJYUg"
+7,"Eat Chicken®🐔","Avenue Édouard Vaillant","Boulogne-Billancourt",48.8342869,2.2450294,4.3,"3,000+",3,"","https://www.ubereats.com/fr-en/store/eat-chicken-ivry/sTqLG2ruX7OS6u_JW2VfVQ"
+8,"Le Royal d'Asie","Boulevard Jean Jaurès","Boulogne-Billancourt",48.8401424,2.2395073,4.5,"900+",5,"Buy 1, Get 1 Free","https://www.ubereats.com/fr-en/store/le-royal-dasie/VY2XfT4jUBO7N6RhqNkwhw"
+9,"Thaï in box","Boulevard Jean Jaurès","Boulogne-Billancourt",48.8407271,2.2396364,4.6,"450+",3,"","https://www.ubereats.com/fr-en/store/thai-in-box-boulogne-point-du-jour/AG4EkYBASamSUIGp9Iqcdg"
+10,"A Tavola","23 Rue d'Aguesseau","Boulogne-Billancourt",48.8441035,2.2365093,4.6,"370+",3,"","https://www.ubereats.com/fr-en/store/a-tavola-la-pizza/j1d-AylLWgCOIjVggeUL8A"
+11,"Buffet De Sevres","Grande Rue","Sèvres",48.824702,2.2132772,4,"180+",6,"","https://www.ubereats.com/fr-en/store/buffet-de-sevres-pizzas-tacos-%26-sandwiches/Kt31CnzQXCCRkSiPsGO9Gg"
+12,"Le TajMahal","3 Rue de la Garenne","Sèvres",48.8214845,2.2059553,4.6,"1,500+",2,"","https://www.ubereats.com/fr-en/store/le-tajmahal-sevres-chaville-ville-davray-meudon/cnuQ5494T0mR88m1_A1B2Q"

@@ -1,0 +1,257 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Zone 11 — Paris 2e / Paris 10e</name>
+    <description>14 prospects · centroïde 6.7 km Vanves · villes : Paris 2e, Paris 10e, Paris 11e, Paris 4e, Paris 5e · ⭐ = service continu (heure creuse ok)</description>
+    <Style id="continuous">
+      <IconStyle>
+        <scale>1.2</scale>
+        <Icon><href>http://maps.google.com/mapfiles/kml/shapes/star.png</href></Icon>
+      </IconStyle>
+      <LabelStyle><scale>1.0</scale></LabelStyle>
+    </Style>
+    <Style id="home">
+      <IconStyle>
+        <scale>1.3</scale>
+        <Icon><href>http://maps.google.com/mapfiles/kml/shapes/ranger_station.png</href></Icon>
+      </IconStyle>
+    </Style>
+    <Placemark>
+      <name>🏠 Point de départ — Vanves</name>
+      <styleUrl>#home</styleUrl>
+      <Point><coordinates>2.2913,48.8235,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>1. Pitaya</name>
+      <styleUrl>#continuous</styleUrl>
+      <description>🍜 Thaï · 4★ · 900+ avis · Score 7/10 KB
+
+📍 5 Rue de la Harpe, Paris 5e
+
+🕒 HORAIRES ⭐ SERVICE CONTINU (ok en heure creuse) :
+Lun-Ven 11:30-22:00
+Sam-Dim 11:30-23:00
+
+💰 SIGNAUX UE :
+• Buy 1 Get 1 Free (brade pour volume)
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Pitaya%205%20Rue%20de%20la%20Harpe%20Paris%205e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/pitaya-arcueil/Q8qOZtOrXOGj-xQpz9gZSQ</description>
+      <Point><coordinates>2.344681,48.8528926,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>2. Pizza &amp;amp; Pasta</name>
+      <styleUrl>#continuous</styleUrl>
+      <description>🍕 Pizza · 3.6★ · 140+ avis · Score 2/10 KB
+
+📍 Rue de la Reynie, Paris 4e
+
+🕒 HORAIRES ⭐ SERVICE CONTINU (ok en heure creuse) :
+Lun-Dim 00:00-23:59
+
+💰 SIGNAUX UE :
+• Promo : 3 Offers Available
+• 49 min livraison (saturé/loin)
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Pizza%20%26amp%3B%20Pasta%20Rue%20de%20la%20Reynie%20Paris%204e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/pizza-%26-pasta/xjj6rMmrR0e8D68CrCBO5Q</description>
+      <Point><coordinates>2.3496553,48.860084,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>3. Bollynan</name>
+      <styleUrl>#continuous</styleUrl>
+      <description>🍛 Indien · 4.3★ · 1,500+ avis · Score 7/10 KB
+
+📍 12 Rue des Petits Carreaux, Paris 2e
+
+🕒 HORAIRES ⭐ SERVICE CONTINU (ok en heure creuse) :
+Lun-Dim 11:00-23:00
+
+💰 SIGNAUX UE :
+• Buy 1 Get 1 Free (brade pour volume)
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Bollynan%2012%20Rue%20des%20Petits%20Carreaux%20Paris%202e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/bollynan-grands-boulevards/lzbtr0SURqia70U4HO26QA</description>
+      <Point><coordinates>2.3473592,48.8667457,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>4. Echo</name>
+      <styleUrl>#continuous</styleUrl>
+      <description>🍔 Burger · 4.6★ · 2,000+ avis · Score 2/10 KB
+
+📍 95 Rue d&apos;Aboukir, Paris 2e
+
+🕒 HORAIRES ⭐ SERVICE CONTINU (ok en heure creuse) :
+Lun-Ven 09:00-15:00
+Sam-Dim 10:00-16:00
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Echo%2095%20Rue%20d&apos;Aboukir%20Paris%202e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/echo-smash-burgers-%26-brunch/i5pmsTLXQPuQtGbfIQzCWg</description>
+      <Point><coordinates>2.3485268,48.8682798,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>5. Carin&apos;o Pizza</name>
+      <styleUrl>#continuous</styleUrl>
+      <description>🍕 Pizza · 4.5★ · 180+ avis · Score 5/10 KB
+
+📍 Rue Chénier, Paris 2e
+
+🕒 HORAIRES ⭐ SERVICE CONTINU (ok en heure creuse) :
+Lun 11:30-22:30
+Mar-Mer 12:00-22:45
+Jeu 11:45-23:00
+Ven 11:15-23:15
+Sam 12:00-23:15
+Dim 17:45-23:15
+
+💰 SIGNAUX UE :
+• Buy 1 Get 1 Free (brade pour volume)
+• 49 min livraison (saturé/loin)
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Carin&apos;o%20Pizza%20Rue%20Ch%C3%A9nier%20Paris%202e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/carino-pizza/hRRwgECSRq-kNg6iPAAZhg</description>
+      <Point><coordinates>2.3515683,48.8692542,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>6. Sonny&apos;s Pizza</name>
+      <description>🍕 Pizza · 4.5★ · 2,000+ avis · Score 3/10 KB
+
+📍 291 Rue Saint-Denis, Paris 2e
+
+🕒 HORAIRES (pause service) :
+12:00-14:30,19:00-23:00
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Sonny&apos;s%20Pizza%20291%20Rue%20Saint-Denis%20Paris%202e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/sonnys-pizza/I5u-pYWlSrK9nt-rRLhfjw</description>
+      <Point><coordinates>2.3523434,48.8694634,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>7. Jay&apos;s Pizza</name>
+      <description>🍕 Pizza · 4.6★ · 360+ avis · Score 3/10 KB
+
+📍 Rue de Mazagran, Paris 10e
+
+🕒 HORAIRES (pause service) :
+Dim 12:00-14:45,19:00-21:30
+Lun 12:00-14:45,19:00-22:45
+Mar-Sam 12:00-14:45,19:00-22:45
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Jay&apos;s%20Pizza%20Rue%20de%20Mazagran%20Paris%2010e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/jays-pizza/L_8kzJGTXlGUBFBPrtIXyg</description>
+      <Point><coordinates>2.3521087,48.8708799,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>8. Ben&apos;s pizza</name>
+      <description>🍕 Pizza · 4.6★ · 600+ avis · Score 3/10 KB
+
+📍 Rue de Mazagran, Paris 10e
+
+🕒 HORAIRES (pause service) :
+Lun-Jeu 11:30-14:30,18:00-23:00
+Ven-Sam 11:45-23:55
+Dim 18:15-22:55
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Ben&apos;s%20pizza%20Rue%20de%20Mazagran%20Paris%2010e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/bens-pizza/csINhjtvRCWEiU9Mwvnz4g</description>
+      <Point><coordinates>2.3521087,48.8708799,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>9. Indiana Café</name>
+      <styleUrl>#continuous</styleUrl>
+      <description>🍛 Indien · 4.4★ · 600+ avis · Score 4/10 KB
+
+📍 Boulevard de Bonne Nouvelle, Paris 10e
+
+🕒 HORAIRES ⭐ SERVICE CONTINU (ok en heure creuse) :
+Lun-Jeu 11:30-23:00
+Ven-Sam 11:30-23:59
+Dim 11:30-23:00
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Indiana%20Caf%C3%A9%20Boulevard%20de%20Bonne%20Nouvelle%20Paris%2010e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/indiana-cafe-saint-cloud/OMDV5JptTS2lLqNByOAWbw</description>
+      <Point><coordinates>2.3482539,48.8708172,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>10. Bambou II</name>
+      <styleUrl>#continuous</styleUrl>
+      <description>🍜 Thaï · 4.4★ · 1,500+ avis · Score 5/10 KB
+
+📍 23 Rue des Jeûneurs, Paris 2e
+
+🕒 HORAIRES ⭐ SERVICE CONTINU (ok en heure creuse) :
+Lun-Sam 10:30-21:00
+Dim 10:30-21:00
+
+💰 SIGNAUX UE :
+• Buy 1 Get 1 Free (brade pour volume)
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Bambou%20II%2023%20Rue%20des%20Je%C3%BBneurs%20Paris%202e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/bambou-ii/PUGXU-uERsuvRshDHE6DpQ</description>
+      <Point><coordinates>2.3449516,48.8693314,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>11. Tea&apos;ke Your Time</name>
+      <styleUrl>#continuous</styleUrl>
+      <description>🍜 Thaï · 4.5★ · 1,000+ avis · Score 3/10 KB
+
+📍 Rue René Boulanger, Paris 10e
+
+🕒 HORAIRES ⭐ SERVICE CONTINU (ok en heure creuse) :
+Dim-Jeu 12:30-00:30
+Ven-Sam 12:30-01:30
+
+💰 SIGNAUX UE :
+• 48 min livraison (saturé/loin)
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Tea&apos;ke%20Your%20Time%20Rue%20Ren%C3%A9%20Boulanger%20Paris%2010e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/teake-your-time/xjvZ4HFjX1mvLDrBx7FdAg</description>
+      <Point><coordinates>2.3605485,48.8685162,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>12. Siam Square</name>
+      <styleUrl>#continuous</styleUrl>
+      <description>🍜 Thaï · 4.6★ · 2,000+ avis · Score 2/10 KB
+
+📍 Rue du Château d&apos;Eau, Paris 10e
+
+🕒 HORAIRES ⭐ SERVICE CONTINU (ok en heure creuse) :
+Lun-Dim 11:30-23:00
+
+💰 SIGNAUX UE :
+• Promo : 2 Offers Available
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Siam%20Square%20Rue%20du%20Ch%C3%A2teau%20d&apos;Eau%20Paris%2010e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/siam-square-republique/Ll7MNxqqRRyDPcPz_ObVdQ</description>
+      <Point><coordinates>2.3624498,48.8688248,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>13. Canal Thai</name>
+      <description>🍜 Thaï · 4.4★ · 410+ avis · Score 4/10 KB
+
+📍 Quai de Jemmapes, Paris 10e
+
+🕒 HORAIRES (pause service) :
+Lun-Dim 11:30-15:00,18:30-22:00
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Canal%20Thai%20Quai%20de%20Jemmapes%20Paris%2010e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/canal-thai/MC-QmXKBSsOz_p8XRL6OxA</description>
+      <Point><coordinates>2.3675657,48.8690946,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>14. Rapid&apos;Naan</name>
+      <styleUrl>#continuous</styleUrl>
+      <description>🍛 Indien · 4.6★ · 500+ avis · Score 3/10 KB
+
+📍 52 Rue du Faubourg du Temple, Paris 11e
+
+🕒 HORAIRES ⭐ SERVICE CONTINU (ok en heure creuse) :
+Lun-Mer 11:20-01:45
+Jeu 11:30-01:45
+Ven-Sam 11:20-01:45
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Rapid&apos;Naan%2052%20Rue%20du%20Faubourg%20du%20Temple%20Paris%2011e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/rapidnaan/jvMVtLCQR6WKLyh2v0fwgw</description>
+      <Point><coordinates>2.3703025,48.86962,0</coordinates></Point>
+    </Placemark>
+  </Document>
+</kml>

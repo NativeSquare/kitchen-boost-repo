@@ -1,0 +1,263 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Zone 14 — Paris 10e / Paris 9e</name>
+    <description>15 prospects · centroïde 7.5 km Vanves · villes : Paris 10e, Paris 9e · ⭐ = service continu (heure creuse ok)</description>
+    <Style id="continuous">
+      <IconStyle>
+        <scale>1.2</scale>
+        <Icon><href>http://maps.google.com/mapfiles/kml/shapes/star.png</href></Icon>
+      </IconStyle>
+      <LabelStyle><scale>1.0</scale></LabelStyle>
+    </Style>
+    <Style id="home">
+      <IconStyle>
+        <scale>1.3</scale>
+        <Icon><href>http://maps.google.com/mapfiles/kml/shapes/ranger_station.png</href></Icon>
+      </IconStyle>
+    </Style>
+    <Placemark>
+      <name>🏠 Point de départ — Vanves</name>
+      <styleUrl>#home</styleUrl>
+      <Point><coordinates>2.2913,48.8235,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>1. Best Burger</name>
+      <styleUrl>#continuous</styleUrl>
+      <description>🍔 Burger · 4.6★ · 4,000+ avis · Score 0/10 KB
+
+📍 8 Rue Marguerite de Rochechouart, Paris 9e
+
+🕒 HORAIRES ⭐ SERVICE CONTINU (ok en heure creuse) :
+Lun-Jeu 11:00-23:58
+Ven 14:00-23:58
+Sam 11:00-23:58
+Dim 11:00-23:58
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Best%20Burger%208%20Rue%20Marguerite%20de%20Rochechouart%20Paris%209e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/best-burger/RgJXI6rCRt-zTrHnriMVMA</description>
+      <Point><coordinates>2.3446077,48.8768884,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>2. Jaipur Café</name>
+      <description>🍛 Indien · 4.3★ · 190+ avis · Score 6/10 KB
+
+📍 Rue des Messageries, Paris 10e
+
+🕒 HORAIRES (pause service) :
+Lun-Dim 12:00-15:00, 19:30-00:00
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Jaipur%20Caf%C3%A9%20Rue%20des%20Messageries%20Paris%2010e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/jaipur-cafe/35V7OX_hST6O5Tz4IcYzyw</description>
+      <Point><coordinates>2.3495103,48.8763314,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>3. Asian Panier</name>
+      <description>🍜 Thaï · 4.6★ · 120+ avis · Score 3/10 KB
+
+📍 Rue de Paradis, Paris 10e
+
+🕒 Horaires : non renseignés — à vérifier sur place
+
+💰 SIGNAUX UE :
+• Promo : 2 Offers Available
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Asian%20Panier%20Rue%20de%20Paradis%20Paris%2010e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/asian-panier-paris/LGassLimVu-oLLC8DOOgyA</description>
+      <Point><coordinates>2.3492587,48.8755465,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>4. Asian Panier</name>
+      <description>🍔 Burger · 4.6★ · 120+ avis · Score 3/10 KB
+
+📍 Rue de Paradis, Paris 10e
+
+🕒 Horaires : non renseignés — à vérifier sur place
+
+💰 SIGNAUX UE :
+• Promo : 2 Offers Available
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Asian%20Panier%20Rue%20de%20Paradis%20Paris%2010e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/asian-panier-paris/LGassLimVu-oLLC8DOOgyA?storeSearchQuery=burgers</description>
+      <Point><coordinates>2.3492587,48.8755465,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>5. Blossom Burgers</name>
+      <description>🍔 Burger · 4.4★ · 1,000+ avis · Score 3/10 KB
+
+📍 Rue de Chabrol, Paris 10e
+
+🕒 HORAIRES (pause service) :
+Lun-Jeu 12:00-14:30, 19:00-22:00
+Ven-Sam 12:00-22:30
+Dim 12:00-16:00, 17:30-21:30
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Blossom%20Burgers%20Rue%20de%20Chabrol%20Paris%2010e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/blossom-burgers/aohJzWQ7Rfy8JGMzswCiwA</description>
+      <Point><coordinates>2.3532159,48.8769293,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>6. New Delhi Palace</name>
+      <description>🍛 Indien · 4.2★ · 240+ avis · Score 6/10 KB
+
+📍 Rue de Valenciennes, Paris 10e
+
+🕒 HORAIRES (pause service) :
+Lun-Dim 11:15-14:45,18:00-22:40
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=New%20Delhi%20Palace%20Rue%20de%20Valenciennes%20Paris%2010e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/new-delhi-palace/lAbScE7bTsaTfuw1sSxKOA</description>
+      <Point><coordinates>2.3548615,48.8782104,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>7. Karachi Biryani</name>
+      <styleUrl>#continuous</styleUrl>
+      <description>🍛 Indien · 4★ · 110+ avis · Score 7/10 KB
+
+📍 Rue des Deux Gares, Paris 10e
+
+🕒 HORAIRES ⭐ SERVICE CONTINU (ok en heure creuse) :
+Lun-Dim 12:00-22:30
+
+💰 SIGNAUX UE :
+• 52 min livraison (saturé/loin)
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Karachi%20Biryani%20Rue%20des%20Deux%20Gares%20Paris%2010e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/karachi-biryani/m2pb6bZUVf-UvF3vvsptDQ</description>
+      <Point><coordinates>2.3574422,48.8783379,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>8. Chennai Dosa</name>
+      <styleUrl>#continuous</styleUrl>
+      <description>🍛 Indien · 4.2★ · 500+ avis · Score 7/10 KB
+
+📍 Rue du Faubourg Saint-Denis, Paris 10e
+
+🕒 HORAIRES ⭐ SERVICE CONTINU (ok en heure creuse) :
+Lun-Dim 09:00-22:20
+
+💰 SIGNAUX UE :
+• 54 min livraison (saturé/loin)
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Chennai%20Dosa%20Rue%20du%20Faubourg%20Saint-Denis%20Paris%2010e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/chennai-dosa/TqA8s5A_Uy-InbmCHsf-Ig</description>
+      <Point><coordinates>2.3574552,48.8797114,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>9. Madras Bhavan</name>
+      <styleUrl>#continuous</styleUrl>
+      <description>🍛 Indien · 3.9★ · 430+ avis · Score 8/10 KB
+
+📍 Rue du Faubourg Saint-Denis, Paris 10e
+
+🕒 HORAIRES ⭐ SERVICE CONTINU (ok en heure creuse) :
+Lun-Ven 10:30-22:15
+Sam 10:30-22:10
+Dim 10:30-22:10
+
+💰 SIGNAUX UE :
+• Buy 1 Get 1 Free (brade pour volume)
+• 51 min livraison (saturé/loin)
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Madras%20Bhavan%20Rue%20du%20Faubourg%20Saint-Denis%20Paris%2010e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/madras-bhavan/dS-EnlbfSsWwZtvHoy_ZzQ</description>
+      <Point><coordinates>2.3578445,48.8804717,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>10. Boua Thaï</name>
+      <description>🍜 Thaï · 4.4★ · 103 avis · Score 4/10 KB
+
+📍 Rue Saint-Vincent de Paul, Paris 10e
+
+🕒 HORAIRES (pause service) :
+Lun-Sam 12:00-14:00,19:00-22:00
+Dim 12:00-14:00
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Boua%20Tha%C3%AF%20Rue%20Saint-Vincent%20de%20Paul%20Paris%2010e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/boua-thai/uOyyH0KvXqm2bobBwG7IXQ</description>
+      <Point><coordinates>2.352371,48.8811183,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>11. Au Palais du Grand Moghol</name>
+      <description>🍛 Indien · 4.5★ · 130+ avis · Score 4/10 KB
+
+📍 Rue Gérando, Paris 9e
+
+🕒 HORAIRES (pause service) :
+Lun-Dim 12:00-14:31,18:15-23:00
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Au%20Palais%20du%20Grand%20Moghol%20Rue%20G%C3%A9rando%20Paris%209e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/au-palais-du-grand-moghol/r_6u9BaJTdiDBFkbSmcCxg</description>
+      <Point><coordinates>2.3457588,48.8825108,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>12. Burger Addict</name>
+      <styleUrl>#continuous</styleUrl>
+      <description>🍔 Burger · 4.5★ · 450+ avis · Score 4/10 KB
+
+📍 Rue du 8 Mai 1945, Paris 10e
+
+🕒 HORAIRES ⭐ SERVICE CONTINU (ok en heure creuse) :
+Lun-Jeu 11:30-03:00
+Ven 14:00-03:00
+Sam 11:30-03:00
+Dim 11:30-03:00
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Burger%20Addict%20Rue%20du%208%20Mai%201945%20Paris%2010e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/burger-addict-cachan/yxQzW1YoXwCIoJztACxNrg</description>
+      <Point><coordinates>2.3567955,48.8762581,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>13. SAHIL</name>
+      <styleUrl>#continuous</styleUrl>
+      <description>🍛 Indien · 4.5★ · 1,000+ avis · Score 4/10 KB
+
+📍 106 Rue du Faubourg Saint-Denis, Paris 10e
+
+🕒 HORAIRES ⭐ SERVICE CONTINU (ok en heure creuse) :
+Lun-Dim 12:00-23:30
+
+💰 SIGNAUX UE :
+• 51 min livraison (saturé/loin)
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=SAHIL%20106%20Rue%20du%20Faubourg%20Saint-Denis%20Paris%2010e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/sahil/ZHTswN9CRNuq3gSvTCYjCA</description>
+      <Point><coordinates>2.355942,48.8749853,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>14. Sheezan</name>
+      <styleUrl>#continuous</styleUrl>
+      <description>🍛 Indien · 4.3★ · 190+ avis · Score 7/10 KB
+
+📍 Passage du Désir, Paris 10e
+
+🕒 HORAIRES ⭐ SERVICE CONTINU (ok en heure creuse) :
+Lun-Dim 12:00-23:30
+
+💰 SIGNAUX UE :
+• 51 min livraison (saturé/loin)
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Sheezan%20Passage%20du%20D%C3%A9sir%20Paris%2010e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/sheezan/7pSB1n63ROeKZgxVWVNTGg</description>
+      <Point><coordinates>2.3551031,48.8736848,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>15. Asian Touch</name>
+      <description>🍜 Thaï · 4.6★ · 900+ avis · Score 3/10 KB
+
+📍 Rue Saint-Maur, Paris 10e
+
+🕒 HORAIRES (pause service) :
+Mar-Ven 12:00-15:00, 18:30-22:30
+Sam 12:00-15:00, 19:00-23:00
+Dim 10:30-15:00
+
+💰 SIGNAUX UE :
+• 49 min livraison (saturé/loin)
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Asian%20Touch%20Rue%20Saint-Maur%20Paris%2010e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/asian-touch/ocXexl1TS3mpInmA-i7Qgw</description>
+      <Point><coordinates>2.3710038,48.8726847,0</coordinates></Point>
+    </Placemark>
+  </Document>
+</kml>

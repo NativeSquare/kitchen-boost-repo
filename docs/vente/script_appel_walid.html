@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Script appel — Walid (Thaï Street St Michel)</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --green: #1B7A3D;
+    --green-light: #E8F4EC;
+    --gold: #E5A100;
+    --gold-light: #FFFBEB;
+    --red: #C8463A;
+    --red-light: #FEF2F1;
+    --blue: #2D6CDF;
+    --ink: #111;
+    --ink-soft: #333;
+    --muted: #6B7280;
+    --border: #E5E7EB;
+    --bg: #F8F8F4;
+  }
+
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.55;
+    font-size: 16px;
+    padding-bottom: 60px;
+  }
+
+  /* ───── STICKY HEADER ───── */
+  header.top {
+    position: sticky; top: 0; z-index: 10;
+    background: var(--ink); color: white;
+    padding: 14px 28px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+  }
+  .top-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .prospect-name {
+    font-weight: 800; font-size: 18px;
+    color: white;
+  }
+  .prospect-name .resto { color: var(--gold); }
+  .phone {
+    background: var(--green); color: white;
+    padding: 6px 14px; border-radius: 6px;
+    font-size: 18px; font-weight: 700;
+    letter-spacing: 0.5px;
+    text-decoration: none;
+  }
+  .phone:hover { background: #16632F; }
+  .objective {
+    margin-left: auto;
+    font-size: 12px; color: #AAA;
+    text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  .objective strong { color: white; }
+
+  /* ───── NAV ───── */
+  nav.tabs {
+    background: white;
+    border-bottom: 1px solid var(--border);
+    padding: 0 28px;
+    display: flex; gap: 8px;
+    position: sticky; top: 56px; z-index: 9;
+  }
+  nav.tabs a {
+    padding: 12px 14px;
+    font-size: 13px; font-weight: 600;
+    color: var(--muted);
+    text-decoration: none;
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+  }
+  nav.tabs a:hover { color: var(--ink); }
+  nav.tabs a.active { color: var(--green); border-bottom-color: var(--green); }
+
+  /* ───── MAIN ───── */
+  main {
+    max-width: 1100px; margin: 0 auto;
+    padding: 28px;
+  }
+
+  /* ───── SECTION ───── */
+  section.block {
+    background: white;
+    border-radius: 10px;
+    padding: 24px 28px;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  section.block.green   { border-left: 6px solid var(--green); }
+  section.block.gold    { border-left: 6px solid var(--gold); }
+  section.block.red     { border-left: 6px solid var(--red); }
+  section.block.blue    { border-left: 6px solid var(--blue); }
+  section.block.ink     { border-left: 6px solid var(--ink); }
+
+  .section-label {
+    font-size: 11px; font-weight: 800;
+    letter-spacing: 0.15em; text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .green .section-label { color: var(--green); }
+  .gold .section-label { color: var(--gold); }
+  .red .section-label { color: var(--red); }
+  .blue .section-label { color: var(--blue); }
+  .ink .section-label { color: var(--ink); }
+
+  .section-title {
+    font-size: 22px; font-weight: 700; color: var(--ink);
+    margin-bottom: 18px;
+  }
+
+  /* ───── SCRIPT TEXT (large) ───── */
+  .script-block {
+    background: var(--bg);
+    padding: 18px 22px;
+    border-radius: 8px;
+    font-size: 19px;
+    line-height: 1.7;
+    color: var(--ink);
+    border-left: 4px solid var(--green);
+    margin: 12px 0;
+  }
+  .script-block.muted { border-left-color: var(--muted); color: var(--ink-soft); }
+  .script-block .accent { color: var(--green); font-weight: 700; }
+  .script-block .pause {
+    display: inline-block;
+    background: var(--gold); color: white;
+    font-size: 11px; font-weight: 800;
+    padding: 2px 8px; border-radius: 12px;
+    margin: 0 4px;
+    text-transform: uppercase; letter-spacing: 0.05em;
+    vertical-align: 2px;
+  }
+
+  .note {
+    font-size: 13px; color: var(--muted);
+    font-style: italic;
+    margin-top: 8px;
+  }
+  .note strong { color: var(--ink-soft); font-style: normal; }
+
+  /* ───── VARIANTS ───── */
+  .variants { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 800px) { .variants { grid-template-columns: 1fr; } }
+
+  .variant {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px 20px;
+    transition: all 0.15s;
+  }
+  .variant.recommended { border-color: var(--green); background: var(--green-light); }
+  .variant-label {
+    font-size: 10px; font-weight: 800;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .variant.recommended .variant-label { color: var(--green); }
+  .variant-title {
+    font-size: 15px; font-weight: 700; margin-bottom: 10px;
+  }
+  .variant .script-block {
+    font-size: 17px;
+    margin: 8px 0;
+  }
+  .variant-when {
+    font-size: 12px; color: var(--muted);
+    margin-top: 8px;
+  }
+  .variant-when strong { color: var(--ink-soft); }
+
+  /* ───── OBJECTIONS TABLE ───── */
+  table.objections {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0 6px;
+  }
+  table.objections td {
+    padding: 14px 18px;
+    background: white;
+    vertical-align: top;
+    font-size: 15px;
+  }
+  table.objections .if-they-say {
+    width: 35%;
+    background: var(--red-light);
+    color: var(--red);
+    font-weight: 600;
+    border-radius: 6px 0 0 6px;
+    border-left: 4px solid var(--red);
+  }
+  table.objections .you-answer {
+    background: var(--green-light);
+    color: var(--ink);
+    border-radius: 0 6px 6px 0;
+    border-left: 1px solid white;
+  }
+  table.objections .you-answer strong { color: var(--green); }
+
+  /* ───── TIPS ───── */
+  .tips ul { list-style: none; padding: 0; }
+  .tips li {
+    padding: 10px 0 10px 30px;
+    position: relative;
+    font-size: 15px;
+    border-bottom: 1px dashed var(--border);
+  }
+  .tips li:last-child { border-bottom: none; }
+  .tips li::before {
+    content: "💡"; position: absolute; left: 0; top: 10px;
+    font-size: 16px;
+  }
+  .tips li strong { color: var(--green); }
+
+  /* ───── PRINT ───── */
+  @media print {
+    body { background: white; padding-bottom: 0; }
+    header.top { position: static; box-shadow: none; background: var(--ink); color: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    nav.tabs { display: none; }
+    section.block { box-shadow: none; border: 1px solid var(--border); page-break-inside: avoid; }
+    .script-block { background: #FAFAFA !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .variants { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-row">
+    <div class="prospect-name">📞 Walid · <span class="resto">Thaï Street Saint Michel</span></div>
+    <a href="tel:0668335185" class="phone">06 68 33 51 85</a>
+    <div class="objective">Objectif : <strong>RDV 15-20 min cette semaine</strong> · max 90 sec avant la question RDV</div>
+  </div>
+</header>
+
+<nav class="tabs">
+  <a href="#ouvertures" class="active">🎬 Ouvertures</a>
+  <a href="#pitch">🎤 Pitch</a>
+  <a href="#rdv">🎯 RDV</a>
+  <a href="#objections">🛡️ Objections</a>
+  <a href="#closing">✅ Closing</a>
+  <a href="#tips">💡 Tips</a>
+</nav>
+
+<main>
+
+  <!-- ════════════ OUVERTURES ════════════ -->
+  <section class="block green" id="ouvertures">
+    <div class="section-label">🎬 Étape 1 — Ouverture</div>
+    <div class="section-title">Choisis ton ouverture selon le ton que tu sens</div>
+
+    <div class="variants">
+
+      <div class="variant recommended">
+        <div class="variant-label">⭐ Recommandée — neutre & honnête</div>
+        <div class="variant-title">A · Référence resto</div>
+        <div class="script-block">
+          « Allô Walid ? Bonjour, Alexandre. J'ai eu votre numéro via votre resto à Saint-Michel cette semaine — on m'a dit que vous étiez la bonne personne à contacter pour ce que je propose. C'est un bon moment pour 2 minutes ? »
+          <span class="pause">PAUSE</span>
+        </div>
+        <div class="variant-when"><strong>Quand l'utiliser</strong> : default. Honnête sur la source, pose la question d'engagement direct. Walid ne se sent pas piégé.</div>
+      </div>
+
+      <div class="variant">
+        <div class="variant-label">Soft — empathie patron</div>
+        <div class="variant-title">B · Reconnaissance du rush</div>
+        <div class="script-block">
+          « Bonjour Walid, Alexandre. Excusez-moi si je vous prends en plein rush — j'ai eu votre numéro via votre resto à Saint-Michel, et j'ai un sujet rapide à vous soumettre sur l'activité livraison. Je vous rappelle plus tard si c'est mieux, ou on prend 2 minutes maintenant ? »
+          <span class="pause">PAUSE</span>
+        </div>
+        <div class="variant-when"><strong>Quand l'utiliser</strong> : si tu entends du bruit de cuisine / clients en arrière-plan. Tu offres la porte de sortie, ça baisse la défense — souvent il dira "non non vas-y maintenant".</div>
+      </div>
+
+      <div class="variant">
+        <div class="variant-label">Direct — pas de bullshit</div>
+        <div class="variant-title">C · Droit au but</div>
+        <div class="script-block">
+          « Bonjour Walid, c'est Alexandre. Sans tourner autour du pot : on m'a passé votre numéro car vous gérez un Thaï à Saint-Michel, et j'ai une proposition concrète pour booster votre CA Uber Eats. 2 minutes, c'est OK ? »
+          <span class="pause">PAUSE</span>
+        </div>
+        <div class="variant-when"><strong>Quand l'utiliser</strong> : si tu sens qu'il a peu de temps OU qu'il aime les gens qui vont vite. Walid sait en 5 secondes si ça l'intéresse.</div>
+      </div>
+
+      <div class="variant">
+        <div class="variant-label">Curiosité — accroche</div>
+        <div class="variant-title">D · Hook intriguant</div>
+        <div class="script-block">
+          « Allô Walid ? Bonjour, Alexandre. Je vous appelle parce qu'on m'a parlé de votre resto à Saint-Michel, et j'ai un truc qui peut vous faire <span class="accent">prendre 5 à 15 commandes Uber Eats en plus par jour, sans rien changer à votre cuisine actuelle</span>. C'est un bon moment pour que je vous explique en 2 minutes ? »
+          <span class="pause">PAUSE</span>
+        </div>
+        <div class="variant-when"><strong>Quand l'utiliser</strong> : si tu sens que tu dois accrocher tout de suite. Tu poses le chiffre concret avant même de te présenter en détail. Risque : Walid coupe « combien ça coûte ? » → enchaîne sur le modèle.</div>
+      </div>
+
+    </div>
+
+    <div class="note"><strong>Important</strong> : ne nomme PAS « KitchenBoost » à ce stade. Tu le mentionnes seulement s'il te demande « vous êtes qui exactement ». L'ouverture vend la curiosité, pas la marque.</div>
+  </section>
+
+  <!-- ════════════ PITCH ════════════ -->
+  <section class="block gold" id="pitch">
+    <div class="section-label">🎤 Étape 2 — Pitch (30-40 sec, à la 1ère personne)</div>
+    <div class="section-title">Proposition de valeur — augmenter le CA livraison</div>
+
+    <div class="script-block">
+      « Très bien. Je vous explique vite — <span class="accent">je développe une approche pour aider des restaurants comme le vôtre à augmenter leur CA livraison Uber Eats, sans rien changer à leur activité actuelle</span>. Concrètement, j'installe une marque virtuelle dédiée dans votre cuisine — votre Thaï continue à tourner normalement à côté, et moi je vous ramène des commandes Uber Eats en plus, sur un concept que je cale spécifiquement pour votre zone.
+    </div>
+
+    <div class="script-block">
+      Le modèle est simple : vous payez <span class="accent">uniquement à la commande que je génère — 2 € par client capté</span>. Pas d'abonnement, pas de frais fixes. <span class="accent">Si je vous ramène rien, vous payez rien.</span> J'ai 3 restos avec qui je bosse comme ça en ce moment sur Paris et banlieue. »
+    </div>
+
+    <div class="note"><strong>Tout en « je »</strong>, pas « on / notre équipe ». On reste honnête sur la taille réelle. Plus authentique, moins de pression vendeur.</div>
+  </section>
+
+  <!-- ════════════ RDV ════════════ -->
+  <section class="block blue" id="rdv">
+    <div class="section-label">🎯 Étape 3 — Question d'engagement</div>
+    <div class="section-title">Caler le RDV physique</div>
+
+    <div class="script-block">
+      « Ce que je vous propose : <span class="accent">15-20 minutes ensemble au resto</span> pour que je vous montre les chiffres et le concept que j'imagine pour votre zone. <span class="accent">Mardi ou mercredi en début d'après-midi</span>, ce qui vous arrange ? »
+      <span class="pause">SILENCE</span>
+    </div>
+
+    <div class="note"><strong>Critique</strong> : pas de meublage après la question. Laisse 2-3 secondes de silence. Il va proposer un créneau ou objecter — laisse-le venir.</div>
+  </section>
+
+  <!-- ════════════ OBJECTIONS ════════════ -->
+  <section class="block red" id="objections">
+    <div class="section-label">🛡️ Étape 4 — Objections rapides</div>
+    <div class="section-title">Réponses prêtes selon ce qu'il dit</div>
+
+    <table class="objections">
+      <tr>
+        <td class="if-they-say">« Vous êtes qui exactement ? »</td>
+        <td class="you-answer">
+          <strong>« Alexandre Pelloux, basé à Paris.</strong> J'ai lancé ce programme sous le nom <strong>KitchenBoost</strong> il y a quelques mois. Aujourd'hui je bosse avec 3 restos — une pizzeria à Vanves, une crêperie à Malakoff, un resto à Levallois — tous les 3 ramassent des commandes Uber Eats supplémentaires grâce à ça. »
+        </td>
+      </tr>
+      <tr>
+        <td class="if-they-say">« Vous êtes une grosse boîte ? »</td>
+        <td class="you-answer">
+          « <strong>Non, c'est récent</strong> et je teste l'approche avec quelques restos partenaires. C'est aussi ce qui me permet de proposer des conditions intéressantes au démarrage — pas de structure lourde à financer. »
+        </td>
+      </tr>
+      <tr>
+        <td class="if-they-say">« Quel coût pour moi ? »</td>
+        <td class="you-answer">
+          « <strong>0 € de frais fixes.</strong> 2 € par commande livrée sous notre marque. Pas d'engagement, pas de minimum. »
+        </td>
+      </tr>
+      <tr>
+        <td class="if-they-say">« Je bosse déjà avec Gimmy / Taster »</td>
+        <td class="you-answer">
+          « Justement, c'est intéressant — moi c'est <strong>2 €/commande au lieu de 30 % de commission</strong>, et je partage les chiffres en transparence avec vous. Ça vaut le coup qu'on compare 15 min, non ? »
+        </td>
+      </tr>
+      <tr>
+        <td class="if-they-say">« Et concrètement, c'est quoi ce concept ? »</td>
+        <td class="you-answer">
+          « C'est exactement ce que je voudrais vous montrer en RDV, parce que le concept dépend de votre zone, votre cuisine, vos équipements. <strong>En 15 min sur place je vous montre les chiffres concrets et le menu que j'imagine.</strong> »
+        </td>
+      </tr>
+      <tr>
+        <td class="if-they-say">« Vous avez une société ? »</td>
+        <td class="you-answer">
+          « Oui, l'entité juridique c'est <strong>NativeSquare</strong> — j'opère KitchenBoost dans ce cadre. Je peux vous envoyer le KBIS si vous voulez avant le RDV. »
+        </td>
+      </tr>
+      <tr>
+        <td class="if-they-say">« Pas intéressé »</td>
+        <td class="you-answer">
+          « OK, juste pour savoir — c'est <strong>le timing qui n'est pas bon, ou c'est juste pas votre truc</strong> ? Sans souci si c'est non, j'arrête de vous embêter. »
+        </td>
+      </tr>
+      <tr>
+        <td class="if-they-say">« Envoyez-moi un mail »</td>
+        <td class="you-answer">
+          « Je peux, mais franchement <strong>15 min ensemble sur place ça sera plus utile</strong> qu'un mail que vous lirez en diagonale. Vraiment 15 min, je promets. Vous me dites jeudi ? »
+        </td>
+      </tr>
+    </table>
+  </section>
+
+  <!-- ════════════ CLOSING ════════════ -->
+  <section class="block ink" id="closing">
+    <div class="section-label">✅ Étape 5 — Closing</div>
+    <div class="section-title">Une fois le RDV calé</div>
+
+    <div class="script-block">
+      « Parfait Walid, on dit <span class="accent">[jour] à [heure]</span> chez vous. Je vous envoie un SMS de confirmation. Bonne journée à vous ! »
+    </div>
+
+    <div class="note"><strong>Action post-appel</strong> : envoie le SMS de confirmation immédiatement, avant d'oublier. Ça reverrouille le RDV.</div>
+  </section>
+
+  <!-- ════════════ TIPS ════════════ -->
+  <section class="block gold tips" id="tips">
+    <div class="section-label">💡 Tips fluidité</div>
+    <div class="section-title">À garder en tête pendant l'appel</div>
+
+    <ul>
+      <li><strong>Souris quand tu parles</strong> — ça s'entend au téléphone. Tu peux te mettre face à un miroir.</li>
+      <li><strong>« Je »</strong> partout dans le pitch, jamais « on / nous / notre équipe ». Plus authentique vu où on en est.</li>
+      <li><strong>« KitchenBoost »</strong> n'apparaît PAS dans l'ouverture ni dans le pitch initial. Uniquement si Walid demande « vous êtes qui ». Tu vends d'abord la promesse, tu nommes la marque ensuite.</li>
+      <li><strong>Pauses</strong> : après « bon moment ? » et après « mardi ou mercredi ? », laisse 2-3 secondes de silence. C'est inconfortable mais ça force la réponse. Ne meuble pas.</li>
+      <li><strong>Si tu sens que t'es à 1 min 30 et t'as toujours pas posé la question RDV</strong> : pose-la direct, même mal. Mieux vaut une question RDV imparfaite qu'un pitch parfait sans demande.</li>
+      <li><strong>Tutoiement</strong> : reste au vouvoiement au 1er appel. Si Walid dit « tu peux me tutoyer », tu bascules. Pas avant.</li>
+      <li><strong>Avant de raccrocher (si refus)</strong> : « Si jamais ça change un jour, vous avez mon numéro. Bonne journée ! » — pas de pression, ça garde la porte ouverte.</li>
+      <li><strong>Si messagerie</strong> : « Bonjour Walid, Alexandre. Je vous appelle au sujet de votre activité livraison à Saint-Michel — on m'a passé votre numéro. Rappelez-moi quand c'est bon pour vous au 06 XX XX XX XX, ou je retente demain. Bonne journée ! » → max 20 secondes.</li>
+    </ul>
+  </section>
+
+</main>
+
+<script>
+  // Highlight nav tab on scroll
+  const sections = ['ouvertures', 'pitch', 'rdv', 'objections', 'closing', 'tips'];
+  const tabs = document.querySelectorAll('nav.tabs a');
+  window.addEventListener('scroll', () => {
+    const scrollPos = window.scrollY + 200;
+    let active = sections[0];
+    sections.forEach(id => {
+      const el = document.getElementById(id);
+      if (el && el.offsetTop <= scrollPos) active = id;
+    });
+    tabs.forEach(t => {
+      t.classList.toggle('active', t.getAttribute('href') === '#' + active);
+    });
+  });
+</script>
+
+</body>
+</html>

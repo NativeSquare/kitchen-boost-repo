@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Zone 10 — Paris 2e / Paris 9e</name>
+    <description>11 prospects · centroïde 6.5 km Vanves · villes : Paris 2e, Paris 9e, Paris 17e, Paris 8e, Paris 18e, Paris 1e · ⭐ = service continu (heure creuse ok)</description>
+    <Style id="continuous">
+      <IconStyle>
+        <scale>1.2</scale>
+        <Icon><href>http://maps.google.com/mapfiles/kml/shapes/star.png</href></Icon>
+      </IconStyle>
+      <LabelStyle><scale>1.0</scale></LabelStyle>
+    </Style>
+    <Style id="home">
+      <IconStyle>
+        <scale>1.3</scale>
+        <Icon><href>http://maps.google.com/mapfiles/kml/shapes/ranger_station.png</href></Icon>
+      </IconStyle>
+    </Style>
+    <Placemark>
+      <name>🏠 Point de départ — Vanves</name>
+      <styleUrl>#home</styleUrl>
+      <Point><coordinates>2.2913,48.8235,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>1. Le Palais Thai 🍥</name>
+      <styleUrl>#continuous</styleUrl>
+      <description>🍜 Thaï · 3.7★ · 270+ avis · Score 2/10 KB
+
+📍 7 Rue des Moulins, Paris 1e
+
+🕒 HORAIRES ⭐ SERVICE CONTINU (ok en heure creuse) :
+Lun-Dim 11:12-22:40
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Le%20Palais%20Thai%20%F0%9F%8D%A5%207%20Rue%20des%20Moulins%20Paris%201e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/le-palais-thai/BtNpUostUl2eYnH5mK6ygQ</description>
+      <Point><coordinates>2.3350628,48.8670024,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>2. Kurry Up</name>
+      <styleUrl>#continuous</styleUrl>
+      <description>🍛 Indien · 4.6★ · 700+ avis · Score 3/10 KB
+
+📍 74 Passage Choiseul, Paris 2e
+
+🕒 HORAIRES ⭐ SERVICE CONTINU (ok en heure creuse) :
+Lun-Dim 11:30-23:30
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Kurry%20Up%2074%20Passage%20Choiseul%20Paris%202e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/kurry-up-washington/_h-BV9jWXu25SeEjKPgKmg</description>
+      <Point><coordinates>2.3357877,48.8684015,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>3. IM Thaï Gourmet</name>
+      <description>🍜 Thaï · 4.5★ · 600+ avis · Score 4/10 KB
+
+📍 8 Rue de Port Mahon, Paris 2e
+
+🕒 HORAIRES (pause service) :
+Lun-Sam 11:30-14:30,17:45-22:35
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=IM%20Tha%C3%AF%20Gourmet%208%20Rue%20de%20Port%20Mahon%20Paris%202e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/im-thai-gourmet/IQgTeVf6SeuPWbuV6z_QJg</description>
+      <Point><coordinates>2.3341348,48.8695167,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>4. THAI THAI</name>
+      <description>🍜 Thaï · 4.4★ · 700+ avis · Score 4/10 KB
+
+📍 Boulevard Haussmann, Paris 9e
+
+🕒 HORAIRES (pause service) :
+Dim-Jeu 00:00-01:45,12:00-15:00,18:00-23:59
+Ven 00:00-01:45,18:00-23:59
+Sam 00:00-01:45,12:00-15:00,18:00-23:59
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=THAI%20THAI%20Boulevard%20Haussmann%20Paris%209e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/thai-thai/_DaRMhqLXmmyVap-rm8qVg</description>
+      <Point><coordinates>2.3349777,48.8728589,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>5. Kastoori</name>
+      <description>🍛 Indien · 4.6★ · 400+ avis · Score 3/10 KB
+
+📍 4 Place Gustave Toudouze, Paris 9e
+
+🕒 HORAIRES (pause service) :
+Dim 11:30-15:00,18:30-23:00
+Lun-Sam 11:30-15:00,18:30-23:00
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Kastoori%204%20Place%20Gustave%20Toudouze%20Paris%209e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/kastoori/niifJd27S_W-JTvXHPeVqQ</description>
+      <Point><coordinates>2.3374293,48.8796046,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>6. Bar à naan</name>
+      <description>🍛 Indien · 4.5★ · 1,500+ avis · Score 3/10 KB
+
+📍 Rue Jean-Baptiste Pigalle, Paris 9e
+
+🕒 HORAIRES (pause service) :
+Lun-Jeu 11:15-14:30,18:15-23:00
+Ven 11:15-14:30,18:15-23:09
+Sam 11:15-14:30,18:15-23:00
+Dim 11:30-14:30,18:15-23:00
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Bar%20%C3%A0%20naan%20Rue%20Jean-Baptiste%20Pigalle%20Paris%209e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/bar-a-naan/S95HRvxnRJOtsGiH4xx7pA</description>
+      <Point><coordinates>2.3348568,48.8802211,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>7. Disco Burgers 🪩🍔</name>
+      <description>🍔 Burger · 4.5★ · 380+ avis · Score 4/10 KB
+
+📍 26 Rue de Douai, Paris 9e
+
+🕒 HORAIRES (pause service) :
+Dim 12:30-15:00,19:15-22:15
+Lun-Jeu 12:00-14:30,19:15-22:30
+Ven 12:00-14:30,19:15-23:00
+Sam 12:30-15:00,19:15-23:00
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Disco%20Burgers%20%F0%9F%AA%A9%F0%9F%8D%94%2026%20Rue%20de%20Douai%20Paris%209e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/disco-burgers/ICIjXRTmXPqXRE4wNu-7Zg</description>
+      <Point><coordinates>2.333139,48.8824546,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>8. Da May Fa</name>
+      <styleUrl>#continuous</styleUrl>
+      <description>🍜 Thaï · 4.4★ · 700+ avis · Score 4/10 KB
+
+📍 12 Rue Lepic, Paris 18e
+
+🕒 HORAIRES ⭐ SERVICE CONTINU (ok en heure creuse) :
+Dim 10:00-01:35
+Lun 10:00-01:40
+Mar 10:00-01:35
+Mer 10:00-01:35
+Jeu 10:00-01:35
+Ven 10:00-01:43
+Sam 10:00-01:39
+
+💰 SIGNAUX UE :
+• 48 min livraison (saturé/loin)
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Da%20May%20Fa%2012%20Rue%20Lepic%20Paris%2018e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/da-may-fa/sbH2wL3RStCnW_GmW1s1Dw</description>
+      <Point><coordinates>2.3335125,48.8844392,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>9. Étoile du Kashmir</name>
+      <description>🍛 Indien · 4.6★ · 3,000+ avis · Score 0/10 KB
+
+📍 Rue des Batignolles, Paris 17e
+
+🕒 HORAIRES (pause service) :
+Lun-Dim 11:30-14:28,18:15-22:58
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=%C3%89toile%20du%20Kashmir%20Rue%20des%20Batignolles%20Paris%2017e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/etoile-du-kashmir-charonne/alBXj_3YTl-cz6cMoepFRA</description>
+      <Point><coordinates>2.3236837,48.8831342,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>10. Slice Pizza Club</name>
+      <styleUrl>#continuous</styleUrl>
+      <description>🍕 Pizza · 3.8★ · 230+ avis · Score 7/10 KB
+
+📍 Rue de la Pépinière, Paris 8e
+
+🕒 HORAIRES ⭐ SERVICE CONTINU (ok en heure creuse) :
+Lun-Mer 11:30-22:30
+Jeu-Sam 11:30-23:59
+
+💰 SIGNAUX UE :
+• Buy 1 Get 1 Free (brade pour volume)
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Slice%20Pizza%20Club%20Rue%20de%20la%20P%C3%A9pini%C3%A8re%20Paris%208e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/slice-pizza-club-8-eme/E5z8f_PFUVK6DZso8XJfuQ</description>
+      <Point><coordinates>2.3212538,48.8751324,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>11. Pizza Presto</name>
+      <description>🍕 Pizza · 4★ · 400+ avis · Score 8/10 KB
+
+📍 Rue La Boétie, Paris 8e
+
+🕒 HORAIRES (pause service) :
+Dim 00:00-01:45,04:45-23:59
+Lun-Ven 00:00-01:45,04:45-06:45,08:45-23:59
+Sam 00:00-01:45,04:45-23:59
+
+💰 SIGNAUX UE :
+• Buy 1 Get 1 Free (brade pour volume)
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Pizza%20Presto%20Rue%20La%20Bo%C3%A9tie%20Paris%208e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/pizza-presto-boulogne-billancourt/usT7hBkERHS7zNHnQPDm_w</description>
+      <Point><coordinates>2.3156678,48.8740062,0</coordinates></Point>
+    </Placemark>
+  </Document>
+</kml>

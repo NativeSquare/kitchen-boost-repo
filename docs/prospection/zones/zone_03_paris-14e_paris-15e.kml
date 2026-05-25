@@ -1,0 +1,217 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Zone 3 — Paris 14e / Paris 15e</name>
+    <description>13 prospects · centroïde 2.6 km Vanves · villes : Paris 14e, Paris 15e, Paris 6e · ⭐ = service continu (heure creuse ok)</description>
+    <Style id="continuous">
+      <IconStyle>
+        <scale>1.2</scale>
+        <Icon><href>http://maps.google.com/mapfiles/kml/shapes/star.png</href></Icon>
+      </IconStyle>
+      <LabelStyle><scale>1.0</scale></LabelStyle>
+    </Style>
+    <Style id="home">
+      <IconStyle>
+        <scale>1.3</scale>
+        <Icon><href>http://maps.google.com/mapfiles/kml/shapes/ranger_station.png</href></Icon>
+      </IconStyle>
+    </Style>
+    <Placemark>
+      <name>🏠 Point de départ — Vanves</name>
+      <styleUrl>#home</styleUrl>
+      <Point><coordinates>2.2913,48.8235,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>1. Le Commerce</name>
+      <description>🍜 Thaï · 4.2★ · 360+ avis · Score 8/10 KB
+
+📍 Rue Labrouste, Paris 15e
+
+🕒 HORAIRES (pause service) :
+Lun-Ven 11:30-15:15,18:15-23:15
+Sam 11:30-15:30,18:15-23:15
+Dim 11:30-15:15,18:15-23:15
+
+💰 SIGNAUX UE :
+• Buy 1 Get 1 Free (brade pour volume)
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Le%20Commerce%20Rue%20Labrouste%20Paris%2015e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/le-commerce-restaurant-thai-traditionnel/ByYP5ntvTOK_dS9YPV-EQw</description>
+      <Point><coordinates>2.3080854,48.833996,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>2. Il Etait Une Pizza</name>
+      <description>🍕 Pizza · 4.6★ · 380+ avis · Score 3/10 KB
+
+📍 Rue Falguière, Paris 15e
+
+🕒 HORAIRES (pause service) :
+Lun-Sam 11:30-15:00,18:30-23:00, Dim 18:30-23:30
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Il%20Etait%20Une%20Pizza%20Rue%20Falgui%C3%A8re%20Paris%2015e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/il-etait-une-pizza/RVD-pUNWR0u2e6q9fb9DQQ</description>
+      <Point><coordinates>2.3127466,48.8404425,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>3. Les Jardins de Shah Jahan</name>
+      <description>🍛 Indien · 4.5★ · 300+ avis · Score 4/10 KB
+
+📍 Rue de Vaugirard, Paris 15e
+
+🕒 HORAIRES (pause service) :
+Lun-Dim 12:00-14:00,19:00-23:00
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Les%20Jardins%20de%20Shah%20Jahan%20Rue%20de%20Vaugirard%20Paris%2015e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/les-jardins-de-shah-jahan/EHEFCdKRStSEBPDqFEkrgQ</description>
+      <Point><coordinates>2.3133987,48.8430801,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>4. Pizza Girl</name>
+      <description>🍕 Pizza · 4.6★ · 120+ avis · Score 3/10 KB
+
+📍 Rue de Vaugirard, Paris 6e
+
+🕒 HORAIRES (pause service) :
+Lun-Mer 11:30-14:30,18:15-22:45
+Jeu 18:15-22:45
+Ven-Dim 11:30-14:30,18:15-22:45
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Pizza%20Girl%20Rue%20de%20Vaugirard%20Paris%206e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/pizza-girl/flxXe5NtStyZ1uoBwJteVA</description>
+      <Point><coordinates>2.3204914,48.8452788,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>5. Les Délices du Kashmir</name>
+      <styleUrl>#continuous</styleUrl>
+      <description>🍛 Indien · 4.6★ · 1,500+ avis · Score 2/10 KB
+
+📍 Rue du Départ, Paris 14e
+
+🕒 HORAIRES ⭐ SERVICE CONTINU (ok en heure creuse) :
+Lun-Dim 11:30-03:00
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Les%20D%C3%A9lices%20du%20Kashmir%20Rue%20du%20D%C3%A9part%20Paris%2014e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/les-delices-du-kashmir-depart/tBzvxjqPTMOKEWyoZGRqQg</description>
+      <Point><coordinates>2.3235103,48.8424526,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>6. Le Lotus Imperial</name>
+      <description>🍜 Thaï · 4.5★ · 7,000+ avis · Score 2/10 KB
+
+📍 Rue d&apos;Odessa, Paris 14e
+
+🕒 HORAIRES (pause service) :
+Lun-Ven 12:00-14:30,19:00-22:30, Sam-Dim 12:00-22:00
+
+💰 SIGNAUX UE :
+• Buy 1 Get 1 Free (brade pour volume)
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Le%20Lotus%20Imperial%20Rue%20d&apos;Odessa%20Paris%2014e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/le-lotus-imperial/hv94RdcmS260bStrbsiXuA</description>
+      <Point><coordinates>2.3246727,48.8423761,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>7. Basilic Thaï</name>
+      <description>🍜 Thaï · 4.5★ · 1,500+ avis · Score 3/10 KB
+
+📍 98 Boulevard du Montparnasse, Paris 14e
+
+🕒 HORAIRES (pause service) :
+Lun-Sam 11:00-14:30,18:00-22:35
+Dim 11:00-14:30,18:00-22:35
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Basilic%20Tha%C3%AF%2098%20Boulevard%20du%20Montparnasse%20Paris%2014e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/basilic-thai/I97d0LYgREe-5BzhCGapwA</description>
+      <Point><coordinates>2.3276911,48.8424115,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>8. Thai Panthong</name>
+      <description>🍜 Thaï · 4.4★ · 140+ avis · Score 4/10 KB
+
+📍 37 Rue de l&apos;Ouest, Paris 14e
+
+🕒 HORAIRES (pause service) :
+Lun-Sam 11:30-14:30,18:30-22:00
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Thai%20Panthong%2037%20Rue%20de%20l&apos;Ouest%20Paris%2014e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/thai-panthong/tnw5HiptTzSK83cXNF3qGQ</description>
+      <Point><coordinates>2.3203577,48.8364475,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>9. Avec Amour Le Burger</name>
+      <description>🍔 Burger · 4.6★ · 6,000+ avis · Score 0/10 KB
+
+📍 100 Rue du Château, Paris 14e
+
+🕒 HORAIRES (pause service) :
+Lun-Jeu 12:00-15:00,19:00-23:00, Ven 12:00-24:00, Sam 11:00-24:00, Dim 11:00-23:00
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Avec%20Amour%20Le%20Burger%20100%20Rue%20du%20Ch%C3%A2teau%20Paris%2014e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/avec-amour-le-burger-montparnasse/pg3W8jyFWKGWel6PK6PoFg</description>
+      <Point><coordinates>2.3190452,48.8358906,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>10. Food Vibes</name>
+      <styleUrl>#continuous</styleUrl>
+      <description>🍛 Indien · 4.3★ · 180+ avis · Score 6/10 KB
+
+📍 Rue du Château, Paris 14e
+
+🕒 HORAIRES ⭐ SERVICE CONTINU (ok en heure creuse) :
+Dim-Sam 11:40-23:40
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Food%20Vibes%20Rue%20du%20Ch%C3%A2teau%20Paris%2014e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/food-vibes/NlSNc8rFVKONYmZJww7Rpg</description>
+      <Point><coordinates>2.3198632,48.8353238,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>11. Food Asia</name>
+      <description>🍜 Thaï · 4.5★ · 500+ avis · Score 4/10 KB
+
+📍 Avenue du Maine, Paris 14e
+
+🕒 HORAIRES (pause service) :
+12:00-15:00,19:00-22:30
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Food%20Asia%20Avenue%20du%20Maine%20Paris%2014e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/food-asia/PmIm9tPdT2ql7cktxM3QOQ</description>
+      <Point><coordinates>2.323814,48.8346465,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>12. SMASH BURGER PARIS</name>
+      <styleUrl>#continuous</styleUrl>
+      <description>🍔 Burger · 4.5★ · 1,500+ avis · Score 3/10 KB
+
+📍 Rue Pierre Larousse, Paris 14e
+
+🕒 HORAIRES ⭐ SERVICE CONTINU (ok en heure creuse) :
+Dim 11:30-21:30
+Lun-Jeu 11:30-22:30
+Ven-Sam 11:30-23:59
+
+💰 SIGNAUX UE :
+• Promo : 2 Offers Available
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=SMASH%20BURGER%20PARIS%20Rue%20Pierre%20Larousse%20Paris%2014e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/smash-burger-paris/B6Fi_DcVSAO-N8XdO-o_LQ</description>
+      <Point><coordinates>2.3150828,48.8283254,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>13. Smash Burger</name>
+      <styleUrl>#continuous</styleUrl>
+      <description>🍔 Burger · 4.3★ · 130+ avis · Score 6/10 KB
+
+📍 Rue Pierre Larousse, Paris 14e
+
+🕒 HORAIRES ⭐ SERVICE CONTINU (ok en heure creuse) :
+Dim 11:00-00:00
+Lun 11:00-00:59
+Mar-Jeu 11:00-00:59
+Ven-Sam 11:00-06:00
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Smash%20Burger%20Rue%20Pierre%20Larousse%20Paris%2014e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/smash-burger-saint-cloud/A8aSbMKvUmOj_LVP79LSZA</description>
+      <Point><coordinates>2.3150828,48.8283254,0</coordinates></Point>
+    </Placemark>
+  </Document>
+</kml>

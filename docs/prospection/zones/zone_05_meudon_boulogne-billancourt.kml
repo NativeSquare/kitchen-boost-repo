@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Zone 5 — Meudon / Boulogne-Billancourt</name>
+    <description>12 prospects · centroïde 4.0 km Vanves · villes : Meudon, Boulogne-Billancourt, Sèvres, Issy-les-Moulineaux · ⭐ = service continu (heure creuse ok)</description>
+    <Style id="continuous">
+      <IconStyle>
+        <scale>1.2</scale>
+        <Icon><href>http://maps.google.com/mapfiles/kml/shapes/star.png</href></Icon>
+      </IconStyle>
+      <LabelStyle><scale>1.0</scale></LabelStyle>
+    </Style>
+    <Style id="home">
+      <IconStyle>
+        <scale>1.3</scale>
+        <Icon><href>http://maps.google.com/mapfiles/kml/shapes/ranger_station.png</href></Icon>
+      </IconStyle>
+    </Style>
+    <Placemark>
+      <name>🏠 Point de départ — Vanves</name>
+      <styleUrl>#home</styleUrl>
+      <Point><coordinates>2.2913,48.8235,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>1. Pizza Siciliana</name>
+      <description>🍕 Pizza · 4.6★ · 800+ avis · Score 3/10 KB
+
+📍 164 Avenue de Verdun, Issy-les-Moulineaux
+
+🕒 HORAIRES (pause service) :
+Lun-Ven 11:30-13:50,18:00-21:30
+Dim 18:00-21:30
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Pizza%20Siciliana%20164%20Avenue%20de%20Verdun%20Issy-les-Moulineaux
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/pizza-siciliana/7vl3k86lSP2m_aWypcCNZQ</description>
+      <Point><coordinates>2.2516576,48.8183243,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>2. Tajmahal Express</name>
+      <description>🍛 Indien · 4.6★ · 1,500+ avis · Score 2/10 KB
+
+📍 15 Rue de Paris, Meudon
+
+🕒 HORAIRES (pause service) :
+11:30-14:30,18:30-22:45
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Tajmahal%20Express%2015%20Rue%20de%20Paris%20Meudon
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/tajmahal-express/2VsW6XleRmed4OoaT8PZrA</description>
+      <Point><coordinates>2.2473883,48.8162734,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>3. Patza Pizza</name>
+      <description>🍕 Pizza · 4.4★ · 700+ avis · Score 4/10 KB
+
+📍 Rue Yves Kermen, Boulogne-Billancourt
+
+🕒 HORAIRES (pause service) :
+Lun-Mar 11:30-14:30,18:00-22:44
+Mer-Jeu 11:30-14:30,17:30-22:44
+Ven,Dim 16:30-23:44
+Sam 11:30-14:30,17:30-23:44
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Patza%20Pizza%20Rue%20Yves%20Kermen%20Boulogne-Billancourt
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/patza-pizza/d10_fIOtRqaPxtg3Y5mphg</description>
+      <Point><coordinates>2.2427607,48.8270233,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>4. Le Taj Mahal</name>
+      <description>🍛 Indien · 4.6★ · 900+ avis · Score 3/10 KB
+
+📍 Rue des Quatre Cheminées, Boulogne-Billancourt
+
+🕒 HORAIRES (pause service) :
+Lun-Dim 11:00-14:30,18:00-23:00
+
+💰 SIGNAUX UE :
+• Promo : Top Offer • 20% off (Spend €30)
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Le%20Taj%20Mahal%20Rue%20des%20Quatre%20Chemin%C3%A9es%20Boulogne-Billancourt
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/le-taj-mahal-vanves/P_9L72wVTTK_HIcdE9M7Zw</description>
+      <Point><coordinates>2.2429751,48.832714,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>5. Mr Beef</name>
+      <styleUrl>#continuous</styleUrl>
+      <description>🍛 Indien · 4.5★ · 2,000+ avis · Score 4/10 KB
+
+📍 85 bis Boulevard de la République, Boulogne-Billancourt
+
+🕒 HORAIRES ⭐ SERVICE CONTINU (ok en heure creuse) :
+Lun-Jeu 11:00-23:59
+Ven 15:00-23:59
+Sam 11:00-23:59
+Dim 11:00-23:59
+
+💰 SIGNAUX UE :
+• Buy 1 Get 1 Free (brade pour volume)
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Mr%20Beef%2085%20bis%20Boulevard%20de%20la%20R%C3%A9publique%20Boulogne-Billancourt
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/mr-beef-boulogne/_m3GT0YXQIeTqJxu4T3OIA</description>
+      <Point><coordinates>2.2449309,48.8332242,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>6. Mr. Beef</name>
+      <styleUrl>#continuous</styleUrl>
+      <description>🍜 Thaï · 4.6★ · 6,000+ avis · Score 0/10 KB
+
+📍 85 bis Boulevard de la République, Boulogne-Billancourt
+
+🕒 HORAIRES ⭐ SERVICE CONTINU (ok en heure creuse) :
+Lun-Jeu,Sam,Dim:11:30-00:00
+Ven:15:30-00:00
+
+💰 SIGNAUX UE :
+• Buy 1 Get 1 Free (brade pour volume)
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Mr.%20Beef%2085%20bis%20Boulevard%20de%20la%20R%C3%A9publique%20Boulogne-Billancourt
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/mr-beef-paris/tqjC-djLQganvE3iZeJYUg</description>
+      <Point><coordinates>2.2449309,48.8332242,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>7. Eat Chicken®🐔</name>
+      <styleUrl>#continuous</styleUrl>
+      <description>🍛 Indien · 4.3★ · 3,000+ avis · Score 3/10 KB
+
+📍 Avenue Édouard Vaillant, Boulogne-Billancourt
+
+🕒 HORAIRES ⭐ SERVICE CONTINU (ok en heure creuse) :
+Lun-Jeu 11:30-03:30
+Ven 15:00-03:30
+Sam 11:30-03:30
+Dim 11:30-03:30
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Eat%20Chicken%C2%AE%F0%9F%90%94%20Avenue%20%C3%89douard%20Vaillant%20Boulogne-Billancourt
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/eat-chicken-ivry/sTqLG2ruX7OS6u_JW2VfVQ</description>
+      <Point><coordinates>2.2450294,48.8342869,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>8. Le Royal d&apos;Asie</name>
+      <styleUrl>#continuous</styleUrl>
+      <description>🍛 Indien · 4.5★ · 900+ avis · Score 5/10 KB
+
+📍 Boulevard Jean Jaurès, Boulogne-Billancourt
+
+🕒 HORAIRES ⭐ SERVICE CONTINU (ok en heure creuse) :
+Lun-Sam 11:00-22:00
+Dim 11:00-22:00
+
+💰 SIGNAUX UE :
+• Buy 1 Get 1 Free (brade pour volume)
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Le%20Royal%20d&apos;Asie%20Boulevard%20Jean%20Jaur%C3%A8s%20Boulogne-Billancourt
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/le-royal-dasie/VY2XfT4jUBO7N6RhqNkwhw</description>
+      <Point><coordinates>2.2395073,48.8401424,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>9. Thaï in box</name>
+      <styleUrl>#continuous</styleUrl>
+      <description>🍜 Thaï · 4.6★ · 450+ avis · Score 3/10 KB
+
+📍 Boulevard Jean Jaurès, Boulogne-Billancourt
+
+🕒 HORAIRES ⭐ SERVICE CONTINU (ok en heure creuse) :
+Lun-Ven 11:00-15:00
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Tha%C3%AF%20in%20box%20Boulevard%20Jean%20Jaur%C3%A8s%20Boulogne-Billancourt
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/thai-in-box-boulogne-point-du-jour/AG4EkYBASamSUIGp9Iqcdg</description>
+      <Point><coordinates>2.2396364,48.8407271,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>10. A Tavola</name>
+      <description>🍕 Pizza · 4.6★ · 370+ avis · Score 3/10 KB
+
+📍 23 Rue d&apos;Aguesseau, Boulogne-Billancourt
+
+🕒 HORAIRES (pause service) :
+Dim-Lun 11:30-14:00,18:30-22:00
+Mar-Sam 11:30-14:00,18:30-22:00
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=A%20Tavola%2023%20Rue%20d&apos;Aguesseau%20Boulogne-Billancourt
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/a-tavola-la-pizza/j1d-AylLWgCOIjVggeUL8A</description>
+      <Point><coordinates>2.2365093,48.8441035,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>11. Buffet De Sevres</name>
+      <description>🍕 Pizza · 4★ · 180+ avis · Score 6/10 KB
+
+📍 Grande Rue, Sèvres
+
+🕒 HORAIRES (pause service) :
+Lun-Jeu 11:00-23:00
+Ven 11:00-12:45,14:00-23:00
+Sam 11:00-23:00
+Dim 11:00-23:00
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Buffet%20De%20Sevres%20Grande%20Rue%20S%C3%A8vres
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/buffet-de-sevres-pizzas-tacos-%26-sandwiches/Kt31CnzQXCCRkSiPsGO9Gg</description>
+      <Point><coordinates>2.2132772,48.824702,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>12. Le TajMahal</name>
+      <description>🍛 Indien · 4.6★ · 1,500+ avis · Score 2/10 KB
+
+📍 3 Rue de la Garenne, Sèvres
+
+🕒 HORAIRES (pause service) :
+Lun-Sam 11:00-14:30,18:30-22:45
+Dim 11:00-14:30,18:30-22:45
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Le%20TajMahal%203%20Rue%20de%20la%20Garenne%20S%C3%A8vres
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/le-tajmahal-sevres-chaville-ville-davray-meudon/cnuQ5494T0mR88m1_A1B2Q</description>
+      <Point><coordinates>2.2059553,48.8214845,0</coordinates></Point>
+    </Placemark>
+  </Document>
+</kml>

@@ -1,0 +1,8 @@
+ordre,name,address,city,lat,lng,rating,reviews,score,promo,uber_eats_url
+1,"Au Petit Thai","Rue du Roi de Sicile","Paris 4e",48.8557934,2.3601724,4.4,"600+",4,"","https://www.ubereats.com/fr-en/store/au-petit-thai/skdnZbHYQ7ikEbSQkSDNEQ"
+2,"Khao Thai","10 Rue de Sévigné","Paris 4e",48.8556539,2.3622403,4.6,"420+",3,"","https://www.ubereats.com/fr-en/store/khao-thai-restaurant-thailandais/i6IL1jcORJyEJfkrF-uRDw"
+3,"Khao Thaï","10 Rue de Sévigné","Paris 4e",48.8556539,2.3622403,4.5,"600+",4,"","https://www.ubereats.com/fr-en/store/khao-thai/45CYtJSVTQyaXM3-RkbqWA"
+4,"Starvin' Joe","Rue de Charonne","Paris 11e",48.8531813,2.3768485,4.5,"4,000+",1,"","https://www.ubereats.com/fr-en/store/starvin-joe-burgers/hwgn_CBbQnicAhVV31LLxg"
+5,"Yup Thai","Rue Léon Frot","Paris 11e",48.8539857,2.3877226,4.4,"700+",4,"","https://www.ubereats.com/fr-en/store/yup-thai/KzBVb9onWxi6Ob_HOJBkqg"
+6,"Thaï Time","Rue Crozatier","Paris 12e",48.845508,2.3825302,4.4,"100+",4,"","https://www.ubereats.com/fr-en/store/thai-time/DYm4BMDOVmi67QcXbzwUdQ"
+7,"BABY LOVE BURGER","Rue Saint-Maur","Paris 11e",48.8627796,2.3794302,4.4,"140+",5,"Buy 1, Get 1 Free","https://www.ubereats.com/fr-en/store/baby-love-burger-marais/sYg_KkhaV52SfgD0L-jDrw"

@@ -1,0 +1,12 @@
+ordre,name,address,city,lat,lng,rating,reviews,score,promo,uber_eats_url
+1,"La Vie Dirty Burgers","26 Rue Damesme","Paris 13e",48.8240771,2.3553377,4.6,"700+",3,"","https://www.ubereats.com/fr-en/store/la-vie-dirty-burgers-bagneux/vHu4tTVhVX-2rq1zkIBKfg"
+2,"Pizza Pronto","Boulevard Kellermann","Paris 13e",48.8199882,2.3571489,4.4,"250+",4,"","https://www.ubereats.com/fr-en/store/pizza-pronto-kellermann/q1c4HeadQfGq8JaLUk60cw"
+3,"Rana","Allée Éric Chabeur","Paris 13e",48.8207308,2.3636196,4.6,"1,000+",2,"","https://www.ubereats.com/fr-en/store/rana/OnCJ6xI4S_-UvY09Bj450A"
+4,"Cheese NAN","3 Rue Baudin","Ivry-sur-Seine",48.8176597,2.3737354,4.2,"420+",6,"","https://www.ubereats.com/fr-en/store/cheese-nan-boulogne/MzSMITtHQACjh-c4UetIrw"
+5,"Good Thai","50 Avenue Pierre Semard","Ivry-sur-Seine",48.8188403,2.3805441,4.5,"200+",4,"","https://www.ubereats.com/fr-en/store/good-thai/lsJwD0ZRWKy6zCg8-wmijA"
+6,"Golden chicken","Rue de Patay","Paris 13e",48.8245312,2.3763864,3.6,"130+",2,"","https://www.ubereats.com/fr-en/store/golden-chicken/Rt4bTDpuQji-oi32eav9qw"
+7,"Fo Pizza","25 Rue Françoise Dolto","Paris 13e",48.8283892,2.3805802,4.4,"800+",4,"","https://www.ubereats.com/fr-en/store/fo-pizza/dnIDQ776TtK9eCv7G2-1cg"
+8,"Gfc paris 13","73 Quai Panhard et Levassor","Paris 13e",48.8309505,2.3809871,4.3,"600+",4,"€0 Delivery Fee (Spend €15)","https://www.ubereats.com/fr-en/store/gfc-paris-13/uK8fPqDBQRCchiuH4k6FbQ"
+9,"Maison du Naan","Rue de Bercy","Paris 12e",48.83606,2.3857388,4.4,"100+",4,"","https://www.ubereats.com/fr-en/store/maison-du-naan/oKFeuHGlUnyiFcSoHQNlJw"
+10,"Regal Thai","4 Rue Marat","Ivry-sur-Seine",48.8107198,2.3845021,4.6,"1,500+",2,"","https://www.ubereats.com/fr-en/store/regal-thai-cachan/GPaqdoS7R0-NnMJmi24LQA"
+11,"MAJESTIC 🍔","Avenue de Paris","Villejuif",48.8049061,2.3642009,4.2,"500+",6,"","https://www.ubereats.com/fr-en/store/majestic-orly/nSu6c2pSUn6ZIRtBl6elAA"

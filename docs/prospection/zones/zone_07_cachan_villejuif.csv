@@ -1,0 +1,9 @@
+ordre,name,address,city,lat,lng,rating,reviews,score,promo,uber_eats_url
+1,"Pronto Pizza","4 Avenue Laplace","Arcueil",48.807233,2.3355965,3.6,"240+",2,"","https://www.ubereats.com/fr-en/store/pronto-pizza/TEqi-pnLSVGfbnJU6APjmQ"
+2,"Mehman","3 Avenue Louis Georgeon","Cachan",48.7923315,2.337131,4.5,"320+",4,"","https://www.ubereats.com/fr-en/store/mehman/HL7d88swS6e9uisu2BuqPQ"
+3,"Butcher Square","31 Avenue du Pont Royal","Cachan",48.7929695,2.3209937,4.1,"270+",6,"","https://www.ubereats.com/fr-en/store/butcher-square-restauration-italienne-pates-pizza-fraiche-viande-halal/Jvs2C4jNQWiVZ8DQ1qDIeA"
+4,"Papa Mario's Pizza","232 Avenue Aristide Briand","Bagneux",48.7920488,2.319984,4.4,"130+",4,"","https://www.ubereats.com/fr-en/store/papa-marios-pizza-bagneux/YugYdeAWSgy9ZaOQpmE3ug"
+5,"272 PIZZA","Impasse du Pont Royal","Bagneux",48.7900699,2.3192356,4.4,"500+",4,"","https://www.ubereats.com/fr-en/store/272-pizza/1fPOvG6zXuO0ArEe5bMInw"
+6,"Pizza Fiesta","8 Place de la Résidence","Antony",48.7699645,2.3162632,4.5,"260+",4,"","https://www.ubereats.com/fr-en/store/pizza-fiesta-antony/yiggJBwxQi6VKD3pp0A3IA"
+7,"Hk Burger","Rue Houdan","Sceaux",48.7791078,2.2896068,4.4,"150+",5,"Save on Select Items","https://www.ubereats.com/fr-en/store/hk-burger/7JFMBybGXw-THIY6DTEI8A"
+8,"Maihak Villejuif","102 Rue Jean Jaurès","Villejuif",48.7902011,2.3665378,4.5,"480+",4,"","https://www.ubereats.com/fr-en/store/maihak-villejuif/b7JztXDmRsqJpnE6nNYplA"

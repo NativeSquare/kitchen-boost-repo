@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Zone 4 — Boulogne-Billancourt / Issy-les-Moulineaux</name>
+    <description>7 prospects · centroïde 2.8 km Vanves · villes : Boulogne-Billancourt, Issy-les-Moulineaux, Paris 16e · ⭐ = service continu (heure creuse ok)</description>
+    <Style id="continuous">
+      <IconStyle>
+        <scale>1.2</scale>
+        <Icon><href>http://maps.google.com/mapfiles/kml/shapes/star.png</href></Icon>
+      </IconStyle>
+      <LabelStyle><scale>1.0</scale></LabelStyle>
+    </Style>
+    <Style id="home">
+      <IconStyle>
+        <scale>1.3</scale>
+        <Icon><href>http://maps.google.com/mapfiles/kml/shapes/ranger_station.png</href></Icon>
+      </IconStyle>
+    </Style>
+    <Placemark>
+      <name>🏠 Point de départ — Vanves</name>
+      <styleUrl>#home</styleUrl>
+      <Point><coordinates>2.2913,48.8235,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>1. Le Buron à Pizza</name>
+      <description>🍕 Pizza · 4.5★ · 500+ avis · Score 4/10 KB
+
+📍 Residence Ferber, Issy-les-Moulineaux
+
+🕒 HORAIRES (pause service) :
+Lun-Ven 11:30-14:30,18:00-22:00
+Sam 18:00-22:00
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Le%20Buron%20%C3%A0%20Pizza%20Residence%20Ferber%20Issy-les-Moulineaux
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/le-buron-a-pizza/-xmzbh4FS9mjCWHcOvpDJQ</description>
+      <Point><coordinates>2.2660804,48.826074,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>2. Taj mahal Boulogne Billancourt</name>
+      <description>🍛 Indien · 4.4★ · 230+ avis · Score 4/10 KB
+
+📍 Rue des Peupliers, Boulogne-Billancourt
+
+🕒 HORAIRES (pause service) :
+Lun-Dim 11:15-14:30,18:15-23:00
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Taj%20mahal%20Boulogne%20Billancourt%20Rue%20des%20Peupliers%20Boulogne-Billancourt
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/taj-mahal-boulogne-billancourt/SrcqMZsWRn-kS7y9Efr5Og</description>
+      <Point><coordinates>2.2551279,48.8339216,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>3. Panda House</name>
+      <styleUrl>#continuous</styleUrl>
+      <description>🍜 Thaï · 4.6★ · 900+ avis · Score 3/10 KB
+
+📍 8 Rue Chapu, Paris 16e
+
+🕒 HORAIRES ⭐ SERVICE CONTINU (ok en heure creuse) :
+Lun-Sam 11:30-22:30
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Panda%20House%208%20Rue%20Chapu%20Paris%2016e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/panda-house/C78AjmfBRJGLAAWCuavuNw</description>
+      <Point><coordinates>2.2662701,48.840995,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>4. 786</name>
+      <styleUrl>#continuous</styleUrl>
+      <description>🍜 Thaï · 4.6★ · 6,000+ avis · Score 0/10 KB
+
+📍 Quai Louis Blériot, Paris 16e
+
+🕒 HORAIRES ⭐ SERVICE CONTINU (ok en heure creuse) :
+Lun-Dim 11:30-23:55
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=786%20Quai%20Louis%20Bl%C3%A9riot%20Paris%2016e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/786-choisy-le-roi/PFyGkeaKQICzzhsiBdeAIQ</description>
+      <Point><coordinates>2.269039,48.8417159,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>5. Burger &amp;amp; Fries  Auteuil</name>
+      <description>🍔 Burger · 4.6★ · 8,000+ avis · Score 0/10 KB
+
+📍 10 Rue Géricault, Paris 16e
+
+🕒 HORAIRES (pause service) :
+Lun-Jeu 11:30-14:30, 19:00-04:00
+Ven-Sam 11:30-04:30
+Dim 11:30-04:30
+
+💰 SIGNAUX UE :
+• Buy 1 Get 1 Free (brade pour volume)
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Burger%20%26amp%3B%20Fries%20%20Auteuil%2010%20Rue%20G%C3%A9ricault%20Paris%2016e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/burger-%26-fries-auteuil/xrH9H4ZxRk-hX8dlQzPZ0w</description>
+      <Point><coordinates>2.2625348,48.8484159,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>6. Thaï Garden 🇹🇭</name>
+      <description>🍜 Thaï · 3.6★ · 230+ avis · Score 2/10 KB
+
+📍 107 Boulevard Exelmans, Paris 16e
+
+🕒 HORAIRES (pause service) :
+Lun-Sam 11:30-15:00,18:30-22:30
+Dim 18:30-22:30
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Tha%C3%AF%20Garden%20%F0%9F%87%B9%F0%9F%87%AD%20107%20Boulevard%20Exelmans%20Paris%2016e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/thai-garden/lm2JuUCURkmECSgiQEtBuQ</description>
+      <Point><coordinates>2.2582384,48.8456271,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>7. Garden Thaï 🍜</name>
+      <description>🍜 Thaï · 4.4★ · 460+ avis · Score 4/10 KB
+
+📍 107 Boulevard Exelmans, Paris 16e
+
+🕒 HORAIRES (pause service) :
+Lun-Sam 11:30-14:50,18:30-22:00
+Dim 18:30-22:00
+
+💰 SIGNAUX UE :
+• Promo : Top Offer • Spend €20, Save €5
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Garden%20Tha%C3%AF%20%F0%9F%8D%9C%20107%20Boulevard%20Exelmans%20Paris%2016e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/garden-thai/zNjo566ZRDSwtep7-QYU7w</description>
+      <Point><coordinates>2.2582384,48.8456271,0</coordinates></Point>
+    </Placemark>
+  </Document>
+</kml>

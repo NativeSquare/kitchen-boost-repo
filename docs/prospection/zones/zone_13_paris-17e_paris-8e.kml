@@ -1,0 +1,200 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Zone 13 — Paris 17e / Paris 8e</name>
+    <description>11 prospects · centroïde 6.9 km Vanves · villes : Paris 17e, Paris 8e, Levallois-Perret, Paris 16e · ⭐ = service continu (heure creuse ok)</description>
+    <Style id="continuous">
+      <IconStyle>
+        <scale>1.2</scale>
+        <Icon><href>http://maps.google.com/mapfiles/kml/shapes/star.png</href></Icon>
+      </IconStyle>
+      <LabelStyle><scale>1.0</scale></LabelStyle>
+    </Style>
+    <Style id="home">
+      <IconStyle>
+        <scale>1.3</scale>
+        <Icon><href>http://maps.google.com/mapfiles/kml/shapes/ranger_station.png</href></Icon>
+      </IconStyle>
+    </Style>
+    <Placemark>
+      <name>🏠 Point de départ — Vanves</name>
+      <styleUrl>#home</styleUrl>
+      <Point><coordinates>2.2913,48.8235,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>1. Pizza Mario Paris 16</name>
+      <description>🍕 Pizza · 4.6★ · 500+ avis · Score 1/10 KB
+
+📍 Rue Lauriston, Paris 16e
+
+🕒 HORAIRES (pause service) :
+Lun-Sam 11:30-14:30,18:30-22:30
+Dim 18:30-22:30
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Pizza%20Mario%20Paris%2016%20Rue%20Lauriston%20Paris%2016e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/pizza-mario-paris-16/E28vLHQHReeI49lhxoFcIA</description>
+      <Point><coordinates>2.2858358,48.8659239,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>2. Indiana</name>
+      <description>🍛 Indien · 4.6★ · 800+ avis · Score 3/10 KB
+
+📍 Rue du Faubourg Saint-Honoré, Paris 8e
+
+🕒 HORAIRES (pause service) :
+Lun-Sam 11:15-14:00,18:15-22:00
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Indiana%20Rue%20du%20Faubourg%20Saint-Honor%C3%A9%20Paris%208e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/indiana/FYlMS_nCRDSz9RKsPLyiAQ</description>
+      <Point><coordinates>2.2986835,48.8774315,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>3. New Sanna</name>
+      <description>🍛 Indien · 4.6★ · 1,000+ avis · Score 2/10 KB
+
+📍 Avenue de Villiers, Paris 17e
+
+🕒 HORAIRES (pause service) :
+Lun-Mar 11:30-14:30,18:30-23:30
+Mer 11:30-14:30,18:30-23:00
+Jeu-Sam 11:30-14:30,18:30-23:30
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=New%20Sanna%20Avenue%20de%20Villiers%20Paris%2017e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/new-sanna/VYqseWvWT96kRnP8XrskZg</description>
+      <Point><coordinates>2.2959483,48.8849514,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>4. Nūage Burger</name>
+      <styleUrl>#continuous</styleUrl>
+      <description>🍔 Burger · 4.6★ · 2,000+ avis · Score 2/10 KB
+
+📍 Rue Louis Rouquier, Levallois-Perret
+
+🕒 HORAIRES ⭐ SERVICE CONTINU (ok en heure creuse) :
+Lun-Sam 11:30-23:59
+Dim 12:30-23:59
+
+💰 SIGNAUX UE :
+• Promo : 2 Offers Available
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=N%C5%ABage%20Burger%20Rue%20Louis%20Rouquier%20Levallois-Perret
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/nuage-burger-rueil-malmaison/MnpsqYsxSZ6JfdLCi-uZmg</description>
+      <Point><coordinates>2.292393,48.8930325,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>5. Shri Ganesh</name>
+      <description>🍛 Indien · 4.5★ · 370+ avis · Score 4/10 KB
+
+📍 17 Rue Voltaire, Levallois-Perret
+
+🕒 HORAIRES (pause service) :
+Lun-Sam 12:00-14:15,19:00-22:45
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Shri%20Ganesh%2017%20Rue%20Voltaire%20Levallois-Perret
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/shri-ganesh/5v7DezXtRr-qquRnWdamtA</description>
+      <Point><coordinates>2.2815453,48.8910286,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>6. Kunchapaï</name>
+      <styleUrl>#continuous</styleUrl>
+      <description>🍜 Thaï · 4.5★ · 180+ avis · Score 4/10 KB
+
+📍 Rue de Saussure, Paris 17e
+
+🕒 HORAIRES ⭐ SERVICE CONTINU (ok en heure creuse) :
+Dim 18:00-23:56
+Lun 11:00-23:30
+Mar-Sam 11:00-23:00
+
+💰 SIGNAUX UE :
+• 46 min livraison (saturé/loin)
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Kunchapa%C3%AF%20Rue%20de%20Saussure%20Paris%2017e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/kunchapai/p9kw2s7eQ5mZ19l9kgGtRA</description>
+      <Point><coordinates>2.312408,48.8871633,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>7. Pizza Di Roma</name>
+      <description>🍕 Pizza · 4.4★ · 700+ avis · Score 5/10 KB
+
+📍 Rue la Condamine, Paris 17e
+
+🕒 HORAIRES (pause service) :
+Lun-Dim 11:00-14:00,18:00-22:00
+
+💰 SIGNAUX UE :
+• Buy 1 Get 1 Free (brade pour volume)
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Pizza%20Di%20Roma%20Rue%20la%20Condamine%20Paris%2017e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/pizza-di-roma/2L0-jYS5TeqbOI3-7RMl7w</description>
+      <Point><coordinates>2.3197718,48.8846427,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>8. Pizza des Batignolles</name>
+      <description>🍕 Pizza · 4.1★ · 330+ avis · Score 7/10 KB
+
+📍 Rue la Condamine, Paris 17e
+
+🕒 HORAIRES (pause service) :
+Lun-Ven 11:30-18:00,18:15-02:45
+Sam 18:15-02:45
+Dim 18:15-02:45
+
+💰 SIGNAUX UE :
+• Buy 1 Get 1 Free (brade pour volume)
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Pizza%20des%20Batignolles%20Rue%20la%20Condamine%20Paris%2017e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/pizza-des-batignolles/JzVNYbm-QvypN8XBM8KqJA</description>
+      <Point><coordinates>2.3197718,48.8846427,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>9. Tiger Thaï Paris Batignolles</name>
+      <description>🍜 Thaï · 4.3★ · 250+ avis · Score 6/10 KB
+
+📍 Rue la Condamine, Paris 17e
+
+🕒 HORAIRES (pause service) :
+Mar 11:45-14:05,18:30-22:15
+Mer 11:00-14:05,18:00-22:15
+Jeu-Ven 11:45-14:00,18:30-22:15
+Sam 18:30-22:30
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Tiger%20Tha%C3%AF%20Paris%20Batignolles%20Rue%20la%20Condamine%20Paris%2017e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/tiger-thai-paris-batignolles/5f5usq7xQFuxULzK9zAPYA</description>
+      <Point><coordinates>2.3226899,48.88658,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>10. Naan Stop</name>
+      <styleUrl>#continuous</styleUrl>
+      <description>🍛 Indien · 4.3★ · 4,000+ avis · Score 3/10 KB
+
+📍 Avenue de Clichy, Paris 17e
+
+🕒 HORAIRES ⭐ SERVICE CONTINU (ok en heure creuse) :
+Lun-Mer 11:30-02:00
+Jeu-Sam 11:30-03:30
+
+💰 SIGNAUX UE :
+• Promo : Buy 1, get a free item
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Naan%20Stop%20Avenue%20de%20Clichy%20Paris%2017e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/naan-stop-paris-17eme/OYdqgT5MTNG-cWByPzWuQg</description>
+      <Point><coordinates>2.3244937,48.8882568,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>11. Thaï at home</name>
+      <description>🍜 Thaï · 4.6★ · 5,000+ avis · Score 0/10 KB
+
+📍 Rue des Moines, Paris 17e
+
+🕒 HORAIRES (pause service) :
+Lun-Ven 11:30-14:30,18:30-22:15
+Sam 18:30-22:15
+Dim 18:30-22:15
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Tha%C3%AF%20at%20home%20Rue%20des%20Moines%20Paris%2017e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/thai-at-home-commerce/NCmfEV6MSuOfFDmEY7qxag</description>
+      <Point><coordinates>2.3201591,48.8894916,0</coordinates></Point>
+    </Placemark>
+  </Document>
+</kml>

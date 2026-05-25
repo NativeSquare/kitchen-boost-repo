@@ -1,0 +1,8 @@
+ordre,name,address,city,lat,lng,rating,reviews,score,promo,uber_eats_url
+1,"Asia Yum’s","Rue d'Orléans","Saint-Cloud",48.8420945,2.2192345,4.6,"500+",3,"","https://www.ubereats.com/fr-en/store/asia-yums/W9j5mcl5QZOUydAb3V_fRg"
+2,"La Boucherie","Rue Jeanne","Saint-Cloud",48.8426073,2.2192959,4.5,"140+",4,"","https://www.ubereats.com/fr-en/store/la-boucherie-lourmel/s9nk8xaCVb-OJXmzkilwcg"
+3,"La Boucherie","Rue Jeanne","Saint-Cloud",48.8426073,2.2192959,4.5,"140+",4,"","https://www.ubereats.com/fr-en/store/la-boucherie-lourmel/s9nk8xaCVb-OJXmzkilwcg?storeSearchQuery=burgers"
+4,"Pizza Cloud","Boulevard Senard","Saint-Cloud",48.8518748,2.2212024,4.5,"250+",4,"","https://www.ubereats.com/fr-en/store/pizza-cloud/2KSiUIJKV8W5aIasPlVoCQ"
+5,"Restaurant Basmati","Avenue de Sully","Suresnes",48.8635012,2.2027058,4.4,"380+",5,"Buy 1, Get 1 Free","https://www.ubereats.com/fr-en/store/restaurant-basmati/15-UD1LTWQ-OO0YaGkzP1g"
+6,"My Pizza Box","85 Rue Gallieni","Rueil-Malmaison",48.865825,2.2042097,4.2,"140+",6,"","https://www.ubereats.com/fr-en/store/my-pizza-box/KT14MxCzVvO932TDUo5fcA"
+7,"Bill's Burger","Rue Benoît Malon","Suresnes",48.8735658,2.2304808,4.3,"1,500+",6,"Save on Select Items","https://www.ubereats.com/fr-en/store/bills-burger-boulogne/7riiuTq5UOOPpTeUn8pEEA"

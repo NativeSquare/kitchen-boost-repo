@@ -1,0 +1,12 @@
+ordre,name,address,city,lat,lng,rating,reviews,score,promo,uber_eats_url
+1,"Le Palais Thai 🍥","7 Rue des Moulins","Paris 1e",48.8670024,2.3350628,3.7,"270+",2,"","https://www.ubereats.com/fr-en/store/le-palais-thai/BtNpUostUl2eYnH5mK6ygQ"
+2,"Kurry Up","74 Passage Choiseul","Paris 2e",48.8684015,2.3357877,4.6,"700+",3,"","https://www.ubereats.com/fr-en/store/kurry-up-washington/_h-BV9jWXu25SeEjKPgKmg"
+3,"IM Thaï Gourmet","8 Rue de Port Mahon","Paris 2e",48.8695167,2.3341348,4.5,"600+",4,"","https://www.ubereats.com/fr-en/store/im-thai-gourmet/IQgTeVf6SeuPWbuV6z_QJg"
+4,"THAI THAI","Boulevard Haussmann","Paris 9e",48.8728589,2.3349777,4.4,"700+",4,"","https://www.ubereats.com/fr-en/store/thai-thai/_DaRMhqLXmmyVap-rm8qVg"
+5,"Kastoori","4 Place Gustave Toudouze","Paris 9e",48.8796046,2.3374293,4.6,"400+",3,"","https://www.ubereats.com/fr-en/store/kastoori/niifJd27S_W-JTvXHPeVqQ"
+6,"Bar à naan","Rue Jean-Baptiste Pigalle","Paris 9e",48.8802211,2.3348568,4.5,"1,500+",3,"","https://www.ubereats.com/fr-en/store/bar-a-naan/S95HRvxnRJOtsGiH4xx7pA"
+7,"Disco Burgers 🪩🍔","26 Rue de Douai","Paris 9e",48.8824546,2.333139,4.5,"380+",4,"","https://www.ubereats.com/fr-en/store/disco-burgers/ICIjXRTmXPqXRE4wNu-7Zg"
+8,"Da May Fa","12 Rue Lepic","Paris 18e",48.8844392,2.3335125,4.4,"700+",4,"","https://www.ubereats.com/fr-en/store/da-may-fa/sbH2wL3RStCnW_GmW1s1Dw"
+9,"Étoile du Kashmir","Rue des Batignolles","Paris 17e",48.8831342,2.3236837,4.6,"3,000+",0,"","https://www.ubereats.com/fr-en/store/etoile-du-kashmir-charonne/alBXj_3YTl-cz6cMoepFRA"
+10,"Slice Pizza Club","Rue de la Pépinière","Paris 8e",48.8751324,2.3212538,3.8,"230+",7,"Buy 1, Get 1 Free","https://www.ubereats.com/fr-en/store/slice-pizza-club-8-eme/E5z8f_PFUVK6DZso8XJfuQ"
+11,"Pizza Presto","Rue La Boétie","Paris 8e",48.8740062,2.3156678,4,"400+",8,"Top Offer • Buy 1, Get 1 Free","https://www.ubereats.com/fr-en/store/pizza-presto-boulogne-billancourt/usT7hBkERHS7zNHnQPDm_w"

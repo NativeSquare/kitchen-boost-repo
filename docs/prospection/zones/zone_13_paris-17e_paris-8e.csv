@@ -1,0 +1,12 @@
+ordre,name,address,city,lat,lng,rating,reviews,score,promo,uber_eats_url
+1,"Pizza Mario Paris 16","Rue Lauriston","Paris 16e",48.8659239,2.2858358,4.6,"500+",1,"","https://www.ubereats.com/fr-en/store/pizza-mario-paris-16/E28vLHQHReeI49lhxoFcIA"
+2,"Indiana","Rue du Faubourg Saint-Honoré","Paris 8e",48.8774315,2.2986835,4.6,"800+",3,"","https://www.ubereats.com/fr-en/store/indiana/FYlMS_nCRDSz9RKsPLyiAQ"
+3,"New Sanna","Avenue de Villiers","Paris 17e",48.8849514,2.2959483,4.6,"1,000+",2,"","https://www.ubereats.com/fr-en/store/new-sanna/VYqseWvWT96kRnP8XrskZg"
+4,"Nūage Burger","Rue Louis Rouquier","Levallois-Perret",48.8930325,2.292393,4.6,"2,000+",2,"2 Offers Available","https://www.ubereats.com/fr-en/store/nuage-burger-rueil-malmaison/MnpsqYsxSZ6JfdLCi-uZmg"
+5,"Shri Ganesh","17 Rue Voltaire","Levallois-Perret",48.8910286,2.2815453,4.5,"370+",4,"","https://www.ubereats.com/fr-en/store/shri-ganesh/5v7DezXtRr-qquRnWdamtA"
+6,"Kunchapaï","Rue de Saussure","Paris 17e",48.8871633,2.312408,4.5,"180+",4,"","https://www.ubereats.com/fr-en/store/kunchapai/p9kw2s7eQ5mZ19l9kgGtRA"
+7,"Pizza Di Roma","Rue la Condamine","Paris 17e",48.8846427,2.3197718,4.4,"700+",5,"Buy 1, Get 1 Free","https://www.ubereats.com/fr-en/store/pizza-di-roma/2L0-jYS5TeqbOI3-7RMl7w"
+8,"Pizza des Batignolles","Rue la Condamine","Paris 17e",48.8846427,2.3197718,4.1,"330+",7,"Buy 1, Get 1 Free","https://www.ubereats.com/fr-en/store/pizza-des-batignolles/JzVNYbm-QvypN8XBM8KqJA"
+9,"Tiger Thaï Paris Batignolles","Rue la Condamine","Paris 17e",48.88658,2.3226899,4.3,"250+",6,"","https://www.ubereats.com/fr-en/store/tiger-thai-paris-batignolles/5f5usq7xQFuxULzK9zAPYA"
+10,"Naan Stop","Avenue de Clichy","Paris 17e",48.8882568,2.3244937,4.3,"4,000+",3,"Buy 1, get a free item","https://www.ubereats.com/fr-en/store/naan-stop-paris-17eme/OYdqgT5MTNG-cWByPzWuQg"
+11,"Thaï at home","Rue des Moines","Paris 17e",48.8894916,2.3201591,4.6,"5,000+",0,"","https://www.ubereats.com/fr-en/store/thai-at-home-commerce/NCmfEV6MSuOfFDmEY7qxag"

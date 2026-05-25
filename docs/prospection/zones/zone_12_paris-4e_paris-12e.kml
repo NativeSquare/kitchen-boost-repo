@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Zone 12 — Paris 4e / Paris 12e</name>
+    <description>7 prospects · centroïde 6.9 km Vanves · villes : Paris 4e, Paris 12e, Paris 11e · ⭐ = service continu (heure creuse ok)</description>
+    <Style id="continuous">
+      <IconStyle>
+        <scale>1.2</scale>
+        <Icon><href>http://maps.google.com/mapfiles/kml/shapes/star.png</href></Icon>
+      </IconStyle>
+      <LabelStyle><scale>1.0</scale></LabelStyle>
+    </Style>
+    <Style id="home">
+      <IconStyle>
+        <scale>1.3</scale>
+        <Icon><href>http://maps.google.com/mapfiles/kml/shapes/ranger_station.png</href></Icon>
+      </IconStyle>
+    </Style>
+    <Placemark>
+      <name>🏠 Point de départ — Vanves</name>
+      <styleUrl>#home</styleUrl>
+      <Point><coordinates>2.2913,48.8235,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>1. Au Petit Thai</name>
+      <styleUrl>#continuous</styleUrl>
+      <description>🍜 Thaï · 4.4★ · 600+ avis · Score 4/10 KB
+
+📍 Rue du Roi de Sicile, Paris 4e
+
+🕒 HORAIRES ⭐ SERVICE CONTINU (ok en heure creuse) :
+Lun-Dim 12:00-14:30
+Lun-Sam 19:00-23:30
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Au%20Petit%20Thai%20Rue%20du%20Roi%20de%20Sicile%20Paris%204e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/au-petit-thai/skdnZbHYQ7ikEbSQkSDNEQ</description>
+      <Point><coordinates>2.3601724,48.8557934,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>2. Khao Thai</name>
+      <description>🍜 Thaï · 4.6★ · 420+ avis · Score 3/10 KB
+
+📍 10 Rue de Sévigné, Paris 4e
+
+🕒 HORAIRES (pause service) :
+12:00-14:30,18:00-22:30
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Khao%20Thai%2010%20Rue%20de%20S%C3%A9vign%C3%A9%20Paris%204e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/khao-thai-restaurant-thailandais/i6IL1jcORJyEJfkrF-uRDw</description>
+      <Point><coordinates>2.3622403,48.8556539,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>3. Khao Thaï</name>
+      <description>🍜 Thaï · 4.5★ · 600+ avis · Score 4/10 KB
+
+📍 10 Rue de Sévigné, Paris 4e
+
+🕒 HORAIRES (pause service) :
+Lun-Ven 11:30-14:30,18:30-23:00
+Sam 18:00-23:00
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Khao%20Tha%C3%AF%2010%20Rue%20de%20S%C3%A9vign%C3%A9%20Paris%204e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/khao-thai/45CYtJSVTQyaXM3-RkbqWA</description>
+      <Point><coordinates>2.3622403,48.8556539,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>4. Starvin&apos; Joe</name>
+      <description>🍔 Burger · 4.5★ · 4,000+ avis · Score 1/10 KB
+
+📍 Rue de Charonne, Paris 11e
+
+🕒 HORAIRES (pause service) :
+Lun-Ven 12:00-14:40,18:30-22:30
+Sam 12:00-16:55,18:00-22:30
+Dim 12:00-16:55,18:00-22:30
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Starvin&apos;%20Joe%20Rue%20de%20Charonne%20Paris%2011e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/starvin-joe-burgers/hwgn_CBbQnicAhVV31LLxg</description>
+      <Point><coordinates>2.3768485,48.8531813,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>5. Yup Thai</name>
+      <description>🍜 Thaï · 4.4★ · 700+ avis · Score 4/10 KB
+
+📍 Rue Léon Frot, Paris 11e
+
+🕒 HORAIRES (pause service) :
+Lun-Ven 11:15-14:15,18:00-22:45
+Sam 18:00-22:45
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Yup%20Thai%20Rue%20L%C3%A9on%20Frot%20Paris%2011e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/yup-thai/KzBVb9onWxi6Ob_HOJBkqg</description>
+      <Point><coordinates>2.3877226,48.8539857,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>6. Thaï Time</name>
+      <description>🍜 Thaï · 4.4★ · 100+ avis · Score 4/10 KB
+
+📍 Rue Crozatier, Paris 12e
+
+🕒 HORAIRES (pause service) :
+Lun-Ven 11:30-14:55,18:45-22:55
+Sam 12:00-14:55,18:45-22:55
+Dim 12:00-14:55,18:45-22:55
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=Tha%C3%AF%20Time%20Rue%20Crozatier%20Paris%2012e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/thai-time/DYm4BMDOVmi67QcXbzwUdQ</description>
+      <Point><coordinates>2.3825302,48.845508,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>7. BABY LOVE BURGER</name>
+      <styleUrl>#continuous</styleUrl>
+      <description>🍔 Burger · 4.4★ · 140+ avis · Score 5/10 KB
+
+📍 Rue Saint-Maur, Paris 11e
+
+🕒 HORAIRES ⭐ SERVICE CONTINU (ok en heure creuse) :
+Lun-Sam 12:00-23:30
+Dim 12:00-23:00
+
+💰 SIGNAUX UE :
+• Buy 1 Get 1 Free (brade pour volume)
+• 48 min livraison (saturé/loin)
+
+📍 Google Maps : https://www.google.com/maps/search/?api=1&amp;query=BABY%20LOVE%20BURGER%20Rue%20Saint-Maur%20Paris%2011e
+🔗 Uber Eats : https://www.ubereats.com/fr-en/store/baby-love-burger-marais/sYg_KkhaV52SfgD0L-jDrw</description>
+      <Point><coordinates>2.3794302,48.8627796,0</coordinates></Point>
+    </Placemark>
+  </Document>
+</kml>

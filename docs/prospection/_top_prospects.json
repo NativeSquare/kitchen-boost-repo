@@ -1,0 +1,1211 @@
+[
+  {
+    "keyword": "pizza",
+    "name": "Deep Dish Paris",
+    "slug": "deep-dish-paris/_CFjfTSKQUGnmHzLh-122A",
+    "rating": 4.2,
+    "reviews": "600+",
+    "etd_min": 49,
+    "delivery_fee": "5.49 €",
+    "sponsored": true,
+    "promo": "Buy 1, Get 1 Free",
+    "uber_one": false,
+    "keywords": "pizza",
+    "score": 10,
+    "tags": [
+      "note 4.2* ideal",
+      "600+ avis (etabli)",
+      "Sponsored (brule cash)",
+      "Buy1Get1"
+    ]
+  },
+  {
+    "keyword": "thai",
+    "name": "Veng Hour",
+    "slug": "veng-hour-boulogne/vX1aSSivQYaZkqtD4biD0g",
+    "rating": 4.2,
+    "reviews": "72",
+    "etd_min": 19,
+    "delivery_fee": "5.49 €",
+    "sponsored": true,
+    "promo": null,
+    "uber_one": true,
+    "keywords": "thai",
+    "score": 10,
+    "tags": [
+      "note 4.2* ideal",
+      "72 avis (fresh)",
+      "Sponsored (brule cash)",
+      "19 min (rapide + Sponsored)"
+    ]
+  },
+  {
+    "keyword": "pizza",
+    "name": "Captain's Pizza",
+    "slug": "captains-pizza/XBUv_jPcT6aIfDGbn9tXqQ",
+    "rating": 4.1,
+    "reviews": "27",
+    "etd_min": 40,
+    "delivery_fee": "5.49 €",
+    "sponsored": true,
+    "promo": "Top Offer • Buy 1, Get 1 Free",
+    "uber_one": true,
+    "keywords": "pizza",
+    "score": 10,
+    "tags": [
+      "note 4.1* ideal",
+      "27 avis (fresh)",
+      "Sponsored (brule cash)",
+      "Top Offer Buy1Get1"
+    ]
+  },
+  {
+    "keyword": "thai",
+    "name": "Sushi thai yakitori",
+    "slug": "sushi-thai-yakitori/8CLOq3YlTGqybZ-B48SDAg",
+    "rating": 3.9,
+    "reviews": "55",
+    "etd_min": 61,
+    "delivery_fee": "5.49 €",
+    "sponsored": false,
+    "promo": "Top Offer • Buy 1, Get 1 Free",
+    "uber_one": false,
+    "keywords": "thai",
+    "score": 9,
+    "tags": [
+      "note 3.9* ideal",
+      "55 avis (fresh)",
+      "Top Offer Buy1Get1",
+      "61 min (sature/loin)"
+    ]
+  },
+  {
+    "keyword": "thai",
+    "name": "Bain Thai 93",
+    "slug": "bain-thai-93/Y_7YlZ_TTPmpRwK_jjEp7w",
+    "rating": 4.1,
+    "reviews": "25",
+    "etd_min": 56,
+    "delivery_fee": "5.49 €",
+    "sponsored": false,
+    "promo": "Top Offer • Buy 1, Get 1 Free",
+    "uber_one": false,
+    "keywords": "thai",
+    "score": 9,
+    "tags": [
+      "note 4.1* ideal",
+      "25 avis (fresh)",
+      "Top Offer Buy1Get1",
+      "56 min (sature/loin)"
+    ]
+  },
+  {
+    "keyword": "thai",
+    "name": "Eat Inn",
+    "slug": "eat-inn/KIORChFpXwufU0JuK2In8w",
+    "rating": 4.3,
+    "reviews": "800+",
+    "etd_min": 14,
+    "delivery_fee": "2.49 €",
+    "sponsored": false,
+    "promo": "Top Offer • Buy 1, Get 1 Free",
+    "uber_one": true,
+    "keywords": "thai",
+    "score": 8,
+    "tags": [
+      "note 4.3* ideal",
+      "800+ avis (etabli)",
+      "Top Offer Buy1Get1"
+    ]
+  },
+  {
+    "keyword": "Indian",
+    "name": "Chutney Bites Indien",
+    "slug": "chutney-bites-indien/Ob5kwiuPQ6ahvB5XjhUunQ",
+    "rating": 4,
+    "reviews": "500+",
+    "etd_min": 52,
+    "delivery_fee": "5.49 €",
+    "sponsored": false,
+    "promo": "Buy 1, Get 1 Free",
+    "uber_one": true,
+    "keywords": "Indian",
+    "score": 8,
+    "tags": [
+      "note 4* ideal",
+      "500+ avis (etabli)",
+      "Buy1Get1",
+      "52 min (sature/loin)"
+    ]
+  },
+  {
+    "keyword": "pizza",
+    "name": "Pizza ville",
+    "slug": "pizza-ville/I5yPO842T_uapAflL46FWw",
+    "rating": 4.2,
+    "reviews": "500+",
+    "etd_min": 39,
+    "delivery_fee": "5.49 €",
+    "sponsored": false,
+    "promo": "Top Offer • Buy 1, Get 1 Free",
+    "uber_one": false,
+    "keywords": "pizza",
+    "score": 8,
+    "tags": [
+      "note 4.2* ideal",
+      "500+ avis (etabli)",
+      "Top Offer Buy1Get1"
+    ]
+  },
+  {
+    "keyword": "burger",
+    "name": "JFK Burgers",
+    "slug": "jfk-burgers-grenelle/0TRksdhQW1i2YsNA5pjqGg",
+    "rating": 4.3,
+    "reviews": "470+",
+    "etd_min": 65,
+    "delivery_fee": "5.49 €",
+    "sponsored": false,
+    "promo": "Buy 1, Get 1 Free",
+    "uber_one": true,
+    "keywords": "burger",
+    "score": 8,
+    "tags": [
+      "note 4.3* ideal",
+      "470+ avis (etabli)",
+      "Buy1Get1",
+      "65 min (sature/loin)"
+    ]
+  },
+  {
+    "keyword": "Indian",
+    "name": "Madras Bhavan",
+    "slug": "madras-bhavan/dS-EnlbfSsWwZtvHoy_ZzQ",
+    "rating": 3.9,
+    "reviews": "430+",
+    "etd_min": 51,
+    "delivery_fee": "5.49 €",
+    "sponsored": false,
+    "promo": "Buy 1, Get 1 Free",
+    "uber_one": true,
+    "keywords": "Indian",
+    "score": 8,
+    "tags": [
+      "note 3.9* ideal",
+      "430+ avis (etabli)",
+      "Buy1Get1",
+      "51 min (sature/loin)"
+    ]
+  },
+  {
+    "keyword": "pizza",
+    "name": "Pizza Magic 🔥🍕",
+    "slug": "pizza-magic/aP6RUyeIQkWiJujveTPfXA",
+    "rating": 4,
+    "reviews": "400+",
+    "etd_min": 48,
+    "delivery_fee": "5.49 €",
+    "sponsored": false,
+    "promo": "Top Offer • Buy 1, Get 1 Free",
+    "uber_one": true,
+    "keywords": "pizza",
+    "score": 8,
+    "tags": [
+      "note 4* ideal",
+      "400+ avis (etabli)",
+      "Top Offer Buy1Get1"
+    ]
+  },
+  {
+    "keyword": "pizza",
+    "name": "Pizza Presto",
+    "slug": "pizza-presto-boulogne-billancourt/usT7hBkERHS7zNHnQPDm_w",
+    "rating": 4,
+    "reviews": "400+",
+    "etd_min": 27,
+    "delivery_fee": "4.99 €",
+    "sponsored": false,
+    "promo": "Top Offer • Buy 1, Get 1 Free",
+    "uber_one": true,
+    "keywords": "pizza",
+    "score": 8,
+    "tags": [
+      "note 4* ideal",
+      "400+ avis (etabli)",
+      "Top Offer Buy1Get1"
+    ]
+  },
+  {
+    "keyword": "thai",
+    "name": "JEFE Burger by Ninho",
+    "slug": "jefe-burger-by-ninho/d1ZS0AomXJa6mlfoS_A2_A",
+    "rating": 4.3,
+    "reviews": "390+",
+    "etd_min": 38,
+    "delivery_fee": "5.49 €",
+    "sponsored": false,
+    "promo": "Top Offer • Buy 1, Get 1 Free",
+    "uber_one": false,
+    "keywords": "thai+burger",
+    "score": 8,
+    "tags": [
+      "note 4.3* ideal",
+      "390+ avis (etabli)",
+      "Top Offer Buy1Get1"
+    ]
+  },
+  {
+    "keyword": "thai",
+    "name": "Le Commerce",
+    "slug": "le-commerce-restaurant-thai-traditionnel/ByYP5ntvTOK_dS9YPV-EQw",
+    "rating": 4.2,
+    "reviews": "360+",
+    "etd_min": 20,
+    "delivery_fee": "1.49 €",
+    "sponsored": false,
+    "promo": "Top Offer • Buy 1, Get 1 Free",
+    "uber_one": true,
+    "keywords": "thai",
+    "score": 8,
+    "tags": [
+      "note 4.2* ideal",
+      "360+ avis (etabli)",
+      "Top Offer Buy1Get1"
+    ]
+  },
+  {
+    "keyword": "burger",
+    "name": "La Casa des Burgers",
+    "slug": "la-casa-des-burgers/W66bw3nXTC2GG3ErQulBEw",
+    "rating": 4.2,
+    "reviews": "310+",
+    "etd_min": 39,
+    "delivery_fee": "5.49 €",
+    "sponsored": false,
+    "promo": "Top Offer • Buy 1, Get 1 Free",
+    "uber_one": true,
+    "keywords": "burger",
+    "score": 8,
+    "tags": [
+      "note 4.2* ideal",
+      "310+ avis (etabli)",
+      "Top Offer Buy1Get1"
+    ]
+  },
+  {
+    "keyword": "thai",
+    "name": "Taco Rolls",
+    "slug": "taco-rolls-paris-18/nFNqhmrqXeGKQMZkmThHxg",
+    "rating": 4.2,
+    "reviews": "300+",
+    "etd_min": 44,
+    "delivery_fee": "5.49 €",
+    "sponsored": false,
+    "promo": "Top Offer • Buy 1, Get 1 Free",
+    "uber_one": false,
+    "keywords": "thai",
+    "score": 8,
+    "tags": [
+      "note 4.2* ideal",
+      "300+ avis (etabli)",
+      "Top Offer Buy1Get1"
+    ]
+  },
+  {
+    "keyword": "burger",
+    "name": "Amiral smash burger",
+    "slug": "amiral-smash-burger/-xNqQdDdTCyosuEJaZmHRg",
+    "rating": 4,
+    "reviews": "250+",
+    "etd_min": 25,
+    "delivery_fee": "4.49 €",
+    "sponsored": false,
+    "promo": "Top Offer • Buy 1, Get 1 Free",
+    "uber_one": true,
+    "keywords": "burger",
+    "score": 8,
+    "tags": [
+      "note 4* ideal",
+      "250+ avis (etabli)",
+      "Top Offer Buy1Get1"
+    ]
+  },
+  {
+    "keyword": "pizza",
+    "name": "Joe's Pizza",
+    "slug": "joes-pizza/6DmrlEy5Sp-qIbjvhso-jQ",
+    "rating": 4.2,
+    "reviews": "220+",
+    "etd_min": 30,
+    "delivery_fee": "5.49 €",
+    "sponsored": false,
+    "promo": "Top Offer • Buy 1, Get 1 Free",
+    "uber_one": false,
+    "keywords": "pizza",
+    "score": 8,
+    "tags": [
+      "note 4.2* ideal",
+      "220+ avis (etabli)",
+      "Top Offer Buy1Get1"
+    ]
+  },
+  {
+    "keyword": "burger",
+    "name": "O'Bowl Poutines &amp; Burgers",
+    "slug": "obowl-poutines-%26-burgers/G1632wnnWwSeto6IeQeOrA",
+    "rating": 4.1,
+    "reviews": "190+",
+    "etd_min": 34,
+    "delivery_fee": "5.49 €",
+    "sponsored": false,
+    "promo": "Top Offer • Buy 1, Get 1 Free",
+    "uber_one": false,
+    "keywords": "burger",
+    "score": 8,
+    "tags": [
+      "note 4.1* ideal",
+      "190+ avis (fresh)",
+      "Top Offer Buy1Get1"
+    ]
+  },
+  {
+    "keyword": "thai",
+    "name": "Kham Kham Thai",
+    "slug": "kham-kham-thai/KUwALHs6UVGJKrv1liu6Qw?diningMode=PICKUP",
+    "rating": 4.3,
+    "reviews": "150+",
+    "etd_min": null,
+    "delivery_fee": null,
+    "sponsored": false,
+    "promo": "Top Offer • Buy 1, Get 1 Free",
+    "uber_one": false,
+    "keywords": "thai",
+    "score": 8,
+    "tags": [
+      "note 4.3* ideal",
+      "150+ avis (fresh)",
+      "Top Offer Buy1Get1"
+    ]
+  },
+  {
+    "keyword": "Indian",
+    "name": "Biryani Palace",
+    "slug": "biryani-palace/FA8wLA-rUXSjSZrb8lmXRg",
+    "rating": 4,
+    "reviews": "110+",
+    "etd_min": 48,
+    "delivery_fee": "5.49 €",
+    "sponsored": false,
+    "promo": "Top Offer • Buy 1, Get 1 Free",
+    "uber_one": false,
+    "keywords": "Indian",
+    "score": 8,
+    "tags": [
+      "note 4* ideal",
+      "110+ avis (fresh)",
+      "Top Offer Buy1Get1"
+    ]
+  },
+  {
+    "keyword": "burger",
+    "name": "Burger Road",
+    "slug": "burger-road/LPf1lbCuSR2QYUMCLgZi_g",
+    "rating": 3.9,
+    "reviews": "100+",
+    "etd_min": 37,
+    "delivery_fee": "5.49 €",
+    "sponsored": false,
+    "promo": "Top Offer • Buy 1, Get 1 Free",
+    "uber_one": false,
+    "keywords": "burger",
+    "score": 8,
+    "tags": [
+      "note 3.9* ideal",
+      "100+ avis (fresh)",
+      "Top Offer Buy1Get1"
+    ]
+  },
+  {
+    "keyword": "thai",
+    "name": "Mr Thaï",
+    "slug": "mr-thai/z5_CHj4oV6ykHnJIZZMGuw",
+    "rating": 3.8,
+    "reviews": "92",
+    "etd_min": 68,
+    "delivery_fee": "5.49 €",
+    "sponsored": false,
+    "promo": "Buy 1, Get 1 Free",
+    "uber_one": false,
+    "keywords": "thai",
+    "score": 8,
+    "tags": [
+      "note 3.8* ideal",
+      "92 avis (fresh)",
+      "Buy1Get1",
+      "68 min (sature/loin)"
+    ]
+  },
+  {
+    "keyword": "thai",
+    "name": "Makinne Thaï",
+    "slug": "makinne-thai/mnUUxWLFUrCYvE0-HCxiog",
+    "rating": 4,
+    "reviews": "65",
+    "etd_min": null,
+    "delivery_fee": null,
+    "sponsored": false,
+    "promo": "Top Offer • Buy 1, Get 1 Free",
+    "uber_one": false,
+    "keywords": "thai",
+    "score": 8,
+    "tags": [
+      "note 4* ideal",
+      "65 avis (fresh)",
+      "Top Offer Buy1Get1"
+    ]
+  },
+  {
+    "keyword": "burger",
+    "name": "WANTED 🍔 Smash Burgers",
+    "slug": "wanted-smash-burgers-vanves/yjpfnRq4W_OcYI2BP1F8DQ",
+    "rating": 4.2,
+    "reviews": "44",
+    "etd_min": 11,
+    "delivery_fee": "0.99 €",
+    "sponsored": false,
+    "promo": "Top Offer • Buy 1, Get 1 Free",
+    "uber_one": true,
+    "keywords": "burger",
+    "score": 8,
+    "tags": [
+      "note 4.2* ideal",
+      "44 avis (fresh)",
+      "Top Offer Buy1Get1"
+    ]
+  },
+  {
+    "keyword": "burger",
+    "name": "Burger on the Town",
+    "slug": "burger-on-the-town-saint-ouen/4dJetmp6U4uOvqUZ8S24BQ",
+    "rating": 4.1,
+    "reviews": "43",
+    "etd_min": 76,
+    "delivery_fee": "5.49 €",
+    "sponsored": false,
+    "promo": "Save on Select Items",
+    "uber_one": false,
+    "keywords": "burger",
+    "score": 8,
+    "tags": [
+      "note 4.1* ideal",
+      "43 avis (fresh)",
+      "Save on Select",
+      "76 min (sature/loin)"
+    ]
+  },
+  {
+    "keyword": "Indian",
+    "name": "Delhicious",
+    "slug": "delhicious/R_M88tV_SzGqOIyyWM0AZw",
+    "rating": 4.3,
+    "reviews": "32",
+    "etd_min": 54,
+    "delivery_fee": "5.49 €",
+    "sponsored": false,
+    "promo": "Buy 1, Get 1 Free",
+    "uber_one": false,
+    "keywords": "Indian",
+    "score": 8,
+    "tags": [
+      "note 4.3* ideal",
+      "32 avis (fresh)",
+      "Buy1Get1",
+      "54 min (sature/loin)"
+    ]
+  },
+  {
+    "keyword": "Indian",
+    "name": "5PIZZ 🍕",
+    "slug": "5pizz-paris-11/R1XO5o33Vcq1-j6T0rE6jQ",
+    "rating": 4,
+    "reviews": "32",
+    "etd_min": 40,
+    "delivery_fee": "5.49 €",
+    "sponsored": false,
+    "promo": "Top Offer • Buy 1, Get 1 Free",
+    "uber_one": false,
+    "keywords": "Indian",
+    "score": 8,
+    "tags": [
+      "note 4* ideal",
+      "32 avis (fresh)",
+      "Top Offer Buy1Get1"
+    ]
+  },
+  {
+    "keyword": "Indian",
+    "name": "Royal Kashmir",
+    "slug": "royal-kashmir/TgcHTC9cQVyZ5SwZeztvNQ",
+    "rating": 4.2,
+    "reviews": "2,000+",
+    "etd_min": 34,
+    "delivery_fee": "5.49 €",
+    "sponsored": false,
+    "promo": "Top Offer • Buy 1, Get 1 Free",
+    "uber_one": false,
+    "keywords": "Indian",
+    "score": 7,
+    "tags": [
+      "note 4.2* ideal",
+      "2,000+ avis (mature)",
+      "Top Offer Buy1Get1"
+    ]
+  },
+  {
+    "keyword": "Indian",
+    "name": "Bollynan",
+    "slug": "bollynan-grands-boulevards/lzbtr0SURqia70U4HO26QA",
+    "rating": 4.3,
+    "reviews": "1,500+",
+    "etd_min": 44,
+    "delivery_fee": "5.49 €",
+    "sponsored": false,
+    "promo": "Top Offer • Buy 1, Get 1 Free",
+    "uber_one": false,
+    "keywords": "Indian",
+    "score": 7,
+    "tags": [
+      "note 4.3* ideal",
+      "1,500+ avis (mature)",
+      "Top Offer Buy1Get1"
+    ]
+  },
+  {
+    "keyword": "burger",
+    "name": "Smash Burger Eiffel 🍔 🍟",
+    "slug": "smash-burger-eiffel/Eb7-YPKmU46LBfTpn3uzNQ",
+    "rating": 4.3,
+    "reviews": "1,500+",
+    "etd_min": 22,
+    "delivery_fee": "2.99 €",
+    "sponsored": false,
+    "promo": "Top Offer • Buy 1, Get 1 Free",
+    "uber_one": true,
+    "keywords": "burger",
+    "score": 7,
+    "tags": [
+      "note 4.3* ideal",
+      "1,500+ avis (mature)",
+      "Top Offer Buy1Get1"
+    ]
+  },
+  {
+    "keyword": "Indian",
+    "name": "Indian Maan Mahal Rastaurant by 18",
+    "slug": "indian-maan-mahal-rastaurant-by-18/-P3YFLUaR1qbfTPBf-lbiQ",
+    "rating": 4.1,
+    "reviews": "900+",
+    "etd_min": null,
+    "delivery_fee": null,
+    "sponsored": false,
+    "promo": "Buy 1, Get 1 Free",
+    "uber_one": false,
+    "keywords": "Indian",
+    "score": 7,
+    "tags": [
+      "note 4.1* ideal",
+      "900+ avis (etabli)",
+      "Buy1Get1"
+    ]
+  },
+  {
+    "keyword": "thai",
+    "name": "Pitaya",
+    "slug": "pitaya-arcueil/Q8qOZtOrXOGj-xQpz9gZSQ",
+    "rating": 4,
+    "reviews": "900+",
+    "etd_min": 20,
+    "delivery_fee": "3.99 €",
+    "sponsored": false,
+    "promo": "Buy 1, Get 1 Free",
+    "uber_one": true,
+    "keywords": "thai",
+    "score": 7,
+    "tags": [
+      "note 4* ideal",
+      "900+ avis (etabli)",
+      "Buy1Get1"
+    ]
+  },
+  {
+    "keyword": "burger",
+    "name": "O Braisé Burger Maison",
+    "slug": "o-braise-burger-maison-cachan/buTsve7PRAiIwiZxbV3qfA",
+    "rating": 4.3,
+    "reviews": "900+",
+    "etd_min": 31,
+    "delivery_fee": "4.99 €",
+    "sponsored": false,
+    "promo": "Buy 1, Get 1 Free",
+    "uber_one": true,
+    "keywords": "burger",
+    "score": 7,
+    "tags": [
+      "note 4.3* ideal",
+      "900+ avis (etabli)",
+      "Buy1Get1"
+    ]
+  },
+  {
+    "keyword": "Indian",
+    "name": "Franprix",
+    "slug": "franprix-malakoff-bert/cxxj1gNWTvS-Y8Nz6fa_Lw",
+    "rating": 4.3,
+    "reviews": "700+",
+    "etd_min": null,
+    "delivery_fee": "1.49 €",
+    "sponsored": false,
+    "promo": "Save on Select Items",
+    "uber_one": true,
+    "keywords": "Indian+thai",
+    "score": 7,
+    "tags": [
+      "note 4.3* ideal",
+      "700+ avis (etabli)",
+      "Save on Select"
+    ]
+  },
+  {
+    "keyword": "pizza",
+    "name": "Franprix",
+    "slug": "franprix-malakoff-bert/cxxj1gNWTvS-Y8Nz6fa_Lw?storeSearchQuery=pizza",
+    "rating": 4.3,
+    "reviews": "700+",
+    "etd_min": null,
+    "delivery_fee": "1.49 €",
+    "sponsored": false,
+    "promo": "Save on Select Items",
+    "uber_one": true,
+    "keywords": "pizza",
+    "score": 7,
+    "tags": [
+      "note 4.3* ideal",
+      "700+ avis (etabli)",
+      "Save on Select"
+    ]
+  },
+  {
+    "keyword": "burger",
+    "name": "Franprix",
+    "slug": "franprix-malakoff-bert/cxxj1gNWTvS-Y8Nz6fa_Lw?storeSearchQuery=burgers",
+    "rating": 4.3,
+    "reviews": "700+",
+    "etd_min": null,
+    "delivery_fee": "1.49 €",
+    "sponsored": false,
+    "promo": "Save on Select Items",
+    "uber_one": true,
+    "keywords": "burger",
+    "score": 7,
+    "tags": [
+      "note 4.3* ideal",
+      "700+ avis (etabli)",
+      "Save on Select"
+    ]
+  },
+  {
+    "keyword": "Indian",
+    "name": "Indian Maan Mahal by MS17 Restaurant",
+    "slug": "indian-maan-mahal-by-ms17-restaurant/vcccwfcsTquvEginaBs9jQ",
+    "rating": 4.3,
+    "reviews": "600+",
+    "etd_min": null,
+    "delivery_fee": null,
+    "sponsored": false,
+    "promo": "Buy 1, Get 1 Free",
+    "uber_one": false,
+    "keywords": "Indian",
+    "score": 7,
+    "tags": [
+      "note 4.3* ideal",
+      "600+ avis (etabli)",
+      "Buy1Get1"
+    ]
+  },
+  {
+    "keyword": "Indian",
+    "name": "Chennai Dosa",
+    "slug": "chennai-dosa/TqA8s5A_Uy-InbmCHsf-Ig",
+    "rating": 4.2,
+    "reviews": "500+",
+    "etd_min": 54,
+    "delivery_fee": "5.49 €",
+    "sponsored": false,
+    "promo": null,
+    "uber_one": false,
+    "keywords": "Indian",
+    "score": 7,
+    "tags": [
+      "note 4.2* ideal",
+      "500+ avis (etabli)",
+      "54 min (sature/loin)"
+    ]
+  },
+  {
+    "keyword": "pizza",
+    "name": "Pizza des Batignolles",
+    "slug": "pizza-des-batignolles/JzVNYbm-QvypN8XBM8KqJA",
+    "rating": 4.1,
+    "reviews": "330+",
+    "etd_min": 42,
+    "delivery_fee": "5.49 €",
+    "sponsored": false,
+    "promo": "Buy 1, Get 1 Free",
+    "uber_one": false,
+    "keywords": "pizza",
+    "score": 7,
+    "tags": [
+      "note 4.1* ideal",
+      "330+ avis (etabli)",
+      "Buy1Get1"
+    ]
+  },
+  {
+    "keyword": "burger",
+    "name": "Burgers 🍔  Idées et Créations 🎨",
+    "slug": "burgers-idees-et-creations/IdLPA7AMWQWsKN86TJQCpA",
+    "rating": 3.9,
+    "reviews": "320+",
+    "etd_min": 51,
+    "delivery_fee": "5.49 €",
+    "sponsored": false,
+    "promo": "Top Offer • Spend €20, Save €5",
+    "uber_one": false,
+    "keywords": "burger",
+    "score": 7,
+    "tags": [
+      "note 3.9* ideal",
+      "320+ avis (etabli)",
+      "51 min (sature/loin)"
+    ]
+  },
+  {
+    "keyword": "Indian",
+    "name": "yasmin indien",
+    "slug": "yasmin-indien/viqHFA3JQmWiIAqHNxtYMw",
+    "rating": 4.3,
+    "reviews": "230+",
+    "etd_min": 54,
+    "delivery_fee": "5.49 €",
+    "sponsored": false,
+    "promo": null,
+    "uber_one": false,
+    "keywords": "Indian",
+    "score": 7,
+    "tags": [
+      "note 4.3* ideal",
+      "230+ avis (etabli)",
+      "54 min (sature/loin)"
+    ]
+  },
+  {
+    "keyword": "pizza",
+    "name": "Slice Pizza Club",
+    "slug": "slice-pizza-club-8-eme/E5z8f_PFUVK6DZso8XJfuQ",
+    "rating": 3.8,
+    "reviews": "230+",
+    "etd_min": null,
+    "delivery_fee": null,
+    "sponsored": false,
+    "promo": "Buy 1, Get 1 Free",
+    "uber_one": false,
+    "keywords": "pizza",
+    "score": 7,
+    "tags": [
+      "note 3.8* ideal",
+      "230+ avis (etabli)",
+      "Buy1Get1"
+    ]
+  },
+  {
+    "keyword": "pizza",
+    "name": "Le 55 pizza 🍕 Gratins 🥘PASTA 🍝",
+    "slug": "le-55-pizza-gratins-pasta/G4o3hZVlXVqiiymKGAnj7g",
+    "rating": 4.3,
+    "reviews": "200+",
+    "etd_min": 35,
+    "delivery_fee": "5.49 €",
+    "sponsored": false,
+    "promo": "Buy 1, Get 1 Free",
+    "uber_one": true,
+    "keywords": "pizza",
+    "score": 7,
+    "tags": [
+      "note 4.3* ideal",
+      "200+ avis (etabli)",
+      "Buy1Get1"
+    ]
+  },
+  {
+    "keyword": "thai",
+    "name": "PAD THAI VINCENNES",
+    "slug": "pad-thai-vincennes/SFNhV2qsSxOONifNrS3q1Q",
+    "rating": 3.9,
+    "reviews": "200+",
+    "etd_min": 45,
+    "delivery_fee": "5.49 €",
+    "sponsored": false,
+    "promo": "Buy 1, Get 1 Free",
+    "uber_one": false,
+    "keywords": "thai",
+    "score": 7,
+    "tags": [
+      "note 3.9* ideal",
+      "200+ avis (etabli)",
+      "Buy1Get1"
+    ]
+  },
+  {
+    "keyword": "Indian",
+    "name": "Sheezan",
+    "slug": "sheezan/7pSB1n63ROeKZgxVWVNTGg",
+    "rating": 4.3,
+    "reviews": "190+",
+    "etd_min": 51,
+    "delivery_fee": "5.49 €",
+    "sponsored": false,
+    "promo": null,
+    "uber_one": false,
+    "keywords": "Indian",
+    "score": 7,
+    "tags": [
+      "note 4.3* ideal",
+      "190+ avis (fresh)",
+      "51 min (sature/loin)"
+    ]
+  },
+  {
+    "keyword": "Indian",
+    "name": "Délice De Agra",
+    "slug": "delice-de-agra/xIDXkR8mRq6vn8LmNrlXIQ",
+    "rating": 4.3,
+    "reviews": "180+",
+    "etd_min": 54,
+    "delivery_fee": "5.49 €",
+    "sponsored": false,
+    "promo": "20% off (Spend €30)",
+    "uber_one": false,
+    "keywords": "Indian",
+    "score": 7,
+    "tags": [
+      "note 4.3* ideal",
+      "180+ avis (fresh)",
+      "54 min (sature/loin)"
+    ]
+  },
+  {
+    "keyword": "pizza",
+    "name": "La Familia Pizza 🍕🔥",
+    "slug": "la-familia-pizza/c44eSUU-QpiRH4fKZc-QCg",
+    "rating": 4,
+    "reviews": "130+",
+    "etd_min": 40,
+    "delivery_fee": "5.49 €",
+    "sponsored": false,
+    "promo": "Buy 1, Get 1 Free",
+    "uber_one": false,
+    "keywords": "pizza",
+    "score": 7,
+    "tags": [
+      "note 4* ideal",
+      "130+ avis (fresh)",
+      "Buy1Get1"
+    ]
+  },
+  {
+    "keyword": "Indian",
+    "name": "Pondichery Restaurant Indien",
+    "slug": "pondichery-restaurant-indien/Dx0oVqpuSvS0BHfBhDBkSA",
+    "rating": 4.4,
+    "reviews": "120+",
+    "etd_min": 48,
+    "delivery_fee": "5.49 €",
+    "sponsored": true,
+    "promo": null,
+    "uber_one": true,
+    "keywords": "Indian",
+    "score": 7,
+    "tags": [
+      "note 4.4* correcte",
+      "120+ avis (fresh)",
+      "Sponsored (brule cash)"
+    ]
+  },
+  {
+    "keyword": "burger",
+    "name": "Meatless Burgers",
+    "slug": "meatless-burgers-hopital-saint-louis/kz-Wpny5UY6t5nrb7XgA_A",
+    "rating": 4.3,
+    "reviews": "120+",
+    "etd_min": 43,
+    "delivery_fee": "5.49 €",
+    "sponsored": false,
+    "promo": "Buy 1, Get 1 Free",
+    "uber_one": false,
+    "keywords": "burger",
+    "score": 7,
+    "tags": [
+      "note 4.3* ideal",
+      "120+ avis (fresh)",
+      "Buy1Get1"
+    ]
+  },
+  {
+    "keyword": "Indian",
+    "name": "Karachi Biryani",
+    "slug": "karachi-biryani/m2pb6bZUVf-UvF3vvsptDQ",
+    "rating": 4,
+    "reviews": "110+",
+    "etd_min": 52,
+    "delivery_fee": "5.49 €",
+    "sponsored": false,
+    "promo": null,
+    "uber_one": false,
+    "keywords": "Indian",
+    "score": 7,
+    "tags": [
+      "note 4* ideal",
+      "110+ avis (fresh)",
+      "52 min (sature/loin)"
+    ]
+  },
+  {
+    "keyword": "pizza",
+    "name": "Paris Pizza",
+    "slug": "paris-pizza/WFRZIZknQD-yybhwKhhS-Q",
+    "rating": 3.9,
+    "reviews": "97",
+    "etd_min": 26,
+    "delivery_fee": "5.49 €",
+    "sponsored": false,
+    "promo": "Buy 1, Get 1 Free",
+    "uber_one": true,
+    "keywords": "pizza",
+    "score": 7,
+    "tags": [
+      "note 3.9* ideal",
+      "97 avis (fresh)",
+      "Buy1Get1"
+    ]
+  },
+  {
+    "keyword": "burger",
+    "name": "Wawa Smash Burger Pigalle",
+    "slug": "wawa-smash-burger-pigalle/rVFoSvFJQUW-eoZAY6XX1A",
+    "rating": 4.3,
+    "reviews": "90",
+    "etd_min": 52,
+    "delivery_fee": "5.49 €",
+    "sponsored": false,
+    "promo": null,
+    "uber_one": false,
+    "keywords": "burger",
+    "score": 7,
+    "tags": [
+      "note 4.3* ideal",
+      "90 avis (fresh)",
+      "52 min (sature/loin)"
+    ]
+  },
+  {
+    "keyword": "pizza",
+    "name": "La Casa de la Pizza",
+    "slug": "la-casa-de-la-pizza/8MLGy6cLVumTv2Uen5mMpA",
+    "rating": 4.3,
+    "reviews": "86",
+    "etd_min": 30,
+    "delivery_fee": "4.49 €",
+    "sponsored": false,
+    "promo": "Buy 1, Get 1 Free",
+    "uber_one": false,
+    "keywords": "pizza",
+    "score": 7,
+    "tags": [
+      "note 4.3* ideal",
+      "86 avis (fresh)",
+      "Buy1Get1"
+    ]
+  },
+  {
+    "keyword": "burger",
+    "name": "Bopy Burgers",
+    "slug": "bopy-burgers-plaisance/gFaSzD2-WeGlQgJnIGun-g",
+    "rating": 4.3,
+    "reviews": "81",
+    "etd_min": 19,
+    "delivery_fee": "5.49 €",
+    "sponsored": false,
+    "promo": "Buy 1, Get 1 Free",
+    "uber_one": true,
+    "keywords": "burger",
+    "score": 7,
+    "tags": [
+      "note 4.3* ideal",
+      "81 avis (fresh)",
+      "Buy1Get1"
+    ]
+  },
+  {
+    "keyword": "Indian",
+    "name": "Anjapper Coffee",
+    "slug": "anjapper-coffee/Xdzi1xH1R1GOTBIaTskQsQ",
+    "rating": 4.1,
+    "reviews": "65",
+    "etd_min": 53,
+    "delivery_fee": "5.49 €",
+    "sponsored": false,
+    "promo": "Top Offer • Spend €15, Save €5",
+    "uber_one": false,
+    "keywords": "Indian",
+    "score": 7,
+    "tags": [
+      "note 4.1* ideal",
+      "65 avis (fresh)",
+      "53 min (sature/loin)"
+    ]
+  },
+  {
+    "keyword": "thai",
+    "name": "C-THE 🍵Bubble tea et 🍙 onigiri",
+    "slug": "c-the-bubble-tea-et-onigiri/fjm6KmlPXLGTFx0572Kspg",
+    "rating": 3.9,
+    "reviews": "60",
+    "etd_min": 52,
+    "delivery_fee": "5.49 €",
+    "sponsored": false,
+    "promo": null,
+    "uber_one": true,
+    "keywords": "thai",
+    "score": 7,
+    "tags": [
+      "note 3.9* ideal",
+      "60 avis (fresh)",
+      "52 min (sature/loin)"
+    ]
+  },
+  {
+    "keyword": "pizza",
+    "name": "Pizza Belgrand",
+    "slug": "pizza-belgrand/-7QaF5l3SLm14yR5mWEgaw",
+    "rating": 4.3,
+    "reviews": "59",
+    "etd_min": null,
+    "delivery_fee": null,
+    "sponsored": false,
+    "promo": "Buy 1, Get 1 Free",
+    "uber_one": true,
+    "keywords": "pizza",
+    "score": 7,
+    "tags": [
+      "note 4.3* ideal",
+      "59 avis (fresh)",
+      "Buy1Get1"
+    ]
+  },
+  {
+    "keyword": "thai",
+    "name": "Green Thai",
+    "slug": "green-thai-argenteuil-halal/bZcYyHpYV1qwkvHhjfA63g?diningMode=PICKUP",
+    "rating": 4.1,
+    "reviews": "56",
+    "etd_min": null,
+    "delivery_fee": null,
+    "sponsored": false,
+    "promo": "Save on Select Items",
+    "uber_one": false,
+    "keywords": "thai",
+    "score": 7,
+    "tags": [
+      "note 4.1* ideal",
+      "56 avis (fresh)",
+      "Save on Select"
+    ]
+  },
+  {
+    "keyword": "Indian",
+    "name": "Dhasan",
+    "slug": "dhasan-chaussee-dantin/_4QRpE6RUzaYybx3aMkp7Q",
+    "rating": 4.3,
+    "reviews": "54",
+    "etd_min": 38,
+    "delivery_fee": "5.49 €",
+    "sponsored": false,
+    "promo": "Save on Select Items",
+    "uber_one": false,
+    "keywords": "Indian",
+    "score": 7,
+    "tags": [
+      "note 4.3* ideal",
+      "54 avis (fresh)",
+      "Save on Select"
+    ]
+  },
+  {
+    "keyword": "pizza",
+    "name": "TACOS VAUGIRARD",
+    "slug": "tacos-vaugirard/u9x8MhOzRuaN44Y-k__nxQ",
+    "rating": 4.7,
+    "reviews": "53",
+    "etd_min": 19,
+    "delivery_fee": "5.49 €",
+    "sponsored": true,
+    "promo": null,
+    "uber_one": true,
+    "keywords": "pizza+thai",
+    "score": 7,
+    "tags": [
+      "note 4.7*",
+      "53 avis (fresh)",
+      "Sponsored (brule cash)",
+      "19 min (rapide + Sponsored)"
+    ]
+  },
+  {
+    "keyword": "Indian",
+    "name": "Spice &amp; Smile",
+    "slug": "spice-%26-smile/RdnVjFSAS2WUTFPl-SWW_w",
+    "rating": 4.3,
+    "reviews": "32",
+    "etd_min": 59,
+    "delivery_fee": "5.49 €",
+    "sponsored": false,
+    "promo": "Top Offer • Spend €15, Save €5",
+    "uber_one": false,
+    "keywords": "Indian",
+    "score": 7,
+    "tags": [
+      "note 4.3* ideal",
+      "32 avis (fresh)",
+      "59 min (sature/loin)"
+    ]
+  },
+  {
+    "keyword": "burger",
+    "name": "JUICY 🍔 Smash Burgers",
+    "slug": "juicy-smash-burgers-vanves/JlMbJHSTUtuUKXG0-GTL2w",
+    "rating": 4,
+    "reviews": "30",
+    "etd_min": 10,
+    "delivery_fee": "0.49 €",
+    "sponsored": false,
+    "promo": "Buy 1, Get 1 Free",
+    "uber_one": true,
+    "keywords": "burger",
+    "score": 7,
+    "tags": [
+      "note 4* ideal",
+      "30 avis (fresh)",
+      "Buy1Get1"
+    ]
+  }
+]

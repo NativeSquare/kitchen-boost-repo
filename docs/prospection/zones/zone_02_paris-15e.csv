@@ -1,0 +1,7 @@
+ordre,name,address,city,lat,lng,rating,reviews,score,promo,uber_eats_url
+1,"Mister Naan","Rue de la Croix Nivert","Paris 15e",48.8367581,2.2896673,4,"100+",6,"€0 Delivery Fee (Spend €15)","https://www.ubereats.com/fr-en/store/mister-naan/kF6q1XRPUx27HqPBLG7mzA"
+2,"Rasna Restaurant","Rue de la Croix Nivert","Paris 15e",48.8369529,2.2893498,4.5,"130+",4,"","https://www.ubereats.com/fr-en/store/rasna-restaurant/hLiGCAM6Qem-UlGogi5z5g"
+3,"Punjab Palace","Rue Lecourbe","Paris 15e",48.8378481,2.2869331,4,"420+",6,"","https://www.ubereats.com/fr-en/store/punjab-palace/badHH4XARJagLYIu8omzwQ"
+4,"Panda Gourmet","15 Rue de l'Abbé Groult","Paris 15e",48.8426505,2.2940141,4.4,"800+",5,"Buy 1, Get 1 Free","https://www.ubereats.com/fr-en/store/panda-gourmet/8WjDSL-vTWOaNX_wjLPtwA"
+5,"Al Punjab","Rue du Général Beuret","Paris 15e",48.8413805,2.3028352,4.6,"1,000+",2,"","https://www.ubereats.com/fr-en/store/al-punjab/exEsjXR-T5Sykj8lWxJLHw"
+6,"Mina Mahal","Rue Cambronne","Paris 15e",48.8459668,2.3020712,4.3,"150+",6,"","https://www.ubereats.com/fr-en/store/mina-mahal/rDCWl6NBQLuZjnZdgyPXDQ"
