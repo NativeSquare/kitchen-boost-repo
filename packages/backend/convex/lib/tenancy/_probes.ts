@@ -203,3 +203,78 @@ export const tenantCustomerStatsProbe = tenantQuery()({
       .withIndex("by_tenant", (q) => q.eq("tenantId", ctx.tenantId))
       .collect(),
 });
+
+// --- 2.2-A Menu schema probes ----------------------------------------------
+//
+// The menu slice (2.2-A) exports NO business function — it only lays the 5
+// tenant-scoped tables. These test-only probes prove each menu table is reachable
+// ONLY through `tenantQuery` (keyed on `ctx.tenantId`), so the cross-tenant fuzz
+// harness can replay them under unauthorized actors and assert a Forbidden throw
+// before any row is read (ADR 0010). They live HERE (the exempt `lib/tenancy/**`
+// path), so no raw `ctx.db.query()` is introduced in business code. No business
+// logic — each just collects the tenant's rows.
+
+/** resto reads its OWN menu categories (tenant-scoped by the wrapper). */
+export const tenantMenuCategoriesProbe = tenantQuery()({
+  args: {},
+  handler: async (ctx) =>
+    ctx.db
+      .query("menuCategories")
+      .withIndex("by_tenant", (q) => q.eq("tenantId", ctx.tenantId))
+      .collect(),
+});
+
+/** resto reads its OWN menu items. */
+export const tenantMenuItemsProbe = tenantQuery()({
+  args: {},
+  handler: async (ctx) =>
+    ctx.db
+      .query("menuItems")
+      .withIndex("by_tenant", (q) => q.eq("tenantId", ctx.tenantId))
+      .collect(),
+});
+
+/** resto reads its OWN reusable modifier groups. */
+export const tenantModifierGroupsProbe = tenantQuery()({
+  args: {},
+  handler: async (ctx) =>
+    ctx.db
+      .query("modifierGroups")
+      .withIndex("by_tenant", (q) => q.eq("tenantId", ctx.tenantId))
+      .collect(),
+});
+
+/**
+ * resto reads its OWN item↔group links. The link table's access paths are
+ * by_item / by_group / by_item_group (issue spec, no by_tenant), so the probe
+ * scopes through the tenant's own items first — it NEVER reads a row keyed on a
+ * foreign tenant's data, which is exactly the property the fuzz asserts.
+ */
+export const tenantMenuItemModifierGroupsProbe = tenantQuery()({
+  args: {},
+  handler: async (ctx) => {
+    const items = await ctx.db
+      .query("menuItems")
+      .withIndex("by_tenant", (q) => q.eq("tenantId", ctx.tenantId))
+      .collect();
+    const linksPerItem = await Promise.all(
+      items.map((item) =>
+        ctx.db
+          .query("menuItemModifierGroups")
+          .withIndex("by_item", (q) => q.eq("itemId", item._id))
+          .collect(),
+      ),
+    );
+    return linksPerItem.flat();
+  },
+});
+
+/** resto reads its OWN service hours. */
+export const tenantServiceHoursProbe = tenantQuery()({
+  args: {},
+  handler: async (ctx) =>
+    ctx.db
+      .query("serviceHours")
+      .withIndex("by_tenant", (q) => q.eq("tenantId", ctx.tenantId))
+      .collect(),
+});

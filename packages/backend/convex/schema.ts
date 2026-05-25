@@ -7,6 +7,11 @@ import { customerOrdersPerTenant } from "./table/customerOrdersPerTenant";
 import { customers } from "./table/customers";
 import { deliveries } from "./table/deliveries";
 import { feedback } from "./table/feedback";
+import { menuCategories } from "./table/menuCategories";
+import { menuItemModifierGroups } from "./table/menuItemModifierGroups";
+import { menuItems } from "./table/menuItems";
+import { modifierGroups } from "./table/modifierGroups";
+import { serviceHours } from "./table/serviceHours";
 import {
   notificationEvents,
   notificationTemplates,
@@ -62,4 +67,18 @@ export default defineSchema({
   // it lives in `customers.pushEnrollment` (2.1, ADR 0012); 2.7 only sends.
   notificationTemplates,
   notificationEvents,
+  // 2.2-A — Menu (PRD 10 §5/§6, client-ordering CONTEXT). All five tables are
+  // TENANT-SCOPED (carry tenantId, ADR 0010). `menuCategories` = flat editorial
+  // groups (no hierarchy V1); `menuItems` = sellable products (basePrice in
+  // centimes, allergens a subset of the frozen 14 UE 1169/2011 literals,
+  // available toggle for "out of stock"); `modifierGroups` = REUSABLE choice
+  // groups (Uber Eats model — NOT owned by an item); `menuItemModifierGroups` =
+  // the N-N link materialising that reuse (by_item / by_group / by_item_group);
+  // `serviceHours` = [[Plage horaire de service]] (one row/tenant, windows shared
+  // delivery + C&C, Europe/Paris implicit), KB source of truth read by checkout.
+  menuCategories,
+  menuItems,
+  modifierGroups,
+  menuItemModifierGroups,
+  serviceHours,
 });
