@@ -35,11 +35,24 @@
  * a Convex query cannot write. Both go through `tenantQuery` / `tenantMutation`
  * scoped to the tenant; cross-tenant fuzzed (ADR 0010).
  *
+ * 2.1-F — RGPD erasure by IRREVERSIBLE anonymisation (PRD 90 §6, ADR 0008/0012).
+ * `anonymizeCustomer(customerId)` (root via `kbAdminMutation`, auto-audited)
+ * nullifies — no backup copy — every PII field (email / phone / firstName /
+ * address / lat / lng) AND the whole `pushEnrollment` object (wallet serial =
+ * cross-device identity bridge + web-push id + statuses), stamps `anonymizedAt`,
+ * and PRESERVES `customerOrdersPerTenant` (accounting 10 ans + KPI resto) without
+ * hard-deleting the fiche (ghost customer kept). `getCustomerForSupport` (root via
+ * `kbAdminQuery`, US #22) reads any fiche; the customer's OWN read is
+ * `getCurrentCustomer` (identity, US #21); a `kb_manager` reaches NEITHER (MOAT).
+ * Both reach the GLOBAL `customers` table ONLY through the sanctioned tenancy seam;
+ * cross-tenant fuzzed (ADR 0010).
+ *
  * Convex registers functions by their module PATH, so callers invoke them as
  * `api.lib.customer.identity.*` / `api.lib.customer.consent.*` /
  * `api.lib.customer.cgv.*` / `api.lib.customer.segments.*` /
- * `api.lib.customer.reachability.*` / `api.lib.customer.kpi.*`; re-exporting here
- * does not change that path, it just states the module's contract in one place.
+ * `api.lib.customer.reachability.*` / `api.lib.customer.kpi.*` /
+ * `api.lib.customer.rgpd.*`; re-exporting here does not change that path, it just
+ * states the module's contract in one place.
  */
 export { getCurrentCustomer, getOrCreateCurrentCustomer } from "./identity";
 export {
@@ -71,3 +84,4 @@ export {
   aggregateCustomerKPIs,
   logKpiConsultation,
 } from "./kpi";
+export { anonymizeCustomer, getCustomerForSupport } from "./rgpd";

@@ -87,3 +87,63 @@ export async function patchCustomerConsent(
 ): Promise<void> {
   await ctx.db.patch(customerId, patch);
 }
+
+/**
+ * 2.1-F — ROOT read of ANY `customers` fiche by id (support / RGPD, US #22). The
+ * SELF helpers above key on `userId`; this one reads by document id and is reached
+ * ONLY through the root `kbAdminQuery` wrapper (KB = responsable de traitement
+ * RGPD, contrat Article 2 ter). Returns `null` if the fiche vanished. It NEVER
+ * reaches a `kb_manager` — the resto sees only aggregates (the MOAT, ADR 0010).
+ */
+export async function readCustomerFicheById(
+  ctx: QueryCtx | MutationCtx,
+  customerId: Id<"customers">,
+): Promise<Doc<"customers"> | null> {
+  return ctx.db.get(customerId);
+}
+
+/**
+ * 2.1-F — RGPD erasure by IRREVERSIBLE anonymisation (PRD 90 §6, customer-data
+ * CONTEXT "Effacement RGPD = anonymisation irréversible", ADR 0012). The single
+ * sanctioned `ctx.db.patch` site for the root erasure of the GLOBAL `customers`
+ * table; the business module (`lib/customer/rgpd`, NOT exempt) calls THIS instead
+ * of `ctx.db` (ADR 0010). It is reached only after the `kbAdminMutation` root gate
+ * passed (KB = responsable de traitement, Article 2 ter).
+ *
+ * NULLIFIES — irreversibly, no backup copy — every personal field of the fiche:
+ *  - PII captation: email / phone / firstName / address / lat / lng.
+ *  - Push ENROLLMENT identity + reachability (the whole `pushEnrollment` object →
+ *    walletSerialNumber, webPushSubscriptionId and per-channel statuses), since
+ *    the Wallet serial is itself a cross-device identity bridge (ADR 0008/0012)
+ *    and the reachability is PII-adjacent. Cleared in ONE geste (the object is
+ *    modelled as a single optional field exactly for this — table customers.ts).
+ *
+ * PRESERVES — accounting (Code de commerce L123-22, 10 ans) + KPI resto:
+ *  - `userId`, `createdAt`, `cgvAcceptedAt` / `cgvVersionHash` (CNIL consent
+ *    proof), `marketingOptOutDate`, `lastCheckoutAt` are LEFT INTACT — none is
+ *    personal data identifying the customer; they are kept for legal/audit. The
+ *    fiche row is NOT hard-deleted (no hard delete V1).
+ *  - `customerOrdersPerTenant` is a SEPARATE table this helper never touches, so
+ *    the historical per-tenant stats (totalOrders / lastOrderAt / ltv) survive the
+ *    anonymisation untouched.
+ *
+ * Stamps `anonymizedAt` (the irreversibility marker). Removing an optional field
+ * is done by patching it to `undefined` (Convex deletes the field), so the fiche
+ * keeps NO trace of the erased PII.
+ */
+export async function anonymizeCustomerFiche(
+  ctx: MutationCtx,
+  customerId: Id<"customers">,
+  at: number,
+): Promise<void> {
+  await ctx.db.patch(customerId, {
+    email: undefined,
+    phone: undefined,
+    firstName: undefined,
+    address: undefined,
+    lat: undefined,
+    lng: undefined,
+    pushEnrollment: undefined,
+    anonymizedAt: at,
+  });
+}
