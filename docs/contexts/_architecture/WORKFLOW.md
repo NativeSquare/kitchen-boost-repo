@@ -33,17 +33,15 @@ Principe : **Alex active 2h le matin (PRD + issues) → agents Claude Code local
 │                    PHASE 2 — CODING AUTONOME (NUIT)                  │
 │              (Claude Code local sur PC d'Alex, 6-10h)                │
 │                                                                      │
-│   /work-all-agent-issues  (skill custom à créer)                     │
+│   /work-all-agent-issues = ORCHESTRATEUR (n'écrit aucun code)        │
 │         ↓                                                            │
 │   Loop :                                                             │
-│   1. Pick next issue ready-for-agent AFK avec dépendances closed     │
-│   2. Crée branche agent/<issue-number>                               │
-│   3. TDD : tests → code → refactor                                   │
-│   4. pnpm typecheck && pnpm lint && pnpm test                        │
-│   5. Si vert local : push + PR + attend CI (gh pr checks --watch)    │
-│   6. CI verte → gh pr merge --squash --delete-branch  (AUTO-MERGE)   │
-│   7. Si CI/local rouge ou bloqué : label blocked (pas de merge)      │
-│   8. ScheduleWakeup 120-270s → story suivante (débloquée par merge)  │
+│   1. gh issue list → prochaine story éligible (deps closed)          │
+│   2. SPAWN sous-agent frais (Agent) → run work-next-agent-issue      │
+│        · le sous-agent (contexte isolé) : TDD → check → PR →         │
+│          attend CI → squash-merge sur vert  (ou blocked)             │
+│   3. récupère 1 LIGNE de résultat (contexte orchestrateur léger)     │
+│   4. reboucle séquentiel jusqu'à backlog vide → bilan                │
 └──────────────────────────────────────────────────────────────────────┘
                                   ↓
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -145,7 +143,7 @@ Produire 3-5 PRDs `/to-prd` (= 3-5 issues epic) qui seront éclatés en 15-40 tr
 
 ### Objectif
 
-Convertir N issues `ready-for-agent` AFK en N PRs `needs-review`, sans intervention humaine.
+Convertir N issues `ready-for-agent` AFK en N stories **mergées sur `main`** (auto-merge sur CI verte), sans intervention humaine — en gardant le contexte de l'orchestrateur léger via des **sous-agents**.
 
 ### Lancement
 
@@ -155,26 +153,24 @@ Le soir avant de te coucher, dans une session Claude Code locale :
 /work-all-agent-issues
 ```
 
-Ce skill custom :
+**Architecture orchestrateur + sous-agents** (pour le context management — sinon le contexte sature dès la 2ᵉ story) :
 
-1. Liste les issues GitHub avec label `ready-for-agent` non-bloquées
-2. Pick la première dans l'ordre des dépendances
-3. Crée la branche `agent/<issue-number>`
-4. Lit le PRD complet de l'issue + les ADRs référencés
-5. **TDD strict** :
-   - Étape 1 : écrit les tests Vitest selon "Testing Decisions" → `commit test(<id>): scaffold tests` (rouge attendu)
-   - Étape 2 : implémente le code minimum pour passer les tests → `commit feat(<id>): implement`
-   - Étape 3 : refactor + extraction patterns → `commit refactor(<id>): cleanup`
-6. Lance localement : `pnpm typecheck && pnpm lint && pnpm test`
-7. Si vert en local :
-   - `git push origin agent/<issue-number>`
-   - `gh pr create --title "feat(<id>): <issue-title>" --body "Closes #<issue-number> ..."`
-   - **Attend la CI** : `gh pr checks <pr> --watch --fail-fast`
-   - **CI verte → auto-merge** : `gh pr merge <pr> --squash --delete-branch` (clôt l'issue, débloque les dépendants), puis `git switch main && git pull --ff-only`
-8. Si CI rouge, ou local encore rouge après 2 fix, ou bloqué sur une décision/spec manquante :
-   - Push la branche WIP (ne pas perdre le travail), **ne merge pas**
-   - Sur l'issue : `blocked` + commentaire avec raison + traces (lu par `/diagnose`)
-9. `ScheduleWakeup` 120-270s pour pick la suivante (cache Claude Code reste warm)
+`/work-all-agent-issues` est un **orchestrateur** qui n'écrit **aucun code**. Sa boucle :
+
+1. Check léger d'éligibilité : `gh issue list --label ready-for-agent` → calcule la prochaine story éligible (deps closed). Aucune → stop + bilan.
+2. **Spawn un sous-agent frais** (outil Agent, `general-purpose`) qui exécute le skill `work-next-agent-issue` pour **cette seule** story, dans **son propre contexte**.
+3. Récupère **uniquement la ligne de résultat** du sous-agent (`merged #m` / `blocked`) — jamais son transcript. Contexte orchestrateur reste léger.
+4. Reboucle (séquentiel — un sous-agent à la fois, ils partagent le checkout git). Parallélisation future = `isolation: "worktree"`.
+
+Chaque **sous-agent** (`work-next-agent-issue`) fait, dans son contexte isolé :
+
+1. Pick/valide la story éligible → label `in-progress`, branche `agent/<n>`
+2. Lit l'issue + PRD + CONTEXT + ADRs référencés
+3. **TDD strict** : `test(<id>):` (rouge) → `feat(<id>):` → `refactor(<id>):`
+4. `pnpm typecheck && pnpm lint && pnpm test`
+5. Si vert : push → `gh pr create` → **attend la CI** (`gh pr checks <pr> --watch`) → **CI verte → `gh pr merge <pr> --squash --delete-branch`** → `git switch main && git pull --ff-only`
+6. Si CI/local rouge après 2 fix, ou spec manquante : push WIP, **pas de merge**, label `blocked` + commentaire (lu par `/diagnose`)
+7. Répond **une seule ligne** de résultat à l'orchestrateur
 
 ### Garde-fous appliqués automatiquement
 
