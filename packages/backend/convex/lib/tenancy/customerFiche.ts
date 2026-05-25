@@ -46,3 +46,44 @@ export async function insertCustomerFiche(
 ): Promise<Id<"customers">> {
   return ctx.db.insert("customers", { userId, createdAt: Date.now() });
 }
+
+/**
+ * Resolve the caller's OWN fiche, provisioning a minimal one if absent (silent
+ * provisioning, ADR 0008). SELF-SCOPED by construction — keyed on `userId`
+ * (sourced from `ctx.actor.userId`), so it can only ever touch the caller's own
+ * fiche. Returns the existing or freshly-created fiche id. Used by the consent
+ * mutations so a customer who never explicitly provisioned (e.g. opts out before
+ * any checkout) still has a fiche to stamp.
+ */
+export async function getOrCreateCustomerFiche(
+  ctx: MutationCtx,
+  userId: Id<"users">,
+): Promise<Id<"customers">> {
+  const existing = await readCustomerFicheByUser(ctx, userId);
+  if (existing !== null) return existing._id;
+  return insertCustomerFiche(ctx, userId);
+}
+
+/** The consent / opt-out fields a self-scoped mutation may stamp on a fiche. */
+export type CustomerConsentPatch = {
+  cgvAcceptedAt?: number;
+  cgvVersionHash?: string;
+  marketingOptOutDate?: number;
+};
+
+/**
+ * Patch consent-related fields on a fiche the caller already resolved as its OWN
+ * (the `customerId` MUST come from `getOrCreateCustomerFiche` / a self-scoped
+ * read keyed on `ctx.actor.userId`). This is the single sanctioned `ctx.db.patch`
+ * site for the GLOBAL `customers` table; business modules call it instead of
+ * `ctx.db` (ADR 0010). The narrow patch type keeps it confined to the consent
+ * surface — it cannot be repurposed to overwrite identity (`userId`) or personal
+ * captation fields.
+ */
+export async function patchCustomerConsent(
+  ctx: MutationCtx,
+  customerId: Id<"customers">,
+  patch: CustomerConsentPatch,
+): Promise<void> {
+  await ctx.db.patch(customerId, patch);
+}

@@ -50,6 +50,17 @@ async function countActive(t: ReturnType<typeof convexTest>): Promise<number> {
   });
 }
 
+/** Resolve the archived version row by its hash (the value publishCgvVersion
+ * returns — the canonical CNIL proof value stamped on each fiche). */
+async function rowByHash(t: ReturnType<typeof convexTest>, hash: string) {
+  return t.run((ctx) =>
+    ctx.db
+      .query("cgvVersions")
+      .withIndex("by_hash", (q) => q.eq("hash", hash))
+      .unique(),
+  );
+}
+
 // ---------------------------------------------------------------------------
 // sha256Hex — pure hashing helper.
 // ---------------------------------------------------------------------------
@@ -92,34 +103,35 @@ describe("2.1-C publishCgvVersion — versioned archival, one active at a time",
 
   it("creates a version with wording, SHA-256 hash, activatedAt, and NO endedAt", async () => {
     const before = Date.now();
-    const versionId = await t
+    const hash = await t
       .withIdentity({ subject: seed.adminId })
       .mutation(api.lib.customer.cgv.publishCgvVersion, {
         wording: FIXTURE_WORDING,
       });
 
-    const row = await t.run((ctx) => ctx.db.get(versionId));
+    expect(hash).toBe(await sha256Hex(FIXTURE_WORDING));
+    const row = await rowByHash(t, hash);
     expect(row?.wording).toBe(FIXTURE_WORDING);
-    expect(row?.hash).toBe(await sha256Hex(FIXTURE_WORDING));
+    expect(row?.hash).toBe(hash);
     expect(typeof row?.activatedAt).toBe("number");
     expect(row?.activatedAt).toBeGreaterThanOrEqual(before);
     expect(row?.endedAt).toBeUndefined();
   });
 
   it("closes the previous active version (endedAt set) when a new one is published", async () => {
-    const v1 = await t
+    const h1 = await t
       .withIdentity({ subject: seed.adminId })
       .mutation(api.lib.customer.cgv.publishCgvVersion, {
         wording: `${FIXTURE_WORDING} v1`,
       });
-    const v2 = await t
+    const h2 = await t
       .withIdentity({ subject: seed.adminId })
       .mutation(api.lib.customer.cgv.publishCgvVersion, {
         wording: `${FIXTURE_WORDING} v2`,
       });
 
-    const r1 = await t.run((ctx) => ctx.db.get(v1));
-    const r2 = await t.run((ctx) => ctx.db.get(v2));
+    const r1 = await rowByHash(t, h1);
+    const r2 = await rowByHash(t, h2);
     expect(r1?.endedAt).toBeTypeOf("number");
     expect(r2?.endedAt).toBeUndefined();
   });
@@ -142,9 +154,9 @@ describe("2.1-C publishCgvVersion — versioned archival, one active at a time",
     const b = await as.mutation(api.lib.customer.cgv.publishCgvVersion, {
       wording: "wording B",
     });
-    const ra = await t.run((ctx) => ctx.db.get(a));
-    const rb = await t.run((ctx) => ctx.db.get(b));
-    expect(ra?.hash).not.toBe(rb?.hash);
+    expect(a).not.toBe(b);
+    expect(a).toBe(await sha256Hex("wording A"));
+    expect(b).toBe(await sha256Hex("wording B"));
   });
 });
 

@@ -43,5 +43,16 @@ export {
   type TenantRole,
 } from "./withTenant";
 export { customerMutation, customerQuery, publicTenantQuery } from "./customer";
-export { insertCustomerFiche, readCustomerFicheByUser } from "./customerFiche";
+export {
+  type CustomerConsentPatch,
+  getOrCreateCustomerFiche,
+  insertCustomerFiche,
+  patchCustomerConsent,
+  readCustomerFicheByUser,
+} from "./customerFiche";
+export {
+  closeActiveCgvVersions,
+  insertCgvVersion,
+  readActiveCgvVersion,
+} from "./cgvArchive";
 export { logAudit, type AuditEntry } from "./audit";
