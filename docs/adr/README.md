@@ -6,19 +6,21 @@ Format : conforme au skill [`grill-with-docs`](../../../.claude/skills/grill-wit
 
 ## ADRs publiés
 
-| N° | Titre | Statut | Date |
-|---|---|---|---|
-| [0001](0001-consent-marketing-bloquant-checkout-v1.md) | Consentement marketing bloquant au checkout V1 | superseded by [0007](0007-consentement-clic-payer-v1.md) | 2026-05-23 |
-| [0002](0002-push-moat-dual-stack-wallet-a2hs.md) | Push moat V1 = dual stack Wallet pass + A2HS PWA | accepted | 2026-05-24 |
-| [0003](0003-wallet-pass-commun-marque-neutre.md) | Wallet pass V1 = carte commune sous marque neutre | accepted | 2026-05-24 |
-| [0004](0004-pwa-standalone-pas-widget-embed.md) | Surface client final V1 = PWA standalone | accepted | 2026-05-24 |
-| [0005](0005-re-consentement-marketing-par-achat.md) | Re-consentement marketing par achat (réactivation au re-checkout) | accepted | 2026-05-24 |
-| [0006](0006-templates-campagnes-pre-valides.md) | Campagnes marketing tenant = templates pré-validés uniquement | accepted | 2026-05-24 |
-| [0007](0007-consentement-clic-payer-v1.md) | Consentement V1 par clic sur "Payer" (pas de checkbox) | accepted | 2026-05-24 |
-| [0008](0008-identite-customer-cookie-device-only-v1.md) | Identité Customer V1 = cookie device only (pas de matching cross-device email/tel) | accepted | 2026-05-24 |
-| [0009](0009-hubrise-reporte-v2.md) | Hubrise reporté V2 (vs V1 envisagé) | accepted | 2026-05-24 |
-| [0010](0010-isolation-multi-tenant-convex-applicative.md) | Isolation multi-tenant Convex applicative (sans RLS) | accepted | 2026-05-25 |
-| [0011](0011-convex-auth-v1-identite-encapsulee-workos-differe.md) | Convex Auth V1, identité encapsulée, WorkOS différé | accepted | 2026-05-25 |
+| N°                                                                         | Titre                                                                                 | Statut                                                   | Date       |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | -------------------------------------------------------- | ---------- |
+| [0001](0001-consent-marketing-bloquant-checkout-v1.md)                     | Consentement marketing bloquant au checkout V1                                        | superseded by [0007](0007-consentement-clic-payer-v1.md) | 2026-05-23 |
+| [0002](0002-push-moat-dual-stack-wallet-a2hs.md)                           | Push moat V1 = dual stack Wallet pass + A2HS PWA                                      | accepted                                                 | 2026-05-24 |
+| [0003](0003-wallet-pass-commun-marque-neutre.md)                           | Wallet pass V1 = carte commune sous marque neutre                                     | accepted                                                 | 2026-05-24 |
+| [0004](0004-pwa-standalone-pas-widget-embed.md)                            | Surface client final V1 = PWA standalone                                              | accepted                                                 | 2026-05-24 |
+| [0005](0005-re-consentement-marketing-par-achat.md)                        | Re-consentement marketing par achat (réactivation au re-checkout)                     | accepted                                                 | 2026-05-24 |
+| [0006](0006-templates-campagnes-pre-valides.md)                            | Campagnes marketing tenant = templates pré-validés uniquement                         | accepted                                                 | 2026-05-24 |
+| [0007](0007-consentement-clic-payer-v1.md)                                 | Consentement V1 par clic sur "Payer" (pas de checkbox)                                | accepted                                                 | 2026-05-24 |
+| [0008](0008-identite-customer-cookie-device-only-v1.md)                    | Identité Customer V1 = cookie device only (pas de matching cross-device email/tel)    | accepted                                                 | 2026-05-24 |
+| [0009](0009-hubrise-reporte-v2.md)                                         | Hubrise reporté V2 (vs V1 envisagé)                                                   | accepted                                                 | 2026-05-24 |
+| [0010](0010-isolation-multi-tenant-convex-applicative.md)                  | Isolation multi-tenant Convex applicative (sans RLS)                                  | accepted                                                 | 2026-05-25 |
+| [0011](0011-convex-auth-v1-identite-encapsulee-workos-differe.md)          | Convex Auth V1, identité encapsulée, WorkOS différé                                   | accepted                                                 | 2026-05-25 |
+| [0012](0012-push-enrollment-identite-customer-data-envoi-notifications.md) | Inscription push : identité+joignabilité dans Customer Data, envoi dans Notifications | accepted                                                 | 2026-05-25 |
+| [0013](0013-pricing-engine-backend-only.md)                                | Moteur Pricing exécuté côté backend uniquement (pas de partage front)                 | accepted                                                 | 2026-05-25 |
 
 ## Quand créer un ADR
 

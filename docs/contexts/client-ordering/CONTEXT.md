@@ -31,7 +31,7 @@ Mécanisme de désactivation temporaire d'un item du menu côté client PWA. **V
 _Avoid_: Out of stock, 86, Sold out
 
 **Modifier** :
-Groupe de choix appliqué à un item lors de l'ajout au panier. **Paramétré par le resto depuis [[KB Admin]] sur le modèle Uber Manager** (Q10-Q8a acté 2026-05-24) : chaque modifier group a un `min_select` (0 = optionnel, ≥1 = obligatoire) et un `max_select` (1 = single-choice / ≥1 = multi-choice). Chaque option a un prix delta (positif ou nul). **UI panier client V1** : bouton "Ajouter au panier" disabled tant que tous les modifiers `min_select > 0` ne sont pas satisfaits, badge inline "À choisir" sur le modifier manquant (pattern Uber Eats). Les modifiers ne sont jamais des "parfums" (cf. [feedback_no_modifier_parfum](../../../.claude/memory/feedback_no_modifier_parfum.md) — items distincts par parfum).
+Groupe de choix appliqué à un item lors de l'ajout au panier. **Paramétré par le resto depuis [[KB Admin]] sur le modèle Uber Manager** (Q10-Q8a acté 2026-05-24) : chaque modifier group a un `min_select` (0 = optionnel, ≥1 = obligatoire) et un `max_select` (1 = single-choice / ≥1 = multi-choice). Chaque option a un prix delta (positif ou nul). **Réutilisables entre items** (acté 2026-05-25, modèle Uber Eats) : un modifier group est créé une fois puis **attaché à N items** (relation N-N item ↔ group), pas recréé par item. **UI panier client V1** : bouton "Ajouter au panier" disabled tant que tous les modifiers `min_select > 0` ne sont pas satisfaits, badge inline "À choisir" sur le modifier manquant (pattern Uber Eats). Les modifiers ne sont jamais des "parfums" (cf. [feedback_no_modifier_parfum](../../../.claude/memory/feedback_no_modifier_parfum.md) — items distincts par parfum).
 _Avoid_: Option, Topping, Extra, Variant
 
 **Category** (Catégorie) :
@@ -44,6 +44,7 @@ _Avoid_: Cashier, Order page
 
 **Branding tenant V1** (Asymétrique) :
 Niveau de personnalisation visuelle par tenant V1, **asymétrique selon la surface** (révision 2026-05-24 suite décision carte Wallet commune) :
+
 - **PWA tenant** (`bunsbao.kitchen-boost.fr`) = **Branded resto à 100%** (Medium acté Q10-Q2) : logo + 1 couleur primaire + hero photo personnalisée + police standard (Inter). UX commande = expérience resto pure.
 - **Icône A2HS + manifest + splash screen** = **Branded resto** (cf. [[A2HS]] / [[PWA standalone]])
 - **Email transactionnel** (confirmation cmd, suivi) = **Branded resto à 100%** (vient "du resto")
@@ -55,6 +56,7 @@ _Avoid_: Customisation uniforme, Theming, Branding complet
 
 **Push targeting** (Ciblage notifications) :
 Capacité de pousser à un sous-ensemble de clients. **V1 = supporté nativement** (Q10-Q10 acté 2026-05-24) :
+
 - **Khan (resto)** peut pousser à SES clients seulement (`WHERE tenant_id = 'buns-bao'`), filtré éventuellement par [[Segment]] (Actif/Inactif/VIP) — UI campagne dans [[KB Admin]] V1
 - **KB root** peut pousser à TOUS les clients KB cross-tenant (ex: "Nouveau resto à 5 min de chez toi", filtré par géo)
 - **Deep link par notif** : chaque notif contient son propre `app-launch-url` (Apple) / `actionUri` (Google) — tap notif → redirige vers la PWA du resto qui pousse, indépendamment de la carte Wallet courante. Ex: notif BB → `bunsbao.kitchen-boost.fr/?promo=BAO20`, notif Crêperie → `creperie.kitchen-boost.fr/?promo=CREPE1`.
@@ -103,7 +105,7 @@ _Avoid_: Repeat order
 
 **Alex** : OK. Et s'il a déjà commandé chez ce resto la semaine dernière ?
 
-**Dev** : On le reconnaît silencieusement via le token persistant device ([[Anonymous account]]) — email/tel/prénom/adresse pré-remplis. Sa carte sauvegardée est aussi proposée via [[Stripe Customer (cross-tenant)]] (acté V1). Si même client commande chez un AUTRE resto KB depuis le même device → même reconnaissance silencieuse (cross-device : match silencieux email/tel au checkout).
+**Dev** : On le reconnaît silencieusement via le token persistant device ([[Anonymous account]] = cookie device) — email/tel/prénom/adresse pré-remplis. Sa carte sauvegardée est aussi proposée via [[Stripe Customer (cross-tenant)]] (acté V1). Si même client commande chez un AUTRE resto KB **depuis le même device** → même reconnaissance silencieuse (cookie partagé sur le domaine parent). **Cross-device : reconnaissance uniquement via la carte Wallet installée — PAS de match email/tel** ([ADR 0008](../../adr/0008-identite-customer-cookie-device-only-v1.md)).
 
 **Alex** : Et le modifier "parfum" sur les boissons ?
 

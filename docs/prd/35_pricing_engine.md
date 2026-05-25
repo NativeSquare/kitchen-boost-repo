@@ -13,11 +13,11 @@ Le coût de la livraison Uber Direct (~5,90 € HT) est **structurellement supé
 
 **Scope : le moteur Pricing ne touche QUE les frais de livraison.** Le prix des items (plats, boissons, sides) est édité manuellement par le resto dans son menu — pas un sous-domaine du moteur Pricing. Pas de règles automatiques sur items V1/V2.
 
-| Horizon | Inclus |
-|---------|--------|
-| **V1** | Modèle de règles configurables par resto (conditions + action sur **frais livraison uniquement**), évaluation au paiement (latching), transparence prix au client (prix barré + attribution resto), règle par défaut KB pré-installée à l'onboarding (10% panier), UI no-code dans dashboard resto, intégration Stripe (montant total facturé client). |
-| **V2** | A/B testing règles, expiration / scheduling règles (date début / date fin sur une règle livraison), simulateur (prévisualisation de l'impact d'une règle), campagnes notifications adossées à un changement de règle. |
-| **V3** | Pricing optimisé par ML (KB suggère des règles maximisant CA resto), pricing dynamique géolocalisé. |
+| Horizon | Inclus                                                                                                                                                                                                                                                                                                                                                 |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **V1**  | Modèle de règles configurables par resto (conditions + action sur **frais livraison uniquement**), évaluation au paiement (latching), transparence prix au client (prix barré + attribution resto), règle par défaut KB pré-installée à l'onboarding (10% panier), UI no-code dans dashboard resto, intégration Stripe (montant total facturé client). |
+| **V2**  | A/B testing règles, expiration / scheduling règles (date début / date fin sur une règle livraison), simulateur (prévisualisation de l'impact d'une règle), campagnes notifications adossées à un changement de règle.                                                                                                                                  |
+| **V3**  | Pricing optimisé par ML (KB suggère des règles maximisant CA resto), pricing dynamique géolocalisé.                                                                                                                                                                                                                                                    |
 
 ## Hors scope
 
@@ -37,6 +37,7 @@ Le coût de la livraison Uber Direct (~5,90 € HT) est **structurellement supé
 ### 1. Modèle de règles
 
 Une **règle** est composée de :
+
 - **Conditions V1 (6 — toutes doivent être vraies, AND logique)** :
   - `total_panier` (≥, ≤)
   - `première_cmd_client` (bool)
@@ -59,7 +60,7 @@ Une **règle** est composée de :
 
 - Liste des règles actives
 - Builder no-code : "Si [condition] et [condition] alors [action]"
-- Drag & drop pour réordonner la priorité
+- ~~Drag & drop pour réordonner la priorité~~ — **supprimé (Q35-Q2)** : la règle gagnante est déterministe (celle qui **minimise les frais facturés au client**), pas d'ordre manuel resto.
 - Activate/Deactivate par règle
 - Schedule (date début / date fin) — V2
 - Test simulator : "Si un client commande 15€ un mardi à 13h, voilà ce que ça donne"
@@ -67,6 +68,7 @@ Une **règle** est composée de :
 ### 3. Évaluation au checkout (backend)
 
 Input :
+
 - Panier (items + total)
 - Adresse client (pour distance)
 - Date/heure cmd
@@ -75,6 +77,7 @@ Input :
 - Coût livraison brut Uber Direct (quote API)
 
 Output :
+
 - `frais_livraison_client` (montant à facturer au client final)
 - `frais_livraison_resto` (montant à supporter par le resto)
 - Vérification cohérence : `frais_livraison_client + frais_livraison_resto = coût brut Uber Direct`
@@ -112,6 +115,7 @@ Output :
 **Q35-Q (règle défaut onboarding) acté 2026-05-23.**
 
 À la création d'un tenant (wizard `KitchenBoost Admin`, cf. [70](70_kb_admin.md)), KB **pré-installe automatiquement** une règle par défaut dans le pricing du resto :
+
 - `action = frais_livraison_part_resto_pourcentage_panier = 10%`
 - `conditions = []` (s'applique à toute cmd delivery)
 - Statut : active
@@ -145,6 +149,7 @@ Output :
 ## Critères de succès / acceptation
 
 ### V1
+
 - [ ] Chaque resto a configuré au moins 1 règle dans dashboard (mesure)
 - [ ] Évaluation règles au checkout en < 100ms
 - [ ] Transparence prix client : 0 plainte "j'ai pas compris le prix"
@@ -152,30 +157,31 @@ Output :
 - [ ] Audit log opérationnel
 
 ### V2
+
 - [ ] A/B testing règles déployé
 - [ ] Simulator opérationnel
 - [ ] Scheduling règles (date début / fin) disponible
 
 ## Dépendances
 
-| Dépendance | Type | Bloque quoi |
-|------------|------|-------------|
-| [30_paiement_stripe_connect.md](30_paiement_stripe_connect.md) | Interne | Section 5 intégration Stripe |
-| [40_livraison_uber_direct.md](40_livraison_uber_direct.md) | Interne | Quote Uber Direct + distance |
-| [10_pwa_client_commande.md](10_pwa_client_commande.md) | Interne | Affichage transparent client (section 4) |
-| [70_kb_admin.md](70_kb_admin.md) | Interne | UI configuration des règles (section 2, vue KB Manager) |
-| [50_multi_tenant_saas.md](50_multi_tenant_saas.md) | Interne | Règles scopées par tenant_id |
+| Dépendance                                                     | Type    | Bloque quoi                                             |
+| -------------------------------------------------------------- | ------- | ------------------------------------------------------- |
+| [30_paiement_stripe_connect.md](30_paiement_stripe_connect.md) | Interne | Section 5 intégration Stripe                            |
+| [40_livraison_uber_direct.md](40_livraison_uber_direct.md)     | Interne | Quote Uber Direct + distance                            |
+| [10_pwa_client_commande.md](10_pwa_client_commande.md)         | Interne | Affichage transparent client (section 4)                |
+| [70_kb_admin.md](70_kb_admin.md)                               | Interne | UI configuration des règles (section 2, vue KB Manager) |
+| [50_multi_tenant_saas.md](50_multi_tenant_saas.md)             | Interne | Règles scopées par tenant_id                            |
 
 ## Open questions
 
-| Q | Question | Deadline | Owner |
-|---|----------|----------|-------|
-| ~~35-Q1~~ | ~~Action "livraison offerte client" (=promo KB) : autorisé V1 ou V2 ?~~ **ACTÉ 2026-05-23 : retirée du moteur V1, KB ne subventionne jamais.** | — | — |
-| ~~35-Q2~~ | ~~Priorité règles multiples : 1ère qui matche OU plus avantageuse client ?~~ **ACTÉ 2026-05-23 : la règle qui minimise les frais facturés au client gagne. Jamais 2 règles cumulées.** | — | — |
-| ~~35-Q3~~ | ~~Pricing dynamique sur items~~ **ACTÉ 2026-05-23 : hors scope du moteur Pricing V1/V2. Le resto édite ses prix items manuellement dans son menu.** | — | — |
-| ~~35-Q4~~ | ~~Affichage prix barré "5,90€" si offert~~ **ACTÉ 2026-05-23 : prix barré + "Offert par [Nom resto]", jamais "KitchenBoost" côté client.** | — | — |
-| ~~35-Q5~~ | ~~Resto modifie une règle alors qu'une cmd est en cours de checkout~~ **ACTÉ 2026-05-23 : latching au clic "Payer", prompt obligatoire si prix livraison devient moins avantageux entre panier et paiement.** | — | — |
-| 35-Q6 | Limite max règles par resto : 20 / 50 / illimité ? | V1 | Produit |
+| Q         | Question                                                                                                                                                                                                      | Deadline | Owner   |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------- |
+| ~~35-Q1~~ | ~~Action "livraison offerte client" (=promo KB) : autorisé V1 ou V2 ?~~ **ACTÉ 2026-05-23 : retirée du moteur V1, KB ne subventionne jamais.**                                                                | —        | —       |
+| ~~35-Q2~~ | ~~Priorité règles multiples : 1ère qui matche OU plus avantageuse client ?~~ **ACTÉ 2026-05-23 : la règle qui minimise les frais facturés au client gagne. Jamais 2 règles cumulées.**                        | —        | —       |
+| ~~35-Q3~~ | ~~Pricing dynamique sur items~~ **ACTÉ 2026-05-23 : hors scope du moteur Pricing V1/V2. Le resto édite ses prix items manuellement dans son menu.**                                                           | —        | —       |
+| ~~35-Q4~~ | ~~Affichage prix barré "5,90€" si offert~~ **ACTÉ 2026-05-23 : prix barré + "Offert par [Nom resto]", jamais "KitchenBoost" côté client.**                                                                    | —        | —       |
+| ~~35-Q5~~ | ~~Resto modifie une règle alors qu'une cmd est en cours de checkout~~ **ACTÉ 2026-05-23 : latching au clic "Payer", prompt obligatoire si prix livraison devient moins avantageux entre panier et paiement.** | —        | —       |
+| 35-Q6     | Limite max règles par resto : 20 / 50 / illimité ?                                                                                                                                                            | V1       | Produit |
 
 ## Notes / décisions actées
 
@@ -183,9 +189,12 @@ Output :
 - **Transparence client obligatoire** : pas de prix caché.
 - **Article 3.2 contrat** : le total facturé client (panier + part livraison client) passe via Stripe → resto. Le resto paie Uber Direct séparément sur son compte Uber Direct.
 - **L'`application_fee_amount` KB ne dépend PAS** des règles pricing (toujours 2€ HT par cmd).
+- **Moteur backend-only (acté 2026-05-25, [ADR 0013](../adr/0013-pricing-engine-backend-only.md))** : le front n'a jamais les règles ni la formule ; il envoie sa demande à l'API et reçoit le prix calculé (indicatif au panier, définitif au paiement). Module pur testable en isolation, importé uniquement par le backend.
+- **Pas de limite produit de règles** (acté 2026-05-25) : 1 à 5 règles en pratique ; plafond technique généreux only.
+- **Trace pricing figée sur la commande** (acté 2026-05-25) : la règle gagnante + coût brut + part client/resto sont enregistrés sur la commande au paiement (chantier 2.3), pas dans un journal d'évaluation haute fréquence.
 
 ## Changelog
 
-| Date | Version | Auteur | Notes |
-|------|---------|--------|-------|
-| 2026-05-23 | 0.1 | Alex (via Claude) | Création — nouveau sous-PRD pour acter le moteur pricing dynamique requis V1. |
+| Date       | Version | Auteur            | Notes                                                                         |
+| ---------- | ------- | ----------------- | ----------------------------------------------------------------------------- |
+| 2026-05-23 | 0.1     | Alex (via Claude) | Création — nouveau sous-PRD pour acter le moteur pricing dynamique requis V1. |

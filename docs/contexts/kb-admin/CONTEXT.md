@@ -9,7 +9,7 @@ PRD : [70_kb_admin.md](../../prd/70_kb_admin.md)
 ## Language
 
 **KitchenBoost Admin** (= **KB Admin app**) :
-L'app web unique du système, accessible via `admin.kitchen-boost.fr` (ou équivalent — Q70-Q12). 1 codebase, 1 login, 1 URL. Le RBAC scope les composants, les routes API et la DB (RLS Postgres).
+L'app web unique du système, accessible via `admin.kitchen-boost.fr` (ou équivalent — Q70-Q12). 1 codebase, 1 login, 1 URL. Le RBAC scope les composants et les routes API ; l'isolation des données est **applicative Convex** ([ADR 0010](../../adr/0010-isolation-multi-tenant-convex-applicative.md)), **pas de RLS Postgres**.
 _Avoid_: Backoffice (ambigu), Merchant Dashboard (terme aboli), Resto Dashboard (idem)
 
 **KB Admin** (rôle) :
@@ -38,6 +38,7 @@ _Avoid_: Funnel, Sales pipeline
 
 **Phase pipeline** (Acquisition / Préparation / Installation / Opérationnel) :
 4 valeurs énumérées de l'état d'un resto dans le pipeline (acté 2026-05-23).
+
 - **Acquisition** = de la création du prospect jusqu'au [[Closing]]. Tous les milestones commerciaux (RDV, devis, contrat, docs).
 - **Préparation** = post-Closing. Intégrations Stripe + Uber Direct + Hubrise + menu + packaging. Acteurs : KB Admin pilote, resto fournit infos / valide KYC.
 - **Installation** = install physique sur place. Tablette, QR stickers, sticker packaging, création user KB Manager, 1ère cmd publique.
@@ -47,13 +48,14 @@ _Avoid_: A/B/B+/C/D (ancienne nomenclature, abandonnée 2026-05-23), Stage, Step
 
 **Closing** :
 **Événement** (et non une phase de durée) déclenchant la bascule auto Acquisition → Préparation. Composite de 4 milestones obligatoires + 1 conditionnel :
+
 - Contrat signé (Odoo)
 - KBIS reçu
 - Pièce d'identité reçue
 - RIB reçu
 - (conditionnel si `tablette_mode=achat_kb`) Facture tablette payée
-Dès que tous les milestones applicables sont cochés, le resto bascule en Préparation automatiquement.
-_Avoid_: Phase Closing, Closed status
+  Dès que tous les milestones applicables sont cochés, le resto bascule en Préparation automatiquement.
+  _Avoid_: Phase Closing, Closed status
 
 **Milestone** :
 Unité élémentaire d'avancement dans le pipeline d'un resto. Soit binaire (`Contrat signé : oui/non`), soit composite (statut courant + historique horodaté, pour les intégrations Stripe / Uber Direct qui peuvent osciller : `pending → verified → rejected → pending → verified`). Affiché dans la page détail tenant.

@@ -2,7 +2,7 @@
 
 **Statut** : ✅ Complet · **Version** : 2.1 · **Dernière mise à jour** : 2026-05-23 · **Owner produit** : Alex Pelloux
 
-> **Changements v2.1** : refonte sémantique. Fusion ex-KDS PWA + ex-app native resto → **KB Orders** (app native iOS/Android unique, tablette cuisine = même build). Fusion ex-Dashboard Resto + ex-Admin Back-office KB → **KitchenBoost Admin** (app web unique avec RBAC à 3 rôles : KB Admin root / KB Manager resto / Staff V2). Passage de 12 à **10 blocs fonctionnels**. Multi-tenant per user V1 (cas Walid Thai Street). Anciens PRDs : [docs/_archive/](../_archive/).
+> **Changements v2.1** : refonte sémantique. Fusion ex-KDS PWA + ex-app native resto → **KB Orders** (app native iOS/Android unique, tablette cuisine = même build). Fusion ex-Dashboard Resto + ex-Admin Back-office KB → **KitchenBoost Admin** (app web unique avec RBAC à 3 rôles : KB Admin root / KB Manager resto / Staff V2). Passage de 12 à **10 blocs fonctionnels**. Multi-tenant per user V1 (cas Walid Thai Street). Anciens PRDs : [docs/\_archive/](../_archive/).
 
 > **Changements v2.0** : scope V1 étendu suite revue produit (10 points critiques). Suppression de la décomposition V1.A/V1.B. Stratégie de release = **soft-launch progressif** sur premier pilote Buns & Bao avec checkpoints incrémentaux. Ajout RBAC, app native resto, moteur pricing dynamique, dashboard resto, agrégation marketplaces, compte client unifié cross-resto comme features V1.
 
@@ -70,7 +70,7 @@ KitchenBoost est un **ERP de restauration pour restaurants indépendants** qui r
   - Doit jongler entre tablette Uber Eats, tablette Deliveroo, tickets manuels, téléphone qui sonne pour les commandes directes.
   - Pas de notification audio fiable quand une commande arrive.
 - **Goal vis-à-vis de KitchenBoost** :
-  - Une seule interface qui montre **toutes les commandes en cours**, direct + Uber Eats + Deliveroo (via Hubrise dès V1).
+  - Une seule interface qui montre **toutes les commandes en cours** : V1 = **direct uniquement** ; Uber Eats + Deliveroo (via Hubrise) = **V2** ([ADR 0009](../adr/0009-hubrise-reporte-v2.md)).
   - Une notification fiable (sonore + visuelle) à chaque nouvelle commande, via app native iOS/Android (équivalent Uber Eats Orders).
   - Workflow simple : voir cmd → cliquer "préparée" → cliquer "remise au coursier" (livraison) ou "remise au client" (click & collect).
 
@@ -87,27 +87,28 @@ KitchenBoost est un **ERP de restauration pour restaurants indépendants** qui r
 
 ### 4.1 Revenus KitchenBoost
 
-| Source | Montant | Quand |
-|--------|---------|-------|
-| Commission sur commande Plateforme KB | **2,00 € HT / commande encaissée** | Prélevée automatiquement par Stripe au moment de la transaction (intégrée dans `application_fee_amount` TTC) |
-| Commission Uber Eats (prestation A, marque virtuelle louée) | 2,00 € HT / commande | Facturée mensuellement au resto, payable à 15j |
-| Tablette KDS fournie (option 2) | 99 € HT one-shot | Facturée à la commande de la tablette |
-| Frais annexes (site internet additionnel, modules tiers) | Sur devis | Accord écrit préalable (Article 12 bis du contrat) |
+| Source                                                      | Montant                            | Quand                                                                                                        |
+| ----------------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Commission sur commande Plateforme KB                       | **2,00 € HT / commande encaissée** | Prélevée automatiquement par Stripe au moment de la transaction (intégrée dans `application_fee_amount` TTC) |
+| Commission Uber Eats (prestation A, marque virtuelle louée) | 2,00 € HT / commande               | Facturée mensuellement au resto, payable à 15j                                                               |
+| Tablette KDS fournie (option 2)                             | 99 € HT one-shot                   | Facturée à la commande de la tablette                                                                        |
+| Frais annexes (site internet additionnel, modules tiers)    | Sur devis                          | Accord écrit préalable (Article 12 bis du contrat)                                                           |
 
 **Pas d'abonnement mensuel KB.** Pas de frais de setup KB (le seul coût "setup" facturé est la tablette si BYOD impossible).
 
 ### 4.2 Coûts produit majeurs (côté resto)
 
-| Poste | Coût (pris en charge resto) | Notes |
-|-------|-----------------------------|-------|
-| Frais d'acceptation des paiements (Stripe PSP) | 1,5% + 0,25€ / transaction (cartes EU) | Régis par contrat Partenaire ↔ Stripe direct, KB ne touche pas |
-| Livraison Uber Direct | ~5,90 € HT / course (tarif public, négocié au volume futur) | Facturée au resto via mandat de paiement Uber. **Le resto peut configurer dans le dashboard la part qu'il prend en charge vs celle facturée au client final (cf. [35_pricing_engine.md](35_pricing_engine.md))** |
-| Tablette KDS (si BYOD impossible) | 99 € HT one-shot | KB fournit Samsung Galaxy Tab A9 ou équivalent |
-| Coût Hubrise (si KB ne l'absorbe pas) | À déterminer (30€/mois/loc pricing public, négo en cours) | Activation Hubrise pour agrégation cmds Uber Eats/Deliveroo |
+| Poste                                          | Coût (pris en charge resto)                                 | Notes                                                                                                                                                                                                            |
+| ---------------------------------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Frais d'acceptation des paiements (Stripe PSP) | 1,5% + 0,25€ / transaction (cartes EU)                      | Régis par contrat Partenaire ↔ Stripe direct, KB ne touche pas                                                                                                                                                   |
+| Livraison Uber Direct                          | ~5,90 € HT / course (tarif public, négocié au volume futur) | Facturée au resto via mandat de paiement Uber. **Le resto peut configurer dans le dashboard la part qu'il prend en charge vs celle facturée au client final (cf. [35_pricing_engine.md](35_pricing_engine.md))** |
+| Tablette KDS (si BYOD impossible)              | 99 € HT one-shot                                            | KB fournit Samsung Galaxy Tab A9 ou équivalent                                                                                                                                                                   |
+| Coût Hubrise (si KB ne l'absorbe pas)          | À déterminer (30€/mois/loc pricing public, négo en cours)   | Activation Hubrise pour agrégation cmds Uber Eats/Deliveroo                                                                                                                                                      |
 
 ### 4.3 Hypothèse de marge KB par resto
 
 Resto type ~150 commandes/mois via Plateforme KB en régime établi (post-90j) :
+
 - Revenu KB : 150 × 2 € = **300 €/mois HT** par resto en régime
 - Objectif Phase 1 (validation) : 5 restos installés, ~15 cmd/jour cumulés
 - Objectif Phase 2 (industrialisation) : 50 restos, ~750 cmd/jour cumulés = 22 500 €/mois HT
@@ -116,18 +117,18 @@ Resto type ~150 commandes/mois via Plateforme KB en régime établi (post-90j) :
 
 KitchenBoost se compose de **10 blocs fonctionnels** indépendants mais inter-dépendants. Chaque bloc dispose de son sous-PRD détaillé.
 
-| # | Bloc | Description en 1 phrase | Sous-PRD |
-|---|------|-------------------------|----------|
-| 1 | **PWA Client Commande** | Webapp brandée par tenant, accessible via QR code, permet au client final de commander en livraison ou click & collect | [10_pwa_client_commande.md](10_pwa_client_commande.md) |
-| 2 | **KB Orders (App native iOS + Android)** | App native unique pour le resto (équivalent Uber Eats Orders) : workflow cmd (nouvelle → prep → prête → remise), modes livraison + click & collect, push APNs/FCM, surface téléphone + tablette cuisine | [20_kb_orders.md](20_kb_orders.md) |
-| 3 | **Paiement Stripe Connect** | Onboarding Stripe par tenant + flux paiement direct charge avec application_fee KB + Apple Pay / Google Pay + carte sauvegardée cross-tenant | [30_paiement_stripe_connect.md](30_paiement_stripe_connect.md) |
-| 4 | **Moteur Pricing Dynamique** | Moteur de règles configurables par tenant : qui prend en charge quelle part de la livraison selon panier / date / item | [35_pricing_engine.md](35_pricing_engine.md) |
-| 5 | **Livraison Uber Direct + Click & Collect** | Création de course Uber Direct au paiement validé, OU mode click & collect, suivi temps réel, webhooks de statut | [40_livraison_uber_direct.md](40_livraison_uber_direct.md) |
-| 6 | **Multi-tenant SaaS + RBAC** | Provisioning, isolation, custom domain. RBAC 3 rôles : KB Admin (root) / KB Manager (resto, 1→N tenants) / Staff (V2). Multi-tenant per user V1 (cas Walid). | [50_multi_tenant_saas.md](50_multi_tenant_saas.md) |
-| 7 | **Intégration marketplaces (Hubrise)** | Récupération automatique des cmds Uber Eats/Deliveroo dans KB Orders **dès V1** | [60_integration_marketplaces.md](60_integration_marketplaces.md) |
-| 8 | **KitchenBoost Admin** | App web unique avec RBAC. Côté KB Admin (root) : pipeline onboarding + CRM + contrats + monitoring + wizard tenant + partage KB→resto. Côté KB Manager : édition menu + personnalisations (modifiers) + cmds + clients masqués + campagnes + pricing UI + QR generator | [70_kb_admin.md](70_kb_admin.md) |
-| 9 | **Notifications** | Web push (client PWA), push système APNs/FCM (KB Orders), email transactionnel + marketing, SMS fallback. Marketing déclenchable dès V1. | [80_notifications.md](80_notifications.md) |
-| 10 | **Base de données clients (MOAT)** | Modèle de données clients KB cross-tenant + position géo, protections anti-extraction, partage KB→resto ("on te ramène des clients") | [90_donnees_clients_crm.md](90_donnees_clients_crm.md) |
+| #   | Bloc                                        | Description en 1 phrase                                                                                                                                                                                                                                                | Sous-PRD                                                         |
+| --- | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| 1   | **PWA Client Commande**                     | Webapp brandée par tenant, accessible via QR code, permet au client final de commander en livraison ou click & collect                                                                                                                                                 | [10_pwa_client_commande.md](10_pwa_client_commande.md)           |
+| 2   | **KB Orders (App native iOS + Android)**    | App native unique pour le resto (équivalent Uber Eats Orders) : workflow cmd (nouvelle → prep → prête → remise), modes livraison + click & collect, push APNs/FCM, surface téléphone + tablette cuisine                                                                | [20_kb_orders.md](20_kb_orders.md)                               |
+| 3   | **Paiement Stripe Connect**                 | Onboarding Stripe par tenant + flux paiement direct charge avec application_fee KB + Apple Pay / Google Pay + carte sauvegardée cross-tenant                                                                                                                           | [30_paiement_stripe_connect.md](30_paiement_stripe_connect.md)   |
+| 4   | **Moteur Pricing Dynamique**                | Moteur de règles configurables par tenant : qui prend en charge quelle part de la livraison selon panier / date / item                                                                                                                                                 | [35_pricing_engine.md](35_pricing_engine.md)                     |
+| 5   | **Livraison Uber Direct + Click & Collect** | Création de course Uber Direct au paiement validé, OU mode click & collect, suivi temps réel, webhooks de statut                                                                                                                                                       | [40_livraison_uber_direct.md](40_livraison_uber_direct.md)       |
+| 6   | **Multi-tenant SaaS + RBAC**                | Provisioning, isolation, custom domain. RBAC 3 rôles : KB Admin (root) / KB Manager (resto, 1→N tenants) / Staff (V2). Multi-tenant per user V1 (cas Walid).                                                                                                           | [50_multi_tenant_saas.md](50_multi_tenant_saas.md)               |
+| 7   | **Intégration marketplaces (Hubrise)**      | Récupération automatique des cmds Uber Eats/Deliveroo dans KB Orders **dès V1**                                                                                                                                                                                        | [60_integration_marketplaces.md](60_integration_marketplaces.md) |
+| 8   | **KitchenBoost Admin**                      | App web unique avec RBAC. Côté KB Admin (root) : pipeline onboarding + CRM + contrats + monitoring + wizard tenant + partage KB→resto. Côté KB Manager : édition menu + personnalisations (modifiers) + cmds + clients masqués + campagnes + pricing UI + QR generator | [70_kb_admin.md](70_kb_admin.md)                                 |
+| 9   | **Notifications**                           | Web push (client PWA), push système APNs/FCM (KB Orders), email transactionnel + marketing, SMS fallback. Marketing déclenchable dès V1.                                                                                                                               | [80_notifications.md](80_notifications.md)                       |
+| 10  | **Base de données clients (MOAT)**          | Modèle de données clients KB cross-tenant + position géo, protections anti-extraction, partage KB→resto ("on te ramène des clients")                                                                                                                                   | [90_donnees_clients_crm.md](90_donnees_clients_crm.md)           |
 
 ## 6. Architecture fonctionnelle macro
 
@@ -196,8 +197,8 @@ KitchenBoost se compose de **10 blocs fonctionnels** indépendants mais inter-d�
 5. **KB pas merchant of record** : KB n'encaisse pas, ne refacture pas Uber/Stripe. Le resto est seul vendeur, KB est mandataire (Article 2 bis du contrat). Direct charges Stripe + Uber Direct sur compte resto.
 6. **Base clients = MOAT** : tous les schémas de données et toutes les UI doivent acter que la base clients est propriété KB. Le resto a un droit de **consultation** opérationnel et un droit de **partage assisté**. Mais **aucun droit d'extraction** (cf. Article 2 ter contrat + [90_donnees_clients_crm.md](90_donnees_clients_crm.md)).
 7. **Pas de dépendance critique non-substituable** : pour chaque dépendance externe critique, on identifie un fallback. Uber Direct → Stuart (V2). Stripe → Mangopay (V3). Hubrise → intégration directe Uber Eats / Deliveroo (V3).
-7. **Onboarding resto = process humain assisté en V1, wizard outillé en V2** : Phase 1, Alex installe lui-même chaque resto avec un wizard admin KB qui guide le process. Phase 2, on industrialise.
-8. **Modularité livraison vs emporter (click & collect)** : chaque resto choisit dans son dashboard quelles modalités il accepte. Le client voit l'option correspondante au checkout.
+8. **Onboarding resto = process humain assisté en V1, wizard outillé en V2** : Phase 1, Alex installe lui-même chaque resto avec un wizard admin KB qui guide le process. Phase 2, on industrialise.
+9. **Modularité livraison vs emporter (click & collect)** : chaque resto choisit dans son dashboard quelles modalités il accepte. Le client voit l'option correspondante au checkout.
 
 ## 7. Scope V1 / V2 / V3 (DÉCISIONS)
 
@@ -212,6 +213,7 @@ Cette section tranche explicitement ce qui est dans V1, V2, V3.
 **Inclus dans V1 :**
 
 #### 7.1.1 Client final mangeur
+
 - ✅ PWA Client Commande complète : menu, panier, checkout, suivi commande, captation client + **position géo**
 - ✅ Apple Pay / Google Pay au checkout (smoothness max)
 - ✅ Carte sauvegardée réutilisable cross-resto KB (un client paie chez Resto X, sa CB est utilisable chez Resto Y sans re-saisie) — livré plus tard dans le soft-launch progressif
@@ -240,6 +242,7 @@ Cette section tranche explicitement ce qui est dans V1, V2, V3.
   - Source cmd taggée (direct / Uber Eats / Deliveroo via Hubrise)
 
 #### 7.1.3 Côté Admin KB interne (rôle KB Admin dans `KitchenBoost Admin`)
+
 - ✅ Accès root tous tenants, monitoring incidents (Slack alerts), audit log basique
 - ✅ **Pipeline onboarding visuel** par phases A→D (Approche / Closing / Prép menu / Kickoff / Opérationnel) avec checklist + liens externes pré-remplis + embed Stripe KYC
 - ✅ **CRM prospects + clients** cliquable (consolide `crm_prospects.csv` + `crm_view.html` actuels)
@@ -249,12 +252,14 @@ Cette section tranche explicitement ce qui est dans V1, V2, V3.
 - ✅ **Impersonation** d'un KB Manager pour assistance (audit log obligatoire)
 
 #### 7.1.4 Intégrations
+
 - ✅ **Stripe Connect Express direct charges** + Apple Pay/Google Pay + Stripe Customer cross-tenant (carte sauvegardée) + frais d'acceptation pass-through + commission KB TTC. **Stripe partagé entre tenants même SIRET** géré.
 - ✅ **Uber Direct self-signup** par tenant (1 par tenant obligatoire, adresse pickup unique), création course au paiement validé, webhooks statut par tenant
 - ✅ **Hubrise** pour agrégation cmds Uber Eats + Deliveroo dans KB Orders et `KitchenBoost Admin` dès V1
 - ✅ **Moteur pricing dynamique** : règles configurables par tenant, évaluation au checkout, transparence client
 
 #### 7.1.5 Infrastructure
+
 - ✅ Multi-tenant + RBAC 3 rôles (KB Admin / KB Manager / Staff V2) + sous-domaine auto + custom domain CNAME + wizard onboarding
 - ✅ **`users` + `user_tenants` (N-N) dès V1** : multi-tenant per user pour cas Walid (1 KB Manager → N tenants), switcher dans KB Admin + KB Orders
 - ✅ Base clients globale cross-tenant + position géo + protections anti-extraction (UI + API)
@@ -271,6 +276,7 @@ Cette section tranche explicitement ce qui est dans V1, V2, V3.
 - ❌ Captation client active externe (SEO local, ads). V1 = captation passive via QR code dans sacs Uber Eats.
 
 **Critères d'acceptation V1 :**
+
 - 3+ tenants installés en production (Buns & Bao + 2 autres), tous les 10 blocs opérationnels.
 - Une commande complète (PWA → Stripe → DB → KB Orders push → cuisine prep → Uber Direct OU click & collect → livraison → review) traverse le système sans intervention humaine KB.
 - Aucune fuite cross-tenant (audit manuel + tests automatisés).
@@ -313,30 +319,30 @@ Cette section tranche explicitement ce qui est dans V1, V2, V3.
 
 ### 8.1 Métriques V1
 
-| Métrique | Cible 30j post-V1 full | Mesure |
-|----------|------------------------|--------|
-| Restos installés en production | 3-5 | Compteur tenants actifs |
-| Commandes via Plateforme KB | 200+/sem cumulé | DB orders.canal = 'direct' |
-| Taux de scan QR code → commande | ≥ 3% | Conversion funnel |
-| % paiements via Apple Pay/Google Pay | > 40% | Stripe metadata |
-| % commandes cross-resto (client utilise CB sauvegardée chez 2e resto) | > 15% (post-soft-launch carte cross-resto) | DB customers |
-| Uptime PWA en heures service | ≥ 99% | Monitoring (Sentry / UptimeRobot) |
-| Fiabilité push native resto | > 95% | App analytics |
-| Latence commande → notif resto | < 5 sec | Tracking webhook → push |
-| Taux incidents bloquants | < 1% | Issues tracker |
-| Hubrise opérationnel chez restos opt-in | 100% | Compteur |
-| Moteur pricing : règles configurées par resto | ≥ 1 par resto | DB pricing_rules |
+| Métrique                                                              | Cible 30j post-V1 full                     | Mesure                            |
+| --------------------------------------------------------------------- | ------------------------------------------ | --------------------------------- |
+| Restos installés en production                                        | 3-5                                        | Compteur tenants actifs           |
+| Commandes via Plateforme KB                                           | 200+/sem cumulé                            | DB orders.canal = 'direct'        |
+| Taux de scan QR code → commande                                       | ≥ 3%                                       | Conversion funnel                 |
+| % paiements via Apple Pay/Google Pay                                  | > 40%                                      | Stripe metadata                   |
+| % commandes cross-resto (client utilise CB sauvegardée chez 2e resto) | > 15% (post-soft-launch carte cross-resto) | DB customers                      |
+| Uptime PWA en heures service                                          | ≥ 99%                                      | Monitoring (Sentry / UptimeRobot) |
+| Fiabilité push native resto                                           | > 95%                                      | App analytics                     |
+| Latence commande → notif resto                                        | < 5 sec                                    | Tracking webhook → push           |
+| Taux incidents bloquants                                              | < 1%                                       | Issues tracker                    |
+| Hubrise opérationnel chez restos opt-in                               | 100%                                       | Compteur                          |
+| Moteur pricing : règles configurées par resto                         | ≥ 1 par resto                              | DB pricing_rules                  |
 
 ### 8.2 Métriques V2
 
-| Métrique | Cible 90j post-V2 | Mesure |
-|----------|-------------------|--------|
-| Restos installés | 30-50 | Compteur tenants actifs |
-| Time-to-install (closing → first order) | < 7j | Median histo |
-| Revenue récurrent (run rate) | ≥ 15 K€/mois HT | Sum des commissions encaissées |
-| Stuart fallback utilisé | ≥ 5% des courses | DB |
-| NPS resto | ≥ 30 | Sondage trimestriel |
-| Churn resto (3 mois post-install) | < 10% | Compteur résiliations |
+| Métrique                                | Cible 90j post-V2 | Mesure                         |
+| --------------------------------------- | ----------------- | ------------------------------ |
+| Restos installés                        | 30-50             | Compteur tenants actifs        |
+| Time-to-install (closing → first order) | < 7j              | Median histo                   |
+| Revenue récurrent (run rate)            | ≥ 15 K€/mois HT   | Sum des commissions encaissées |
+| Stuart fallback utilisé                 | ≥ 5% des courses  | DB                             |
+| NPS resto                               | ≥ 30              | Sondage trimestriel            |
+| Churn resto (3 mois post-install)       | < 10%             | Compteur résiliations          |
 
 ### 8.3 Métriques V3
 
@@ -344,42 +350,42 @@ Cette section tranche explicitement ce qui est dans V1, V2, V3.
 
 ## 9. Risques et mitigations
 
-| Risque | Sévérité | Probabilité | Mitigation |
-|--------|----------|-------------|------------|
-| Scope V1 trop large → glissement timeline répété | **Critique** | Haute | Soft-launch progressif sur Buns & Bao → on livre par feature, on n'attend pas que tout soit prêt. Buns & Bao tourne avec un sous-ensemble dès la 1ère livraison. |
-| Uber Direct refuse de servir un resto (couverture / zone / type cuisine) | Élevée | Moyenne | Click & collect activable en fallback **V1**. Fallback Stuart en V2. Vérifier couverture à l'install. |
-| Stripe Connect Express bloque l'onboarding d'un resto | Élevée | Faible | Plan B Mangopay évalué (1-2 sem migration). Documenté en [30_paiement_stripe_connect.md](30_paiement_stripe_connect.md). |
-| Hubrise refuse l'intégration ou pricing prohibitif | Critique en V1 | Moyenne | Négo commerciale en S0/S1 indispensable. Si refus / blocage : intégration directe Uber Eats Orders API (long mais faisable, cf. [docs/research/uber_integration_partner.md](../research/uber_integration_partner.md)). Sinon livrer V1 sans Hubrise et activer post-V1. |
-| Stripe Customer cross-tenant via Connect : complexité technique sous-estimée | Élevée | Moyenne | Recherche approfondie en S0 (test PoC dans sandbox Stripe). Si trop complexe : carte sauvegardée intra-tenant V1 et cross-tenant V2. |
-| App native iOS + Android : effort sous-estimé | Élevée | Moyenne | À cadrer dès S0 par dev lead. Pas de stack imposée dans PRD, mais tracker du sub-PRD [20 KB Orders](20_kb_orders.md) sur livraison incrémentale (notifs d'abord, workflow cmd ensuite, edge cases enfin). |
-| Un resto exfiltre la base clients via screenshot / copie manuelle | Faible | Élevée | Limitation contractuelle (Art 2 ter) + technique (pas d'export CSV, pas de copie massive, pas d'API publique, watermark visuel, audit log). |
-| Push iOS désactivé par défaut → faible adoption canal direct côté client | Moyenne | Élevée | A2HS obligatoire sur iOS 16.4+ + SMS fallback opt-in V1. Pour resto : app native iOS Apple Push Notification Service (APNs) fiabilité > 95%. |
-| Adoption PWA trop lente (clients scannent peu) | Élevée | Moyenne | Mitigation = puissance du QR sticker + offre lancement (BOGO, -20%) à la 1ère cmd directe. Mesurer taux conversion sur 30j. |
-| Désalignement Alex (commercial) ↔ équipe dev sur scope V1 | Moyenne | Moyenne | Ce PRD est la source de vérité. Toute demande de feature additionnelle doit passer par mise à jour PRD avant dev. |
-| Concurrence directe (Owner.com s'implante en FR, Toast acquiert un acteur FR) | Moyenne | Faible 12 mois | Vélocité d'install + densification verticale (chaînes de marques virtuelles) = barrière. |
-| Bug critique paiement / livraison sur premier go-live (Buns & Bao) | Critique | Moyenne | Soft launch friends & family 3-7j avant ouverture publique. Alex sur place le jour J. Hotline support 24h en heures de service les 14 premiers jours. |
-| Multi-tenant mal conçu en V1 → refonte coûteuse | Élevée | Moyenne | [50_multi_tenant_saas.md](50_multi_tenant_saas.md) prioritaire S0/S1. Tests automatisés cross-tenant obligatoires. |
+| Risque                                                                        | Sévérité       | Probabilité    | Mitigation                                                                                                                                                                                                                                                              |
+| ----------------------------------------------------------------------------- | -------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Scope V1 trop large → glissement timeline répété                              | **Critique**   | Haute          | Soft-launch progressif sur Buns & Bao → on livre par feature, on n'attend pas que tout soit prêt. Buns & Bao tourne avec un sous-ensemble dès la 1ère livraison.                                                                                                        |
+| Uber Direct refuse de servir un resto (couverture / zone / type cuisine)      | Élevée         | Moyenne        | Click & collect activable en fallback **V1**. Fallback Stuart en V2. Vérifier couverture à l'install.                                                                                                                                                                   |
+| Stripe Connect Express bloque l'onboarding d'un resto                         | Élevée         | Faible         | Plan B Mangopay évalué (1-2 sem migration). Documenté en [30_paiement_stripe_connect.md](30_paiement_stripe_connect.md).                                                                                                                                                |
+| Hubrise refuse l'intégration ou pricing prohibitif                            | Critique en V1 | Moyenne        | Négo commerciale en S0/S1 indispensable. Si refus / blocage : intégration directe Uber Eats Orders API (long mais faisable, cf. [docs/research/uber_integration_partner.md](../research/uber_integration_partner.md)). Sinon livrer V1 sans Hubrise et activer post-V1. |
+| Stripe Customer cross-tenant via Connect : complexité technique sous-estimée  | Élevée         | Moyenne        | Recherche approfondie en S0 (test PoC dans sandbox Stripe). Si trop complexe : carte sauvegardée intra-tenant V1 et cross-tenant V2.                                                                                                                                    |
+| App native iOS + Android : effort sous-estimé                                 | Élevée         | Moyenne        | À cadrer dès S0 par dev lead. Pas de stack imposée dans PRD, mais tracker du sub-PRD [20 KB Orders](20_kb_orders.md) sur livraison incrémentale (notifs d'abord, workflow cmd ensuite, edge cases enfin).                                                               |
+| Un resto exfiltre la base clients via screenshot / copie manuelle             | Faible         | Élevée         | Limitation contractuelle (Art 2 ter) + technique (pas d'export CSV, pas de copie massive, pas d'API publique, watermark visuel, audit log).                                                                                                                             |
+| Push iOS désactivé par défaut → faible adoption canal direct côté client      | Moyenne        | Élevée         | A2HS obligatoire sur iOS 16.4+ + SMS fallback opt-in V1. Pour resto : app native iOS Apple Push Notification Service (APNs) fiabilité > 95%.                                                                                                                            |
+| Adoption PWA trop lente (clients scannent peu)                                | Élevée         | Moyenne        | Mitigation = puissance du QR sticker + offre lancement (BOGO, -20%) à la 1ère cmd directe. Mesurer taux conversion sur 30j.                                                                                                                                             |
+| Désalignement Alex (commercial) ↔ équipe dev sur scope V1                     | Moyenne        | Moyenne        | Ce PRD est la source de vérité. Toute demande de feature additionnelle doit passer par mise à jour PRD avant dev.                                                                                                                                                       |
+| Concurrence directe (Owner.com s'implante en FR, Toast acquiert un acteur FR) | Moyenne        | Faible 12 mois | Vélocité d'install + densification verticale (chaînes de marques virtuelles) = barrière.                                                                                                                                                                                |
+| Bug critique paiement / livraison sur premier go-live (Buns & Bao)            | Critique       | Moyenne        | Soft launch friends & family 3-7j avant ouverture publique. Alex sur place le jour J. Hotline support 24h en heures de service les 14 premiers jours.                                                                                                                   |
+| Multi-tenant mal conçu en V1 → refonte coûteuse                               | Élevée         | Moyenne        | [50_multi_tenant_saas.md](50_multi_tenant_saas.md) prioritaire S0/S1. Tests automatisés cross-tenant obligatoires.                                                                                                                                                      |
 
 ## 10. Open questions et deadlines
 
-| Q | Question | Bloquant pour | Deadline | Owner |
-|---|----------|---------------|----------|-------|
-| Q1 | Tarif Uber Direct exact en zones IDF (5,90€ public ou négocié plus bas dès volume ?) | V1 (impact pricing resto) | 2026-05-30 | Alex — call AM direct-fr@uber.com |
-| Q2 | Self-serve onboarding Uber Direct API disponible en FR ou pas en 2026 ? | V2 (industrialisation) | 2026-06-15 | Alex — call AM |
-| Q3 | Organizations API (parent + sub-accounts) accessible en FR sans contrat US ? | V2 (scale) | 2026-06-15 | Alex — call AM |
-| Q4 | Webhook centralisé multi-tenant autorisé ou 1 webhook par tenant obligatoire ? | V2 | 2026-06-15 | Alex — call AM |
-| Q5 | Stripe Connect Express : auto-validation CB en self-serve ou validation manuelle au RDV install ? | V1 (UX onboarding) | 2026-05-30 | Tester en sandbox + voir conf KYC |
-| Q6 | Modèle pricing KB Phase 2+ : 2€ flat OU % du panier (5%) ? | V2 (validation business) | Q3 2026 | Validation terrain sur premiers 5 restos |
-| Q7 | Custom domain : KB fournit (achat groupé sur .shop) ou resto achète sien ? | V1 (UX onboarding) | 2026-05-30 | Décision Alex |
-| Q8 | Fallback iOS users refusant push : SMS Twilio (0,07€) ou email seul ? | V1 | 2026-05-30 | Décision Alex |
-| Q9 | Imprimante cuisine CloudPRNT : KB prête (capex ~150€ × 10 = 1500€) ou resto achète ? | V1 selon resto | À l'install | Cas par cas — voir décision dans [20 KB Orders](20_kb_orders.md) |
-| Q10 | Premier pilote V1 : Buns & Bao confirmé ? | V1 (jalon go-live) | ✅ Confirmé 2026-05-23 | ✅ Buns & Bao |
-| Q11 | Refus de commande par le resto (cuisine surchargée, rupture stock) : workflow + refund auto ou manuel ? | V1 | Cadré dans [20 KB Orders](20_kb_orders.md) | Produit |
-| Q12 | Audit trail RGPD (qui a modifié quoi, quand) : V1 ou V2 ? | V1/V2 RGPD compliance | À cadrer dans [70_kb_admin.md](70_kb_admin.md) | Produit |
-| Q13 | Hubrise : contrat commercial KB master ou resto direct ? Impact pricing négocié. | V1 | 2026-06-15 | Alex — call commercial Hubrise |
-| Q14 | Stripe Customer cross-tenant via Connect : PoC sandbox faisabilité ? | V1 (carte sauvegardée cross-resto) | 2026-06-30 | Dev lead PoC |
-| Q15 | Click & collect : modulable par resto (toggle) ou imposé activé ? | V1 | 2026-05-30 | Alex |
-| Q16 | Stack `KB Orders` app native (à décider par dev lead, pas dans PRD) : faisabilité 1 codebase iOS+Android dans le temps imparti ? | V1 | 2026-06-15 | Dev lead |
+| Q   | Question                                                                                                                         | Bloquant pour                      | Deadline                                       | Owner                                                            |
+| --- | -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- | ---------------------------------------------- | ---------------------------------------------------------------- |
+| Q1  | Tarif Uber Direct exact en zones IDF (5,90€ public ou négocié plus bas dès volume ?)                                             | V1 (impact pricing resto)          | 2026-05-30                                     | Alex — call AM direct-fr@uber.com                                |
+| Q2  | Self-serve onboarding Uber Direct API disponible en FR ou pas en 2026 ?                                                          | V2 (industrialisation)             | 2026-06-15                                     | Alex — call AM                                                   |
+| Q3  | Organizations API (parent + sub-accounts) accessible en FR sans contrat US ?                                                     | V2 (scale)                         | 2026-06-15                                     | Alex — call AM                                                   |
+| Q4  | Webhook centralisé multi-tenant autorisé ou 1 webhook par tenant obligatoire ?                                                   | V2                                 | 2026-06-15                                     | Alex — call AM                                                   |
+| Q5  | Stripe Connect Express : auto-validation CB en self-serve ou validation manuelle au RDV install ?                                | V1 (UX onboarding)                 | 2026-05-30                                     | Tester en sandbox + voir conf KYC                                |
+| Q6  | Modèle pricing KB Phase 2+ : 2€ flat OU % du panier (5%) ?                                                                       | V2 (validation business)           | Q3 2026                                        | Validation terrain sur premiers 5 restos                         |
+| Q7  | Custom domain : KB fournit (achat groupé sur .shop) ou resto achète sien ?                                                       | V1 (UX onboarding)                 | 2026-05-30                                     | Décision Alex                                                    |
+| Q8  | Fallback iOS users refusant push : SMS Twilio (0,07€) ou email seul ?                                                            | V1                                 | 2026-05-30                                     | Décision Alex                                                    |
+| Q9  | Imprimante cuisine CloudPRNT : KB prête (capex ~150€ × 10 = 1500€) ou resto achète ?                                             | V1 selon resto                     | À l'install                                    | Cas par cas — voir décision dans [20 KB Orders](20_kb_orders.md) |
+| Q10 | Premier pilote V1 : Buns & Bao confirmé ?                                                                                        | V1 (jalon go-live)                 | ✅ Confirmé 2026-05-23                         | ✅ Buns & Bao                                                    |
+| Q11 | Refus de commande par le resto (cuisine surchargée, rupture stock) : workflow + refund auto ou manuel ?                          | V1                                 | Cadré dans [20 KB Orders](20_kb_orders.md)     | Produit                                                          |
+| Q12 | Audit trail RGPD (qui a modifié quoi, quand) : V1 ou V2 ?                                                                        | V1/V2 RGPD compliance              | À cadrer dans [70_kb_admin.md](70_kb_admin.md) | Produit                                                          |
+| Q13 | Hubrise : contrat commercial KB master ou resto direct ? Impact pricing négocié.                                                 | V1                                 | 2026-06-15                                     | Alex — call commercial Hubrise                                   |
+| Q14 | Stripe Customer cross-tenant via Connect : PoC sandbox faisabilité ?                                                             | V1 (carte sauvegardée cross-resto) | 2026-06-30                                     | Dev lead PoC                                                     |
+| Q15 | Click & collect : modulable par resto (toggle) ou imposé activé ?                                                                | V1                                 | 2026-05-30                                     | Alex                                                             |
+| Q16 | Stack `KB Orders` app native (à décider par dev lead, pas dans PRD) : faisabilité 1 codebase iOS+Android dans le temps imparti ? | V1                                 | 2026-06-15                                     | Dev lead                                                         |
 
 ## 11. Hors scope explicite (à ne pas faire en V1 ni V2 même si demandé)
 
@@ -404,7 +410,7 @@ Voir [README.md](README.md) pour la liste complète et les statuts. Lecture cons
 
 ## 13. Changelog
 
-| Date | Version | Auteur | Notes |
-|------|---------|--------|-------|
-| 2026-05-23 | 1.0 | Alex (via Claude) | Création initiale. |
-| 2026-05-23 | 2.0 | Alex (via Claude) | Révision majeure scope V1 : extension aux 10 points critiques (app native resto, dashboard resto, agrégation marketplaces V1, moteur pricing dynamique, compte client unifié cross-resto, Apple Pay/Google Pay, click & collect, push marketing V1). Suppression V1.A/V1.B, adoption stratégie soft-launch progressif. Ajout RBAC. 12 blocs fonctionnels (vs 10 en v1.0). Ajout sous-PRDs 35_pricing_engine, 75_dashboard_resto, 76_app_native_resto. Persona admin KB explicité. |
+| Date       | Version | Auteur            | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ---------- | ------- | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-05-23 | 1.0     | Alex (via Claude) | Création initiale.                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| 2026-05-23 | 2.0     | Alex (via Claude) | Révision majeure scope V1 : extension aux 10 points critiques (app native resto, dashboard resto, agrégation marketplaces V1, moteur pricing dynamique, compte client unifié cross-resto, Apple Pay/Google Pay, click & collect, push marketing V1). Suppression V1.A/V1.B, adoption stratégie soft-launch progressif. Ajout RBAC. 12 blocs fonctionnels (vs 10 en v1.0). Ajout sous-PRDs 35_pricing_engine, 75_dashboard_resto, 76_app_native_resto. Persona admin KB explicité. |

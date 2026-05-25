@@ -5,6 +5,7 @@
 > **Source de vérité** : ce document consolide le gap analysis stack vs PRDs + ADRs. Toute déviation = ADR dédié.
 
 Ce document est le **point d'entrée technique** du projet. Il sert de :
+
 - Cartographie code ↔ bounded contexts (méthode BMAD-ready)
 - Référence des décisions techniques V1
 - Liste exhaustive des ajouts à faire au template monorepo `kitchen-boost-repo`
@@ -33,22 +34,23 @@ kitchen-boost-repo/
 
 ### Stack template (déjà câblée)
 
-| Couche | Choix | Version |
-|---|---|---|
-| Monorepo | Turborepo + pnpm workspaces | turbo 2.6, pnpm 9 |
-| Backend | Convex + Convex Auth | convex 1.29, @convex-dev/auth 0.0.90 |
-| Composants Convex | `@convex-dev/migrations` + `@convex-dev/resend` | 0.3 / 0.2 |
-| Web | Next.js 16 + React 19 + Tailwind v4 + Radix UI + React Compiler | 16.1 / 19.2 |
-| Mobile | Expo SDK 55 + Expo Router + NativeWind | expo 55 |
-| Email | Resend + React Email | resend 3.2 |
-| Forms | react-hook-form + zod + @hookform/resolvers | latest |
-| Tables/dashboards | @tanstack/react-table + recharts + @dnd-kit | latest |
-| OAuth | Apple + Google + GitHub (Convex Auth) | @auth/core 0.37 |
-| TypeScript | partout, strict mode | 5.9 |
+| Couche            | Choix                                                           | Version                              |
+| ----------------- | --------------------------------------------------------------- | ------------------------------------ |
+| Monorepo          | Turborepo + pnpm workspaces                                     | turbo 2.6, pnpm 9                    |
+| Backend           | Convex + Convex Auth                                            | convex 1.29, @convex-dev/auth 0.0.90 |
+| Composants Convex | `@convex-dev/migrations` + `@convex-dev/resend`                 | 0.3 / 0.2                            |
+| Web               | Next.js 16 + React 19 + Tailwind v4 + Radix UI + React Compiler | 16.1 / 19.2                          |
+| Mobile            | Expo SDK 55 + Expo Router + NativeWind                          | expo 55                              |
+| Email             | Resend + React Email                                            | resend 3.2                           |
+| Forms             | react-hook-form + zod + @hookform/resolvers                     | latest                               |
+| Tables/dashboards | @tanstack/react-table + recharts + @dnd-kit                     | latest                               |
+| OAuth             | Apple + Google + GitHub (Convex Auth)                           | @auth/core 0.37                      |
+| TypeScript        | partout, strict mode                                            | 5.9                                  |
 
 ### Conventions du template (à respecter et étendre)
 
 **Backend Convex** (`packages/backend/convex/`) :
+
 - `schema.ts` = orchestre, importe les tables modulaires
 - `table/<entity>.ts` = 1 fichier par entité (ex: `users.ts`, `feedback.ts`)
 - `lib/<feature>/` = helpers groupés par feature
@@ -59,11 +61,13 @@ kitchen-boost-repo/
 - `convex.config.ts` = Convex components (`migrations`, `resend`, à étendre avec `@convex-dev/rate-limiter`)
 
 **Apps Next.js** (`apps/web/`, `apps/admin/`) :
+
 - App Router (`src/app/`)
 - `src/components/` `src/hooks/` `src/lib/` `src/providers/` `src/utils/`
 - `proxy.ts` (Convex client proxy)
 
 **App Expo** (`apps/native/`) :
+
 - Expo Router (`app/`)
 - `@rn-primitives/*` pour les composants UI cross-platform (équivalent Radix)
 
@@ -82,6 +86,7 @@ Toute donnée métier vit dans Convex. **Pas de duplication** vers une base exte
 ### 2.3 Offload Next.js API routes pour code crypto-lourd
 
 Convex actions tournent dans un runtime V8 limité. Pour :
+
 - Signature `.pkpass` (Apple Wallet, PKCS#7)
 - `web-push` (VAPID ECDH AES-GCM)
 - Apple Wallet Web Service endpoints (binary body, APNs HTTP/2)
@@ -104,6 +109,7 @@ Convex n'a pas d'équivalent RLS. **4ᵉ couche de défense du PRD 50 = disparue
 ### 2.5 Secrets per-tenant : envelope encryption maison
 
 Pas de KMS externe V1 (V2 si > 5 tenants).
+
 - **1 master key** dans env var Convex (`KMS_MASTER_KEY`, 32 bytes random base64)
 - **Table `tenant_credentials`** : `tenant_id`, `provider` (`uber_direct` | `hubrise` V2), `encrypted_blob` (ciphertext + iv + authTag, AES-256-GCM)
 - Helper `encryptForTenant` / `decryptForTenant` dans `convex/lib/crypto/`
@@ -125,7 +131,10 @@ Pattern unique pour tous les webhooks externes :
 
 ```typescript
 // convex/lib/webhooks/handler.ts
-export async function processWebhook(ctx, { provider, eventId, payload, verifyFn }) {
+export async function processWebhook(
+  ctx,
+  { provider, eventId, payload, verifyFn },
+) {
   // 1. Verify HMAC on raw body (read via await request.text() BEFORE parse)
   // 2. Check idempotence : table `processed_webhook_events` unique index (provider, eventId)
   // 3. Insert event row → if conflict, return 200 silent
@@ -145,6 +154,7 @@ Mode kiosque tablette : `expo-keep-awake` (always-on) + `notifee` Android (lock 
 ### 2.9 Anonymous Auth + cookie device 1 an
 
 Cf. [ADR 0008](../../adr/0008-identite-customer-cookie-device-only-v1.md).
+
 - Convex Auth Anonymous adapter (POC sprint 0 obligatoire : cookie cross-subdomain ?)
 - Si adapter natif ne supporte pas `Domain=.kitchen-boost.fr` → session token custom dans table `customer_sessions` + middleware Next.js qui pose le cookie manuellement
 - Bridge cross-device via Wallet pass `serial_number` ↔ `customer_id`
@@ -163,18 +173,18 @@ Cf. memory `feedback_db_clients_moat.md`.
 
 10 bounded contexts (cf. [CONTEXT-MAP.md](../../../CONTEXT-MAP.md)). Mapping vers le monorepo :
 
-| Contexte | Backend (`packages/backend/convex/`) | Frontend |
-|---|---|---|
-| **Multi-Tenant** (transverse) | `table/tenants.ts`, `table/userTenants.ts`, `table/auditLog.ts`, `lib/tenancy/withTenant.ts` | tous |
-| **Customer Data** (MOAT) | `table/customers.ts`, `table/customerSessions.ts`, `table/consentEvents.ts`, `lib/customer/` | `apps/web` (capture), `apps/admin` (KPI vue) |
-| **Client Ordering** | `table/orders.ts`, `table/orderItems.ts`, `table/menus.ts`, `table/menuItems.ts`, `table/modifiers.ts`, `lib/cart/` | `apps/web` (PWA client) |
-| **Payment** | `table/payments.ts`, `lib/stripe/`, `http.ts` (Stripe webhooks) | `apps/web` (checkout Stripe Elements), `apps/admin` (refund) |
-| **Pricing** | `table/pricingRules.ts`, `lib/pricing/evaluate.ts` + `packages/shared/pricing` (engine partagé client/serveur) | `apps/web` (preview panier), `apps/admin` (éditeur règles) |
-| **Delivery** | `table/deliveries.ts`, `lib/uberDirect/`, `http.ts` (Uber webhooks) | `apps/web` (suivi Lottie), `apps/native` (notif KDS T-3) |
-| **KB Orders** | `table/orderEvents.ts`, `lib/orders/workflow.ts`, push via Expo Push API | `apps/native` exclusivement |
-| **KB Admin** | `table/prospects.ts`, `table/contracts.ts`, `lib/admin/`, `lib/onboarding/` | `apps/admin` exclusivement |
-| **Notifications** | `table/pushSubscriptions.ts`, `table/notificationTemplates.ts`, `table/notificationEvents.ts`, `lib/notifications/` + `apps/admin/api/push/` (Next.js Node runtime) | `apps/web` (SW push), `apps/native` (Expo Push), `apps/admin` (campagnes) |
-| **Marketplaces** (V2) | `table/tenantIntegrations.ts`, `lib/hubrise/`, `http.ts` | `apps/admin` (mapping menu V2) |
+| Contexte                      | Backend (`packages/backend/convex/`)                                                                                                                                        | Frontend                                                                                   |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| **Multi-Tenant** (transverse) | `table/tenants.ts`, `table/userTenants.ts`, `table/auditLog.ts`, `lib/tenancy/withTenant.ts`                                                                                | tous                                                                                       |
+| **Customer Data** (MOAT)      | `table/customers.ts`, `table/customerSessions.ts`, `table/consentEvents.ts`, `lib/customer/`                                                                                | `apps/web` (capture), `apps/admin` (KPI vue)                                               |
+| **Client Ordering**           | `table/orders.ts`, `table/orderItems.ts`, `table/menus.ts`, `table/menuItems.ts`, `table/modifiers.ts`, `lib/cart/`                                                         | `apps/web` (PWA client)                                                                    |
+| **Payment**                   | `table/payments.ts`, `lib/stripe/`, `http.ts` (Stripe webhooks)                                                                                                             | `apps/web` (checkout Stripe Elements), `apps/admin` (refund)                               |
+| **Pricing**                   | `table/pricingRules.ts`, `lib/pricing/evaluate.ts` + `packages/shared/pricing` (module pur **backend-only**, cf. [ADR 0013](../../adr/0013-pricing-engine-backend-only.md)) | `apps/web` (prix reçu via API, **pas d'évaluation locale**), `apps/admin` (éditeur règles) |
+| **Delivery**                  | `table/deliveries.ts`, `lib/uberDirect/`, `http.ts` (Uber webhooks)                                                                                                         | `apps/web` (suivi Lottie), `apps/native` (notif KDS T-3)                                   |
+| **KB Orders**                 | `table/orderEvents.ts`, `lib/orders/workflow.ts`, push via Expo Push API                                                                                                    | `apps/native` exclusivement                                                                |
+| **KB Admin**                  | `table/prospects.ts`, `table/contracts.ts`, `lib/admin/`, `lib/onboarding/`                                                                                                 | `apps/admin` exclusivement                                                                 |
+| **Notifications**             | `table/pushSubscriptions.ts`, `table/notificationTemplates.ts`, `table/notificationEvents.ts`, `lib/notifications/` + `apps/admin/api/push/` (Next.js Node runtime)         | `apps/web` (SW push), `apps/native` (Expo Push), `apps/admin` (campagnes)                  |
+| **Marketplaces** (V2)         | `table/tenantIntegrations.ts`, `lib/hubrise/`, `http.ts`                                                                                                                    | `apps/admin` (mapping menu V2)                                                             |
 
 **Règle BMAD** : chaque module dans `convex/lib/<feature>/` expose son API publique via un fichier `index.ts` qui re-exporte uniquement ce qui doit être consommé hors-module. Le reste = private. Cf. skill `/improve-codebase-architecture`.
 
@@ -190,6 +200,7 @@ pnpm add -D @types/web-push
 ```
 
 Plus en runtime `"use node"` actions :
+
 - `passkit-generator` (Apple Wallet `.pkpass`)
 - `google-wallet` (Google Wallet API SDK)
 - `node-apn` (APNs HTTP/2 pour Wallet pass updates)
@@ -197,6 +208,7 @@ Plus en runtime `"use node"` actions :
 - `date-fns-tz` (timezone Europe/Paris)
 
 Convex components additionnels à `convex.config.ts` :
+
 ```typescript
 import rateLimiter from "@convex-dev/rate-limiter/convex.config";
 app.use(rateLimiter);
@@ -231,17 +243,17 @@ Sortie d'Expo Go obligatoire (config plugin Expo dev client requis pour Lock Tas
 
 ### 4.5 Services externes à provisionner
 
-| Service | Quand | Coût | Action |
-|---|---|---|---|
-| Apple Developer Program | sprint 0 | déjà payé (Alex) | OK |
-| Apple Pass Type ID + cert | sprint 0 | inclus | générer dans Apple Developer Console |
-| Google Cloud (Places + Maps + Wallet API) | sprint 0 | pay-as-you-go | activer dans GCP console |
-| Stripe Connect Express | sprint 0 | gratuit (KB) + 1,5%+0,25€ resto | activer Connect dans Stripe Dashboard |
-| Uber Direct (self-signup) | sprint 0 | 5,90€/livraison resto | direct.uber.com par tenant |
-| Resend Pro | sprint 1 (>5 restos) | 20$/mois | upgrade depuis free |
-| Sentry | sprint 1 | gratuit jusqu'à 5k events/mois | activer SDK |
-| SMS provider (Twilio ou OVH) | V2 | ~0,05€/SMS | différé |
-| Hubrise / Deliverect | V2 | 30€/mois ou 100-150€/mois | différé |
+| Service                                   | Quand                | Coût                            | Action                                |
+| ----------------------------------------- | -------------------- | ------------------------------- | ------------------------------------- |
+| Apple Developer Program                   | sprint 0             | déjà payé (Alex)                | OK                                    |
+| Apple Pass Type ID + cert                 | sprint 0             | inclus                          | générer dans Apple Developer Console  |
+| Google Cloud (Places + Maps + Wallet API) | sprint 0             | pay-as-you-go                   | activer dans GCP console              |
+| Stripe Connect Express                    | sprint 0             | gratuit (KB) + 1,5%+0,25€ resto | activer Connect dans Stripe Dashboard |
+| Uber Direct (self-signup)                 | sprint 0             | 5,90€/livraison resto           | direct.uber.com par tenant            |
+| Resend Pro                                | sprint 1 (>5 restos) | 20$/mois                        | upgrade depuis free                   |
+| Sentry                                    | sprint 1             | gratuit jusqu'à 5k events/mois  | activer SDK                           |
+| SMS provider (Twilio ou OVH)              | V2                   | ~0,05€/SMS                      | différé                               |
+| Hubrise / Deliverect                      | V2                   | 30€/mois ou 100-150€/mois       | différé                               |
 
 ### 4.6 Env vars Convex (production)
 
@@ -295,16 +307,25 @@ Toute query/mutation métier passe par `tenantQuery` / `tenantMutation`. Helper 
 ```typescript
 // convex/lib/webhooks/idempotent.ts
 export async function withIdempotence(ctx, provider, eventId, handler) {
-  const existing = await ctx.db.query("processedWebhookEvents")
-    .withIndex("by_provider_event", q => q.eq("provider", provider).eq("externalId", eventId))
+  const existing = await ctx.db
+    .query("processedWebhookEvents")
+    .withIndex("by_provider_event", (q) =>
+      q.eq("provider", provider).eq("externalId", eventId),
+    )
     .unique();
   if (existing) return; // already processed
-  await ctx.db.insert("processedWebhookEvents", { provider, externalId: eventId, processedAt: Date.now() });
+  await ctx.db.insert("processedWebhookEvents", {
+    provider,
+    externalId: eventId,
+    processedAt: Date.now(),
+  });
   await handler();
 }
 ```
 
-### 5.3 Pricing engine partagé client/serveur
+### 5.3 Pricing engine — backend only (cf. [ADR 0013](../../adr/0013-pricing-engine-backend-only.md))
+
+> ⚠️ **Révisé 2026-05-25 ([ADR 0013](../../adr/0013-pricing-engine-backend-only.md))** : le moteur **ne tourne PAS côté front** (règles trop sensibles). `apps/web` n'importe pas le moteur — il envoie sa demande à l'API et reçoit le prix calculé (indicatif au panier, définitif au paiement).
 
 ```
 packages/shared/pricing/
@@ -313,7 +334,7 @@ packages/shared/pricing/
 └── index.ts        # API publique
 ```
 
-Convex importe `@packages/shared/pricing` pour évaluation autoritaire. `apps/web` importe la même chose pour projection panier temps réel.
+Module pur testable en isolation, **importé uniquement par le backend** (Convex) pour l'évaluation autoritaire. La projection de prix au panier côté `apps/web` = un appel backend qui renvoie le prix, jamais une évaluation locale.
 
 ### 5.4 Wallet pass : signature Apple + push updates
 
@@ -349,7 +370,11 @@ export async function middleware(req) {
   const tenant = await fetchTenantBySlug(slug); // edge-cached 60s
   if (!tenant) return NextResponse.redirect("/404");
   const res = NextResponse.next();
-  res.cookies.set("kb_tenant_id", tenant._id, { domain: ".kitchen-boost.fr", httpOnly: true, secure: true });
+  res.cookies.set("kb_tenant_id", tenant._id, {
+    domain: ".kitchen-boost.fr",
+    httpOnly: true,
+    secure: true,
+  });
   return res;
 }
 ```
@@ -363,6 +388,7 @@ export async function middleware(req) {
 Chaque feature dans `convex/lib/<feature>/` expose son contrat via `index.ts`. Tout ce qui n'est pas exporté est privé au module. Pas d'import croisé entre modules sauf via cette API publique.
 
 Exemple :
+
 ```
 convex/lib/stripe/
 ├── index.ts                # re-export public API
@@ -407,17 +433,17 @@ Délivrable POC = 1 commit par POC avec README "verdict" + benchmark si applicab
 
 ## 8. Décisions différées V2
 
-| Sujet | Pourquoi V2 | Trigger pour bascule |
-|---|---|---|
-| Hubrise (marketplaces) | ADR 0009 | 3-5 restos pour mutualiser négo |
-| KMS externe (AWS / Doppler) | envelope encryption maison suffit V1 | > 5 tenants |
-| SMS provider (Twilio / OVH) | V1 = pas de SMS | besoin terrain confirmé |
-| APNs Critical Alerts | délai Apple 2-6 sem | feedback "cmd ratée" |
-| Domaines custom resto (CNAME) | wildcard `*.kitchen-boost.fr` suffit V1 | demande resto explicite |
-| Audit log UI | Q70-Q2 reportée V2 | requis pour multi-user resto |
-| Stripe Connect Embedded Components | webhook-driven suffit V1 | UX KYC in-app souhaitée |
-| MDM tablettes cuisine | lock task manuel suffit V1 | > 20 restos pilotes |
-| Map display tracking (Mapbox) | Lottie SVG suffit V1 (Q40-Q7) | si client réclame |
+| Sujet                              | Pourquoi V2                             | Trigger pour bascule            |
+| ---------------------------------- | --------------------------------------- | ------------------------------- |
+| Hubrise (marketplaces)             | ADR 0009                                | 3-5 restos pour mutualiser négo |
+| KMS externe (AWS / Doppler)        | envelope encryption maison suffit V1    | > 5 tenants                     |
+| SMS provider (Twilio / OVH)        | V1 = pas de SMS                         | besoin terrain confirmé         |
+| APNs Critical Alerts               | délai Apple 2-6 sem                     | feedback "cmd ratée"            |
+| Domaines custom resto (CNAME)      | wildcard `*.kitchen-boost.fr` suffit V1 | demande resto explicite         |
+| Audit log UI                       | Q70-Q2 reportée V2                      | requis pour multi-user resto    |
+| Stripe Connect Embedded Components | webhook-driven suffit V1                | UX KYC in-app souhaitée         |
+| MDM tablettes cuisine              | lock task manuel suffit V1              | > 20 restos pilotes             |
+| Map display tracking (Mapbox)      | Lottie SVG suffit V1 (Q40-Q7)           | si client réclame               |
 
 ---
 
@@ -432,6 +458,6 @@ Délivrable POC = 1 commit par POC avec README "verdict" + benchmark si applicab
 
 ## 10. Changelog
 
-| Date | Version | Notes |
-|---|---|---|
-| 2026-05-25 | 1.0 | Création, consolide gap analysis 10 contextes session 2026-05-24 |
+| Date       | Version | Notes                                                            |
+| ---------- | ------- | ---------------------------------------------------------------- |
+| 2026-05-25 | 1.0     | Création, consolide gap analysis 10 contextes session 2026-05-24 |

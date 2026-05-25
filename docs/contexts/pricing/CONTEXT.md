@@ -16,6 +16,7 @@ _Avoid_: Predicate, Filter, Critère (acceptable français)
 
 **Action** :
 Effet d'une règle qui matche sur les frais de livraison. Liste fermée V1 :
+
 - `livraison_offerte_resto` : resto absorbe 100% du coût brut Uber Direct, client paie 0.
 - `frais_livraison_part_resto_fixe = X €` : resto absorbe X € (capé au coût brut), client paie le reste.
 - `frais_livraison_part_resto_pourcentage_panier = X%` : resto absorbe X% du **total panier** (capé au coût brut Uber Direct), client paie le reste. Le % se calcule sur le panier (pas sur le coût livraison) — s'auto-adapte à la taille du panier.
@@ -45,12 +46,13 @@ _Avoid_: Delivery fee (ambigu — peut désigner le total facturé client)
 
 **Latching** :
 Politique d'évaluation finale du prix livraison **au moment du paiement** (pas du panier). Q35-Q5 acté 2026-05-23 :
+
 - À l'ouverture du panier, le moteur affiche un prix livraison **indicatif** basé sur l'état courant des règles + quote Uber Direct.
 - Au clic « Payer », le moteur **ré-évalue** (règles actuelles + quote Uber Direct rafraîchi).
 - Si le nouveau prix livraison est **identique ou plus avantageux pour le client** → on applique silencieusement (pas de prompt).
 - Si le nouveau prix livraison est **moins avantageux pour le client** (Khan a désactivé une règle, ou surge Uber) → **prompt explicite obligatoire** : « Le tarif livraison est passé de X € à Y €, confirmes-tu ? ». Pas de paiement tant que pas confirmé.
 - Pas de figeage au panier — assume une volatilité légère entre panier et paiement.
-_Avoid_: Snapshot (acceptable mais "latching" plus précis), Freezing
+  _Avoid_: Snapshot (acceptable mais "latching" plus précis), Freezing
 
 **Affichage prix livraison (PWA client)** :
 Quand une règle resto réduit les frais livraison, la PWA affiche **prix barré + montant final + mention "Offert par [Nom du resto]"** (ex: `̶5̶,̶9̶0̶ ̶€̶ → 0,00 € — Offert par Buns & Bao`). Wording dynamique selon l'action (offerte / -X € / -X%). **Jamais de mention "KitchenBoost"** dans le wording client — le client est sur la plateforme du resto, point. Garde-fous légaux : prix barré = coût brut Uber Direct réel (cohérent Code Conso L121-1), wording dit explicitement que c'est le resto qui offre. Q35-Q4 acté 2026-05-23.
@@ -68,7 +70,7 @@ _Avoid_: Preview, Test mode
 
 **Alex** : Et si on a deux règles qui matchent ?
 
-**Dev** : V1 : la première dans l'ordre du dashboard gagne. Khan drag & drop pour prioriser. V2 on évaluera l'option "la plus avantageuse pour le client".
+**Dev** : V1 : sélection **déterministe** — la règle gagnante est celle qui **minimise les frais facturés au client** (= maximise la part absorbée par le resto). Pas d'ordre manuel, pas de drag & drop (Q35-Q2). Jamais de cumul de 2 règles.
 
 **Alex** : Le `application_fee_amount` change selon le pricing ?
 

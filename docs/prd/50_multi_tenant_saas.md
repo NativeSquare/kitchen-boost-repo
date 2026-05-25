@@ -11,11 +11,11 @@
 
 ## Scope
 
-| Horizon | Inclus |
-|---------|--------|
-| **V1** | Modèle de données multi-tenant (`tenant_id` sur tous les objets métier). **Table `users`** (identité auth) + **table `user_tenants` (N-N)** : un user peut être attaché à 1 ou N tenants (cas Walid). **RBAC** à 3 rôles : `KB Admin` (root, voit tous tenants) / `KB Manager` (resto-scoped, accès aux tenants listés dans `user_tenants`) / `Staff` (V2). Wizard onboarding via [70 KB Admin](70_kb_admin.md) pour provisioning rapide (< 30 min). Sous-domaine auto `<slug>.kitchen-boost.fr`, custom domain CNAME Vercel. Isolation données stricte via WHERE `tenant_id` + RLS Postgres. Branding minimal par tenant (logo + couleur). SSO unifié [70 KB Admin](70_kb_admin.md) + [20 KB Orders](20_kb_orders.md). **Stripe Connect partageable** entre tenants si même SIRET (`tenants.stripe_account_id` non-unique). **Uber Direct toujours 1-par-tenant** (adresse pickup unique). |
-| **V2** | Multi-utilisateur par tenant (owner + staff cuisine + staff caisse + manager), invites equipe, branding étendu (multi-couleurs, fonts, hero), backups isolés par tenant, self-serve onboarding resto (form public + validation KB). |
-| **V3** | Multi-langue par tenant, multi-pays (TVA, devises), sharding DB si scale (>1000 tenants), audit log RGPD complet par tenant. |
+| Horizon | Inclus                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **V1**  | Modèle de données multi-tenant (`tenant_id` sur tous les objets métier). **Table `users`** (identité auth) + **table `user_tenants` (N-N)** : un user peut être attaché à 1 ou N tenants (cas Walid). **RBAC** à 3 rôles : `KB Admin` (root, voit tous tenants) / `KB Manager` (resto-scoped, accès aux tenants listés dans `user_tenants`) / `Staff` (V2). Wizard onboarding via [70 KB Admin](70_kb_admin.md) pour provisioning rapide (< 30 min). Sous-domaine auto `<slug>.kitchen-boost.fr`, custom domain CNAME Vercel. Isolation données stricte via WHERE `tenant_id` + RLS Postgres. Branding minimal par tenant (logo + couleur). SSO unifié [70 KB Admin](70_kb_admin.md) + [20 KB Orders](20_kb_orders.md). **Stripe Connect partageable** entre tenants si même SIRET (`tenants.stripe_account_id` non-unique). **Uber Direct toujours 1-par-tenant** (adresse pickup unique). |
+| **V2**  | Multi-utilisateur par tenant (owner + staff cuisine + staff caisse + manager), invites equipe, branding étendu (multi-couleurs, fonts, hero), backups isolés par tenant, self-serve onboarding resto (form public + validation KB).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| **V3**  | Multi-langue par tenant, multi-pays (TVA, devises), sharding DB si scale (>1000 tenants), audit log RGPD complet par tenant.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 
 ## Hors scope
 
@@ -34,6 +34,7 @@
 ### 1. Modèle de données multi-tenant
 
 #### 1.1 Tables principales
+
 - **`tenants`** : `id`, `slug` (unique), `name`, `siret`, `custom_domain` (nullable), `status` (`active` / `pending` / `suspended` / `disabled`), `branding` (logo_url, primary_color), `stripe_account_id` (FK Stripe Connect, **non-unique** — peut être partagé si même SIRET), `uber_customer_id` (unique — 1 par tenant), `uber_credentials_encrypted`, `created_at`
 - **`users`** : `id`, `email` (unique), `name`, `password_hash`, `role` (`kb_admin` / `kb_manager` / `staff`), `created_at`
 - **`user_tenants`** (table de liaison N-N) : `user_id`, `tenant_id`, `attached_at`, `attached_by` (qui a fait l'attache, audit). Un user `kb_manager` peut avoir 1 à N lignes ici. Un `kb_admin` (root) n'a aucune ligne ici (accès illimité via role).
@@ -51,6 +52,7 @@
   - `Staff` (V2) : peut set uniquement son tenant attaché
 
 #### 1.3 Cas Walid (3 tenants partagés)
+
 - 1 ligne `users` : Walid (`role=kb_manager`)
 - 3 lignes `tenants` : Thai Street Saint Michel, Thai Street Châtelet, Thai Street Bastille (slugs distincts, sub-domains distincts, menus distincts, sous-domaines distincts)
 - 3 lignes `user_tenants` (Walid_id × tenant_id × `attached_at`)
@@ -58,6 +60,7 @@
 - **Uber Direct** : 3 comptes Uber Direct distincts (1 par tenant — adresses pickup différentes obligatoires).
 
 ### 2. Provisioning d'un tenant (V1 = CLI/script)
+
 - Input : slug, name, contact email, adresse resto
 - Action :
   1. INSERT row dans `tenants`
@@ -67,6 +70,7 @@
 - Output : URL admin tenant + lien Stripe à envoyer au resto
 
 ### 3. Custom domain (CNAME)
+
 - Resto achète son domaine (ex: `commander.bunsbao.fr`) chez OVH/Gandi/etc.
 - Configure CNAME vers `<slug>.kitchen-boost.fr.cdn.vercel-dns.com`
 - KB ajoute le domaine au tenant via API Vercel
@@ -74,6 +78,7 @@
 - Fallback : sous-domaine KB reste actif en parallèle
 
 ### 4. Branding par tenant (V1 minimal)
+
 - Logo (PNG/SVG, upload via admin)
 - Couleur primaire (hex)
 - Stocké en DB `tenants.branding`
@@ -82,42 +87,50 @@
 ### 5. Routing & extraction du tenant_id
 
 #### 5.1 Côté PWA client ([10](10_pwa_client_commande.md))
+
 - Tenant extrait de `window.location.hostname` (slug du sous-domaine OU custom domain match en DB tenants)
 - Backend API : `Host` header validé contre DB tenants → `tenant_id` injecté dans contexte
 - Middleware refuse les requêtes non-scopées
 
 #### 5.2 Côté KB Admin / KB Orders (user authentifié)
+
 - JWT contient : `user_id`, `role`, `tenant_ids` (liste vide si `kb_admin` root, ou liste des tenants accessibles si `kb_manager`)
 - Header HTTP `X-Tenant-Id` ou query param `?tenant=<id>` indique le **tenant courant** sélectionné (cas Walid switcher)
 - Middleware vérifie : `tenant_id` demandé ∈ `tenant_ids` du JWT (ou role = kb_admin)
 - Si invalide → 403 Forbidden, log audit
 
 #### 5.3 Persistance du tenant courant
+
 - Cookie HttpOnly `kb_current_tenant=<tenant_id>` sur le device user
 - Resetté au switch via UI ou si suspension du tenant courant
 - Si user a 1 seul tenant : aucune persistance nécessaire, c'est implicite
 
 ### 6. Isolation des données
+
 - Aucune query métier sans scope `tenant_id` (via helpers `withTenant` — pas de RLS, cf. [ADR 0010](../adr/0010-isolation-multi-tenant-convex-applicative.md))
 - Tests automatisés : créer 2 tenants, vérifier qu'aucune fuite cross-tenant n'est possible via API
 - Logs scopés par tenant (Sentry tags, etc.)
 
 ### 7. Onboarding back-office (V2)
+
 - Wizard admin pour créer un tenant en < 30 min
 - Form Stripe Connect, génération domain, import menu (CSV ou Uber Eats Manager), génération QR sticker imprimable PDF, activation 1-click
 
 ### 8. Backups & disaster recovery
-- Backup DB quotidien (Supabase / Postgres natif)
+
+- Backup quotidien géré par **Convex** (plateforme ; pas de Postgres/Supabase)
 - Restauration possible par tenant (V2)
 - Plan DR : RTO 4h, RPO 24h en V1, plus strict en V2
 
 ### 9. Monitoring & observabilité
+
 - Sentry : errors taggés par tenant
 - UptimeRobot : check PWA + KDS chaque 5 min
 - Dashboard ops : statut Stripe / Uber Direct / Vercel par tenant
 - Alertes Slack ops sur incident
 
 ### 10. Scaling considerations
+
 - V1 : 5-10 tenants → 1 backend, 1 DB. Trivial.
 - V2 : 30-50 tenants → 1 backend, 1 DB (caching agressif), CDN PWA.
 - V3 : 100+ tenants → évaluer sharding par région / cluster.
@@ -149,6 +162,7 @@
 ## Critères de succès / acceptation
 
 ### V1
+
 - [ ] Création tenant via wizard [70 KB Admin](70_kb_admin.md) en < 30 min.
 - [ ] Test cross-tenant fuite : 2 tenants créés, audit manuel + automatisé prouvent 0 fuite (data + API + DB).
 - [ ] Custom domain Buns & Bao actif avec SSL.
@@ -160,34 +174,35 @@
 - [ ] SSO unifié KB Admin web + KB Orders mobile (1 login, 2 surfaces).
 
 ### V2
+
 - [ ] Multi-utilisateur par tenant (Staff cuisine + caisse).
 - [ ] Restauration backup d'un tenant en < 4 h en cas d'incident.
 
 ## Dépendances
 
-| Dépendance | Type | Bloque quoi |
-|------------|------|-------------|
-| Postgres (Supabase) ou équivalent | Externe | Toute la base de données |
-| Vercel API (domains, edge functions) | Externe | Sections 2, 3 |
-| Tous les sous-PRDs (10/20/30/40/80/90) | Interne | Doivent respecter tenant_id |
-| [30_paiement_stripe_connect.md](30_paiement_stripe_connect.md) | Interne | Stripe account par tenant |
-| [40_livraison_uber_direct.md](40_livraison_uber_direct.md) | Interne | Uber credentials par tenant |
-| [70_kb_admin.md](70_kb_admin.md) | Interne | UI provisioning V2 |
+| Dépendance                                                                                             | Type    | Bloque quoi                                         |
+| ------------------------------------------------------------------------------------------------------ | ------- | --------------------------------------------------- |
+| Convex (source de vérité unique, [ADR 0010](../adr/0010-isolation-multi-tenant-convex-applicative.md)) | Externe | Toute la base de données (pas de Postgres/Supabase) |
+| Vercel API (domains, edge functions)                                                                   | Externe | Sections 2, 3                                       |
+| Tous les sous-PRDs (10/20/30/40/80/90)                                                                 | Interne | Doivent respecter tenant_id                         |
+| [30_paiement_stripe_connect.md](30_paiement_stripe_connect.md)                                         | Interne | Stripe account par tenant                           |
+| [40_livraison_uber_direct.md](40_livraison_uber_direct.md)                                             | Interne | Uber credentials par tenant                         |
+| [70_kb_admin.md](70_kb_admin.md)                                                                       | Interne | UI provisioning V2                                  |
 
 ## Open questions
 
-| Q | Question | Deadline | Owner |
-|---|----------|----------|-------|
-| 50-Q1 | ~~DB Postgres self-hosted ou Supabase managed ?~~ ✅ **Résolu : Convex** (ADR 0010) | V1 S0 | Dev lead |
-| 50-Q2 | ~~RLS Postgres ou enforcement applicatif uniquement ?~~ ✅ **Résolu : applicatif (helpers `withTenant`)** (ADR 0010) | V1 S1 | Dev lead |
-| 50-Q3 | Custom domain : KB propose un achat groupé `.shop` ou laisse resto acheter ? (Q7 master) | V1 | Alex |
-| 50-Q4 | Politique de suppression data si resto résilie (Article 2 bis.2 contrat : 3 ans post-résil) — comment matérialiser techniquement ? | V2 | Dev + legal |
-| 50-Q5 | Backups : Supabase point-in-time recovery suffit-il ou besoin de backups offsite (S3) ? | V2 | Dev lead |
-| 50-Q6 | ~~Multi-utilisateur par tenant (Staff cuisine + caisse) en V1 ou V2 ?~~ ✅ **Résolu : `staff` opérationnel V1** (rôle per-tenant sur `userTenants`). Élargit le scope V1 (invites équipe + permissions différenciées). | V1 | Alex |
-| 50-Q7 | Stripe Connect partagé entre tenants même SIRET : Stripe va-t-il refuser de créer 2 acct distincts pour le même SIRET ? À tester avec un sandbox. Si oui, partage obligatoire ; si non, choix wizard. | V1 S1 | Dev lead (test sandbox) |
-| 50-Q8 | Cas Walid Thai Street : combien de tenants ? Quels SIRET (même ou différents pour ses N restos) ? Pour calibrer le wizard "ajouter un tenant à un user existant". | V1 S0 | Alex (call Walid) |
-| 50-Q9 | Switcher tenant UX dans KB Admin web + KB Orders mobile : sélecteur header, sidebar, ou bottom sheet ? Cohérence entre web et mobile. | V1 | Produit |
-| 50-Q10 | Tenant courant en URL (`?tenant=<slug>`) ou en cookie seulement ? URL = partageable mais peut leak ; cookie = caché mais friction si copy URL. | V1 | Dev lead |
+| Q      | Question                                                                                                                                                                                                               | Deadline | Owner                   |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ----------------------- |
+| 50-Q1  | ~~DB Postgres self-hosted ou Supabase managed ?~~ ✅ **Résolu : Convex** (ADR 0010)                                                                                                                                    | V1 S0    | Dev lead                |
+| 50-Q2  | ~~RLS Postgres ou enforcement applicatif uniquement ?~~ ✅ **Résolu : applicatif (helpers `withTenant`)** (ADR 0010)                                                                                                   | V1 S1    | Dev lead                |
+| 50-Q3  | Custom domain : KB propose un achat groupé `.shop` ou laisse resto acheter ? (Q7 master)                                                                                                                               | V1       | Alex                    |
+| 50-Q4  | Politique de suppression data si resto résilie (Article 2 bis.2 contrat : 3 ans post-résil) — comment matérialiser techniquement ?                                                                                     | V2       | Dev + legal             |
+| 50-Q5  | Backups : Supabase point-in-time recovery suffit-il ou besoin de backups offsite (S3) ?                                                                                                                                | V2       | Dev lead                |
+| 50-Q6  | ~~Multi-utilisateur par tenant (Staff cuisine + caisse) en V1 ou V2 ?~~ ✅ **Résolu : `staff` opérationnel V1** (rôle per-tenant sur `userTenants`). Élargit le scope V1 (invites équipe + permissions différenciées). | V1       | Alex                    |
+| 50-Q7  | Stripe Connect partagé entre tenants même SIRET : Stripe va-t-il refuser de créer 2 acct distincts pour le même SIRET ? À tester avec un sandbox. Si oui, partage obligatoire ; si non, choix wizard.                  | V1 S1    | Dev lead (test sandbox) |
+| 50-Q8  | Cas Walid Thai Street : combien de tenants ? Quels SIRET (même ou différents pour ses N restos) ? Pour calibrer le wizard "ajouter un tenant à un user existant".                                                      | V1 S0    | Alex (call Walid)       |
+| 50-Q9  | Switcher tenant UX dans KB Admin web + KB Orders mobile : sélecteur header, sidebar, ou bottom sheet ? Cohérence entre web et mobile.                                                                                  | V1       | Produit                 |
+| 50-Q10 | Tenant courant en URL (`?tenant=<slug>`) ou en cookie seulement ? URL = partageable mais peut leak ; cookie = caché mais friction si copy URL.                                                                         | V1       | Dev lead                |
 
 ## Notes / décisions actées
 
@@ -204,8 +219,8 @@
 
 ## Changelog
 
-| Date | Version | Auteur | Notes |
-|------|---------|--------|-------|
-| 2026-05-23 | 0.1 | Alex (via Claude) | Création squelette. |
-| 2026-05-23 | 0.2 | Alex (via Claude) | Extension scope V1 : RBAC formalisé, wizard onboarding admin KB V1, SSO dashboard/app native. |
-| 2026-05-23 | 0.3 | Alex (via Claude) | Refonte sémantique : `users` + `user_tenants` (N-N) V1 pour multi-tenant per user (cas Walid). Pas de table `restaurateurs` (YAGNI). Stripe Connect partageable si même SIRET. Uber Direct toujours 1-par-tenant. 3 rôles : kb_admin / kb_manager / staff. |
+| Date       | Version | Auteur            | Notes                                                                                                                                                                                                                                                      |
+| ---------- | ------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-05-23 | 0.1     | Alex (via Claude) | Création squelette.                                                                                                                                                                                                                                        |
+| 2026-05-23 | 0.2     | Alex (via Claude) | Extension scope V1 : RBAC formalisé, wizard onboarding admin KB V1, SSO dashboard/app native.                                                                                                                                                              |
+| 2026-05-23 | 0.3     | Alex (via Claude) | Refonte sémantique : `users` + `user_tenants` (N-N) V1 pour multi-tenant per user (cas Walid). Pas de table `restaurateurs` (YAGNI). Stripe Connect partageable si même SIRET. Uber Direct toujours 1-par-tenant. 3 rôles : kb_admin / kb_manager / staff. |

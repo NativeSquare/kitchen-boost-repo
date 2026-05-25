@@ -3,7 +3,9 @@
 **Statut** : 🟡 Squelette · **Version** : 1.0 · **Dernière mise à jour** : 2026-05-23
 **Lié au master** : [00_master.md § 5 bloc 2](00_master.md#5-surface-fonctionnelle-macro-vue-doiseau)
 
-> **v1.0 (fusion)** : ce PRD résulte de la **fusion** des anciens `20_kds_resto.md` (KDS PWA tablette) et `76_app_native_resto.md` (app native iOS+Android). Le KDS PWA n'existe plus comme produit séparé — il n'y a qu'**une seule app native** installable au choix sur téléphone (gérant) ou tablette (cuisine). La PWA reste **uniquement côté client final** ([10](10_pwa_client_commande.md)). Anciens fichiers : [docs/_archive/](../_archive/).
+> **v1.0 (fusion)** : ce PRD résulte de la **fusion** des anciens `20_kds_resto.md` (KDS PWA tablette) et `76_app_native_resto.md` (app native iOS+Android). Le KDS PWA n'existe plus comme produit séparé — il n'y a qu'**une seule app native** installable au choix sur téléphone (gérant) ou tablette (cuisine). La PWA reste **uniquement côté client final** ([10](10_pwa_client_commande.md)). Anciens fichiers : [docs/\_archive/](../_archive/).
+
+> **⚠️ Réconciliation 2026-05-25** : les mentions « Uber Eats / Deliveroo via Hubrise **dès V1** » sont **périmées** — [ADR 0009](../adr/0009-hubrise-reporte-v2.md) a **reporté Hubrise en V2**. **V1 = commandes directes uniquement** ; le champ `source` existe (valeur `direct`) et l'UI prévoit le tag marketplace, mais l'**ingestion marketplace est V2** (chantier 2.6 Marketplaces). Par ailleurs : **refus cmd → remboursement immédiat** (20-Q9 acté, cf. ci-dessous).
 
 ---
 
@@ -12,6 +14,7 @@
 Le restaurateur (et son équipe cuisine) doit recevoir les commandes **sans rater une seule**, où qu'il soit. Les push web (via PWA + service worker) ont une fiabilité limitée sur iOS (notamment hors PWA active). Les push système **APNs / FCM** sont quasi 100% fiables même app fermée, lock screen, ou device en veille.
 
 Une seule app native, deux usages possibles :
+
 - **Téléphone du gérant** : suivi des cmds en mobilité (en salle, en déplacement, à la maison)
 - **Tablette cuisine** : même app installée en mode plein écran sur tablette Samsung Galaxy Tab A9 (ou BYOD), posée sur le comptoir, beep audible 5m
 
@@ -21,11 +24,11 @@ C'est l'équivalent direct d'**Uber Eats Orders** que les restos connaissent dé
 
 ## Scope
 
-| Horizon | Inclus |
-|---------|--------|
-| **V1** | App native iOS + Android. Auth SSO avec [70 KB Admin](70_kb_admin.md). Notifs push APNs (iOS) + FCM (Android), réveil app en background. Liste cmds en cours + historique, workflow nouvelle/prep/prête/remise. **Modes livraison + click & collect** différentiables visuellement. Refus cmd avec refund auto Stripe. Statut resto (ouvert/fermé/pause exceptionnelle). Source cmd taggée (direct / Uber Eats / Deliveroo via Hubrise dès V1). **Multi-tenant per user V1** : un KB Manager attaché à N tenants voit un switcher en haut de l'app (cas Walid). Mode tablette plein écran (kiosque) optionnel. |
-| **V2** | Édition légère depuis l'app (toggle out of stock items, pause exceptionnelle scheduling), dark mode, accessibilité étendue, multi-device pour 1 owner (téléphone + tablette en même temps). |
-| **V3** | App native pour le client final (si les métriques PWA s'avèrent insuffisantes). Pour l'instant le client = PWA only. |
+| Horizon | Inclus                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **V1**  | App native iOS + Android. Auth SSO avec [70 KB Admin](70_kb_admin.md). Notifs push APNs (iOS) + FCM (Android), réveil app en background. Liste cmds en cours + historique, workflow nouvelle/prep/prête/remise. **Modes livraison + click & collect** différentiables visuellement. Refus cmd avec refund auto Stripe. Statut resto (ouvert/fermé/pause exceptionnelle). Source cmd taggée (V1 = **direct uniquement** ; Uber Eats / Deliveroo via Hubrise = **V2**, [ADR 0009](../adr/0009-hubrise-reporte-v2.md)). **Multi-tenant per user V1** : un KB Manager attaché à N tenants voit un switcher en haut de l'app (cas Walid). Mode tablette plein écran (kiosque) optionnel. |
+| **V2**  | Édition légère depuis l'app (toggle out of stock items, pause exceptionnelle scheduling), dark mode, accessibilité étendue, multi-device pour 1 owner (téléphone + tablette en même temps).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| **V3**  | App native pour le client final (si les métriques PWA s'avèrent insuffisantes). Pour l'instant le client = PWA only.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 
 ## Hors scope
 
@@ -43,6 +46,7 @@ C'est l'équivalent direct d'**Uber Eats Orders** que les restos connaissent dé
 ## Surface fonctionnelle
 
 ### 1. Onboarding / auth
+
 - Login email + password (lien magique optionnel V2)
 - **SSO avec [70 KB Admin](70_kb_admin.md)** : un seul compte par user, accessible web ou app
 - 2FA optionnel V1, obligatoire V2 sur actions sensibles
@@ -50,6 +54,7 @@ C'est l'équivalent direct d'**Uber Eats Orders** que les restos connaissent dé
 - **Switcher tenant** en haut de l'app si user attaché à N tenants (cas Walid, Thai Street). Sélection persistée par device.
 
 ### 2. Écran d'accueil (cmds en cours)
+
 - Liste cmds triées par horodatage (plus récente en haut)
 - Card par cmd : ID, items, modifiers, total, ETA livraison ou pickup, statut, **source taggée** (icône direct / Uber Eats / Deliveroo)
 - Badge "nouvelle" non lue
@@ -58,6 +63,7 @@ C'est l'équivalent direct d'**Uber Eats Orders** que les restos connaissent dé
 - Compteur en bas : "X en cours, Y en attente"
 
 ### 3. Notifications push système
+
 - iOS : APNs
 - Android : FCM
 - Trigger sur :
@@ -72,6 +78,7 @@ C'est l'équivalent direct d'**Uber Eats Orders** que les restos connaissent dé
 - **Beep en boucle** si non acknowledged 30 s+ (même comportement qu'ancien KDS tablette)
 
 ### 4. Détail cmd (page)
+
 - Récap complet : items, modifiers, notes client, adresse livraison (si livraison) ou note "à emporter" (si click & collect)
 - Téléphone client visible (mais pas exportable, cf. moat [90](90_donnees_clients_crm.md))
 - Téléphone courier visible quand assigné
@@ -90,6 +97,7 @@ C'est l'équivalent direct d'**Uber Eats Orders** que les restos connaissent dé
 ```
 
 ### 6. Refus / annulation cmd
+
 - Bouton "Refuser" sur card nouvelle, raison : rupture / fermeture / surcharge / autre
 - Confirmation à 2 étapes (évite tap accidentel)
 - Trigger refund Stripe automatique (cf. [30](30_paiement_stripe_connect.md))
@@ -97,23 +105,27 @@ C'est l'équivalent direct d'**Uber Eats Orders** que les restos connaissent dé
 - Log dans audit trail (cf. [70](70_kb_admin.md))
 
 ### 7. Statut resto (toggle ouvert / fermé / pause exceptionnelle)
+
 - Toggle visible sur écran d'accueil
 - "Pause exceptionnelle" avec ETA reprise (15 min / 30 min / 1 h)
 - Impact PWA client : checkout désactivé pendant `fermé` ou `pause`
 - Synchro temps réel avec [70 KB Admin](70_kb_admin.md) (changement bi-directionnel)
 
 ### 8. Historique cmds
+
 - Liste paginée des cmds passées (filtres : période, statut, source)
 - Détail cmd
 - Recherche par ID cmd ou nom client
 
 ### 9. Stats rapides (V1 basiques)
+
 - CA jour + nb cmds jour
 - CA semaine
 - Comparatif vs semaine précédente
 - (Stats détaillées = [70 KB Admin](70_kb_admin.md))
 
 ### 10. Settings
+
 - Profil user (nom, email, password change)
 - Notifs : DNT, sons, vibration
 - Compte rattaché : nom du / des tenants, statut Stripe, statut Uber Direct, lien vers KB Admin web
@@ -123,18 +135,21 @@ C'est l'équivalent direct d'**Uber Eats Orders** que les restos connaissent dé
 - Lien support KB
 
 ### 11. Modulabilité livraison vs click & collect
+
 - Activable par tenant dans [70 KB Admin](70_kb_admin.md) — paramétrage modes acceptés
 - L'app affiche un tag visible "🚴 LIVRAISON" ou "🛍️ À EMPORTER" sur chaque card
 - Workflow boutons adapté (remise coursier vs remise client)
 - Un tenant peut accepter les deux modes simultanément
 
 ### 12. Mode tablette (kiosque cuisine)
+
 - Même app native installée sur tablette Samsung Galaxy Tab A9 (~99 € HT KB-fournie) ou BYOD
 - Mode plein écran (lock task / pinning) pour empêcher sortie accidentelle
 - Auth via code PIN raccourci (alternative au login email)
 - Volume beep à fond, écran always-on
 
 ### 13. Sécurité / fiabilité
+
 - Token JWT auth API, refresh régulier
 - Mode offline minimal : cmds en cache 30 min (lecture seule) si perte connexion
 - Background fetch / push pour notifs même app en background
@@ -166,6 +181,7 @@ C'est l'équivalent direct d'**Uber Eats Orders** que les restos connaissent dé
 ## Critères de succès / acceptation
 
 ### V1
+
 - [ ] App déployée App Store + Play Store
 - [ ] Notifs push système fiabilité > 95% mesuré sur 30 j
 - [ ] Latence cmd backend → notif device : < 5 sec p95
@@ -179,41 +195,42 @@ C'est l'équivalent direct d'**Uber Eats Orders** que les restos connaissent dé
 - [ ] 0 cmd "perdue" (toute cmd payée apparaît bien dans l'app sous 5 sec)
 
 ### V2
+
 - [ ] Édition légère depuis l'app (toggle out of stock items)
 - [ ] Dark mode
 - [ ] Multi-device pour 1 user (téléphone + tablette en parallèle)
 
 ## Dépendances
 
-| Dépendance | Type | Bloque quoi |
-|------------|------|-------------|
-| Stack mobile native (décision dev lead, hors PRD) | Tech | Tout |
-| APNs (Apple Push Notification Service) | Externe | Push iOS |
-| FCM (Firebase Cloud Messaging) | Externe | Push Android |
-| App Store + Play Store dev accounts | Compliance | Déploiement |
-| Backend API KB (triggers notifs + workflow cmd) | Interne | Tout |
-| [30_paiement_stripe_connect.md](30_paiement_stripe_connect.md) | Interne | Refund refus cmd |
-| [40_livraison_uber_direct.md](40_livraison_uber_direct.md) | Interne | Statut courier |
-| [50_multi_tenant_saas.md](50_multi_tenant_saas.md) | Interne | Auth + RBAC + `user_tenants` |
-| [60_integration_marketplaces.md](60_integration_marketplaces.md) | Interne | Cmds marketplace via Hubrise |
-| [70_kb_admin.md](70_kb_admin.md) | Interne | SSO + paramétrage tenant (modes, branding) |
-| [80_notifications.md](80_notifications.md) | Interne | Triggers push backend |
-| Tablette Samsung Galaxy Tab A9 ou BYOD | Hardware | Mode kiosque cuisine |
+| Dépendance                                                       | Type       | Bloque quoi                                |
+| ---------------------------------------------------------------- | ---------- | ------------------------------------------ |
+| Stack mobile native (décision dev lead, hors PRD)                | Tech       | Tout                                       |
+| APNs (Apple Push Notification Service)                           | Externe    | Push iOS                                   |
+| FCM (Firebase Cloud Messaging)                                   | Externe    | Push Android                               |
+| App Store + Play Store dev accounts                              | Compliance | Déploiement                                |
+| Backend API KB (triggers notifs + workflow cmd)                  | Interne    | Tout                                       |
+| [30_paiement_stripe_connect.md](30_paiement_stripe_connect.md)   | Interne    | Refund refus cmd                           |
+| [40_livraison_uber_direct.md](40_livraison_uber_direct.md)       | Interne    | Statut courier                             |
+| [50_multi_tenant_saas.md](50_multi_tenant_saas.md)               | Interne    | Auth + RBAC + `user_tenants`               |
+| [60_integration_marketplaces.md](60_integration_marketplaces.md) | Interne    | Cmds marketplace via Hubrise               |
+| [70_kb_admin.md](70_kb_admin.md)                                 | Interne    | SSO + paramétrage tenant (modes, branding) |
+| [80_notifications.md](80_notifications.md)                       | Interne    | Triggers push backend                      |
+| Tablette Samsung Galaxy Tab A9 ou BYOD                           | Hardware   | Mode kiosque cuisine                       |
 
 ## Open questions
 
-| Q | Question | Deadline | Owner |
-|---|----------|----------|-------|
-| 20-Q1 | Stack mobile : 1 codebase (React Native / Expo / Flutter) ou 2 (Swift + Kotlin) ? | V1 S0 | **Dev lead** (pas PRD) |
-| 20-Q2 | Soumission App Store en Phase 2 (semaine 6) pour anticiper review : faisable ? | V1 | Dev lead |
-| 20-Q3 | App native pour staff cuisinier (login limité) en V1 ou V2 ? | V1 | Alex |
-| 20-Q4 | Notifs sons différents par source (direct / Uber Eats / Deliveroo) en V1 ou V2 ? | V1 | Produit |
-| 20-Q5 | Mode kiosque tablette : lock task Android natif ou solution tiers (Scalefusion, etc.) ? | V1 | Dev lead |
-| 20-Q6 | Update mandatoire (force update) : config V1 ou laisser V2 ? | V1 | Produit |
-| 20-Q7 | Multi-device pour 1 user V1 (téléphone + tablette en même temps) ou V2 ? | V1 | Produit |
-| 20-Q8 | Mécanisme polling fallback si push perdu : intervalle (30 s / 60 s / 5 min) ? | V1 S3 | Dev lead |
-| 20-Q9 | Refus cmd : remboursement immédiat ou différé 24 h pour appel client ? | V1 S3 | Alex + legal |
-| 20-Q10 | Multi-tenant switcher UX : sélecteur en header (top), sidebar, ou bottom-sheet ? Mesurer impact UX Walid. | V1 | Produit |
+| Q         | Question                                                                                                                                                         | Deadline | Owner                  |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ---------------------- |
+| 20-Q1     | Stack mobile : 1 codebase (React Native / Expo / Flutter) ou 2 (Swift + Kotlin) ?                                                                                | V1 S0    | **Dev lead** (pas PRD) |
+| 20-Q2     | Soumission App Store en Phase 2 (semaine 6) pour anticiper review : faisable ?                                                                                   | V1       | Dev lead               |
+| 20-Q3     | App native pour staff cuisinier (login limité) en V1 ou V2 ?                                                                                                     | V1       | Alex                   |
+| 20-Q4     | Notifs sons différents par source (direct / Uber Eats / Deliveroo) en V1 ou V2 ?                                                                                 | V1       | Produit                |
+| 20-Q5     | Mode kiosque tablette : lock task Android natif ou solution tiers (Scalefusion, etc.) ?                                                                          | V1       | Dev lead               |
+| 20-Q6     | Update mandatoire (force update) : config V1 ou laisser V2 ?                                                                                                     | V1       | Produit                |
+| 20-Q7     | Multi-device pour 1 user V1 (téléphone + tablette en même temps) ou V2 ?                                                                                         | V1       | Produit                |
+| 20-Q8     | Mécanisme polling fallback si push perdu : intervalle (30 s / 60 s / 5 min) ?                                                                                    | V1 S3    | Dev lead               |
+| ~~20-Q9~~ | ~~Refus cmd : remboursement immédiat ou différé 24 h ?~~ **ACTÉ 2026-05-25 : remboursement IMMÉDIAT** (plus simple, meilleure UX client, pas de file d'attente). | —        | —                      |
+| 20-Q10    | Multi-tenant switcher UX : sélecteur en header (top), sidebar, ou bottom-sheet ? Mesurer impact UX Walid.                                                        | V1       | Produit                |
 
 ## Notes / décisions actées
 
@@ -225,6 +242,6 @@ C'est l'équivalent direct d'**Uber Eats Orders** que les restos connaissent dé
 
 ## Changelog
 
-| Date | Version | Auteur | Notes |
-|------|---------|--------|-------|
-| 2026-05-23 | 1.0 | Alex (via Claude) | **Création par fusion** des anciens `20_kds_resto.md` v0.2 + `76_app_native_resto.md` v0.1. Suppression de la PWA tablette comme produit séparé (la tablette = même app native installée). Multi-tenant per user V1 (cas Walid). Anciens fichiers : [docs/_archive/](../_archive/). |
+| Date       | Version | Auteur            | Notes                                                                                                                                                                                                                                                                                |
+| ---------- | ------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 2026-05-23 | 1.0     | Alex (via Claude) | **Création par fusion** des anciens `20_kds_resto.md` v0.2 + `76_app_native_resto.md` v0.1. Suppression de la PWA tablette comme produit séparé (la tablette = même app native installée). Multi-tenant per user V1 (cas Walid). Anciens fichiers : [docs/\_archive/](../_archive/). |
