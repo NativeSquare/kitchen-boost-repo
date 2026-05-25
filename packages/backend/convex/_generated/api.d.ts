@@ -31,6 +31,7 @@ import type * as lib_orders_index from "../lib/orders/index.js";
 import type * as lib_orders_orders from "../lib/orders/orders.js";
 import type * as lib_pricing_contradictions from "../lib/pricing/contradictions.js";
 import type * as lib_pricing_defaultRule from "../lib/pricing/defaultRule.js";
+import type * as lib_pricing_evaluate from "../lib/pricing/evaluate.js";
 import type * as lib_pricing_index from "../lib/pricing/index.js";
 import type * as lib_pricing_rules from "../lib/pricing/rules.js";
 import type * as lib_tenancy__probes from "../lib/tenancy/_probes.js";
@@ -100,6 +101,7 @@ declare const fullApi: ApiFromModules<{
   "lib/orders/orders": typeof lib_orders_orders;
   "lib/pricing/contradictions": typeof lib_pricing_contradictions;
   "lib/pricing/defaultRule": typeof lib_pricing_defaultRule;
+  "lib/pricing/evaluate": typeof lib_pricing_evaluate;
   "lib/pricing/index": typeof lib_pricing_index;
   "lib/pricing/rules": typeof lib_pricing_rules;
   "lib/tenancy/_probes": typeof lib_tenancy__probes;
