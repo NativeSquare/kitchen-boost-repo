@@ -319,6 +319,42 @@ export async function setTenantItemAvailability(
 }
 
 /**
+ * Attach (or REPLACE) the stored photo of one of the tenant's items (2.2-F).
+ * Re-checks tenant ownership (NOT_FOUND for a missing/foreign id), then — if the
+ * item already had a photo — deletes the PREVIOUS blob before recording the new
+ * `storageId`, so a replace never leaves an orphan blob in file storage. The new
+ * `storageId` is only ever stored on a row the caller owns (ADR 0010).
+ */
+export async function setTenantItemPhoto(
+  ctx: MutationCtx,
+  tenantId: Id<"tenants">,
+  itemId: Id<"menuItems">,
+  storageId: Id<"_storage">,
+): Promise<void> {
+  const item = await requireTenantItem(ctx, tenantId, itemId);
+  if (item.photoStorageId !== undefined && item.photoStorageId !== storageId) {
+    await ctx.storage.delete(item.photoStorageId);
+  }
+  await ctx.db.patch(itemId, { photoStorageId: storageId });
+}
+
+/**
+ * Remove the stored photo of one of the tenant's items (2.2-F): deletes the blob
+ * (if any) and clears `photoStorageId`. Re-checks tenant ownership (NOT_FOUND for
+ * a missing/foreign id). A no-op blob delete when the item has no photo.
+ */
+export async function clearTenantItemPhoto(
+  ctx: MutationCtx,
+  tenantId: Id<"tenants">,
+  itemId: Id<"menuItems">,
+): Promise<void> {
+  const item = await requireTenantItem(ctx, tenantId, itemId);
+  if (item.photoStorageId === undefined) return;
+  await ctx.storage.delete(item.photoStorageId);
+  await ctx.db.patch(itemId, { photoStorageId: undefined });
+}
+
+/**
  * Hard-delete an item owned by `tenantId`, cascading its N-N modifier links and
  * deleting its stored photo (if any). The shared modifier GROUPS are NOT touched
  * — only the edges referencing this item.

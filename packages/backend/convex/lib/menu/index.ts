@@ -44,6 +44,17 @@
  * 2.2-D — [[Item out of stock]] toggle + auto-réactivation au lendemain (PRD 10
  * §edge "Item out of stock", client-ordering CONTEXT, multi-tenant CONTEXT
  * `staff`, ADR 0010):
+ * 2.2-F — [[Item]] photos via NATIVE Convex file storage (PRD 10 §5/§6,
+ * client-ordering CONTEXT, ADR 0010). The KB Manager uploads a photo and
+ * attaches it to an item; the URL is served read-side (already wired into
+ * `getPublicMenu`):
+ *  - `photos.generateUploadUrl` — `tenantMutation` (kb_manager) minting a
+ *    short-lived upload URL (tenant-scoped, unlike the ungated template twin).
+ *  - `photos.attachPhoto` — records the `_storage` id on one of the caller's
+ *    items via the `menuStore` seam; replacing deletes the previous blob.
+ *  - `photos.removePhoto` — deletes the blob + clears the field. Item deletion
+ *    (slice B) and replacement leave no orphan blob.
+ *
  *  - `availability.setItemAvailability` — `tenantMutation` (kb_manager + staff)
  *    flipping an item's `available` and stamping / clearing `unavailableSince`.
  *  - The next-day auto-reactivation runs from the `crons.ts` Convex cron, which
@@ -57,4 +68,5 @@ export * as catalog from "./catalog";
 export * as categories from "./categories";
 export * as items from "./items";
 export * as modifiers from "./modifiers";
+export * as photos from "./photos";
 export * as serviceHours from "./serviceHours";
