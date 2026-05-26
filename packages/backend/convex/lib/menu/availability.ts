@@ -12,11 +12,12 @@ import {
 import { parisLocalParts } from "./serviceHours";
 
 /**
- * 2.2-D — Disponibilité item : toggle out-of-stock + auto-réactivation au
- * lendemain (PRD 10 §edge "Item out of stock" — "Auto-réactivation au
- * lendemain"; client-ordering CONTEXT "Item out of stock" — "Auto-réactivation
- * automatique au lendemain à l'ouverture du resto selon [[Plage horaire de
- * service]]"; multi-tenant CONTEXT — `staff` may "toggle out of stock"; ADR 0010).
+ * 2.2-D / 2.2-fix (#105) — Disponibilité item : toggle out-of-stock +
+ * auto-réactivation à la PREMIÈRE OUVERTURE DE SERVICE après `unavailableSince`
+ * (client-ordering CONTEXT "Item out of stock" — indisponible "jusqu'à fin de
+ * service", "Auto-réactivation au lendemain à l'ouverture du resto selon [[Plage
+ * horaire de service]]"; multi-tenant CONTEXT — `staff` may "toggle out of
+ * stock"; ADR 0010).
  *
  * Builds on the `available` / `unavailableSince` fields (2.2-A), the item CRUD
  * (2.2-B), and the service hours (2.2-E).
@@ -27,48 +28,37 @@ import { parisLocalParts } from "./serviceHours";
  *    mutation. Stamps `unavailableSince` on toggle-off, clears it on toggle-on.
  *
  *  - Auto-reactivation — a Convex cron (`crons.ts`) walks every tenant and flips
- *    each unavailable item back ON once the resto has crossed the NEXT day's
- *    opening (per its service hours, Europe/Paris). The "which items now?"
+ *    each unavailable item back ON once the resto has crossed its NEXT service
+ *    OPENING (per its service hours, Europe/Paris). The "which items now?"
  *    decision is the PURE `itemsToReactivate` (windows + items + clock → ids),
  *    tested deterministically on injected clocks; `reactivateTenantUnavailableItems`
  *    is the tenant-aware wiring the cron calls per tenant.
  *
- * Reactivation timing rule (NOT invented — read from the PRD/CONTEXT): an item
- * marked unavailable on a given Europe/Paris calendar day is reactivated once
- * (a) the current clock is on a STRICTLY LATER Paris calendar day, AND (b) the
- * resto has actually OPENED on that later day (a service window for that weekday
- * whose `startMinute` has been reached). The exact hour is therefore the resto's
- * own opening — never a guessed constant. A resto with no windows never opens, so
- * its items are never auto-reactivated (the manager reactivates them manually).
+ * Reactivation timing rule (#105 — corrects #56's hardcoded "lendemain", NOT
+ * invented; read from the CONTEXT): an item marked unavailable is reactivated
+ * once a SERVICE-OPENING BOUNDARY (a window's `startMinute`, Europe/Paris) occurs
+ * STRICTLY AFTER `unavailableSince` and at/before `now`. Equivalently: the latest
+ * opening boundary `≤ now` is strictly later than `unavailableSince`. The exact
+ * hour is therefore the resto's own opening — never a guessed constant. Two
+ * consequences over the old "next calendar day":
+ *   - An item toggled off BEFORE the day's opening returns at that SAME day's
+ *     opening (it must not skip a whole day).
+ *   - An item toggled off DURING a running service stays "jusqu'à fin de service"
+ *     — the next opening (typically the next service / next day) brings it back.
+ * A resto with no windows never opens, so its items are never auto-reactivated
+ * (the manager reactivates them manually).
  */
 
 const PARIS_TZ = "Europe/Paris";
 
+/** Milliseconds in a full day. */
+const MS_PER_DAY = 86_400_000;
 /**
- * A stable, comparable Europe/Paris CALENDAR-DAY number for a UTC instant (days
- * since the Unix epoch, in Paris local time). PURE. Comparing two ordinals tells
- * whether `now` is on a strictly later Paris day than `unavailableSince`,
- * correctly across month/year and DST boundaries (the local Y-M-D is read via the
- * IANA tz data, then converted to a day count with `Date.UTC`).
+ * How far back to scan for the most recent opening. Windows repeat weekly, so any
+ * existing opening boundary is at most 7 days behind `now`; +1 day of slack
+ * covers DST jitter around the boundary search.
  */
-export function parisDayOrdinal(nowMs: number): number {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: PARIS_TZ,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date(nowMs));
-  let year = 0;
-  let month = 1;
-  let day = 1;
-  for (const part of parts) {
-    if (part.type === "year") year = Number(part.value);
-    else if (part.type === "month") month = Number(part.value);
-    else if (part.type === "day") day = Number(part.value);
-  }
-  // Day count since the epoch for the Paris calendar date (time-of-day dropped).
-  return Math.floor(Date.UTC(year, month - 1, day) / 86_400_000);
-}
+const OPENING_SCAN_DAYS = 8;
 
 /** The minimal item shape the reactivation decision needs (pure-testable). */
 export type ReactivatableItem = {
@@ -77,33 +67,132 @@ export type ReactivatableItem = {
   unavailableSince?: number;
 };
 
-/** Whether the resto has reached an opening on `now`'s Europe/Paris weekday. */
-function hasOpenedToday(windows: ServiceWindow[], nowMs: number): boolean {
-  const { dayOfWeek, minuteOfDay } = parisLocalParts(nowMs);
-  return windows.some(
-    (w) => w.dayOfWeek === dayOfWeek && w.startMinute <= minuteOfDay,
+/** The Europe/Paris local wall-clock parts of a UTC instant (date + time). */
+function parisDateTimeParts(nowMs: number): {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  second: number;
+} {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: PARIS_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date(nowMs));
+  const get = (type: string): number =>
+    Number(parts.find((p) => p.type === type)?.value ?? "0");
+  return {
+    year: get("year"),
+    month: get("month"),
+    day: get("day"),
+    // `Intl` can emit "24" for midnight in some engines; normalise to 0.
+    hour: get("hour") % 24,
+    minute: get("minute"),
+    second: get("second"),
+  };
+}
+
+/**
+ * The offset (ms) Europe/Paris is ahead of UTC at `nowMs` (+1h CET, +2h CEST).
+ * PURE — derived from the IANA tz data, so the CET/CEST switch is handled for
+ * free. Computed as (Paris-wall-clock read as if it were UTC) − (the instant).
+ */
+function parisOffsetMs(nowMs: number): number {
+  const p = parisDateTimeParts(nowMs);
+  const asUtc = Date.UTC(
+    p.year,
+    p.month - 1,
+    p.day,
+    p.hour,
+    p.minute,
+    p.second,
   );
+  // Round to the second the instant carries (offsets are whole minutes anyway).
+  return asUtc - Math.floor(nowMs / 1000) * 1000;
+}
+
+/** The local Europe/Paris calendar Y-M-D of a UTC instant. PURE. */
+function parisYmd(nowMs: number): { year: number; month: number; day: number } {
+  const { year, month, day } = parisDateTimeParts(nowMs);
+  return { year, month, day };
+}
+
+/**
+ * The UTC instant (ms) of a given Europe/Paris wall-clock (calendar Y-M-D +
+ * `minuteOfDay`). PURE. Resolves the CET/CEST offset from the IANA tz data (a
+ * naive UTC guess, corrected by the offset the platform reports there), so it
+ * lands on the right UTC ms across DST. Windows are real opening minutes (never
+ * inside the spring-forward gap), so the single correction pass is exact.
+ */
+function parisWallClockToUtc(
+  year: number,
+  month: number,
+  day: number,
+  minuteOfDay: number,
+): number {
+  const guess = Date.UTC(year, month - 1, day, 0, minuteOfDay);
+  return guess - parisOffsetMs(guess);
+}
+
+/**
+ * The UTC instant (ms) of the most recent SERVICE-OPENING boundary at or before
+ * `nowMs`, evaluated in Europe/Paris, or `undefined` if the resto has no windows
+ * (it never opens). PURE (no I/O, no wall-clock). Scans the current Paris day and
+ * the preceding `OPENING_SCAN_DAYS - 1`, materialises every window opening on
+ * those days, and returns the latest one that is `≤ now`. Used as the single
+ * reactivation boundary: an item reactivates iff this is strictly after its
+ * `unavailableSince`.
+ */
+export function latestServiceOpeningAtOrBefore(
+  windows: ServiceWindow[],
+  nowMs: number,
+): number | undefined {
+  if (windows.length === 0) return undefined;
+  let best: number | undefined;
+  for (let back = 0; back < OPENING_SCAN_DAYS; back++) {
+    // The Paris calendar date `back` days before `now` (read from a UTC instant
+    // that is unambiguously on that local day — noon avoids DST edges).
+    const { year, month, day } = parisYmd(nowMs - back * MS_PER_DAY);
+    const dayOfWeek = parisLocalParts(
+      parisWallClockToUtc(year, month, day, 12 * 60),
+    ).dayOfWeek;
+    for (const w of windows) {
+      if (w.dayOfWeek !== dayOfWeek) continue;
+      const opening = parisWallClockToUtc(year, month, day, w.startMinute);
+      if (opening <= nowMs && (best === undefined || opening > best)) {
+        best = opening;
+      }
+    }
+  }
+  return best;
 }
 
 /**
  * The ids of the items to auto-reactivate at `nowMs`, given the tenant's service
  * `windows`. PURE (no I/O, no wall-clock) — the single reactivation decision
  * point. An item qualifies iff it is currently unavailable WITH an
- * `unavailableSince` stamp, the clock is on a strictly later Paris calendar day
- * than that stamp, AND the resto has opened on the current day (per `windows`).
- * No windows ⇒ never opens ⇒ nothing reactivates.
+ * `unavailableSince` stamp AND a service-opening boundary has occurred STRICTLY
+ * AFTER that stamp and at/before `now` (i.e. the latest opening `≤ now` is later
+ * than `unavailableSince`). No windows ⇒ never opens ⇒ nothing reactivates.
  */
 export function itemsToReactivate(
   windows: ServiceWindow[],
   items: ReactivatableItem[],
   nowMs: number,
 ): Id<"menuItems">[] {
-  if (!hasOpenedToday(windows, nowMs)) return [];
-  const nowDay = parisDayOrdinal(nowMs);
+  const latestOpening = latestServiceOpeningAtOrBefore(windows, nowMs);
+  if (latestOpening === undefined) return [];
   const out: Id<"menuItems">[] = [];
   for (const item of items) {
     if (item.available || item.unavailableSince === undefined) continue;
-    if (parisDayOrdinal(item.unavailableSince) < nowDay) {
+    if (latestOpening > item.unavailableSince) {
       out.push(item._id);
     }
   }

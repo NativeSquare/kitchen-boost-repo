@@ -14,11 +14,12 @@ crons.interval(
   internal.crons.cleanupResendEmails,
 );
 
-// 2.2-D — Auto-réactivation au lendemain of out-of-stock menu items (PRD 10
-// §edge "Item out of stock", client-ordering CONTEXT). Hourly so every tenant's
-// opening minute is caught soon after it passes (the per-item decision is the
-// pure `itemsToReactivate`, so the cadence never affects correctness — re-runs
-// are idempotent). Runs system-side (no actor); the reactivation logic stays
+// 2.2-D / 2.2-fix (#105) — Auto-réactivation of out-of-stock menu items at the
+// first service-opening boundary after `unavailableSince` (PRD 10 §edge "Item
+// out of stock", client-ordering CONTEXT). Hourly so every tenant's opening
+// minute is caught soon after it passes (the per-item decision is the pure
+// `itemsToReactivate`, so the cadence never affects correctness — re-runs are
+// idempotent). Runs system-side (no actor); the reactivation logic stays
 // tenant-isolated through the store seam (ADR 0010).
 crons.interval(
   "reactivate-unavailable-menu-items",
@@ -64,12 +65,13 @@ export const cleanupResendEmails = internalMutation({
 });
 
 /**
- * 2.2-D — one auto-reactivation pass: flip every tenant's due out-of-stock items
- * back ON once they have crossed the next-day opening (per service hours,
- * Europe/Paris). `now` is optional and injectable so the pass is deterministic in
- * tests; production passes nothing and uses the wall clock. The decision logic is
- * the pure `itemsToReactivate` (tested in isolation); this only wires the clock
- * and fans out per tenant through the tenant-scoped store seam (ADR 0010).
+ * 2.2-D / 2.2-fix (#105) — one auto-reactivation pass: flip every tenant's due
+ * out-of-stock items back ON once a service opening has occurred strictly after
+ * their `unavailableSince` (per service hours, Europe/Paris). `now` is optional
+ * and injectable so the pass is deterministic in tests; production passes nothing
+ * and uses the wall clock. The decision logic is the pure `itemsToReactivate`
+ * (tested in isolation); this only wires the clock and fans out per tenant
+ * through the tenant-scoped store seam (ADR 0010).
  */
 export const reactivateUnavailableItems = internalMutation({
   args: { now: v.optional(v.number()) },
