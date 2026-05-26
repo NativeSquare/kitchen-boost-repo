@@ -26,8 +26,18 @@
  *  - deliveries: `createDelivery`, `patchDelivery`, `listDeliveries`,
  *    `getDeliveryByOrder`. The row shape (mode / status / incident) lives in the
  *    table validators, surfaced here as the module's typed contract.
+ *  - quote (2.6-B): `requestQuote` (ACTION — the address-first Uber Direct quote;
+ *    decrypts the creds in-action, OAuth + `delivery_quotes`, the ONLY Uber
+ *    conversation). Result shape `UberQuoteResult` / `uberQuoteResult`; the pure
+ *    `interpretQuoteResponse` maps the HTTP result onto fee/eta or a refusal
+ *    reason. The livrabilité cross with service hours lives in `lib/delivery`.
  */
 export { type UberCredentials, uberCredentials } from "./credentials";
+export {
+  type UberQuoteResult,
+  interpretQuoteResponse,
+  uberQuoteResult,
+} from "./quote";
 export {
   type DeliveryIncidentType,
   type DeliveryMode,
