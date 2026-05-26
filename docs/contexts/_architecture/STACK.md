@@ -422,11 +422,14 @@ Helper `logAudit(ctx, {action, tenantId, targetType, targetId, metadata})` appel
 
 À valider avant d'écrire le premier code métier. Si l'un échoue, on offload sur Next.js Node runtime — la stack tient quand même.
 
-1. **Convex `httpAction` préserve raw body** pour vérif HMAC Stripe/Uber via `await request.text()` ?
-2. **Convex `"use node"` action supporte `web-push`** (deps natives ECDH AES-GCM) ?
-3. **Convex `"use node"` action supporte `passkit-generator`** (signature PKCS#7 OpenSSL) ?
+**Verdicts (exécutés le 2026-05-26 contre le dev Convex) → [`docs/spikes/`](../../spikes/README.md).** Bilan : **aucun échec, aucun offload Next.js Node requis** pour 2.5/2.6/2.7. POC #6 (clone Stripe cross-account) reste à valider en Phase B (clé Stripe test).
+
+1. **Convex `httpAction` préserve raw body** pour vérif HMAC Stripe/Uber via `await request.text()` ? → ✅ **OK** — raw body fidèle + HMAC `crypto.subtle` (runtime par défaut, pas besoin de `"use node"`). [Détail](../../spikes/poc-1-httpaction-raw-body.md)
+2. **Convex `"use node"` action supporte `web-push`** (deps natives ECDH AES-GCM) ? → ✅ **OK** — VAPID + chiffrement ECDH/HKDF/AES-128-GCM tournent en `"use node"`. [Détail](../../spikes/poc-2-web-push-use-node.md)
+3. **Convex `"use node"` action supporte `passkit-generator`** (signature PKCS#7 OpenSSL) ? → ✅ **OK** — la lib charge + PKCS#7 (node-forge, pur JS) signe en `"use node"` ; `.pkpass` valide Apple = e2e device avec vrais certs (Phase B, #68). [Détail](../../spikes/poc-3-passkit-use-node.md)
 4. ~~Convex Auth Anonymous cookie cross-subdomain~~ — **RETIRÉ 2026-05-25** : prémisse sous-domaine caduque (domaine de marque custom par resto). Identité intra-resto + cross-resto via Wallet ([ADR 0008](../../adr/0008-identite-customer-cookie-device-only-v1.md) Amendement).
-5. **Convex `httpRouter`** supporte path params (`/webhooks/uber/:tenantId`) ?
+5. **Convex `httpRouter`** supporte path params (`/webhooks/uber/:tenantId`) ? → ✅ **OK via `pathPrefix`** — `:param` nommé non supporté, mais `pathPrefix` + parse de l'URL route par tenant (pas d'offload). [Détail](../../spikes/poc-5-httprouter-path-params.md)
+6. **Stripe `clone PaymentMethod` cross-account** (carte réutilisable cross-resto) ? → ⏳ **Phase B** — exige une clé Stripe test ; si échec → fallback Apple/Google Pay only (#59 abandonné V1).
 
 Délivrable POC = 1 commit par POC avec README "verdict" + benchmark si applicable.
 
