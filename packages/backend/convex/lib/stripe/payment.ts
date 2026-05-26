@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { internal } from "../../_generated/api";
 import { internalMutation } from "../../_generated/server";
 import {
   confirmTenantOrderPayment,
@@ -46,9 +47,12 @@ const MAX_PAYMENT_ATTEMPTS = 3;
  *     orders seam (which also increments the customer MOAT aggregates);
  *  4. SEED the delivery course (a `pending` `deliveries` row) — an Uber course for
  *     a `delivery` order, a click & collect row for a `pickup` order (no Uber
- *     dispatch). The actual Uber API call is chantier 2.6-C (#48); this slice
- *     emits the course toward the delivery domain, exactly as 2.3-E emits the
- *     refund order toward Payment.
+ *     dispatch) — then SCHEDULE the chantier 2.6-C executor
+ *     (`createCourseOnPaymentConfirmed`) to make the real Uber Course once this
+ *     mutation commits (a no-op for click & collect). 2.6 owns the executor; this
+ *     slice only EMITS the course toward the delivery domain (the Uber HTTP call
+ *     belongs in an action, not here), exactly as 2.3-E emits the refund toward
+ *     Payment.
  *
  * `applied` is false on a duplicate delivery OR an unknown payment intent.
  */
@@ -85,6 +89,16 @@ export const confirmPaymentSucceeded = internalMutation({
         mode: order.mode === "pickup" ? "click_collect" : "delivery",
         status: "pending",
       });
+
+      // Hand off to the delivery domain (2.6-C): once committed, create the real
+      // Uber Course (a no-op for click & collect). Scheduled AFTER this mutation
+      // commits so the seeded row is visible; the Uber HTTP call belongs in an
+      // action, not this mutation. 2.6 owns the executor — 2.5 only emits.
+      await ctx.scheduler.runAfter(
+        0,
+        internal.lib.delivery.course.createCourseOnPaymentConfirmed,
+        { tenantId: payment.tenantId, orderId: payment.orderId },
+      );
 
       applied = true;
     });

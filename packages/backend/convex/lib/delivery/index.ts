@@ -22,6 +22,15 @@
  *    `readServiceOpen` (tenant-scoped 2.2 read + the fuzzable access gate). The
  *    verdict shape is `DeliveryQuoteVerdict` / `deliveryQuoteVerdict`; the pure
  *    `crossQuoteWithServiceHours` is the deterministically-tested decision.
+ *  - course (2.6-C): `createCourseOnPaymentConfirmed` (INTERNAL action — the
+ *    delivery-domain executor triggered by 2.5's `payment_intent.succeeded`
+ *    signal; turns the seeded `pending` row into a real Uber [[Course]], no-op for
+ *    click & collect). The Uber call is owned by `lib/uberDirect.createDelivery`.
+ *  - webhooks (2.6-C): `uberWebhook` (the per-tenant `…/webhooks/uber/<tenantId>`
+ *    httpAction — raw-body `x-uber-signature` verify, tenant routing, idempotent
+ *    apply) + `applyUberWebhookEvent` (the system-side idempotent write). Wired in
+ *    `convex/http.ts` via `pathPrefix` (POC #5). These are registered by their
+ *    module path, so they are not re-exported here.
  */
 export {
   type DeliveryQuoteVerdict,

@@ -96,6 +96,7 @@ export {
   type NewDelivery,
   getTenantDelivery,
   getTenantDeliveryByOrder,
+  getTenantDeliveryByUberId,
   insertTenantDelivery,
   listTenantDeliveries,
   patchTenantDelivery,

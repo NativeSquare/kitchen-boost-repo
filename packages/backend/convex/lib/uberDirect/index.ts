@@ -31,6 +31,16 @@
  *    conversation). Result shape `UberQuoteResult` / `uberQuoteResult`; the pure
  *    `interpretQuoteResponse` maps the HTTP result onto fee/eta or a refusal
  *    reason. The livrabilité cross with service hours lives in `lib/delivery`.
+ *  - createDelivery (2.6-C): `createDelivery` (ACTION — the ONLY caller of Uber
+ *    `POST /deliveries`; decrypts the creds in-action, OAuth, binds the accepted
+ *    `quote_id` + manifest + idempotency key). Result `CreateDeliveryResult` /
+ *    `createDeliveryResult`; the pure `interpretCreateDeliveryResponse` maps the
+ *    HTTP result onto a created course or the PRD 40 §5 Cas A refusal.
+ *  - webhookEvents (2.6-C): the PURE `mapWebhookEvent(payload)` mapping an Uber
+ *    delivery-status / courier-update event onto the internal transition
+ *    (`WebhookTransition`: status / courier / ETA / incident + the notification
+ *    trigger consumed by 2.7 + the KDS signal). The per-tenant webhook httpAction
+ *    that consumes it lives in `lib/delivery/webhooks`.
  */
 export { type UberCredentials, uberCredentials } from "./credentials";
 export {
@@ -38,6 +48,16 @@ export {
   interpretQuoteResponse,
   uberQuoteResult,
 } from "./quote";
+export {
+  type CreateDeliveryResult,
+  createDeliveryResult,
+  interpretCreateDeliveryResponse,
+} from "./createDelivery";
+export {
+  type KdsSignal,
+  type WebhookTransition,
+  mapWebhookEvent,
+} from "./webhookEvents";
 export {
   type DeliveryIncidentType,
   type DeliveryMode,

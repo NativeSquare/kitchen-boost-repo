@@ -79,6 +79,28 @@ export async function getTenantDeliveryByOrder(
 }
 
 /**
+ * The one delivery a tenant owns carrying `uberDeliveryId` (or `null`). The Uber
+ * webhook carries the `uberDeliveryId` (NOT the KB order id); it is resolved on
+ * the global `by_uber_delivery_id` index and then RE-CHECKED against `tenantId`,
+ * so an event routed to one tenant's webhook can never reach (or patch) ANOTHER
+ * tenant's delivery — the routed tenant is the isolation boundary (ADR 0010).
+ */
+export async function getTenantDeliveryByUberId(
+  ctx: QueryCtx | MutationCtx,
+  tenantId: Id<"tenants">,
+  uberDeliveryId: string,
+): Promise<Doc<"deliveries"> | null> {
+  const row = await ctx.db
+    .query("deliveries")
+    .withIndex("by_uber_delivery_id", (q) =>
+      q.eq("uberDeliveryId", uberDeliveryId),
+    )
+    .unique();
+  if (row === null || row.tenantId !== tenantId) return null;
+  return row;
+}
+
+/**
  * Read one delivery by id ONLY IF it belongs to `tenantId`; else `null`. The
  * tenant-ownership re-check is what makes a cross-tenant `deliveryId`
  * unreachable even though Convex ids are not themselves tenant-scoped.

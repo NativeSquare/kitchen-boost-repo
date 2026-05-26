@@ -1,6 +1,6 @@
 import { ConvexError, type Infer, v } from "convex/values";
-import { api } from "../../_generated/api";
-import { action } from "../../_generated/server";
+import { api, internal } from "../../_generated/api";
+import { action, internalAction, internalQuery } from "../../_generated/server";
 import {
   type EncryptedBlob,
   decryptForTenant,
@@ -109,6 +109,36 @@ export const getDecryptedUberCredentials = action({
     // happens in-memory here, the only place plaintext is produced.
     const blob = await ctx.runQuery(
       api.lib.uberDirect.credentials.getUberCredentialBlob,
+      { tenantId: args.tenantId },
+    );
+    if (blob === null) throw missingCredentials();
+    const plaintext = await decryptForTenant(blob);
+    return JSON.parse(plaintext) as UberCredentials;
+  },
+});
+
+// ---------------------------------------------------------------------------
+// SYSTEM-SIDE decrypt — INTERNAL action for the no-actor flows (course creation
+// at payment-confirmed, 2.6-C). Same MOAT discipline: decryption happens ONLY in
+// an action, via an INTERNAL blob query (never the public gated query). The
+// `tenantId` here is STRUCTURAL — it comes from a row the system already resolved
+// (the seeded `deliveries`/`payments` row), never a user-supplied/forgeable arg —
+// so isolation is structural (the same model as 2.5-B `confirmPaymentSucceeded`).
+// Not callable from the client (internal), so it is NOT an unguarded public leak.
+// ---------------------------------------------------------------------------
+
+/** INTERNAL system-side blob read (structural tenantId). Envelope only. */
+export const readUberCredentialBlobSystem = internalQuery({
+  args: { tenantId: v.id("tenants") },
+  handler: async (ctx, args): Promise<EncryptedBlob | null> =>
+    readTenantCredentialBlob(ctx, args.tenantId, PROVIDER),
+});
+
+export const getDecryptedUberCredentialsSystem = internalAction({
+  args: { tenantId: v.id("tenants") },
+  handler: async (ctx, args): Promise<UberCredentials> => {
+    const blob = await ctx.runQuery(
+      internal.lib.uberDirect.credentials.readUberCredentialBlobSystem,
       { tenantId: args.tenantId },
     );
     if (blob === null) throw missingCredentials();
