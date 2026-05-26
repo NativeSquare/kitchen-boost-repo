@@ -120,6 +120,14 @@ export {
   setProspectPhase,
 } from "./prospectsStore";
 export {
+  type NewContract,
+  getContract,
+  insertContract,
+  listContractsForProspect,
+  requireContract,
+  setContractStatus,
+} from "./contractsStore";
+export {
   getTenantServiceHours,
   listTenantServiceWindows,
   upsertTenantServiceHours,
