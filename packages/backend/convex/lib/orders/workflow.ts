@@ -231,8 +231,9 @@ export const refuse = tenantMutation(OPERATIONAL_ALLOW)({
       actorUserId: ctx.actor.userId,
     });
 
-    // 3 — emit the client `refund_issued` notification (sending is 2.7). Same
-    // transaction as the refusal, so it cannot diverge from the refund order.
+    // 3 — emit the client `refund_issued` notification (sending is 2.7). Resolve the
+    // order through the same tenant-scoped seam (ownership re-checked) to route its
+    // customer; same transaction as the refusal, so it cannot diverge from it.
     const order = await requireTenantOrder(ctx, ctx.tenantId, args.orderId);
     const fields = await readCustomerAggregateFields(ctx, order.customerId);
     const availability = channelAvailabilityFrom(fields ?? {});
