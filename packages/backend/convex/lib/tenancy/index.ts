@@ -67,6 +67,13 @@ export {
 } from "./cgvArchive";
 export { logAudit, type AuditEntry } from "./audit";
 export {
+  type StripeAccountStatus,
+  getTenantById,
+  getTenantByStripeAccount,
+  setTenantStripeAccount,
+  setTenantStripeStatus,
+} from "./stripeAccountStore";
+export {
   type PricingRuleBody,
   deleteTenantPricingRule,
   getTenantPricingRule,
