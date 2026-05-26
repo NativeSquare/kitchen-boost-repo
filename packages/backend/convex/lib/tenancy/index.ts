@@ -114,6 +114,7 @@ export {
   type ItemBody,
   type ModifierGroupBody,
   attachTenantGroupToItem,
+  clearTenantItemPhoto,
   deleteTenantCategory,
   deleteTenantItem,
   deleteTenantModifierGroup,
@@ -140,6 +141,7 @@ export {
   requireTenantItem,
   requireTenantModifierGroup,
   setTenantItemAvailability,
+  setTenantItemPhoto,
 } from "./menuStore";
 export {
   type NewOrder,
