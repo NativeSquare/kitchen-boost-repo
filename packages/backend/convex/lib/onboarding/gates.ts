@@ -1,6 +1,10 @@
 import type { Infer } from "convex/values";
 import type { Doc } from "../../_generated/dataModel";
 import type { prospectPhase } from "../../table/prospects";
+import {
+  MANDATORY_CLOSING_MILESTONES,
+  requiredClosingMilestones,
+} from "./pipeline";
 
 /**
  * 2.9-B — INDICATIVE phase gates (PRD 70 §3.3, Q70-Q10 "indicatif V1 : bypass
@@ -45,14 +49,16 @@ type BinaryMilestoneKey = Extract<
 >;
 
 /**
- * The required binary milestones to ENTER each phase (PRD 70 §3.3). The
- * conditional tablette-invoice milestone is handled separately (it depends on
- * `tabletteMode`). `acquisition` and `operationnel` have no binary prospect-stored
- * gate in this slice (see module header).
+ * The required binary milestones to ENTER each phase (PRD 70 §3.3). `preparation`
+ * is the [[Closing]] event, so its gate is derived per-prospect from the canonical
+ * Closing set (`requiredClosingMilestones`, incl. the conditional tablette
+ * milestone) — single source of truth, no drift with slice C. `installation` is
+ * the Préparation GATE binary milestones. `acquisition` / `operationnel` have no
+ * binary prospect-stored gate in this slice (see module header).
  */
 const PHASE_BINARY_GATES: Record<ProspectPhase, BinaryMilestoneKey[]> = {
   acquisition: [],
-  preparation: ["contratSigne", "kbisRecu", "pieceIdentiteRecue", "ribRecu"],
+  preparation: [...MANDATORY_CLOSING_MILESTONES],
   installation: ["menuImporte", "photosEmballagesRecues"],
   operationnel: [],
 };
@@ -60,19 +66,19 @@ const PHASE_BINARY_GATES: Record<ProspectPhase, BinaryMilestoneKey[]> = {
 /**
  * The binary milestones REQUIRED to enter `phase` that are NOT yet achieved on
  * `prospect`. Empty = the gate is satisfied (the change is clean). Non-empty =
- * the manual change is a bypass to be logged. The conditional `factureTablettePayee`
- * is only required when this prospect's `tabletteMode = achat_kb` (PRD 70 §3.3).
+ * the manual change is a bypass to be logged. For `preparation` (the [[Closing]]
+ * event) the full applicable Closing set is used — including the conditional
+ * `factureTablettePayee` when this prospect's `tabletteMode = achat_kb`
+ * (`requiredClosingMilestones`, PRD 70 §3.3).
  */
 export function missingMilestonesForPhase(
   prospect: Doc<"prospects">,
   phase: ProspectPhase,
 ): string[] {
-  const required = [...PHASE_BINARY_GATES[phase]];
-
-  // Conditional Closing milestone — only when KB supplies the tablet.
-  if (phase === "preparation" && prospect.tabletteMode === "achat_kb") {
-    required.push("factureTablettePayee");
-  }
+  const required: string[] =
+    phase === "preparation"
+      ? requiredClosingMilestones(prospect)
+      : [...PHASE_BINARY_GATES[phase]];
 
   const milestones = prospect.milestones ?? {};
   return required.filter(

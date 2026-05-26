@@ -25,6 +25,13 @@
  *    CSV payload (the real CSV is NOT versioned: PII must not be committed).
  *  - `missingMilestonesForPhase` — the pure indicative-gate check (PRD 70 §3.3,
  *    Q70-Q10) backing the bypass logging.
+ *  - 2.9-C pipeline state machine + composite Closing auto-bascule:
+ *    `evaluateClosing` (pure composite Closing evaluator), the ordered phase
+ *    state machine (`PHASE_ORDER` / `isLegalPhaseTransition` /
+ *    `assertLegalPhaseTransition`), and the `applyClosing` `kbAdminMutation` that
+ *    wires the pure evaluator into the ONLY automatic transition (Acquisition →
+ *    Préparation). Callers invoke the mutation as
+ *    `api.lib.onboarding.pipeline.applyClosing`.
  */
 export {
   changePhase,
@@ -37,3 +44,11 @@ export {
 export { type SeedProspect, parseProspectsCsv } from "./csv";
 export { CRM_PROSPECTS_CSV, bundledSeedProspects } from "./seedData";
 export { missingMilestonesForPhase } from "./gates";
+export {
+  type ClosingEvaluation,
+  PHASE_ORDER,
+  applyClosing,
+  assertLegalPhaseTransition,
+  evaluateClosing,
+  isLegalPhaseTransition,
+} from "./pipeline";
