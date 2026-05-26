@@ -204,13 +204,14 @@ export const applyUberWebhookEvent = internalMutation({
         if (drift.petitRetard) petitRetard = true;
       }
 
-      // Cas C/D — the acted incident policy (auto-refund vs manual button + push).
-      let manualRefundFlag: boolean | undefined;
-      if (transition.incidentType !== undefined) {
-        const policy = incidentRefundPolicy(transition.incidentType);
-        incidentPush = policy.incidentPush;
-        if (policy.manualRefundAvailable) manualRefundFlag = true;
-      }
+      // Cas C/D — the single acted incident policy lookup (auto-refund vs the
+      // manual button, plus the dedicated client push).
+      const policy =
+        transition.incidentType !== undefined
+          ? incidentRefundPolicy(transition.incidentType)
+          : undefined;
+      const manualRefundFlag = policy?.manualRefundAvailable ? true : undefined;
+      if (policy !== undefined) incidentPush = policy.incidentPush;
 
       await patchTenantDelivery(ctx, args.tenantId, delivery._id, {
         ...(transition.status !== undefined
@@ -240,10 +241,7 @@ export const applyUberWebhookEvent = internalMutation({
       // Cas C — the auto-refund is EXECUTED by 2.5 (#49). Scheduled so the Stripe
       // call runs in the payment domain's action after this mutation commits;
       // inside `withIdempotence`, so a redelivered event never double-schedules.
-      if (
-        transition.incidentType !== undefined &&
-        incidentRefundPolicy(transition.incidentType).autoRefund
-      ) {
+      if (policy?.autoRefund) {
         await ctx.scheduler.runAfter(
           0,
           internal.lib.stripe.refund.refundAbortedOrder,
