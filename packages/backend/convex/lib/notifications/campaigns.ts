@@ -1,6 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import type { Id } from "../../_generated/dataModel";
 import type { MutationCtx } from "../../_generated/server";
+import type { TemplateScope } from "../../table/notifications";
 import { marketingEligible } from "../customer";
 import {
   type CustomerCampaignFields,
@@ -114,7 +115,7 @@ async function runCampaign(
   ctx: MutationCtx,
   opts: {
     tenantId: Id<"tenants">;
-    scope: "tenant" | "cross_tenant";
+    scope: TemplateScope;
     templateId?: Id<"notificationTemplates">;
     customerIds: Id<"customers">[];
     now: number;
