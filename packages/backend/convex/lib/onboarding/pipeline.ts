@@ -50,15 +50,19 @@ import {
 
 type ProspectPhase = Infer<typeof prospectPhase>;
 type Milestones = NonNullable<Doc<"prospects">["milestones"]>;
-type BinaryMilestoneKey =
+export type ClosingMilestoneKey =
   | "contratSigne"
   | "kbisRecu"
   | "pieceIdentiteRecue"
   | "ribRecu"
   | "factureTablettePayee";
 
-/** The 4 ALWAYS-mandatory Closing milestones (PRD 70 §3.3 / CONTEXT "Closing"). */
-const MANDATORY_CLOSING: readonly BinaryMilestoneKey[] = [
+/**
+ * The 4 ALWAYS-mandatory Closing milestones (PRD 70 §3.3 / CONTEXT "Closing").
+ * Exported as the SINGLE source of truth — the indicative Préparation gate
+ * (`gates.ts`) reuses it so the two slices can never drift on the Closing set.
+ */
+export const MANDATORY_CLOSING_MILESTONES: readonly ClosingMilestoneKey[] = [
   "contratSigne",
   "kbisRecu",
   "pieceIdentiteRecue",
@@ -66,19 +70,35 @@ const MANDATORY_CLOSING: readonly BinaryMilestoneKey[] = [
 ];
 
 /** The CONDITIONAL Closing milestone — applies only when KB supplies the tablet. */
-const CONDITIONAL_TABLETTE_MILESTONE: BinaryMilestoneKey =
+export const CONDITIONAL_TABLETTE_MILESTONE: ClosingMilestoneKey =
   "factureTablettePayee";
+
+/**
+ * The Closing milestones APPLICABLE to `prospect` — the 4 mandatory ones, plus
+ * the conditional tablette-invoice milestone ONLY when `tabletteMode = achat_kb`.
+ * Pure (depends only on `tabletteMode`); the single place the Closing set is
+ * computed for a given prospect.
+ */
+export function requiredClosingMilestones(
+  prospect: Pick<Doc<"prospects">, "tabletteMode">,
+): ClosingMilestoneKey[] {
+  const required: ClosingMilestoneKey[] = [...MANDATORY_CLOSING_MILESTONES];
+  if (prospect.tabletteMode === "achat_kb") {
+    required.push(CONDITIONAL_TABLETTE_MILESTONE);
+  }
+  return required;
+}
 
 /** Result of the pure Closing evaluation. */
 export type ClosingEvaluation = {
   /** All applicable Closing milestones achieved → the auto-bascule may fire. */
   complete: boolean;
   /** The applicable Closing milestones not yet achieved (empty iff complete). */
-  missing: BinaryMilestoneKey[];
+  missing: ClosingMilestoneKey[];
 };
 
 /** A binary milestone is achieved iff its timestamp is present (table/prospects.ts). */
-function achieved(milestones: Milestones, key: BinaryMilestoneKey): boolean {
+function achieved(milestones: Milestones, key: ClosingMilestoneKey): boolean {
   return milestones[key] !== undefined;
 }
 
@@ -89,11 +109,7 @@ function achieved(milestones: Milestones, key: BinaryMilestoneKey): boolean {
  * other mode it is dropped from the required set entirely (so it can never block).
  */
 export function evaluateClosing(prospect: Doc<"prospects">): ClosingEvaluation {
-  const required: BinaryMilestoneKey[] = [...MANDATORY_CLOSING];
-  if (prospect.tabletteMode === "achat_kb") {
-    required.push(CONDITIONAL_TABLETTE_MILESTONE);
-  }
-
+  const required = requiredClosingMilestones(prospect);
   const milestones = prospect.milestones ?? {};
   const missing = required.filter((key) => !achieved(milestones, key));
   return { complete: missing.length === 0, missing };
@@ -144,7 +160,7 @@ type ApplyClosingResult = {
   /** The prospect's phase AFTER the attempt. */
   phase: ProspectPhase;
   /** Closing milestones still missing (empty when Closing is complete). */
-  missing: BinaryMilestoneKey[];
+  missing: ClosingMilestoneKey[];
 };
 
 /**
