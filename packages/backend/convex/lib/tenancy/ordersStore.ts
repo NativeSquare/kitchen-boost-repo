@@ -53,6 +53,22 @@ export type NewOrder = {
   items: NewOrderItem[];
 };
 
+/**
+ * The fields set when an order is created AT CHECKOUT, BEFORE payment (2.3-B).
+ * Same shape as `NewOrder` minus the pricing snapshot — that is filled/frozen at
+ * PAYMENT (slice C), never at checkout. The status is forced to `en attente de
+ * paiement` (invisible to the resto until paid, PRD 10 §10/§11).
+ */
+export type NewPendingOrder = {
+  customerId: Id<"customers">;
+  mode: OrderMode;
+  address?: string;
+  lat?: number;
+  lng?: number;
+  restaurantNote?: string;
+  items: NewOrderItem[];
+};
+
 /** An order joined with its frozen items + time-ordered events (read model). */
 export type OrderWithDetail = Doc<"orders"> & {
   items: Doc<"orderItems">[];
@@ -240,6 +256,50 @@ export async function insertTenantOrder(
     actorUserId,
     at: now,
   });
+
+  return orderId;
+}
+
+/**
+ * Create an order AT CHECKOUT, BEFORE payment (2.3-B): insert the `orders` row in
+ * status `en attente de paiement` (source `direct`, NO `pricingSnapshot` — that is
+ * frozen at payment by slice C) and DEEP-COPY each line into a FROZEN `orderItems`
+ * row (a denormalised snapshot, NOT FKs into the menu — PRD 10 §7). Unlike
+ * `insertTenantOrder`, NO initial `orderEvents` row is appended: the workflow audit
+ * starts only once the order becomes visible to the resto (`nouvelle`, at payment).
+ * Returns the new order id (consumed by 2.5 to create the PaymentIntent).
+ */
+export async function insertTenantPendingOrder(
+  ctx: MutationCtx,
+  tenantId: Id<"tenants">,
+  data: NewPendingOrder,
+): Promise<Id<"orders">> {
+  const now = Date.now();
+  const orderId = await ctx.db.insert("orders", {
+    tenantId,
+    customerId: data.customerId,
+    status: "en attente de paiement",
+    mode: data.mode,
+    source: "direct", // V1 = direct only (ADR 0009)
+    address: data.address,
+    lat: data.lat,
+    lng: data.lng,
+    restaurantNote: data.restaurantNote,
+    createdAt: now,
+  });
+
+  // Freeze the line items — a denormalised, deep-copied snapshot (PRD 10 §7).
+  for (const item of data.items) {
+    await ctx.db.insert("orderItems", {
+      tenantId,
+      orderId,
+      itemName: item.itemName,
+      unitPrice: item.unitPrice,
+      quantity: item.quantity,
+      modifiers: item.modifiers.map((m) => ({ ...m })),
+      allergens: [...item.allergens],
+    });
+  }
 
   return orderId;
 }
