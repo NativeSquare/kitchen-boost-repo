@@ -23,7 +23,16 @@
  *    `attachGroupToItem` / `detachGroupFromItem` / `listItemGroups` /
  *    `listGroupItems`. A group is created once and reused across N items; an edit
  *    reflects on every linked item, a detach leaves siblings + the group intact.
+ *
+ * 2.2-C — the PUBLIC (unauthenticated) eater-facing READ on top of the same
+ * tables, via the foundation `publicTenantQuery` (NO kb_manager rights), still
+ * tenant-scoped through the `menuStore` seam:
+ *  - `catalog.getPublicMenu` — the UNIQUE eater surface: categories ordered →
+ *    items (incl. unavailable, with the availability flag) → modifier groups
+ *    resolved via the N-N link (options + priceDelta + min/max). Read-only, no
+ *    public mutation twin.
  */
+export * as catalog from "./catalog";
 export * as categories from "./categories";
 export * as items from "./items";
 export * as modifiers from "./modifiers";
