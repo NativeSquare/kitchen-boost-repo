@@ -11,19 +11,25 @@ import {
 } from "../tenancy/fuzz";
 import { crossQuoteWithServiceHours } from "./quote";
 
-// convex-test needs the function modules; array-negation glob form is required —
-// extglob `!(*.test)` returns ZERO modules (project memory). This file lives in
-// convex/lib/delivery/, so normalise every key to be relative to the convex root
-// (../../) — same shape as the uberDirect / menu suites.
+// convex-test needs the function modules; array-negation glob form is required
+// (extglob `!(*.test)` returns ZERO modules — project memory). This file lives in
+// convex/lib/delivery/, so Vite emits keys relative to THIS dir (`./quote.ts`,
+// `../uberDirect/...`, `../menu/...`, `../../table/...`). Re-anchor EVERY key at
+// the convex root so convex-test's findModulesRoot has ONE common prefix (same
+// shape as the cart suite, which also crosses lib dirs): `./x` →
+// `../../lib/delivery/x`, `../x` → `../../lib/x`.
 const rawModules = import.meta.glob([
   "../../**/*.{ts,js}",
   "!../../**/*.test.*",
 ]);
 const modules = Object.fromEntries(
-  Object.entries(rawModules).map(([path, loader]) => [
-    path.startsWith("./") ? `../../lib/delivery/${path.slice(2)}` : path,
-    loader,
-  ]),
+  Object.entries(rawModules).map(([path, loader]) => {
+    let key = path;
+    if (key.startsWith("./")) key = `../../lib/delivery/${key.slice(2)}`;
+    else if (key.startsWith("../") && !key.startsWith("../../"))
+      key = `../../lib/${key.slice(3)}`;
+    return [key, loader];
+  }),
 );
 
 /**
