@@ -23,6 +23,14 @@
  *    auto-audited) and reads (getContract / listContractsForProspect). Convex
  *    registers them by module path, so callers invoke
  *    `api.lib.admin.contracts.{...}`; re-exporting here states the contract.
+ *
+ * 2.9-F — monitoring hooks (PRD 70 §3.8, kb-admin CONTEXT "Monitoring
+ * incidents"): the PURE incident detectors + Slack text formatter (input →
+ * `Incident[]`; no DB, no ctx — testable in isolation), the root-only
+ * `previewIncidents` query, and the scheduled `runMonitoringScan` ops action
+ * (scan → one Slack ops alert per incident). Detections: webhook latency > 30 s,
+ * KYC pending > 48 h, paid order with no Uber course. The 2.5/2.6 sources are
+ * feature-flagged off until they land; the alerting plumbing is live today.
  */
 export {
   type GenerateContractInput,
@@ -44,3 +52,22 @@ export {
   refreshContractStatus,
   sendContract,
 } from "./contracts";
+export {
+  type CourseScanDelivery,
+  type Incident,
+  KYC_PENDING_THRESHOLD_MS,
+  type KycProvider,
+  type KycScanProspect,
+  type PaidScanOrder,
+  type ScanInput,
+  WEBHOOK_LATENCY_THRESHOLD_MS,
+  type WebhookLatencySample,
+  collectIncidents,
+  detectKycPendingIncidents,
+  detectPaidOrdersWithoutCourse,
+  detectWebhookLatencyIncidents,
+  formatIncidentSlackText,
+  previewIncidents,
+  runMonitoringScan,
+  scanIncidents,
+} from "./monitoring";

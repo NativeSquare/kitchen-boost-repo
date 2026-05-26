@@ -27,6 +27,21 @@ crons.interval(
   {},
 );
 
+// 2.9-F — Monitoring incidents scan (PRD 70 §3.8, kb-admin CONTEXT "Monitoring
+// incidents"). Periodically scans for ops incidents (webhook latency > 30 s, KYC
+// pending > 48 h, paid order with no Uber course) and posts ONE Slack ops alert
+// per incident to `SLACK_OPS_WEBHOOK_URL`. The action no-ops cleanly when no
+// incident fires or the webhook URL is unset, so the schedule is always safe to
+// run. 15 min keeps alerts timely without hammering Slack (the scan is cheap and
+// idempotent — re-runs simply re-emit the still-open incidents). System job (no
+// actor); all reads go through the tenancy store seams (ADR 0010).
+crons.interval(
+  "monitoring-incident-scan",
+  { minutes: 15 },
+  internal.lib.admin.monitoring.runMonitoringScan,
+  {},
+);
+
 const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const FOUR_WEEKS_MS = 4 * ONE_WEEK_MS;
 

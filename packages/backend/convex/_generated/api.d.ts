@@ -17,6 +17,7 @@ import type * as lib_admin_contracts from "../lib/admin/contracts.js";
 import type * as lib_admin_generateContract from "../lib/admin/generateContract.js";
 import type * as lib_admin_index from "../lib/admin/index.js";
 import type * as lib_admin_lifecycle from "../lib/admin/lifecycle.js";
+import type * as lib_admin_monitoring from "../lib/admin/monitoring.js";
 import type * as lib_auth_ResendOTP from "../lib/auth/ResendOTP.js";
 import type * as lib_auth_ResendOTPPasswordReset from "../lib/auth/ResendOTPPasswordReset.js";
 import type * as lib_auth_getCurrentActor from "../lib/auth/getCurrentActor.js";
@@ -135,6 +136,7 @@ declare const fullApi: ApiFromModules<{
   "lib/admin/generateContract": typeof lib_admin_generateContract;
   "lib/admin/index": typeof lib_admin_index;
   "lib/admin/lifecycle": typeof lib_admin_lifecycle;
+  "lib/admin/monitoring": typeof lib_admin_monitoring;
   "lib/auth/ResendOTP": typeof lib_auth_ResendOTP;
   "lib/auth/ResendOTPPasswordReset": typeof lib_auth_ResendOTPPasswordReset;
   "lib/auth/getCurrentActor": typeof lib_auth_getCurrentActor;
