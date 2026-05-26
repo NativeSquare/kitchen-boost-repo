@@ -1,15 +1,21 @@
 import { v } from "convex/values";
 import type { Doc } from "../../_generated/dataModel";
-import { pricingSnapshot } from "../../table/orders";
+import { pricingSnapshot, refusalReason } from "../../table/orders";
+import {
+  channelAvailabilityFrom,
+  planTransactionalSends,
+} from "../notifications";
 import {
   type OrderWithDetail,
   type TenantRole,
   confirmTenantOrderPayment,
   customerQuery,
   getCustomerOwnOrderWithDetail,
+  insertTenantNotificationEvent,
   listCustomerOwnOrdersForTenant,
   listTenantLiveOrders,
   listTenantTerminalOrders,
+  readCustomerAggregateFields,
   readCustomerFicheByUser,
   requireTenantOrder,
   tenantMutation,
@@ -171,6 +177,75 @@ export const markHandedOff = tenantMutation(OPERATIONAL_ALLOW)({
         "collectée",
         { actorUserId: ctx.actor.userId },
       );
+    }
+  },
+});
+
+/**
+ * 2.3-E — `refuse`: the resto refuses a `nouvelle` order and the refund is emitted
+ * IMMEDIATELY (PRD 20 §6 + 20-Q9 acté "remboursement IMMÉDIAT"; PRD 30 §5;
+ * kb-orders CONTEXT "Refusal"; payment CONTEXT "Refund": "Orders est le trigger,
+ * Payment fournit la mécanique"). Operational action — `kb_manager` + `staff`.
+ *
+ * ── One atomic transaction (all-or-nothing) ──────────────────────────────────
+ * A Convex mutation is a single transaction, so the three effects below commit or
+ * roll back together — there is never a refusal without the refund order emitted,
+ * nor a refund order emitted without the client notification queued:
+ *  1. transition `nouvelle → refusée` (TERMINAL) THROUGH the state machine guard
+ *     (`assertLegalTransition`): only `nouvelle → refusée` is legal, so refusing an
+ *     order in any other state — or re-refusing an already-terminal one — throws and
+ *     writes nothing (no double refund). The transition stamps `refusedAt` and
+ *     appends the `refusée` `orderEvents` row carrying the closed-set `reason`.
+ *  2. EMIT THE REFUND ORDER toward the 2.5 payment domain. 2.3 does NOT call Stripe
+ *     and does NOT touch the (later, #42) `payments` table — it emits the ORDERS-
+ *     domain event the 2.5 refund processor consumes: the `refusée` `orderEvents`
+ *     row written in step 1 IS that refund order (tenant + order + reason + time).
+ *     The actual `POST /refunds` is chantier 2.5 (#49), gated on the payment schema.
+ *  3. EMIT THE CLIENT NOTIFICATION (`refund_issued`, PRD 80 §1 trigger 6): plan the
+ *     transactional sends from the customer's 2.1 reachability (ADR 0012, never
+ *     duplicated) and JOURNAL each as `queued`. The actual push/email send is 2.7 —
+ *     here we only emit the event; an unreachable customer simply yields no send.
+ *
+ * ── Isolation (ADR 0010) ──────────────────────────────────────────────────────
+ * `tenantMutation` keyed on the explicit `tenantId`; `transitionTenantOrder` /
+ * `requireTenantOrder` re-check ownership (a foreign `orderId` → NOT_FOUND, no
+ * cross-tenant write) and an unauthorized actor is rejected (Forbidden) by the
+ * wrapper. No raw `ctx.db` here (`no-untenanted-query`) — every write goes through
+ * the sanctioned `lib/tenancy` seam. Identity only via `getCurrentActor` (ADR 0011).
+ * Audited (a sensitive write — refund-triggering). Ships a cross-tenant fuzz suite.
+ */
+export const refuse = tenantMutation(OPERATIONAL_ALLOW)({
+  args: {
+    orderId: v.id("orders"),
+    // Closed set (PRD 20 §6) — the validator rejects an invented reason.
+    reason: refusalReason,
+  },
+  audit: true,
+  action: "order.refuse",
+  handler: async (ctx, args): Promise<void> => {
+    // 1 + 2 — transition `nouvelle → refusée` (state machine guard) AND emit the
+    // refund order: the refusée orderEvent carrying the reason IS that refund order
+    // toward 2.5 (Orders is the trigger; the Stripe refund is chantier 2.5 / #42).
+    await transitionTenantOrder(ctx, ctx.tenantId, args.orderId, "refusée", {
+      reason: args.reason,
+      actorUserId: ctx.actor.userId,
+    });
+
+    // 3 — emit the client `refund_issued` notification (sending is 2.7). Resolve the
+    // order through the same tenant-scoped seam (ownership re-checked) to route its
+    // customer; same transaction as the refusal, so it cannot diverge from it.
+    const order = await requireTenantOrder(ctx, ctx.tenantId, args.orderId);
+    const fields = await readCustomerAggregateFields(ctx, order.customerId);
+    const availability = channelAvailabilityFrom(fields ?? {});
+    const sends = planTransactionalSends("refund_issued", availability);
+    for (const send of sends) {
+      await insertTenantNotificationEvent(ctx, ctx.tenantId, {
+        customerId: order.customerId,
+        trigger: "refund_issued",
+        category: send.category,
+        channel: send.channel,
+        status: "queued", // planned, not yet dispatched (the transport is 2.7)
+      });
     }
   },
 });
