@@ -124,12 +124,14 @@ export {
   insertTenantCategory,
   insertTenantItem,
   insertTenantModifierGroup,
+  listAllTenantIds,
   listTenantCategories,
   listTenantItemModifierGroups,
   listTenantItems,
   listTenantItemsByCategory,
   listTenantModifierGroupItems,
   listTenantModifierGroups,
+  listTenantUnavailableItems,
   patchTenantItem,
   patchTenantModifierGroup,
   renameTenantCategory,
@@ -137,6 +139,7 @@ export {
   requireTenantCategory,
   requireTenantItem,
   requireTenantModifierGroup,
+  setTenantItemAvailability,
 } from "./menuStore";
 export {
   type NewOrder,

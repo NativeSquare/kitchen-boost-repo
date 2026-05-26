@@ -29,6 +29,7 @@ import type * as lib_customer_kpi from "../lib/customer/kpi.js";
 import type * as lib_customer_reachability from "../lib/customer/reachability.js";
 import type * as lib_customer_rgpd from "../lib/customer/rgpd.js";
 import type * as lib_customer_segments from "../lib/customer/segments.js";
+import type * as lib_menu_availability from "../lib/menu/availability.js";
 import type * as lib_menu_catalog from "../lib/menu/catalog.js";
 import type * as lib_menu_categories from "../lib/menu/categories.js";
 import type * as lib_menu_index from "../lib/menu/index.js";
@@ -129,6 +130,7 @@ declare const fullApi: ApiFromModules<{
   "lib/customer/reachability": typeof lib_customer_reachability;
   "lib/customer/rgpd": typeof lib_customer_rgpd;
   "lib/customer/segments": typeof lib_customer_segments;
+  "lib/menu/availability": typeof lib_menu_availability;
   "lib/menu/catalog": typeof lib_menu_catalog;
   "lib/menu/categories": typeof lib_menu_categories;
   "lib/menu/index": typeof lib_menu_index;
