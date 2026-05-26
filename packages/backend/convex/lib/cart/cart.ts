@@ -2,6 +2,7 @@ import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx } from "../../_generated/server";
 import { orderMode } from "../../table/orders";
+import { tenantAcceptsOrderNow } from "../orders/status";
 import {
   type NewOrderItem,
   customerMutation,
@@ -18,9 +19,10 @@ import {
  *
  * There is NO server-side cart: the [[Cart]] lives in the browser (localStorage)
  * until the eater validates it. This mutation receives that submitted cart and is
- * the single transition `cart → pending order`. It does NOT take payment (2.5),
- * compute pricing (2.4) or gate on the resto status (slice F) — it only validates
- * the cart against the menu and persists a frozen, pre-payment order.
+ * the single transition `cart → pending order`. It does NOT take payment (2.5) or
+ * compute pricing (2.4) — it validates the cart against the menu, GATES on the
+ * resto's operational status (slice F: closed OR paused ⇒ refused, no pre-order V1
+ * per PRD 10 edge), and persists a frozen, pre-payment order.
  *
  * ── Self-scope (the customer creating the order is the caller) ────────────────
  * Built on `customerMutation`: the handler ctx exposes ONLY the caller's own
@@ -214,6 +216,19 @@ export const createOrderFromCart = customerMutation({
       throw invalidCart(
         `The restaurant note must be at most ${MAX_NOTE_LENGTH} characters.`,
       );
+    }
+
+    // Slice F gate: the resto must accept an order RIGHT NOW (within service hours
+    // AND not paused) — no pre-order V1 (PRD 10 edge "resto fermé / pause"). Checked
+    // before any menu read so a closed/paused resto refuses fast, and through the
+    // shared `tenantAcceptsOrderNow` so the gate is defined once (same rule the
+    // public `acceptsOrderNow` read serves to the PWA).
+    if (!(await tenantAcceptsOrderNow(ctx, ctx.tenantId))) {
+      throw new ConvexError({
+        code: "RESTO_NOT_ACCEPTING",
+        message:
+          "Le resto n'accepte pas de commande pour le moment (fermé ou en pause).",
+      });
     }
 
     // Validate + freeze every line against THIS tenant's menu.

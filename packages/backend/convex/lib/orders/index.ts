@@ -40,6 +40,18 @@
  *    order — no Stripe call, no `payments` table touched here; the refund EXECUTION
  *    is 2.5/#49) + EMIT the client `refund_issued` notification (queued; the send is
  *    2.7). `reason` ∈ {rupture, fermeture, surcharge, autre} (`refusalReason`).
+ *  - status (2.3-F): `acceptsOrderNow` (api.lib.orders.status.acceptsOrderNow) — the
+ *    PUBLIC gate the PWA checkout obeys: `true` iff the resto is WITHIN a service
+ *    window (2.2-E `isWithinServiceHours`, REUSED) AND not currently paused (2.3-A
+ *    `operationalPause`). Closed OR paused ⇒ refused (no pre-order V1, PRD 10 edge);
+ *    the pause auto-expires from `until` (no cron). The same rule is wired INTO the
+ *    checkout: `createOrderFromCart` (slice B) calls `tenantAcceptsOrderNow` and
+ *    rejects when it is `false`. The pause TOGGLE (`setOperationalPause` /
+ *    `clearOperationalPause`, audited `tenantMutation`s) lives in the `orders`
+ *    module (2.3-A); this slice adds only the COMBINED read + the checkout gate.
+ *    The pure combiners (`isPauseActive`, `acceptsOrders`) + the shared resolver
+ *    (`tenantAcceptsOrderNow`) are surfaced here; the registered query is reached by
+ *    its module path, so it is NOT re-exported.
  *
  * The row shapes (status workflow, mode, source, frozen modifier, pricing
  * snapshot) live in the table validators, surfaced here as the module's typed
@@ -59,3 +71,9 @@ export {
   pricingSnapshot,
   refusalReason,
 } from "../../table/orders";
+export {
+  type OperationalPause,
+  acceptsOrders,
+  isPauseActive,
+  tenantAcceptsOrderNow,
+} from "./status";
