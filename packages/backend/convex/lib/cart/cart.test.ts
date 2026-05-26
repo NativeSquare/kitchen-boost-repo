@@ -73,6 +73,19 @@ async function seedMenu(
 ): Promise<MenuFixture> {
   const as = t.withIdentity({ subject: managerId });
 
+  // Slice F (#57) gates the checkout on the resto's operational status: a resto
+  // with NO service hours is CLOSED, so the 2.3-B fixtures open it all week (and
+  // leave the pause unset) — the menu-validation cases this suite exercises must
+  // not be masked by the closed/pause gate.
+  await as.mutation(api.lib.menu.serviceHours.set, {
+    tenantId,
+    windows: [0, 1, 2, 3, 4, 5, 6].map((dayOfWeek) => ({
+      dayOfWeek,
+      startMinute: 0,
+      endMinute: 1439,
+    })),
+  });
+
   const categoryId = (await as.mutation(api.lib.menu.categories.create, {
     tenantId,
     name: "Smashs",
