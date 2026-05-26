@@ -28,12 +28,27 @@
  *    click & collect). The Uber call is owned by `lib/uberDirect.createDelivery`.
  *  - webhooks (2.6-C): `uberWebhook` (the per-tenant `…/webhooks/uber/<tenantId>`
  *    httpAction — raw-body `x-uber-signature` verify, tenant routing, idempotent
- *    apply) + `applyUberWebhookEvent` (the system-side idempotent write). Wired in
- *    `convex/http.ts` via `pathPrefix` (POC #5). These are registered by their
- *    module path, so they are not re-exported here.
+ *    apply) + `applyUberWebhookEvent` (the system-side idempotent write, EXTENDED in
+ *    2.6-D to drive the incident state machine). Wired in `convex/http.ts` via
+ *    `pathPrefix` (POC #5). Registered by module path, so not re-exported here.
+ *  - incidents (2.6-D): the delivery-incident STATE MACHINE over the 4 acted cases
+ *    (delivery CONTEXT Q40-Q6→Q40-Q14). The PURE policy (`incidentRefundPolicy`,
+ *    `resolveCourierDrift`, `PETIT_RETARD_THRESHOLD_MS`) is surfaced here; the auto
+ *    cases (refused_post_payment / incident_after_pickup) TRIGGER the 2.5 refund
+ *    (#49) — 2.6 never refunds itself — and `customer_absent` exposes the resto's
+ *    discretionary `triggerManualRefund` (a `tenantMutation`, registered by its
+ *    module path, so not re-exported here).
  */
 export {
   type DeliveryQuoteVerdict,
   crossQuoteWithServiceHours,
   deliveryQuoteVerdict,
 } from "./quote";
+export {
+  type CourierDriftResult,
+  type IncidentPush,
+  type IncidentRefundPolicy,
+  PETIT_RETARD_THRESHOLD_MS,
+  incidentRefundPolicy,
+  resolveCourierDrift,
+} from "./incidents";

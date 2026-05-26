@@ -13,6 +13,11 @@ import {
   patchTenantDelivery,
 } from "../tenancy";
 import { withIdempotence } from "../webhooks";
+import {
+  type IncidentPush,
+  incidentRefundPolicy,
+  resolveCourierDrift,
+} from "./incidents";
 
 /**
  * 2.6-C — the per-tenant Uber Direct webhook (`…/webhooks/uber/<tenantId>`, PRD
@@ -109,12 +114,29 @@ const webhookEventArg = v.object({
 
 /**
  * Apply ONE verified Uber webhook event to the routed tenant's delivery, exactly
- * once per `(uber_direct, eventId)`. Resolves the delivery by `uberDeliveryId`
- * RE-CHECKED against `tenantId` (a foreign delivery is unreachable ⇒ no-op), maps
- * the event through the pure `mapWebhookEvent`, and patches the row (status /
- * courier / ETA / incident). Emitting the notification trigger (2.7) + the KDS
- * signal is fanned out from the mapping result; the dispatch transports are later
- * slices, so this records the transition and reports what was routed.
+ * once per `(uber_direct, eventId)`, AND drive the 2.6-D incident STATE MACHINE on
+ * the result (delivery CONTEXT Q40-Q6→Q40-Q14). Resolves the delivery by
+ * `uberDeliveryId` RE-CHECKED against `tenantId` (a foreign delivery is
+ * unreachable ⇒ no-op), maps the event through the pure `mapWebhookEvent`, patches
+ * the row (status / courier / ETA / incident), and then ACTS per the acted policy:
+ *
+ *  - Cas C `incident_after_pickup` (canceled/failed) ⇒ auto-refund TOTAL VIA 2.5
+ *    (`refundAbortedOrder` scheduled — 2.6 NEVER refunds itself; that pulls the
+ *    order out of KB Orders + pushes the client + audits). KB opens NO Uber/resto
+ *    reclamation (Article 2 contrat).
+ *  - Cas D `customer_absent` (returned) ⇒ NO auto-refund; flags
+ *    `manualRefundAvailable` on the row (the resto's discretionary button) and
+ *    signals the customer-absent push.
+ *  - Cas B `courier_update` (silent re-dispatch) ⇒ passive relay of the new
+ *    courier; accumulate the ETA drift (`resolveCourierDrift`) and signal the
+ *    "petit retard ⏰" push ONLY on crossing the 10-min cumulative threshold. No
+ *    refund, no incident.
+ *  - Cas A `refused_post_payment` is NOT a webhook status — it is the Create
+ *    Delivery refusal in `createCourseOnPaymentConfirmed`.
+ *
+ * The notification trigger (2.7, closed taxonomy) + the KDS signal come from the
+ * mapping; the customer-absent / petit-retard / incident pushes are NOT closed
+ * triggers (ADR 0006) — they are SIGNALS returned for the Phase 3 fronts.
  *
  * INTERNAL + SYSTEM-SIDE: called only from the verified webhook httpAction. The
  * `tenantId` is the structural routed tenant, so a cross-tenant write is
@@ -130,6 +152,11 @@ export const applyUberWebhookEvent = internalMutation({
     applied: v.boolean(),
     notificationTrigger: v.optional(v.string()),
     kdsSignal: v.optional(v.string()),
+    // 2.6-D signals (for the Phase 3 fronts; not closed transactional triggers).
+    incidentPush: v.optional(v.string()),
+    autoRefundTriggered: v.optional(v.boolean()),
+    manualRefundAvailable: v.optional(v.boolean()),
+    petitRetard: v.optional(v.boolean()),
   }),
   handler: async (
     ctx,
@@ -138,10 +165,18 @@ export const applyUberWebhookEvent = internalMutation({
     applied: boolean;
     notificationTrigger?: string;
     kdsSignal?: string;
+    incidentPush?: IncidentPush;
+    autoRefundTriggered?: boolean;
+    manualRefundAvailable?: boolean;
+    petitRetard?: boolean;
   }> => {
     let applied = false;
     let notificationTrigger: string | undefined;
     let kdsSignal: string | undefined;
+    let incidentPush: IncidentPush | undefined;
+    let autoRefundTriggered: boolean | undefined;
+    let manualRefundAvailable: boolean | undefined;
+    let petitRetard: boolean | undefined;
 
     await withIdempotence(ctx, PROVIDER, args.eventId, async () => {
       const transition = mapWebhookEvent(args.event as Record<string, unknown>);
@@ -155,6 +190,27 @@ export const applyUberWebhookEvent = internalMutation({
         transition.uberDeliveryId,
       );
       if (delivery === null) return;
+
+      // Cas B — accumulate the ETA drift of a silent re-dispatch (courier_update
+      // carries no status). The petit-retard push fires only on the > 10-min
+      // crossing; the cumulative slip is persisted for the next update.
+      let cumulativeEtaDriftMs: number | undefined;
+      if (transition.status === undefined) {
+        const drift = resolveCourierDrift(delivery, {
+          pickupEta: transition.pickupEta,
+          dropoffEta: transition.dropoffEta,
+        });
+        cumulativeEtaDriftMs = drift.cumulativeEtaDriftMs;
+        if (drift.petitRetard) petitRetard = true;
+      }
+
+      // Cas C/D — the acted incident policy (auto-refund vs manual button + push).
+      let manualRefundFlag: boolean | undefined;
+      if (transition.incidentType !== undefined) {
+        const policy = incidentRefundPolicy(transition.incidentType);
+        incidentPush = policy.incidentPush;
+        if (policy.manualRefundAvailable) manualRefundFlag = true;
+      }
 
       await patchTenantDelivery(ctx, args.tenantId, delivery._id, {
         ...(transition.status !== undefined
@@ -175,17 +231,44 @@ export const applyUberWebhookEvent = internalMutation({
         ...(transition.incidentType !== undefined
           ? { incidentType: transition.incidentType }
           : {}),
+        ...(cumulativeEtaDriftMs !== undefined ? { cumulativeEtaDriftMs } : {}),
+        ...(manualRefundFlag !== undefined
+          ? { manualRefundAvailable: manualRefundFlag }
+          : {}),
       });
+
+      // Cas C — the auto-refund is EXECUTED by 2.5 (#49). Scheduled so the Stripe
+      // call runs in the payment domain's action after this mutation commits;
+      // inside `withIdempotence`, so a redelivered event never double-schedules.
+      if (
+        transition.incidentType !== undefined &&
+        incidentRefundPolicy(transition.incidentType).autoRefund
+      ) {
+        await ctx.scheduler.runAfter(
+          0,
+          internal.lib.stripe.refund.refundAbortedOrder,
+          {
+            tenantId: args.tenantId,
+            orderId: delivery.orderId as Id<"orders">,
+          },
+        );
+        autoRefundTriggered = true;
+      }
 
       applied = true;
       notificationTrigger = transition.notificationTrigger;
       kdsSignal = transition.kdsSignal;
+      if (manualRefundFlag) manualRefundAvailable = true;
     });
 
     return {
       applied,
       ...(notificationTrigger !== undefined ? { notificationTrigger } : {}),
       ...(kdsSignal !== undefined ? { kdsSignal } : {}),
+      ...(incidentPush !== undefined ? { incidentPush } : {}),
+      ...(autoRefundTriggered !== undefined ? { autoRefundTriggered } : {}),
+      ...(manualRefundAvailable !== undefined ? { manualRefundAvailable } : {}),
+      ...(petitRetard !== undefined ? { petitRetard } : {}),
     };
   },
 });
