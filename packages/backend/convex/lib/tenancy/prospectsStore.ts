@@ -1,10 +1,7 @@
+import type { Infer } from "convex/values";
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../../_generated/server";
-import type { Infer } from "convex/values";
-import {
-  type acquisitionSource,
-  type prospectPhase,
-} from "../../table/prospects";
+import type { acquisitionSource, prospectPhase } from "../../table/prospects";
 
 /**
  * 2.9-B — the SANCTIONED data-access seam for the KB-ADMIN-GLOBAL `prospects`
