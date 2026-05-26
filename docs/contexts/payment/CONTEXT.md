@@ -7,11 +7,11 @@ PRD : [30_paiement_stripe_connect.md](../../prd/30_paiement_stripe_connect.md)
 ## Language
 
 **Stripe Connect Express** :
-Modèle Stripe où chaque resto a son propre compte Stripe (acct_xxx), onboardé via `account_link`. Le resto est seul vendeur (KYC, IBAN, disputes lui appartiennent). KB n'a pas d'agrément ACPR. **Onboarding fait en Phase C kickoff sur place avec Alex** (pas un lien magique envoyé à distance) — Alex génère le `account_link` en live, le resto complète KYC + IBAN avec lui à côté (~10-15 min). Garantit complétion immédiate, pas de tenant `pending` indéfini. Si pour une raison le RDV Phase C n'aboutit pas → relève du process [[KB Admin]] pipeline onboarding, pas d'auto-suspend côté payment. Q30-Q5 (timeout 14j) sans objet, acté 2026-05-23.
-_Avoid_: Stripe Standard, Stripe Connect (sans préciser Express)
+Modèle Stripe où chaque resto a son propre compte Stripe (acct*xxx), onboardé via `account_link`. Le resto est seul vendeur (KYC, IBAN, disputes lui appartiennent). KB n'a pas d'agrément ACPR. **Onboarding fait en Phase C kickoff sur place avec Alex** (pas un lien magique envoyé à distance) — Alex génère le `account_link` en live, le resto complète KYC + IBAN avec lui à côté (~10-15 min). Garantit complétion immédiate, pas de tenant `pending` indéfini. Si pour une raison le RDV Phase C n'aboutit pas → relève du process [[KB Admin]] pipeline onboarding, pas d'auto-suspend côté payment. Q30-Q5 (timeout 14j) sans objet, acté 2026-05-23.
+\_Avoid*: Stripe Standard, Stripe Connect (sans préciser Express)
 
 **Direct charge** :
-Pattern Stripe Connect où le PaymentIntent est créé sur le compte du resto avec `on_behalf_of=acct_resto`. La transaction n'apparaît PAS dans le compte Stripe KB. Opposé à "destination charge" (non utilisé chez KB).
+Pattern Stripe Connect où le PaymentIntent est créé **directement sur le compte du resto** via l'en-tête `Stripe-Account: acct_resto` (SDK `{ stripeAccount }`). Le resto est merchant of record et **supporte nativement les frais d'acceptation des paiements** (commission monétique Stripe : 1,5 % + 0,25 €) — c'est intrinsèque au direct charge, pas un paramètre à passer. La transaction n'apparaît PAS dans le compte Stripe KB. Opposé à "destination charge" (qui, lui, utilise `on_behalf_of` — non utilisé chez KB).
 _Avoid_: Charge resto, Split payment
 
 **PaymentIntent** :
@@ -22,12 +22,12 @@ _Avoid_: Transaction (terme bancaire générique)
 Champ Stripe en **centimes TTC** indiquant la part qui va à KB (compte plateforme). **V1 : valeur fixe immutable 240 (2,40 € TTC = 2 € HT + 20 % TVA) pour tous les tenants** — pas d'écran de config dans [[KB Admin]], pas de négociation tarifaire opérationnelle. Stocké HT en DB pour reporting comptable. Gestes commerciaux V1 (ex: mois gratuit early adopter) gérés en **avoir manuel hors-système** (décompte sur facture mensuelle), pas via modification du `application_fee_amount`. **V2 : champ rendu configurable par tenant** depuis [[KB Admin]] root (Alex uniquement) pour outiller paliers commerciaux scaling (chaînes, partenariats). Q30-Q1 acté 2026-05-23.
 _Avoid_: Commission, Fee KB (utiliser le terme Stripe exact)
 
-**on_behalf_of** :
-Champ Stripe désignant l'acct_resto comme "vendeur économique" du paiement. C'est lui qui supporte les **frais d'acceptation des paiements** (commission monétique Stripe : 1,5 % + 0,25 €). Pass-through obligatoire (cf. [feedback_kb_commission_model](../../../.claude/memory/feedback_kb_commission_model.md)).
-_Avoid_: Payee, Settlement account
+**Stripe-Account (header)** :
+En-tête HTTP `Stripe-Account: acct_resto` (SDK Stripe : option `{ stripeAccount }`) qui crée la requête **dans le contexte du compte connecté du resto**. C'est ainsi qu'on monte un [[Direct charge]] : le PaymentIntent vit sur l'acct*resto, le resto est merchant of record et supporte nativement les **frais d'acceptation des paiements** (1,5 % + 0,25 €). Pass-through intrinsèque au direct charge, pas via `on_behalf_of` (qui est un paramètre de \_destination* charge, non utilisé chez KB). Cf. [feedback_kb_commission_model](../../../.claude/memory/feedback_kb_commission_model.md).
+_Avoid_: on_behalf_of (paramètre destination-charge — pas utilisé), Payee, Settlement account
 
 **Frais d'acceptation des paiements** (Commission monétique) :
-Frais Stripe variables selon origine carte : **1,5 % + 0,25 €** cartes EU, **3,25 % + 0,25 €** cartes hors UE (touristes, expats). Supportés intégralement par le resto via `on_behalf_of` (pattern pass-through). Analogues aux commissions monétiques d'un TPE bancaire (Article 3.3 contrat — "tarifications du PSP s'appliquent"). À ne pas confondre avec `application_fee_amount`. **V1 : aucun filtrage au checkout, aucune alerte resto** — cartes hors UE acceptées silencieusement, le resto absorbe le surcoût (volume hors UE attendu marginal, drop client > marge sur 1 cmd). V2 envisagera reporting transparent dans vue paiements [[KB Admin]] ("X cmds hors UE ce mois = +Y € frais"). Q30-Q2 acté 2026-05-23.
+Frais Stripe variables selon origine carte : **1,5 % + 0,25 €** cartes EU, **3,25 % + 0,25 €** cartes hors UE (touristes, expats). Supportés intégralement par le resto par **propriété intrinsèque du direct charge** (resto = compte connecté encaisseur, merchant of record). Analogues aux commissions monétiques d'un TPE bancaire (Article 3.3 contrat — "tarifications du PSP s'appliquent"). À ne pas confondre avec `application_fee_amount`. **V1 : aucun filtrage au checkout, aucune alerte resto** — cartes hors UE acceptées silencieusement, le resto absorbe le surcoût (volume hors UE attendu marginal, drop client > marge sur 1 cmd). V2 envisagera reporting transparent dans vue paiements [[KB Admin]] ("X cmds hors UE ce mois = +Y € frais"). Q30-Q2 acté 2026-05-23.
 _Avoid_: Frais Stripe (ambigu — Stripe a plein de frais), Processing fees
 
 **Stripe Customer (cross-tenant)** :
@@ -55,8 +55,8 @@ _Avoid_: Customer phone, Contact client (génériques)
 _Avoid_: Invoice (acceptable), Note de débit, Quittance
 
 **Apple Pay / Google Pay** :
-Wallets activés via **Stripe Payment Element** (PaymentIntent automatic_payment_methods). Activés dès V1 pour fluidité mobile. Pas de SDK natif additionnel.
-_Avoid_: Wallet pay (générique), Mobile pay
+Wallets activés via **Stripe Payment Element** (PaymentIntent automatic*payment_methods). Activés dès V1 pour fluidité mobile. Pas de SDK natif additionnel.
+\_Avoid*: Wallet pay (générique), Mobile pay
 
 **KYC** :
 Know Your Customer — vérification Stripe d'identité du resto. Statuts : `pending`, `verified`, `rejected`. Si pending > 48h → alerte Slack ops. Si rejected → plan B Mangopay (V3).
@@ -64,6 +64,7 @@ _Avoid_: Identity check, Compliance
 
 **Chargeback** :
 Litige initié par le client via sa banque (motifs typiques : "cmd non reçue", "fraude carte", "produit non conforme"). Le resto a 7-14 jours pour fournir preuves de livraison + conversation client via son Stripe Dashboard natif. 20 € de frais Stripe par chargeback perdu, à la charge du resto (cf. Article 3.3 contrat). **V1 process : KB monitoring + Alex notifie manuellement le resto** :
+
 - Webhook `charge.dispute.created` → Slack ops (Alex)
 - Alex contacte le resto par WhatsApp/téléphone (canal direct V1) avec récap : ID cmd, montant, motif, deadline
 - Le resto se connecte à **son Stripe Dashboard** (natif, déjà outillé : formulaire preuves, timeline, upload) et répond
@@ -71,14 +72,14 @@ Litige initié par le client via sa banque (motifs typiques : "cmd non reçue", 
 - Pas d'UI dans [[KB Admin]] V1
 - V2 : email auto resto + alerte [[KB Admin]] (badge "Litige") quand volume disputes le justifie
 - V3 : outillage complet [[KB Admin]] (upload preuves depuis KB, relais API)
-Q30-Q6 acté 2026-05-23.
-_Avoid_: Dispute (acceptable mais "chargeback" plus précis), Rejection bancaire
+  Q30-Q6 acté 2026-05-23.
+  _Avoid_: Dispute (acceptable mais "chargeback" plus précis), Rejection bancaire
 
 ## Example dialogue
 
 **Alex** : Un client paie 30 € chez Buns & Bao avec Apple Pay. Qui touche quoi ?
 
-**Dev** : Direct charge sur acct_buns-bao avec `on_behalf_of=acct_buns-bao`. Stripe prélève la commission monétique sur le resto : 30 × 1,5% + 0,25 = 0,70 €. Puis `application_fee_amount=240` (2,40 € TTC) va sur le compte plateforme KB. Le resto reçoit 30 - 0,70 - 2,40 = 26,90 €.
+**Dev** : Direct charge sur acct_buns-bao (via en-tête `Stripe-Account: acct_buns-bao`). Stripe prélève la commission monétique sur le resto : 30 × 1,5% + 0,25 = 0,70 €. Puis `application_fee_amount=240` (2,40 € TTC) va sur le compte plateforme KB. Le resto reçoit 30 - 0,70 - 2,40 = 26,90 €.
 
 **Alex** : Si Khan refuse la cmd dans [[KB Orders]] ?
 

@@ -16,6 +16,7 @@ _Avoid_: Estimate, Quote livraison
 
 **Address-first flow** :
 Parcours d'entrée PWA imposé : à l'arrivée sur la PWA tenant, **Sophie doit indiquer son adresse via Google Places autocomplete avant d'accéder au menu** (pattern identique à Uber Eats). Dès la saisie, KB déclenche un [[Quote]] Uber Direct. Selon résultat :
+
 - **Quote OK** → mode livraison ouvert, frais livraison déjà connus pour le reste du parcours, le client peut composer son panier sereinement.
 - **Quote refusé** (hors zone, hors horaire, surge bloquant) → **mode livraison verrouillé**, seul [[Click & collect]] reste disponible avec message contextualisé selon raison du refus : hors zone → "Cette adresse est trop éloignée du resto. Essaie une autre adresse ou viens chercher (click & collect)." / hors horaire → "Le resto est fermé, ouvre à 18h30." / surge bloquant → "Indisponible à cet horaire, réessaie dans quelques minutes." (Q40-Q9 acté 2026-05-24).
 - Le client peut modifier son adresse à tout moment → re-déclenche un [[Quote]].
@@ -24,7 +25,7 @@ Parcours d'entrée PWA imposé : à l'arrivée sur la PWA tenant, **Sophie doit 
 _Avoid_: Checkout flow, Adresse au checkout, Menu-first
 
 **Course** :
-Une livraison effective créée via `POST /deliveries`. Possède un `uber_delivery_id`. Stockée dans `orders.uber_delivery_id`.
+Une livraison effective créée via `POST /deliveries`. Possède un `uberDeliveryId`. Stockée dans la table dédiée `deliveries` (`uberDeliveryId`, `status`, FK vers l'order, scopée par tenant) — pas comme colonne sur `orders`.
 _Avoid_: Delivery (acceptable anglais), Ride (Uber-rider, à ne pas confondre)
 
 **Course refusée par Uber (post-paiement)** :

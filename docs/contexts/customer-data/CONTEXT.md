@@ -22,8 +22,8 @@ Raison principale : sécurité [[Stripe Customer (cross-tenant)]] / `clone Payme
 _Avoid_: Cross-device match, Customer dedup, Email-based dedup
 
 **Re-engagement channel** (Canal de recontact) :
-Mécanisme par lequel KB peut recontacter un client après une visite. **4 canaux V1** : (1) Email (cross-tenant via `customer_id` global, obligatoire au checkout, consent*marketing bloquant), (2) SMS (cross-tenant, V2 — coût à provisionner), (3) Push Wallet (scopé tenant via pass installé), (4) Push Web PWA (scopé domaine tenant via permission ou A2HS). **Règle d'or V1 acté 2026-05-24** : *tout client qui valide une cmd sur une PWA KB doit avoir au moins UN canal [[Push enrollment]] actif (Wallet pass OU Web Push OU A2HS) + Email + Tel capturés. Sans push enrollment, pas de validation cmd possible (bouton "Payer" bloqué).* Zero touch = jamais possible côté UX V1.
-\_Avoid*: Touchpoint, Channel (acceptable EN)
+Mécanisme par lequel KB peut recontacter un client après une visite. **4 canaux V1** : (1) Email (cross-tenant via `customer_id` global, obligatoire au checkout, consent*marketing bloquant), (2) SMS (cross-tenant, V2 — coût à provisionner), (3) Push Wallet (scopé tenant via pass installé), (4) Push Web PWA (scopé domaine tenant via permission ou A2HS). **Règle d'or V1 acté 2026-05-24** : *tout client qui valide une cmd sur une PWA KB doit avoir au moins UN canal [[Push enrollment]] actif (Wallet pass OU Web Push OU A2HS) + Email + Tel capturés. Sans push enrollment, pas de validation cmd possible (bouton "Payer" bloqué)._ Zero touch = jamais possible côté UX V1.
+\_Avoid_: Touchpoint, Channel (acceptable EN)
 
 **Push enrollment** :
 Action explicite du client pour autoriser KB à lui pousser des notifs. **3 mécanismes V1** : Add to Wallet (2 taps), Allow notifications browser (1 tap, Android sans A2HS), A2HS install (1-4 taps selon plateforme). Maximiser le push enrollment = objectif V1 prioritaire pour construire le [[Lock-screen reach]]. Pas bloquant techniquement (cohérent UX conversion), mais wording incentif fort + [[Incentive Wallet]] paramétrée par le resto.
@@ -88,7 +88,7 @@ Trace de chaque consultation du resto sur ses clients (qui = owner, quoi = page 
 _Avoid_: Access log, Telemetry
 
 **Effacement RGPD = anonymisation irréversible** :
-Quand un client exerce son droit à l'effacement, on **nullifie** email/tel/nom/adresse/lat-lng/IP sur la row `customers`. Les rows `orders` historiques restent rattachées au `customer_id` devenu fantôme — montants et items préservés. Justification : obligation comptable conservation factures 10 ans (Code de Commerce L123-22), statistiques resto préservées (LTV historique), CNIL valide l'anonymisation si irréversible. **Pas de hard delete V1.** Process traité à `privacy@kitchenboost.fr`, SLA 30j max.
+Quand un client exerce son droit à l'effacement, on **nullifie** email/tel/prénom/adresse/lat-lng + IDs d'inscription push sur la row `customers` (le schéma V1 n'a ni `nom`/`lastName` ni `IP` — rien à effacer côté ces champs). Les rows `orders` historiques restent rattachées au `customer_id` devenu fantôme — montants et items préservés. Justification : obligation comptable conservation factures 10 ans (Code de Commerce L123-22), statistiques resto préservées (LTV historique), CNIL valide l'anonymisation si irréversible. **Pas de hard delete V1.** Process traité à `privacy@kitchenboost.fr`, SLA 30j max.
 _Avoid_: Effacement complet, Hard delete, Suppression
 
 **Segment** :

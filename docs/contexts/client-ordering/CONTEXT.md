@@ -105,7 +105,7 @@ _Avoid_: Repeat order
 
 **Alex** : OK. Et s'il a déjà commandé chez ce resto la semaine dernière ?
 
-**Dev** : On le reconnaît silencieusement via le token persistant device ([[Anonymous account]] = cookie device) — email/tel/prénom/adresse pré-remplis. Sa carte sauvegardée est aussi proposée via [[Stripe Customer (cross-tenant)]] (acté V1). Si même client commande chez un AUTRE resto KB **depuis le même device** → même reconnaissance silencieuse (cookie partagé sur le domaine parent). **Cross-device : reconnaissance uniquement via la carte Wallet installée — PAS de match email/tel** ([ADR 0008](../../adr/0008-identite-customer-cookie-device-only-v1.md)).
+**Dev** : On le reconnaît silencieusement via le cookie de session natif Convex Auth, **intra-resto uniquement** ([[Anonymous account]]) — email/tel/prénom/adresse pré-remplis. Sa carte sauvegardée est aussi proposée via [[Stripe Customer (cross-tenant)]] (acté V1). Si même client commande chez un AUTRE resto KB (autre **domaine de marque custom**) → **PAS** de reconnaissance par cookie : chaque resto a son propre domaine → cookies cloisonnés (host-only `__Host-`, pas de domaine parent partagé). La reconnaissance cross-resto se fait **uniquement via la carte Wallet installée** (`serial → customer_id`), jamais par match email/tel ([ADR 0008](../../adr/0008-identite-customer-cookie-device-only-v1.md)).
 
 **Alex** : Et le modifier "parfum" sur les boissons ?
 

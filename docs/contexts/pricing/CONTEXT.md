@@ -7,7 +7,7 @@ PRD : [35_pricing_engine.md](../../prd/35_pricing_engine.md)
 ## Language
 
 **Rule** (Règle) :
-Unité de configuration créée par le resto dans [[KB Admin]]. Composée de **conditions** (toutes vraies pour matcher) et d'une **action** (impact sur frais livraison). Activable/désactivable. Soft limit 20 par resto, hard 50.
+Unité de configuration créée par le resto dans [[KB Admin]]. Composée de **conditions** (toutes vraies pour matcher) et d'une **action** (impact sur frais livraison). Activable/désactivable. Pas de limite produit sur le nombre de règles (acté 2026-05-25) ; 1 à 5 règles en pratique, plafond technique généreux only.
 _Avoid_: Policy, Promotion, Discount
 
 **Condition** :

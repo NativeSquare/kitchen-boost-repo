@@ -67,13 +67,13 @@
   - Dropoff (adresse client)
   - Manifest items (récap commande, juste pour les coursiers)
   - Référence externe (`order_id` KB)
-- Stockage `uber_delivery_id` dans DB orders
+- Stockage de la course dans la table dédiée `deliveries` (`uberDeliveryId`, `status`, FK vers l'order, scopée par tenant) — pas comme colonne sur `orders`
 - Notif KDS resto : nouvelle cmd avec ETA courier
 
 ### 4. Suivi statut courier — Tracking client PWA
 
 - Webhook reçoit événements Uber Direct (status_changed, courier_assigned, courier_arrived_at_pickup, courier_picked_up, courier_arrived_at_dropoff, delivered, returned, canceled, failed)
-- Mise à jour DB orders.delivery_status
+- Mise à jour du `status` dans la table dédiée `deliveries`
 - Push notif client + KDS sur transitions
 - **V1 : animations Lottie SVG par étape + ETA texte** (pas de map, pas de tracking_url Uber, white-label total)
 - 6 étapes mode livraison : `Cmd reçue` → `En préparation` → `Courier assigné` (prénom courier + ETA pickup) → `Courier en route vers le resto` → `Courier en route vers toi` → `Livrée` (push "Bon appétit ! 🍽️", pas de demande de review V1)

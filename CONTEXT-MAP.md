@@ -6,18 +6,18 @@ Ce document liste les contextes, où trouver leur glossaire, et comment ils comm
 
 ## Contexts
 
-| Contexte | Glossaire | PRD associé | Description |
-|----------|-----------|-------------|-------------|
-| **Client Ordering** | [docs/contexts/client-ordering/](docs/contexts/client-ordering/CONTEXT.md) | [10](docs/prd/10_pwa_client_commande.md) | PWA web client final : menu, panier, checkout, suivi cmd, captation profil |
-| **KB Orders** | [docs/contexts/kb-orders/](docs/contexts/kb-orders/CONTEXT.md) | [20](docs/prd/20_kb_orders.md) | App native iOS + Android pour le resto : workflow cmd (nouvelle → prep → prête → remise), modes livraison + click & collect, push APNs/FCM. Surface unique téléphone + tablette cuisine |
-| **Payment** | [docs/contexts/payment/](docs/contexts/payment/CONTEXT.md) | [30](docs/prd/30_paiement_stripe_connect.md) | Stripe Connect Express, direct charges, Apple/Google Pay, refund |
-| **Pricing** | [docs/contexts/pricing/](docs/contexts/pricing/CONTEXT.md) | [35](docs/prd/35_pricing_engine.md) | Moteur de règles configurables par tenant sur les frais de livraison |
-| **Delivery** | [docs/contexts/delivery/](docs/contexts/delivery/CONTEXT.md) | [40](docs/prd/40_livraison_uber_direct.md) | Uber Direct (quote, course, courier), click & collect |
-| **Multi-Tenant** | [docs/contexts/multi-tenant/](docs/contexts/multi-tenant/CONTEXT.md) | [50](docs/prd/50_multi_tenant_saas.md) | Isolation tenants, RBAC à 3 rôles, users + user_tenants (N-N), Stripe partagé si même SIRET |
-| **Marketplaces** | [docs/contexts/marketplaces/](docs/contexts/marketplaces/CONTEXT.md) | [60](docs/prd/60_integration_marketplaces.md) | Agrégation Uber Eats + Deliveroo via Hubrise |
-| **KB Admin** | [docs/contexts/kb-admin/](docs/contexts/kb-admin/CONTEXT.md) | [70](docs/prd/70_kb_admin.md) | App web unique avec RBAC : pipeline onboarding + CRM + contrats + monitoring (côté root) ; édition menu + cmds + clients masqués + campagnes + pricing + QR (côté KB Manager) |
-| **Notifications** | [docs/contexts/notifications/](docs/contexts/notifications/CONTEXT.md) | [80](docs/prd/80_notifications.md) | Push web (PWA client), push système APNs/FCM (KB Orders), email, SMS, opt-in/opt-out, segments |
-| **Customer Data** | [docs/contexts/customer-data/](docs/contexts/customer-data/CONTEXT.md) | [90](docs/prd/90_donnees_clients_crm.md) | Base clients globale cross-tenant (MOAT KB) + anti-extraction |
+| Contexte            | Glossaire                                                                  | PRD associé                                   | Description                                                                                                                                                                             |
+| ------------------- | -------------------------------------------------------------------------- | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Client Ordering** | [docs/contexts/client-ordering/](docs/contexts/client-ordering/CONTEXT.md) | [10](docs/prd/10_pwa_client_commande.md)      | PWA web client final : menu, panier, checkout, suivi cmd, captation profil                                                                                                              |
+| **KB Orders**       | [docs/contexts/kb-orders/](docs/contexts/kb-orders/CONTEXT.md)             | [20](docs/prd/20_kb_orders.md)                | App native iOS + Android pour le resto : workflow cmd (nouvelle → prep → prête → remise), modes livraison + click & collect, push APNs/FCM. Surface unique téléphone + tablette cuisine |
+| **Payment**         | [docs/contexts/payment/](docs/contexts/payment/CONTEXT.md)                 | [30](docs/prd/30_paiement_stripe_connect.md)  | Stripe Connect Express, direct charges, Apple/Google Pay, refund                                                                                                                        |
+| **Pricing**         | [docs/contexts/pricing/](docs/contexts/pricing/CONTEXT.md)                 | [35](docs/prd/35_pricing_engine.md)           | Moteur de règles configurables par tenant sur les frais de livraison                                                                                                                    |
+| **Delivery**        | [docs/contexts/delivery/](docs/contexts/delivery/CONTEXT.md)               | [40](docs/prd/40_livraison_uber_direct.md)    | Uber Direct (quote, course, courier), click & collect                                                                                                                                   |
+| **Multi-Tenant**    | [docs/contexts/multi-tenant/](docs/contexts/multi-tenant/CONTEXT.md)       | [50](docs/prd/50_multi_tenant_saas.md)        | Isolation tenants, RBAC à 3 rôles, users + user_tenants (N-N), Stripe partagé si même SIRET                                                                                             |
+| **Marketplaces**    | [docs/contexts/marketplaces/](docs/contexts/marketplaces/CONTEXT.md)       | [60](docs/prd/60_integration_marketplaces.md) | Agrégation Uber Eats + Deliveroo via Hubrise                                                                                                                                            |
+| **KB Admin**        | [docs/contexts/kb-admin/](docs/contexts/kb-admin/CONTEXT.md)               | [70](docs/prd/70_kb_admin.md)                 | App web unique avec RBAC : pipeline onboarding + CRM + contrats + monitoring (côté root) ; édition menu + cmds + clients masqués + campagnes + pricing + QR (côté KB Manager)           |
+| **Notifications**   | [docs/contexts/notifications/](docs/contexts/notifications/CONTEXT.md)     | [80](docs/prd/80_notifications.md)            | Push web (PWA client), push système APNs/FCM (KB Orders), email, SMS, opt-in/opt-out, segments                                                                                          |
+| **Customer Data**   | [docs/contexts/customer-data/](docs/contexts/customer-data/CONTEXT.md)     | [90](docs/prd/90_donnees_clients_crm.md)      | Base clients globale cross-tenant (MOAT KB) + anti-extraction                                                                                                                           |
 
 ## Relationships
 
@@ -79,8 +79,8 @@ Le client final mangeur. Identifié par email + tel + position géo + prénom + 
 _Avoid_: User (générique), Consumer, End-user
 
 **Order** (Commande) :
-Une transaction validée entre un client final et un tenant. Items + modifiers, total, statut (paid → preparing → ready → delivered/collected), source (direct / marketplace), tenant_id.
-_Avoid_: Purchase, Transaction
+Une transaction validée entre un client final et un tenant. Items + modifiers, total, statut (paid → preparing → ready → delivered/collected), source (direct / marketplace), tenant*id.
+\_Avoid*: Purchase, Transaction
 
 **Direct vs Marketplace** :
 Une cmd est **direct** si passée via la PWA KB. Elle est **marketplace** si arrivée via Uber Eats ou Deliveroo (agrégées via Hubrise V1). Toutes les cmds entrent dans KB Orders, taggées par source.
@@ -112,32 +112,32 @@ Ces règles sont **actées 2026-05-23**. Le linter / la revue de doc doit faire 
 
 ### Termes bannis nus (toujours qualifier ou alias)
 
-| Terme banni | Pourquoi | À utiliser à la place |
-|-------------|----------|------------------------|
-| **`Compte`** (nu) | 5 sens possibles | `compte Stripe`, `compte Uber Direct`, `compte Uber Manager`, **`user`** (pour login KB), **`Stripe Customer`** (pour CB sauvegardée), **`Customer`** (pour client final) |
-| **`CRM`** (nu) | 2 sens incompatibles | **`CRM KB`** ou **`Pipeline + CRM Prospects`** (côté admin, ex `crm_prospects.csv`) ; **`Vue Mes clients`** (côté resto, vue masquée) |
-| **`Manager`** (nu) | Risque confusion UI Uber ↔ rôle KB | **`Uber Eats Manager`** (UI Uber tierce) ou **`KB Manager`** (rôle KB) |
-| **`frais Stripe`** (nu) | Stripe a plein de frais | **`application_fee_amount`** (commission KB, 2,40 € TTC) ou **`frais d'acceptation des paiements`** (= commission monétique, 1,5 % + 0,25 €, à la charge du resto via `on_behalf_of`) |
+| Terme banni             | Pourquoi                           | À utiliser à la place                                                                                                                                                                                                              |
+| ----------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`Compte`** (nu)       | 5 sens possibles                   | `compte Stripe`, `compte Uber Direct`, `compte Uber Manager`, **`user`** (pour login KB), **`Stripe Customer`** (pour CB sauvegardée), **`Customer`** (pour client final)                                                          |
+| **`CRM`** (nu)          | 2 sens incompatibles               | **`CRM KB`** ou **`Pipeline + CRM Prospects`** (côté admin, ex `crm_prospects.csv`) ; **`Vue Mes clients`** (côté resto, vue masquée)                                                                                              |
+| **`Manager`** (nu)      | Risque confusion UI Uber ↔ rôle KB | **`Uber Eats Manager`** (UI Uber tierce) ou **`KB Manager`** (rôle KB)                                                                                                                                                             |
+| **`frais Stripe`** (nu) | Stripe a plein de frais            | **`application_fee_amount`** (commission KB, 2,40 € TTC) ou **`frais d'acceptation des paiements`** (= commission monétique, 1,5 % + 0,25 €, à la charge du resto via direct charge (resto = compte connecté, merchant of record)) |
 
 ### Termes préfixés (qualifier seulement en cross-context)
 
-| Terme | Sens nu par défaut | Préfixe à utiliser si cross-context |
-|-------|---------------------|--------------------------------------|
-| **`Customer`** | Client final mangeur KB (table `customers` globale) | **`Stripe Customer`** dans le contexte [Payment](docs/contexts/payment/CONTEXT.md) (objet API Stripe pour CB sauvegardée cross-tenant) |
-| **`KB Admin`** | Le rôle (`role=kb_admin`) ou l'app — le contexte de phrase tranche en général | **`rôle KB Admin`** vs **`app KitchenBoost Admin`** si ambigu |
-| **`Restaurateur`** | Terme **strictement business** pour parler du gérant | Dans le code / data model / PRD technique → utiliser **`user` (avec `role=kb_manager`)** ou **`Tenant`** selon l'objet désigné. Jamais d'entité `restaurateurs` en DB. |
-| **`Admin`** | Rarement utilisable nu | Préférer **`KB Admin`**, **`rôle KB Admin`**, ou **`app KitchenBoost Admin`** |
+| Terme              | Sens nu par défaut                                                            | Préfixe à utiliser si cross-context                                                                                                                                    |
+| ------------------ | ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`Customer`**     | Client final mangeur KB (table `customers` globale)                           | **`Stripe Customer`** dans le contexte [Payment](docs/contexts/payment/CONTEXT.md) (objet API Stripe pour CB sauvegardée cross-tenant)                                 |
+| **`KB Admin`**     | Le rôle (`role=kb_admin`) ou l'app — le contexte de phrase tranche en général | **`rôle KB Admin`** vs **`app KitchenBoost Admin`** si ambigu                                                                                                          |
+| **`Restaurateur`** | Terme **strictement business** pour parler du gérant                          | Dans le code / data model / PRD technique → utiliser **`user` (avec `role=kb_manager`)** ou **`Tenant`** selon l'objet désigné. Jamais d'entité `restaurateurs` en DB. |
+| **`Admin`**        | Rarement utilisable nu                                                        | Préférer **`KB Admin`**, **`rôle KB Admin`**, ou **`app KitchenBoost Admin`**                                                                                          |
 
 ### Termes contractuels figés (verbatim)
 
 Ces termes viennent du contrat ou de Stripe et **ne se renomment pas** — leur précision dépend du contexte d'usage.
 
-| Terme | Sens | Référence |
-|-------|------|-----------|
-| **`application_fee_amount`** | Commission KB en centimes TTC (240 = 2,40 € TTC = 2 € HT + 20 % TVA). Champ Stripe verbatim. | API Stripe Connect |
-| **`frais d'acceptation des paiements`** | Commission Stripe au resto (1,5 % + 0,25 €), via `on_behalf_of`. Analogue commissions TPE bancaire. | Article 3.2 + 3.3 contrat |
-| **`Prestation A` / `Prestation B` / `Prestation A&B`** | Découpage contractuel des services KB. | `contrat_template.md` |
-| **`Article 2 ter`** | Verrou juridique base clients KB (MOAT). | `contrat_template.md` |
+| Terme                                                  | Sens                                                                                                                                             | Référence                 |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------- |
+| **`application_fee_amount`**                           | Commission KB en centimes TTC (240 = 2,40 € TTC = 2 € HT + 20 % TVA). Champ Stripe verbatim.                                                     | API Stripe Connect        |
+| **`frais d'acceptation des paiements`**                | Commission Stripe au resto (1,5 % + 0,25 €), via direct charge (resto = compte connecté, merchant of record). Analogue commissions TPE bancaire. | Article 3.2 + 3.3 contrat |
+| **`Prestation A` / `Prestation B` / `Prestation A&B`** | Découpage contractuel des services KB.                                                                                                           | `contrat_template.md`     |
+| **`Article 2 ter`**                                    | Verrou juridique base clients KB (MOAT).                                                                                                         | `contrat_template.md`     |
 
 ## Single vs multi-context
 

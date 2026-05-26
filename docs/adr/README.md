@@ -56,7 +56,7 @@ Liste indicative de décisions structurantes **déjà prises** dans les PRDs/con
 - ~~Hubrise dans le scope V1 (vs V2 initial)~~ — **formalisé en [ADR 0009](0009-hubrise-reporte-v2.md) : Hubrise reporté V2** (négo réaliste avec entreprise établie pas envisageable Phase 1)
 - Push marketing V1 (vs V2 initial)
 - Soft-launch progressif V1 (vs V1.A/V1.B gates rigides)
-- 2€ HT flat KB + pass-through frais Stripe via `on_behalf_of`
+- 2€ HT flat KB + pass-through frais Stripe via direct charge (resto = compte connecté, merchant of record)
 - Uber Direct self-signup par tenant V1, Integration Partner V2
 - ~~Multi-tenant `tenant_id` partout + RLS Postgres~~ — **formalisé en [ADR 0010](0010-isolation-multi-tenant-convex-applicative.md) : isolation applicative Convex, pas de RLS**
 - KB pas KDS tiers V1 (BYOD seulement)

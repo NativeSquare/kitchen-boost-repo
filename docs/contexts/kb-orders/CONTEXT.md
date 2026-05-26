@@ -29,8 +29,16 @@ Représentation visuelle d'une cmd sur l'écran KB Orders. Contient : ID, items,
 _Avoid_: Tile, Ticket (peut être confondu avec impression thermique V3)
 
 **Workflow status** :
-État dans la machine d'états d'une cmd côté KB Orders : `nouvelle` → `en préparation` → `prête` → `remise`. Après `remise`, la cmd disparaît de l'écran d'accueil (archivée). Si refusée, état = `refusée` + refund auto.
+État dans la machine d'états d'une cmd côté KB Orders : `nouvelle` → `en préparation` → `prête` → `remise` → état terminal selon le mode : `livrée` (mode livraison) ou `collectée` (mode click & collect / pickup). Après l'état terminal, la cmd disparaît de l'écran d'accueil (archivée). Si refusée, état = `refusée` + refund auto.
 _Avoid_: Status (générique), Etape
+
+**`livrée`** :
+État terminal d'une cmd en **mode livraison** : le coursier Uber Direct a récupéré et la course est complétée. Distinct de `remise` (acte physique au coursier) — c'est la clôture de la commande côté livraison.
+_Avoid_: Delivered, Terminée (générique)
+
+**`collectée`** :
+État terminal d'une cmd en **mode click & collect / pickup** : le client est venu chercher la cmd en boutique. Distinct de `remise` (acte physique au client) — c'est la clôture de la commande côté retrait.
+_Avoid_: Collected, Picked-up, Récupérée
 
 **Acknowledged** (Accepter) :
 Action du cuisinier qui passe une cmd de `nouvelle` à `en préparation`. Stoppe le beep en boucle.
@@ -46,10 +54,11 @@ _Avoid_: Cancel (ambigu — peut venir du client), Reject
 
 **Remise** :
 Acte physique de donner la cmd prête. Deux variantes selon mode de la cmd :
+
 - **Remise au coursier** (mode livraison) : courier Uber Direct récupère.
 - **Remise au client** (mode click & collect) : client vient chercher en boutique.
-Le bouton de transition `prête → remise` est adapté au mode.
-_Avoid_: Handover, Dispatch
+  Le bouton de transition `prête → remise` est adapté au mode.
+  _Avoid_: Handover, Dispatch
 
 **Mode kiosque tablette** :
 Configuration de l'app native sur tablette cuisine en plein écran (lock task Android / guided access iOS / pinning). Empêche sortie accidentelle. Auth via code PIN raccourci au lieu d'email/password. Beep volume max, écran always-on.

@@ -47,7 +47,7 @@
 ### 3. Checkout client final (PWA)
 
 - Stripe Elements embed (PaymentIntent côté backend)
-- Direct charge sur compte resto avec `on_behalf_of = acct_resto` + `application_fee_amount`
+- Direct charge créé sur le compte resto via l'en-tête `Stripe-Account: acct_resto` (SDK `{ stripeAccount }`) + `application_fee_amount`
 - Resto reçoit montant TTC client moins frais d'acceptation (commission monétique ~1,5% + 0,25€) moins application_fee KB (2,40€ TTC)
 - Webhook `payment_intent.succeeded` → trigger création order + Uber Direct
 
@@ -134,7 +134,7 @@
 ## Notes / décisions actées
 
 - **KB pas merchant of record** : Direct charges Stripe Connect Express → resto est seul vendeur. Pas d'agrément ACPR. Pas de risque TVA litigieux.
-- **Pass-through frais Stripe** : Le resto paie les frais Stripe (1,5% + 0,25€) via `on_behalf_of=<acct_resto>` (cf. [feedback_kb_commission_model.md](../../.claude/memory/feedback_kb_commission_model.md)).
+- **Pass-through frais Stripe** : Le resto paie les frais Stripe (1,5% + 0,25€) via la propriété native du direct charge (resto = compte connecté encaisseur, merchant of record) (cf. [feedback_kb_commission_model.md](../../.claude/memory/feedback_kb_commission_model.md)).
 - **Commission KB en TTC** : `application_fee_amount` est en centimes TTC. 2,00€ HT × 1,20 TVA = 2,40€ TTC = 240 centimes. Stocké en DB en HT pour reporting.
 - **Article 3.2 contrat** : "le Partenaire perçoit (...) diminué des frais d'acceptation des paiements (commission monétique) dus à Stripe (...) et de la commission de NativeSquare SAS définie à l'Article 3.1".
 - **Stripe agit comme PSP** au sens articles L.521-1 et suivants du Code monétaire et financier.

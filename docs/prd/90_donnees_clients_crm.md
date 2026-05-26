@@ -103,7 +103,7 @@ Toute décision produit qui touche à ce bloc doit être prise avec Alex.
 
 - Droit d'accès : client peut demander ses données via lien dans email/push ou form privacy
 - Droit de rectification : éditable par client dans profil PWA
-- Droit d'effacement : sur demande à `privacy@kitchenboost.fr`, traité en 30j max. **Décision Q90-Q3 actée 2026-05-23 : anonymisation irréversible** (nullification email/tel/nom/adresse/lat-lng/IP sur `customers`, `orders` historiques préservées pour compta 10 ans + KPI resto). Pas de hard delete V1.
+- Droit d'effacement : sur demande à `privacy@kitchenboost.fr`, traité en 30j max. **Décision Q90-Q3 actée 2026-05-23 : anonymisation irréversible** (nullification email/tel/prénom/adresse/lat-lng + IDs d'inscription push sur `customers`, conformément au schéma mergé #27/#46 ; `orders` historiques préservées pour compta 10 ans + KPI resto). Pas de champ `nom`/`lastName` ni `IP` en V1 (donc rien à nullifier de ce côté). Pas de hard delete V1.
 - Droit de portabilité : export JSON de ses propres données (V2)
 - Droit d'opposition : opt-out marketing (V1), opt-out transactionnel impossible (besoin légal pour gérer cmds)
 

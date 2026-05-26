@@ -141,7 +141,7 @@ Output :
 
 - **Règle avec condition contradictoire** : ex `total_panier > 50` ET `total_panier < 30`. Détection au save, refus.
 - **Boucle infinie de règles** : pas applicable car règles indépendantes (pas de chainage).
-- **Resto crée 100 règles** : performance dégradée à l'évaluation. Soft limit 20 règles, hard limit 50.
+- **Resto crée 100 règles** : performance dégradée à l'évaluation. Pas de limite produit sur le nombre de règles (acté 2026-05-25, cf. l.193) ; uniquement un plafond technique généreux pour protéger l'évaluation.
 - ~~**Règle "livraison offerte client"**~~ : **retirée du moteur V1** (Q35-Q1 acté). KB ne subventionne jamais. Si subvention exceptionnelle, hors moteur (avoir manuel).
 - **Distance hors zone Uber Direct** : règle non évaluée, refus livraison au checkout (cf. [40](40_livraison_uber_direct.md)).
 - **Cmd cross-tenant exotique** : pas applicable, règles 100% scopées par tenant.
@@ -174,14 +174,14 @@ Output :
 
 ## Open questions
 
-| Q         | Question                                                                                                                                                                                                      | Deadline | Owner   |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------- |
-| ~~35-Q1~~ | ~~Action "livraison offerte client" (=promo KB) : autorisé V1 ou V2 ?~~ **ACTÉ 2026-05-23 : retirée du moteur V1, KB ne subventionne jamais.**                                                                | —        | —       |
-| ~~35-Q2~~ | ~~Priorité règles multiples : 1ère qui matche OU plus avantageuse client ?~~ **ACTÉ 2026-05-23 : la règle qui minimise les frais facturés au client gagne. Jamais 2 règles cumulées.**                        | —        | —       |
-| ~~35-Q3~~ | ~~Pricing dynamique sur items~~ **ACTÉ 2026-05-23 : hors scope du moteur Pricing V1/V2. Le resto édite ses prix items manuellement dans son menu.**                                                           | —        | —       |
-| ~~35-Q4~~ | ~~Affichage prix barré "5,90€" si offert~~ **ACTÉ 2026-05-23 : prix barré + "Offert par [Nom resto]", jamais "KitchenBoost" côté client.**                                                                    | —        | —       |
-| ~~35-Q5~~ | ~~Resto modifie une règle alors qu'une cmd est en cours de checkout~~ **ACTÉ 2026-05-23 : latching au clic "Payer", prompt obligatoire si prix livraison devient moins avantageux entre panier et paiement.** | —        | —       |
-| 35-Q6     | Limite max règles par resto : 20 / 50 / illimité ?                                                                                                                                                            | V1       | Produit |
+| Q         | Question                                                                                                                                                                                                      | Deadline | Owner |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ----- |
+| ~~35-Q1~~ | ~~Action "livraison offerte client" (=promo KB) : autorisé V1 ou V2 ?~~ **ACTÉ 2026-05-23 : retirée du moteur V1, KB ne subventionne jamais.**                                                                | —        | —     |
+| ~~35-Q2~~ | ~~Priorité règles multiples : 1ère qui matche OU plus avantageuse client ?~~ **ACTÉ 2026-05-23 : la règle qui minimise les frais facturés au client gagne. Jamais 2 règles cumulées.**                        | —        | —     |
+| ~~35-Q3~~ | ~~Pricing dynamique sur items~~ **ACTÉ 2026-05-23 : hors scope du moteur Pricing V1/V2. Le resto édite ses prix items manuellement dans son menu.**                                                           | —        | —     |
+| ~~35-Q4~~ | ~~Affichage prix barré "5,90€" si offert~~ **ACTÉ 2026-05-23 : prix barré + "Offert par [Nom resto]", jamais "KitchenBoost" côté client.**                                                                    | —        | —     |
+| ~~35-Q5~~ | ~~Resto modifie une règle alors qu'une cmd est en cours de checkout~~ **ACTÉ 2026-05-23 : latching au clic "Payer", prompt obligatoire si prix livraison devient moins avantageux entre panier et paiement.** | —        | —     |
+| ~~35-Q6~~ | ~~Limite max règles par resto : 20 / 50 / illimité ?~~ **ACTÉ 2026-05-25 : pas de limite produit ; 1 à 5 règles en pratique, plafond technique généreux only.**                                               | —        | —     |
 
 ## Notes / décisions actées
 

@@ -118,7 +118,7 @@ Pipeline DB-driven dans `KitchenBoost Admin` (source de vérité opérationnelle
 - Devis présenté (inclut pitch)
 - Contrat généré (via `tools/generate_contract.py`)
 - Contrat envoyé Odoo
-- Contrat signé (webhook Odoo ou check manuel)
+- Contrat signé (check manuel V1 ; webhook Odoo = V2, cf. Q70-Q8)
 - KBIS reçu
 - Pièce d'identité reçue
 - RIB reçu
