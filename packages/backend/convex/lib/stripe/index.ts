@@ -29,6 +29,25 @@
  * (action↔mutation split, STACK §2.3). Every webhook side effect is wrapped in
  * `withIdempotence(ctx, "stripe", …)`.
  *
+ * 2.5-D — saved card reusable cross-resto (`savedCard.ts`, PRD 30, payment CONTEXT
+ * "Stripe Customer (cross-tenant)" / "Sauvegarde carte", POC #6). The Stripe
+ * `Customer` (`cus_…`) lives at the KB PLATFORM account level (NOT tenant), so it is
+ * stored on the GLOBAL `customers` MOAT fiche (no `tenantId`) with the saved
+ * PaymentMethod (`pm_…`). Two CUSTOMER-scoped actions (scope self — the client only
+ * operates on its OWN fiche / OWN order, ADR 0010):
+ *   - `saveCard` — create-or-reuse the platform Customer + attach the front-collected
+ *     PaymentMethod (Stripe SetupIntent is front, hors scope) + stamp `cus_`/`pm_` on
+ *     the caller's OWN fiche.
+ *   - `payWithSavedCard` — CLONE the platform PaymentMethod to the resto's connected
+ *     account (`paymentMethods.create({ customer, payment_method }, { stripeAccount }`,
+ *     POC #6), then a confirmed direct charge on that account with the cloned card +
+ *     the immutable fee 240 (Q30-Q1, no `on_behalf_of`); the original platform PM
+ *     stays intact (re-clonable to resto Y); persists the `payments` row (2.5-B
+ *     contract). The customer-scoped guard `assertOwnSavedCardOrder` (the cross-tenant
+ *     fuzz target) refuses a non-owner / cross-tenant / not-ready / card-less caller
+ *     before any Stripe call. These guarded query/mutation/action functions are
+ *     registered by module path — not re-exported here.
+ *
  * 2.5-C/D — Refund (`refund.ts`). The payment-domain MECHANISM behind a TOTAL,
  * IMMEDIATE refund (PRD 30 §5, payment CONTEXT "Refund"/"Cmd avortée"). Two trigger
  * paths, both ending in a Stripe `POST /refunds` on the resto's CONNECTED account

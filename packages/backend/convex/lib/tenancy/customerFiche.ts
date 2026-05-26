@@ -89,6 +89,25 @@ export async function patchCustomerConsent(
 }
 
 /**
+ * 2.5-D — stamp the saved-card link (the platform Stripe `Customer` + the
+ * PaymentMethod saved on it) onto a fiche the caller already resolved as its OWN
+ * (the `customerId` MUST come from a self-scoped read keyed on `ctx.actor.userId`).
+ * The single sanctioned `ctx.db.patch` site for these fields on the GLOBAL
+ * `customers` table; the business module `lib/stripe` (NOT exempt) calls THIS
+ * instead of raw `ctx.db` (ADR 0010). `stripeCustomerId` is optional so a re-save
+ * with the same platform Customer only updates the PaymentMethod. The narrow patch
+ * type keeps it confined to the saved-card surface — it cannot overwrite identity
+ * or captation fields.
+ */
+export async function setCustomerSavedCard(
+  ctx: MutationCtx,
+  customerId: Id<"customers">,
+  patch: { stripeCustomerId?: string; savedPaymentMethodId: string },
+): Promise<void> {
+  await ctx.db.patch(customerId, patch);
+}
+
+/**
  * 2.1-F — ROOT read of ANY `customers` fiche by id (support / RGPD, US #22). The
  * SELF helpers above key on `userId`; this one reads by document id and is reached
  * ONLY through the root `kbAdminQuery` wrapper (KB = responsable de traitement
@@ -117,6 +136,11 @@ export async function readCustomerFicheById(
  *    the Wallet serial is itself a cross-device identity bridge (ADR 0008/0012)
  *    and the reachability is PII-adjacent. Cleared in ONE geste (the object is
  *    modelled as a single optional field exactly for this — table customers.ts).
+ *  - The saved-card link (`stripeCustomerId` / `savedPaymentMethodId`, 2.5-D): a
+ *    Stripe Customer / PaymentMethod id is a payment IDENTITY of the person, not an
+ *    accounting record (the accounting trace lives on the `payments` table via
+ *    `paymentIntentId`), so it is nullified here — no dangling payment identity
+ *    survives the erasure.
  *
  * PRESERVES — accounting (Code de commerce L123-22, 10 ans) + KPI resto:
  *  - `userId`, `createdAt`, `cgvAcceptedAt` / `cgvVersionHash` (CNIL consent
@@ -144,6 +168,8 @@ export async function anonymizeCustomerFiche(
     lat: undefined,
     lng: undefined,
     pushEnrollment: undefined,
+    stripeCustomerId: undefined,
+    savedPaymentMethodId: undefined,
     anonymizedAt: at,
   });
 }

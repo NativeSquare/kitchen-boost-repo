@@ -81,6 +81,17 @@ export const customers = defineTable({
   // personal fields above have been nullified.
   anonymizedAt: v.optional(v.number()),
 
+  // 2.5-D — saved card reusable cross-resto (Stripe Customer cross-tenant, PRD 30,
+  // payment CONTEXT "Stripe Customer (cross-tenant)"). The Stripe `Customer` lives
+  // at the KB PLATFORM account level (NOT tenant) — so it naturally belongs on this
+  // GLOBAL fiche, which carries no tenantId. `stripeCustomerId` (`cus_…`) is the
+  // platform Customer; `savedPaymentMethodId` (`pm_…`) is the card SAVED on it. At
+  // checkout on resto X, KB CLONES that PaymentMethod to resto X's connected account
+  // and direct-charges the clone (POC #6) — the original here stays intact, re-
+  // clonable to resto Y next time. Both optional: a fiche may have no saved card.
+  stripeCustomerId: v.optional(v.string()),
+  savedPaymentMethodId: v.optional(v.string()),
+
   // Push enrollment / reachability (ADR 0012) — identity + joignabilité, not the
   // sending credentials. Single object → one-geste nullification on anonymise.
   pushEnrollment: v.optional(
