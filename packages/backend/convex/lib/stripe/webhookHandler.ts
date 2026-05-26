@@ -20,6 +20,10 @@ import { verifyStripeSignature } from "./signature";
  *     - `charge.refunded` (2.5-C) → DISPATCH `applyChargeRefunded` (reconcile a
  *       refund made outside KB — e.g. the resto's Stripe Dashboard — to the local
  *       `payments` row, idempotently via `withIdempotence`);
+ *     - `charge.dispute.created` (2.5-E) → DISPATCH `applyDisputeCreated`
+ *       (chargeback MONITORING only — KB is not merchant of record: no evidence
+ *       relay/storage, no KB Admin UI) then post ONE ops Slack alert with the
+ *       recap (ID cmd / montant / motif / deadline);
  *     - anything else → 200, acknowledged + ignored.
  *  3. exactly-once is enforced inside each internal mutation via
  *     `withIdempotence(ctx, "stripe", eventId, …)` (Stripe at-least-once).
@@ -110,6 +114,68 @@ export const stripeWebhook = httpAction(async (ctx, request) => {
       internal.lib.stripe.refund.applyChargeRefunded,
       { eventId, paymentIntentId, refundId },
     );
+    return new Response(null, { status: 200 });
+  }
+
+  // 2.5-E — Chargeback monitoring. The event's data object is the Dispute; resolve
+  // the disputed `payment_intent` + the recap fields (amount / reason / deadline)
+  // and apply the idempotent monitoring mutation. KB is NOT merchant of record →
+  // monitoring only: NO evidence relay, NO storage, NO KB Admin UI (PRD 30 §6 +
+  // Q30-Q6). The tenant is resolved downstream from the paymentIntentId (ADR 0010).
+  if (event.type === "charge.dispute.created") {
+    const dispute = event.data?.object ?? {};
+    const paymentIntentId =
+      typeof dispute.payment_intent === "string"
+        ? dispute.payment_intent
+        : null;
+    if (eventId === null || paymentIntentId === null) {
+      return new Response("Malformed event", { status: 400 });
+    }
+    const amount = typeof dispute.amount === "number" ? dispute.amount : 0;
+    const currency =
+      typeof dispute.currency === "string" ? dispute.currency : "eur";
+    const reason =
+      typeof dispute.reason === "string" ? dispute.reason : "unknown";
+    const evidence = dispute.evidence_details as
+      | { due_by?: unknown }
+      | undefined;
+    const dueBy =
+      typeof evidence?.due_by === "number" ? evidence.due_by : undefined;
+
+    // Exactly-once monitoring: the mutation reports whether to alert (false on a
+    // duplicate delivery or an unknown intent), so Slack is posted at most once.
+    const outcome = await ctx.runMutation(
+      internal.lib.stripe.dispute.applyDisputeCreated,
+      { eventId, paymentIntentId, amount, currency, reason, dueBy },
+    );
+
+    if (outcome.alert) {
+      const webhookUrl = process.env.SLACK_OPS_WEBHOOK_URL;
+      if (webhookUrl) {
+        const deadline =
+          outcome.dueBy === undefined
+            ? "non communiquée"
+            : new Date(outcome.dueBy * 1000).toISOString().slice(0, 10);
+        const euros = (outcome.amount ?? 0) / 100;
+        await fetch(webhookUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text:
+              `:rotating_light: Chargeback ouvert (charge.dispute.created) — ` +
+              `tenant \`${outcome.tenantId}\`, cmd \`${outcome.orderId}\`. ` +
+              `Montant ${euros.toFixed(2)} ${(outcome.currency ?? "eur").toUpperCase()}, ` +
+              `motif \`${outcome.reason}\`, deadline ${deadline}. ` +
+              `KB n'intervient pas (pas merchant of record) — contacter le resto ` +
+              `pour qu'il réponde via son Stripe Dashboard.`,
+          }),
+        });
+      } else {
+        console.warn(
+          `[stripe] charge.dispute.created for tenant ${outcome.tenantId} but SLACK_OPS_WEBHOOK_URL is unset`,
+        );
+      }
+    }
     return new Response(null, { status: 200 });
   }
 
