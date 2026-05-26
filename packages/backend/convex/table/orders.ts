@@ -47,6 +47,23 @@ export const orderStatus = v.union(
 );
 
 /**
+ * The closed set of refusal reasons a resto picks when refusing a `nouvelle` order
+ * (PRD 20 §6 + kb-orders CONTEXT "Refusal"). NOT invented — these are the four
+ * documented choices: rupture (out of stock), fermeture (closed), surcharge
+ * (kitchen overloaded), autre (other). Persisted as the `reason` string on the
+ * `refusée` `orderEvents` row; this union guards the `refuse` mutation boundary so
+ * an arbitrary reason cannot be stored.
+ */
+export const refusalReason = v.union(
+  v.literal("rupture"),
+  v.literal("fermeture"),
+  v.literal("surcharge"),
+  v.literal("autre"),
+);
+
+export type RefusalReason = Infer<typeof refusalReason>;
+
+/**
  * Fulfilment mode chosen by the client at checkout (PRD 10 §3 mode toggle). The
  * `deliveries` table uses `delivery` | `click_collect`; here the order carries
  * the customer-facing `delivery` | `pickup` (= click & collect) per the issue

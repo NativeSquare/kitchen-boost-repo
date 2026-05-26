@@ -30,6 +30,16 @@
  *    `customerOrdersPerTenant`. Consumed idempotently via the foundation
  *    `withIdempotence` (1.x-F) so a replayed event neither re-transitions nor
  *    double-counts. NO Stripe call here — that frontier is 2.5.
+ *  - workflow (2.3-D): the kitchen state machine `acknowledge` / `markPrepared` /
+ *    `markHandedOff` + the reads `tenantOrders` / `tenantOrderHistory` / `myOrders`
+ *    / `myOrder` (api.lib.orders.workflow.*).
+ *  - workflow (2.3-E): `refuse` (api.lib.orders.workflow.refuse) — the resto
+ *    refuses a `nouvelle` order in ONE atomic transaction: transition
+ *    `nouvelle → refusée` (terminal, state-machine guarded) + EMIT the refund order
+ *    toward 2.5 (the `refusée` orderEvent carrying the closed-set `reason` IS that
+ *    order — no Stripe call, no `payments` table touched here; the refund EXECUTION
+ *    is 2.5/#49) + EMIT the client `refund_issued` notification (queued; the send is
+ *    2.7). `reason` ∈ {rupture, fermeture, surcharge, autre} (`refusalReason`).
  *
  * The row shapes (status workflow, mode, source, frozen modifier, pricing
  * snapshot) live in the table validators, surfaced here as the module's typed
@@ -41,9 +51,11 @@ export {
   type OrderSource,
   type OrderStatus,
   type PricingSnapshot,
+  type RefusalReason,
   frozenModifier,
   orderMode,
   orderSource,
   orderStatus,
   pricingSnapshot,
+  refusalReason,
 } from "../../table/orders";
