@@ -244,7 +244,7 @@ V2 :
 - Vue arborescente : **Catégories → Items → Modifiers**
 - CRUD complet :
   - **Catégorie** : nom, ordre, icône
-  - **Item** : nom, description, prix HT/TTC, photo (upload), disponibilité (toggle out of stock), tags (végé, vegan, allergènes), modifiers liés
+  - **Item** : nom, description, **prix TTC** (valeur unique en centimes ; acté 2026-05-26 — le resto saisit/pense en TTC, et il est merchant of record sur la vente → KB ne gère pas de split HT sur les items ; pas de champ taux-TVA V1, le détail TVA de la vente relève du resto), photo (upload), disponibilité (toggle out of stock), tags (végé, vegan, allergènes), modifiers liés
   - **Modifier** : nom, type (single / multi choice), required/optional, options (avec prix delta)
 - **Personnalisations (modifiers)** : édition des choix associés aux items (sauces, suppléments, cuisson), exactement comme Uber Manager. Pas de système séparé de suggestions cross-sell. Le terme "upsell" désigne ici l'effet business (augmentation panier moyen via modifiers payants), pas une feature UI distincte.
 - Versioning : V2 (rollback possible)

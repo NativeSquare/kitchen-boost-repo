@@ -19,7 +19,7 @@ Champ texte libre **unique au niveau panier** (pas par item) que le client peut 
 _Avoid_: Special instructions, Commentaire, Notes per item
 
 **Item** :
-Un produit du menu vendable (ex: "Smash Burger Double"). Possède un prix de base, des modifiers optionnels ou obligatoires, une disponibilité ([[Item out of stock]]), des allergènes.
+Un produit du menu vendable (ex: "Smash Burger Double"). Possède un prix de base (`basePrice`, **centimes TTC, valeur unique** — acté 2026-05-26 ; le resto = merchant of record sur la vente, KB ne gère pas de split HT), des modifiers optionnels ou obligatoires, une disponibilité ([[Item out of stock]]), des allergènes.
 _Avoid_: Product, Dish, Plat (interne FR seulement), SKU
 
 **Allergènes** :
