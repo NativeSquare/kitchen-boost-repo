@@ -201,3 +201,26 @@ export const notificationEvents = defineTable({
   .index("by_customer", ["customerId"])
   // A tenant's events for one customer (re-engagement history, rate-limit reads).
   .index("by_tenant_customer", ["tenantId", "customerId"]);
+
+// ── campaignLaunches ──────────────────────────────────────────────────────────
+
+/**
+ * 2.7-D — one MARKETING CAMPAIGN LAUNCH per resto (PRD 80 §7 anti-anomaly). The
+ * send journal (`notificationEvents`) is per-SEND (one row per targeted customer);
+ * the anti-anomaly guard reasons about per-resto LAUNCHES (frequency + recipient
+ * count), so it needs a coarser, one-row-per-launch trail. A tenant campaign
+ * carries the resto's `tenantId`; a cross-tenant KB campaign carries the tenant it
+ * was fired AT (the geo-target), so the per-resto cadence reads are tenant-keyed.
+ *
+ * Isolation (ADR 0010): carries `tenantId`, TENANT-SCOPED, indexed `by_tenant`,
+ * reached ONLY through the sanctioned `lib/tenancy/campaignsStore` seam — never
+ * raw `ctx.db` in the business module. NO nominative recipient is stored, only the
+ * COUNT (the MOAT): a resto's anomaly trail can never become a customer list.
+ */
+export const campaignLaunches = defineTable({
+  tenantId: v.id("tenants"),
+  scope: templateScope,
+  launchedAt: v.number(),
+  // Count ONLY — never a recipient identity (the MOAT, ADR 0010 / PRD 90 §3).
+  recipients: v.number(),
+}).index("by_tenant", ["tenantId"]);

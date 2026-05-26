@@ -298,3 +298,45 @@ describe("2.7-A notificationEvents — send journal, tenant + customer indexed",
     ).rejects.toThrow();
   });
 });
+
+describe("2.7-D campaignLaunches — per-resto anti-anomaly history (PRD 80 §7)", () => {
+  let t: ReturnType<typeof convexTest>;
+  let tenantId: Id<"tenants">;
+  beforeEach(async () => {
+    t = convexTest(schema, modules);
+    const seed = await seedTenantAndCustomer(t);
+    tenantId = seed.tenantId;
+  });
+
+  it("records a campaign launch (tenant scope) with its recipient count", async () => {
+    const id = await t.run((ctx) =>
+      ctx.db.insert("campaignLaunches", {
+        tenantId,
+        scope: "tenant",
+        launchedAt: Date.now(),
+        recipients: 42,
+      }),
+    );
+    const row = await t.run((ctx) => ctx.db.get(id));
+    expect(row?.scope).toBe("tenant");
+    expect(row?.recipients).toBe(42);
+  });
+
+  it("is queryable by_tenant for the anti-anomaly read", async () => {
+    await t.run((ctx) =>
+      ctx.db.insert("campaignLaunches", {
+        tenantId,
+        scope: "tenant",
+        launchedAt: Date.now(),
+        recipients: 5,
+      }),
+    );
+    const rows = await t.run((ctx) =>
+      ctx.db
+        .query("campaignLaunches")
+        .withIndex("by_tenant", (q) => q.eq("tenantId", tenantId))
+        .collect(),
+    );
+    expect(rows).toHaveLength(1);
+  });
+});
