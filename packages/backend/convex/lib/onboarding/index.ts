@@ -32,6 +32,13 @@
  *    wires the pure evaluator into the ONLY automatic transition (Acquisition →
  *    Préparation). Callers invoke the mutation as
  *    `api.lib.onboarding.pipeline.applyClosing`.
+ *  - 2.9-E tenant provisioning wizard (PRD 70 §3.6, multi-tenant CONTEXT
+ *    "Provisioning"): `provisionTenant` (`kbAdminMutation`, root-only) turns a
+ *    prospect into a live tenant (unique slug → tenant → KB Manager via
+ *    `userTenants` → customDomain public face + bootstrap sub-domain fallback →
+ *    QR data → soft Stripe `account_link` flag → prospect back-link), invoked as
+ *    `api.lib.onboarding.provisioning.provisionTenant`. Plus the pure helpers
+ *    `generateSlug` / `tenantPwaUrl` / `tenantBootstrapUrl`.
  */
 export {
   changePhase,
@@ -52,3 +59,9 @@ export {
   evaluateClosing,
   isLegalPhaseTransition,
 } from "./pipeline";
+export {
+  generateSlug,
+  provisionTenant,
+  tenantBootstrapUrl,
+  tenantPwaUrl,
+} from "./provisioning";
