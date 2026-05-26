@@ -31,6 +31,25 @@ const notFound = (what: string) =>
   });
 
 // ---------------------------------------------------------------------------
+// tenants (GLOBAL table) — system-job fan-out
+// ---------------------------------------------------------------------------
+
+/**
+ * Every tenant id, for a SYSTEM job that fans out per tenant (the next-day
+ * reactivation cron, which has no actor and processes each tenant in turn). The
+ * `tenants` table is GLOBAL (identity/lifecycle, no `tenantId` scoping key), and
+ * this read lives in the sanctioned `lib/tenancy/**` seam — never raw `ctx.db`
+ * in the cron business code (ADR 0010). Each id is then fed BACK through the
+ * tenant-scoped helpers, so isolation still holds per tenant.
+ */
+export async function listAllTenantIds(
+  ctx: QueryCtx | MutationCtx,
+): Promise<Id<"tenants">[]> {
+  const rows = await ctx.db.query("tenants").collect();
+  return rows.map((t) => t._id);
+}
+
+// ---------------------------------------------------------------------------
 // menuCategories
 // ---------------------------------------------------------------------------
 
@@ -253,6 +272,47 @@ export async function patchTenantItem(
   if (existing.available && !body.available) {
     patch.unavailableSince = Date.now();
   } else if (!existing.available && body.available) {
+    patch.unavailableSince = undefined;
+  }
+  await ctx.db.patch(itemId, patch);
+}
+
+/**
+ * List the UNAVAILABLE items of one tenant (the candidate set the next-day
+ * auto-reactivation walks). Keyed on `by_tenant`, filtered in memory to
+ * `available === false` (the toggle-off rows). Scoped to `tenantId` by
+ * construction — the cron passes each tenant id explicitly (ADR 0010).
+ */
+export async function listTenantUnavailableItems(
+  ctx: QueryCtx | MutationCtx,
+  tenantId: Id<"tenants">,
+): Promise<Doc<"menuItems">[]> {
+  const rows = await ctx.db
+    .query("menuItems")
+    .withIndex("by_tenant", (q) => q.eq("tenantId", tenantId))
+    .collect();
+  return rows.filter((r) => !r.available);
+}
+
+/**
+ * Flip ONE of the tenant's items between available / unavailable, stamping
+ * `unavailableSince` on the off transition and clearing it on the on transition
+ * (idempotent — re-setting the same value is a no-op patch). Re-checks tenant
+ * ownership (NOT_FOUND for a missing/foreign id), so a foreign item is never
+ * reachable. `nowMs` is injected so the stamp is deterministic in tests.
+ */
+export async function setTenantItemAvailability(
+  ctx: MutationCtx,
+  tenantId: Id<"tenants">,
+  itemId: Id<"menuItems">,
+  available: boolean,
+  nowMs: number,
+): Promise<void> {
+  const item = await requireTenantItem(ctx, tenantId, itemId);
+  const patch: Partial<Doc<"menuItems">> = { available };
+  if (item.available && !available) {
+    patch.unavailableSince = nowMs;
+  } else if (!item.available && available) {
     patch.unavailableSince = undefined;
   }
   await ctx.db.patch(itemId, patch);

@@ -40,7 +40,19 @@
  *  - `serviceHours.isOpenNow` — PUBLIC, unauthenticated gate read by the checkout
  *    (out of window ⇒ payment blocked). Decision is a pure function
  *    (`isWithinServiceHours`), tested deterministically on injected clocks.
+ *
+ * 2.2-D — [[Item out of stock]] toggle + auto-réactivation au lendemain (PRD 10
+ * §edge "Item out of stock", client-ordering CONTEXT, multi-tenant CONTEXT
+ * `staff`, ADR 0010):
+ *  - `availability.setItemAvailability` — `tenantMutation` (kb_manager + staff)
+ *    flipping an item's `available` and stamping / clearing `unavailableSince`.
+ *  - The next-day auto-reactivation runs from the `crons.ts` Convex cron, which
+ *    calls this module's `reactivateAllTenantsUnavailableItems` per tenant; the
+ *    decision is the pure `itemsToReactivate` (windows + items + Europe/Paris
+ *    clock → ids), tested in isolation. The reactivation helpers are plain
+ *    functions (NOT registered Convex functions) — re-exported here for the cron.
  */
+export * as availability from "./availability";
 export * as catalog from "./catalog";
 export * as categories from "./categories";
 export * as items from "./items";
