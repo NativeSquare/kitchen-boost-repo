@@ -17,13 +17,15 @@ d'intégration (2.5–2.8) ré-ajoute ses propres deps via sa PR.
 | #4                                    | ~~cookie cross-sous-domaine~~                              | —                      | ⛔ **RETIRÉ 2026-05-25** (domaine de marque custom par resto — [ADR 0008](../adr/0008-identite-customer-cookie-device-only-v1.md)) |
 | [#5](poc-5-httprouter-path-params.md) | `httpRouter` supporte les path params per-tenant ?         | webhook per-tenant 2.6 | ✅ **OK via `pathPrefix`** (`:param` natif non supporté)                                                                           |
 | [W](poc-wallet-real-sign.md)          | signature Wallet **réelle** (Apple `.pkpass` + Google JWT) | génération 2.8 (#68)   | ✅ **OK** (vrais certs ; install device = e2e manuel)                                                                              |
-| #6                                    | clone Stripe `PaymentMethod` cross-account ?               | saved-card 2.5 (#59)   | ⏳ **Phase B** (nécessite Stripe **Connect activé**)                                                                               |
+| [#6](poc-6-stripe-clone.md)           | clone Stripe `PaymentMethod` cross-account ?               | saved-card 2.5 (#59)   | ✅ **OK** (Connect activé, profil platform ; #59 validé)                                                                           |
 
 **Bilan : aucun POC en échec → aucun offload Next.js Node requis pour 2.5/2.6/2.7/2.8.**
 La crypto webhook vit dans le runtime Convex par défaut (`httpAction` + `crypto.subtle`) ; web-push et
 passkit-generator vivent dans des actions `"use node"`.
 
-**Phase B (secrets réels, 2026-05-26) :** signature Wallet Apple + Google validée avec les vrais certs
-→ **#68 passé `ready-for-agent`** (chaîne Wallet ouverte). POC #6 (carte réutilisable cross-resto) reste
-à valider — bloqué tant que **Stripe Connect** n'est pas activé sur le compte plateforme ; s'il échoue
-→ fallback Apple/Google Pay only (#59 abandonné V1).
+**Phase B (secrets réels, 2026-05-26) — TERMINÉE :**
+
+- Signature Wallet Apple + Google validée avec les vrais certs → **#68 `ready-for-agent`** (chaîne Wallet ouverte).
+- POC #6 clone Stripe cross-account validé (Stripe **Connect activé**, profil **platform** = frais à la charge du resto = direct charge) → **#59 `ready-for-agent`**.
+
+**Tous les POCs sont tranchés. Aucun fallback Next.js Node requis.**
