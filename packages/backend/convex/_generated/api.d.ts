@@ -51,6 +51,7 @@ import type * as lib_notifications_index from "../lib/notifications/index.js";
 import type * as lib_notifications_marketingCascade from "../lib/notifications/marketingCascade.js";
 import type * as lib_notifications_marketingRateLimit from "../lib/notifications/marketingRateLimit.js";
 import type * as lib_notifications_notify from "../lib/notifications/notify.js";
+import type * as lib_notifications_reachabilityFeedback from "../lib/notifications/reachabilityFeedback.js";
 import type * as lib_notifications_templateBounds from "../lib/notifications/templateBounds.js";
 import type * as lib_notifications_unsubscribe from "../lib/notifications/unsubscribe.js";
 import type * as lib_onboarding_crm from "../lib/onboarding/crm.js";
@@ -168,6 +169,7 @@ declare const fullApi: ApiFromModules<{
   "lib/notifications/marketingCascade": typeof lib_notifications_marketingCascade;
   "lib/notifications/marketingRateLimit": typeof lib_notifications_marketingRateLimit;
   "lib/notifications/notify": typeof lib_notifications_notify;
+  "lib/notifications/reachabilityFeedback": typeof lib_notifications_reachabilityFeedback;
   "lib/notifications/templateBounds": typeof lib_notifications_templateBounds;
   "lib/notifications/unsubscribe": typeof lib_notifications_unsubscribe;
   "lib/onboarding/crm": typeof lib_onboarding_crm;

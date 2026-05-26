@@ -92,6 +92,7 @@ export {
   insertTenantNotificationEvent,
   listTenantCustomerNotificationEvents,
   listTenantNotificationEvents,
+  markTenantNotificationEventInactive,
 } from "./notificationsStore";
 export {
   type CustomerCampaignFields,

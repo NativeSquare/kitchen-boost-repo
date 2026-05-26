@@ -78,6 +78,16 @@ export {
  *    cross-tenant (Wallet > Email, web-push excluded). A resto can NEVER fire it.
  *  - `unsubscribe` — self-scoped global marketing opt-out (ADR 0005).
  *
+ * 2.7-E — the REACHABILITY status FEEDBACK to 2.1 (#16), the source of truth (ADR
+ * 0012, PRD 80 §7). 2.7 owns the SENDING, not the reachability, but it discovers
+ * when a push channel dies (web-push 410 Gone) and must report it. `recordChannelInactive`
+ * (`tenantMutation`, operational) writes `revoked` SIDE 2.1 via 2.1's by-id seam
+ * (referencing the customer by id, never 2.7-local, never 2.1's tables directly)
+ * and marks the originating `notificationEvents` row `inactive_endpoint`; the
+ * cascade then re-derives the next channel from 2.1 on its own. `pushStatusPatchForDeadChannel`
+ * is the PURE dead-channel → 2.1-patch seam. The opt-out half of the same loop is
+ * `unsubscribe` (slice D) propagating `marketingOptOutDate` to 2.1.
+ *
  * The PURE seams (unit-testable in isolation, no Convex ctx):
  *  - `marketingCascade` — pick the ONE effective channel per scope.
  *  - `marketingRateLimit` — 3 marketing push / semaine / client GLOBAL.
@@ -90,6 +100,11 @@ export {
   sendTenantCampaign,
 } from "./campaigns";
 export { unsubscribe } from "./unsubscribe";
+export {
+  type DeadPushChannel,
+  pushStatusPatchForDeadChannel,
+  recordChannelInactive,
+} from "./reachabilityFeedback";
 export {
   CROSS_TENANT_CASCADE,
   TENANT_CASCADE,
