@@ -136,14 +136,10 @@ function pendingSince(
 ): number | null {
   if (milestone === undefined || milestone.current !== "pending_kyc")
     return null;
-  const entries = (milestone.history ?? []).filter(
-    (h) => h.status === "pending_kyc",
-  );
-  if (entries.length === 0) return null;
-  return entries.reduce(
-    (latest, h) => (h.at > latest ? h.at : latest),
-    entries[0].at,
-  );
+  const entries = (milestone.history ?? [])
+    .filter((h) => h.status === "pending_kyc")
+    .map((h) => h.at);
+  return entries.length === 0 ? null : Math.max(...entries);
 }
 
 /**
