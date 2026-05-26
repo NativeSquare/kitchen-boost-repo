@@ -33,7 +33,9 @@ import {
  * intact); `removeGroup` deletes the group AND all its edges.
  *
  * Bounds (from the schema / CONTEXT, NOT invented): `minSelect` ≥ 0,
- * `maxSelect` ≥ 1, every option `priceDelta` ≥ 0. Integers throughout.
+ * `maxSelect` ≥ 1, `maxSelect` ≥ max(1, `minSelect`) (#106-d — a mandatory group
+ * can never cap below its own minimum), every option `priceDelta` ≥ 0. Integers
+ * throughout.
  */
 
 /** Validate the reusable group bounds (the only product rules, no invention). */
@@ -52,6 +54,15 @@ function assertGroupBounds(
     throw new ConvexError({
       code: "INVALID_MODIFIER",
       message: "maxSelect must be an integer ≥ 1.",
+    });
+  }
+  // #106-d — maxSelect ≥ max(1, minSelect): a group can never allow FEWER
+  // selections than its own minimum (an unsatisfiable mandatory group), and never
+  // fewer than 1. maxSelect == minSelect is valid (exact-N choice).
+  if (maxSelect < Math.max(1, minSelect)) {
+    throw new ConvexError({
+      code: "INVALID_MODIFIER",
+      message: "maxSelect must be ≥ max(1, minSelect).",
     });
   }
   for (const opt of options) {

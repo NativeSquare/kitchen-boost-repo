@@ -262,16 +262,16 @@ describe("2.2-C getPublicMenu — public, read-only, structured menu", () => {
     ]);
   });
 
-  it("(V1 filter scope) takes NO filter argument — filtering is front-side only", async () => {
-    // `getPublicMenu` accepts only `tenantId`. Passing a backend allergen filter
-    // must be a TYPE error: there is no server-side filter query in V1.
-    await expect(
-      t.query(api.lib.menu.catalog.getPublicMenu, {
-        tenantId: seed.tenantA.tenantId,
-        // @ts-expect-error V1 has no backend allergen filter — front-side only.
-        excludeAllergens: ["gluten"],
-      }),
-    ).resolves.toBeDefined();
+  it("(V1 filter scope) takes NO filter argument — filtering is front-side only", () => {
+    // `getPublicMenu` accepts ONLY `tenantId` (the public wrapper's tenant key) —
+    // no allergen filter. A backend filter arg must be a TYPE error: there is no
+    // server-side allergen-filter query in V1 (PRD 10 §5). Asserted at the type
+    // level (a runtime call with an extra field is rejected by the validator, so
+    // the contract is pinned statically, like the read-only-twin test below).
+    type PublicMenuArgs = (typeof api.lib.menu.catalog.getPublicMenu)["_args"];
+    // @ts-expect-error there is no backend allergen filter argument in V1.
+    type _NoFilterArg = PublicMenuArgs["excludeAllergens"];
+    expect(true).toBe(true);
   });
 
   it("returns an empty menu (no categories) for a tenant with no menu yet", async () => {
