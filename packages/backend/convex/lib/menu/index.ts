@@ -31,8 +31,18 @@
  *    items (incl. unavailable, with the availability flag) → modifier groups
  *    resolved via the N-N link (options + priceDelta + min/max). Read-only, no
  *    public mutation twin.
+ *
+ * 2.2-E — [[Plage horaire de service]] + `isOpenNow` (PRD 10 §4 / edge "resto
+ * fermé", delivery CONTEXT, ADR 0010). KB is the SOURCE OF TRUTH of the resto's
+ * opening:
+ *  - `serviceHours.get` / `serviceHours.set` — tenant-scoped CRUD (kb_manager) of
+ *    the single shared delivery + C&C slot (Europe/Paris).
+ *  - `serviceHours.isOpenNow` — PUBLIC, unauthenticated gate read by the checkout
+ *    (out of window ⇒ payment blocked). Decision is a pure function
+ *    (`isWithinServiceHours`), tested deterministically on injected clocks.
  */
 export * as catalog from "./catalog";
 export * as categories from "./categories";
 export * as items from "./items";
 export * as modifiers from "./modifiers";
+export * as serviceHours from "./serviceHours";

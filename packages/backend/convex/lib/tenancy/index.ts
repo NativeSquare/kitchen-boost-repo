@@ -94,6 +94,11 @@ export {
   listTenantNotificationEvents,
 } from "./notificationsStore";
 export {
+  getTenantServiceHours,
+  listTenantServiceWindows,
+  upsertTenantServiceHours,
+} from "./serviceHoursStore";
+export {
   type ItemBody,
   type ModifierGroupBody,
   attachTenantGroupToItem,
