@@ -19,6 +19,7 @@ import {
   notificationTemplates,
 } from "./table/notifications";
 import { orderEvents, orderItems, orders } from "./table/orders";
+import { payments } from "./table/payments";
 import { pricingRules } from "./table/pricingRules";
 import { processedWebhookEvents } from "./table/processedWebhookEvents";
 import { prospects } from "./table/prospects";
@@ -61,6 +62,14 @@ export default defineSchema({
   orders,
   orderItems,
   orderEvents,
+  // 2.5-B — Payment (direct charge Stripe Connect, PRD 30 §3/§4). Tenant-scoped
+  // (carries tenantId, ADR 0010): one local source-of-truth row per order's
+  // PaymentIntent on the resto's connected account. Indexed by order AND by
+  // `paymentIntentId` (webhook resolution). KB is NOT merchant of record — it
+  // takes a fixed `application_fee_amount` (240 cts TTC immutable V1, Q30-Q1),
+  // stored HT (200 cts) for CGI-compliant reporting (Q30-Q7). Payment never
+  // recomputes the total — it charges the amount received from Pricing (#20).
+  payments,
   // 2.7-A — Notifications (PRD 80, ADR 0006 templates pré-validés, ADR 0012 push
   // split). `notificationTemplates` = pre-validated campaign presets with their
   // declarative bounds (discount ≤ 50 %, < 200 chars, FR, no alcohol);

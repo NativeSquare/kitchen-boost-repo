@@ -3,23 +3,29 @@ import { httpAction } from "../../_generated/server";
 import { verifyStripeSignature } from "./signature";
 
 /**
- * 2.5-A — the Stripe webhook `httpAction` (PRD 30 §1, payment CONTEXT, STACK
- * §2.3). Routed at `/stripe-webhook` in `convex/http.ts`. POC #1 ✅: verify the
- * HMAC on the RAW body (`await request.text()` BEFORE any parse), default Convex
- * runtime (no `"use node"`), `crypto.subtle`.
+ * 2.5-A + 2.5-B — the Stripe webhook `httpAction` (PRD 30 §1/§3/§4, payment
+ * CONTEXT, STACK §2.3/§2.7). Routed at `/stripe-webhook` in `convex/http.ts`.
+ * POC #1 ✅: verify the HMAC on the RAW body (`await request.text()` BEFORE any
+ * parse), default Convex runtime (no `"use node"`), `crypto.subtle`.
  *
  * Flow:
  *  1. read the raw body, verify the `Stripe-Signature` HMAC with
  *     `STRIPE_WEBHOOK_SECRET`. Bad / missing signature → 400 (never parse first).
- *  2. parse the event; only `account.updated` is handled (other types → 200,
- *     acknowledged + ignored).
- *  3. apply via the idempotent internal mutation (exactly-once per
- *     `(stripe, eventId)`), which maps the account to `pending`/`ready`/`disabled`
- *     (a rejected KYC never → `ready`) and writes the tenant.
- *  4. if the freshly-applied status is `pending` (KYC still pending), post ONE
- *     Slack ops alert (network call → in this action, not the mutation). A
- *     duplicate delivery applies nothing, so it never re-alerts.
- *  5. always answer 200 on a verified event so Stripe stops retrying.
+ *  2. parse the event and route by `type`:
+ *     - `account.updated` (2.5-A) → idempotent tenant status update + Slack alert;
+ *     - `payment_intent.succeeded` (2.5-B) → DISPATCH `confirmPaymentSucceeded`
+ *       via `ctx.scheduler.runAfter(0, …)` (confirm the order + seed the course);
+ *     - `payment_intent.payment_failed` (2.5-B) → DISPATCH `recordPaymentFailed`
+ *       (3 retries max then abandon);
+ *     - anything else → 200, acknowledged + ignored.
+ *  3. exactly-once is enforced inside each internal mutation via
+ *     `withIdempotence(ctx, "stripe", eventId, …)` (Stripe at-least-once).
+ *  4. always answer 200 on a verified event so Stripe stops retrying.
+ *
+ * The `payment_intent.*` events are direct-charge CONNECT events of the connected
+ * account (`event.account = acct_resto`); the tenant is resolved downstream from
+ * the Stripe-supplied `paymentIntentId` (the `payments` row carries `tenantId`),
+ * so no user-supplied tenant id is ever trusted (ADR 0010).
  */
 export const stripeWebhook = httpAction(async (ctx, request) => {
   // 1. RAW body first (POC #1) — never parse before verifying the signature.
@@ -48,6 +54,37 @@ export const stripeWebhook = httpAction(async (ctx, request) => {
     return new Response("Invalid JSON", { status: 400 });
   }
 
+  const eventId = typeof event.id === "string" ? event.id : null;
+
+  // 2.5-B — direct-charge payment lifecycle. The event's data object is the
+  // PaymentIntent; resolve its id (the only handle besides the connected account)
+  // and DISPATCH to the idempotent internal mutation (no actor, system side). The
+  // tenant is resolved downstream from the paymentIntentId (ADR 0010).
+  if (
+    event.type === "payment_intent.succeeded" ||
+    event.type === "payment_intent.payment_failed"
+  ) {
+    const pi = event.data?.object ?? {};
+    const paymentIntentId = typeof pi.id === "string" ? pi.id : null;
+    if (eventId === null || paymentIntentId === null) {
+      return new Response("Malformed event", { status: 400 });
+    }
+    if (event.type === "payment_intent.succeeded") {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.lib.stripe.payment.confirmPaymentSucceeded,
+        { eventId, paymentIntentId },
+      );
+    } else {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.lib.stripe.payment.recordPaymentFailed,
+        { eventId, paymentIntentId },
+      );
+    }
+    return new Response(null, { status: 200 });
+  }
+
   if (event.type !== "account.updated") {
     // Acknowledged but not handled by this slice.
     return new Response(null, { status: 200 });
@@ -55,7 +92,6 @@ export const stripeWebhook = httpAction(async (ctx, request) => {
 
   const account = event.data?.object ?? {};
   const accountId = typeof account.id === "string" ? account.id : null;
-  const eventId = typeof event.id === "string" ? event.id : null;
   if (eventId === null || accountId === null) {
     return new Response("Malformed event", { status: 400 });
   }
