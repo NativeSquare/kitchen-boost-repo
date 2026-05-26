@@ -51,6 +51,7 @@ export {
   patchCustomerConsent,
   readCustomerFicheById,
   readCustomerFicheByUser,
+  setCustomerSavedCard,
 } from "./customerFiche";
 export {
   type CustomerAggregateFields,

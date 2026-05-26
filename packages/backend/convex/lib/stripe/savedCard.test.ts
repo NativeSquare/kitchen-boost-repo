@@ -251,11 +251,12 @@ describe("2.5-D saveCard — platform Stripe Customer + attach saved PaymentMeth
     expect(fiche?.savedPaymentMethodId).toBe("pm_fresh");
   });
 
-  it("refuses a PRO caller (customer scope only)", async () => {
+  it("refuses an anonymous caller before any Stripe call (customer scope)", async () => {
     fetchSpy = vi.spyOn(global, "fetch");
-    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    // No `withIdentity` — anonymous. The customer wrapper rejects with
+    // Unauthenticated in the guard query, before any Stripe call.
     await expect(
-      asManager.action(api.lib.stripe.savedCard.saveCard, {
+      t.action(api.lib.stripe.savedCard.saveCard, {
         tenantId: seed.tenantA.tenantId,
         paymentMethodId: "pm_x",
       }),
