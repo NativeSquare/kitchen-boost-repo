@@ -146,6 +146,21 @@ export async function setProspectPhase(
 }
 
 /**
+ * 2.9-E — set the BACK-LINK from a prospect to the tenant it was provisioned into
+ * (`prospect.tenantId`, table/prospects.ts — NOT a tenancy scoping key, just the
+ * `by_tenant` prospect → tenant lookup). The wizard calls this once the tenant
+ * exists, so the originating prospect points at its live tenant. Bumps
+ * `updatedAt`.
+ */
+export async function setProspectTenant(
+  ctx: MutationCtx,
+  prospectId: Id<"prospects">,
+  tenantId: Id<"tenants">,
+): Promise<void> {
+  await ctx.db.patch(prospectId, { tenantId, updatedAt: Date.now() });
+}
+
+/**
  * 2.9-B seed — find an existing prospect by phone (the natural key the seed
  * dedups on, so re-running the import inserts no duplicates). Returns `null`
  * when none exists yet. There is no `by_phone` index (phone is not a query path

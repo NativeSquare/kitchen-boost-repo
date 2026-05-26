@@ -137,7 +137,15 @@ export {
   listProspects,
   patchProspect,
   setProspectPhase,
+  setProspectTenant,
 } from "./prospectsStore";
+export { type NewTenant, getTenantBySlug, insertTenant } from "./tenantsStore";
+export {
+  type NewManagerUser,
+  getUserByEmail,
+  insertManagerUser,
+} from "./usersStore";
+export { attachUserToTenant, getActiveUserTenant } from "./userTenantsStore";
 export {
   type NewContract,
   getContract,

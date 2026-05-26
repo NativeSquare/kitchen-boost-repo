@@ -65,6 +65,7 @@ import type * as lib_onboarding_csv from "../lib/onboarding/csv.js";
 import type * as lib_onboarding_gates from "../lib/onboarding/gates.js";
 import type * as lib_onboarding_index from "../lib/onboarding/index.js";
 import type * as lib_onboarding_pipeline from "../lib/onboarding/pipeline.js";
+import type * as lib_onboarding_provisioning from "../lib/onboarding/provisioning.js";
 import type * as lib_onboarding_seedData from "../lib/onboarding/seedData.js";
 import type * as lib_orders_index from "../lib/orders/index.js";
 import type * as lib_orders_orders from "../lib/orders/orders.js";
@@ -106,6 +107,9 @@ import type * as lib_tenancy_pricingRulesStore from "../lib/tenancy/pricingRules
 import type * as lib_tenancy_prospectsStore from "../lib/tenancy/prospectsStore.js";
 import type * as lib_tenancy_serviceHoursStore from "../lib/tenancy/serviceHoursStore.js";
 import type * as lib_tenancy_stripeAccountStore from "../lib/tenancy/stripeAccountStore.js";
+import type * as lib_tenancy_tenantsStore from "../lib/tenancy/tenantsStore.js";
+import type * as lib_tenancy_userTenantsStore from "../lib/tenancy/userTenantsStore.js";
+import type * as lib_tenancy_usersStore from "../lib/tenancy/usersStore.js";
 import type * as lib_tenancy_withTenant from "../lib/tenancy/withTenant.js";
 import type * as lib_uberDirect_createDelivery from "../lib/uberDirect/createDelivery.js";
 import type * as lib_uberDirect_credentials from "../lib/uberDirect/credentials.js";
@@ -207,6 +211,7 @@ declare const fullApi: ApiFromModules<{
   "lib/onboarding/gates": typeof lib_onboarding_gates;
   "lib/onboarding/index": typeof lib_onboarding_index;
   "lib/onboarding/pipeline": typeof lib_onboarding_pipeline;
+  "lib/onboarding/provisioning": typeof lib_onboarding_provisioning;
   "lib/onboarding/seedData": typeof lib_onboarding_seedData;
   "lib/orders/index": typeof lib_orders_index;
   "lib/orders/orders": typeof lib_orders_orders;
@@ -248,6 +253,9 @@ declare const fullApi: ApiFromModules<{
   "lib/tenancy/prospectsStore": typeof lib_tenancy_prospectsStore;
   "lib/tenancy/serviceHoursStore": typeof lib_tenancy_serviceHoursStore;
   "lib/tenancy/stripeAccountStore": typeof lib_tenancy_stripeAccountStore;
+  "lib/tenancy/tenantsStore": typeof lib_tenancy_tenantsStore;
+  "lib/tenancy/userTenantsStore": typeof lib_tenancy_userTenantsStore;
+  "lib/tenancy/usersStore": typeof lib_tenancy_usersStore;
   "lib/tenancy/withTenant": typeof lib_tenancy_withTenant;
   "lib/uberDirect/createDelivery": typeof lib_uberDirect_createDelivery;
   "lib/uberDirect/credentials": typeof lib_uberDirect_credentials;
