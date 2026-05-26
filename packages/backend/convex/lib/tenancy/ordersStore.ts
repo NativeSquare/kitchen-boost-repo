@@ -7,6 +7,7 @@ import type {
   OrderStatus,
   PricingSnapshot,
 } from "../../table/orders";
+import { recordCustomerOrderForTenant } from "./customerOrdersStore";
 
 /**
  * 2.3-A — the SANCTIONED tenant-scoped data-access seam for the `orders`,
@@ -326,6 +327,60 @@ export async function recordTenantOrderStatus(
     actorUserId: opts.actorUserId,
     reason: opts.reason,
     at: now,
+  });
+}
+
+/**
+ * 2.3-C — apply a CONFIRMED payment to one of `tenantId`'s pending orders, in a
+ * SINGLE Convex transaction (atomicity = all-or-nothing):
+ *  1. require the order belongs to `tenantId` (NOT_FOUND for a missing OR foreign
+ *     id — no cross-tenant write),
+ *  2. STATE-MACHINE GUARD: it MUST be `en attente de paiement` (PRD 20 §5 / PRD 10
+ *     §10-§11) — else throw `INVALID_STATE` (a confirm on an already-paid / further
+ *     order is rejected, never silently re-applied),
+ *  3. patch it to `nouvelle` (visible to the resto), stamp `paidAt`, and FREEZE the
+ *     `pricingSnapshot` (the immutable charged amount, from 2.4),
+ *  4. append the `nouvelle` `orderEvents` (the workflow audit starts here — the
+ *     pending order had none),
+ *  5. increment `customerOrdersPerTenant` for the order's OWN `(tenant, customer)`.
+ *
+ * No payment / Stripe call here (frontier 2.5) — the caller supplies the already-
+ * frozen `pricingSnapshot`. Idempotency is the CALLER's concern (`withIdempotence`
+ * wraps this), so this helper assumes it runs at most once per confirmed event.
+ */
+export async function confirmTenantOrderPayment(
+  ctx: MutationCtx,
+  tenantId: Id<"tenants">,
+  orderId: Id<"orders">,
+  pricingSnapshot: PricingSnapshot,
+  actorUserId?: Id<"users">,
+): Promise<void> {
+  const order = await requireTenantOrder(ctx, tenantId, orderId);
+  if (order.status !== "en attente de paiement") {
+    throw new ConvexError({
+      code: "INVALID_STATE",
+      message: `Order is "${order.status}", expected "en attente de paiement".`,
+    });
+  }
+
+  const now = Date.now();
+  await ctx.db.patch(orderId, {
+    status: "nouvelle",
+    paidAt: now,
+    pricingSnapshot,
+  });
+  await ctx.db.insert("orderEvents", {
+    tenantId,
+    orderId,
+    status: "nouvelle",
+    actorUserId,
+    at: now,
+  });
+
+  // Per-tenant customer stats (the MOAT aggregates) — the order's OWN customer.
+  await recordCustomerOrderForTenant(ctx, tenantId, order.customerId, {
+    totalCents: pricingSnapshot.total,
+    orderAt: now,
   });
 }
 
