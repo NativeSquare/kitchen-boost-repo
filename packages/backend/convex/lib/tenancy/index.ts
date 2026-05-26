@@ -94,6 +94,18 @@ export {
   listTenantNotificationEvents,
 } from "./notificationsStore";
 export {
+  type NewInteraction,
+  type NewProspect,
+  type ProspectPatch,
+  appendInteraction,
+  findProspectByPhone,
+  getProspect,
+  insertProspect,
+  listProspects,
+  patchProspect,
+  setProspectPhase,
+} from "./prospectsStore";
+export {
   getTenantServiceHours,
   listTenantServiceWindows,
   upsertTenantServiceHours,

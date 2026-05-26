@@ -117,7 +117,7 @@ const hubriseMilestone = v.object({
  * binary milestones are those of PRD 70 §3.3 (Acquisition); the conditional
  * tablette-invoice milestones apply only when `tabletteMode = achat_kb`.
  */
-const milestones = v.object({
+export const milestones = v.object({
   // Binary Acquisition milestones (PRD 70 §3.3) — timestamp = achieved.
   premierContact: v.optional(v.number()),
   rdvBooke: v.optional(v.number()),
