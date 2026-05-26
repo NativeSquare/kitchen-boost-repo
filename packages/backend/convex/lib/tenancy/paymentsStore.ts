@@ -106,6 +106,23 @@ export async function setPaymentStatus(
 }
 
 /**
+ * Mark a payment `refunded` and stamp its Stripe `refundId` (the 2.5-C/D refund —
+ * total only V1). Bumps `updatedAt`. The single sanctioned write for the refund
+ * mark; the business module (`lib/stripe/refund`) calls THIS, never raw `ctx.db`.
+ */
+export async function setPaymentRefunded(
+  ctx: MutationCtx,
+  paymentId: Id<"payments">,
+  refundId: string,
+): Promise<void> {
+  await ctx.db.patch(paymentId, {
+    status: "refunded",
+    refundId,
+    updatedAt: Date.now(),
+  });
+}
+
+/**
  * Record one failed `payment_intent.payment_failed`: set status `payment_failed`
  * and increment the attempt counter. Returns the NEW attempt count (the caller
  * decides abandon at the 3rd, PRD 30 §4). Bumps `updatedAt`.

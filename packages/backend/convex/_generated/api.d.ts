@@ -79,6 +79,7 @@ import type * as lib_stripe_fees from "../lib/stripe/fees.js";
 import type * as lib_stripe_index from "../lib/stripe/index.js";
 import type * as lib_stripe_payment from "../lib/stripe/payment.js";
 import type * as lib_stripe_paymentIntent from "../lib/stripe/paymentIntent.js";
+import type * as lib_stripe_refund from "../lib/stripe/refund.js";
 import type * as lib_stripe_signature from "../lib/stripe/signature.js";
 import type * as lib_stripe_status from "../lib/stripe/status.js";
 import type * as lib_stripe_webhook from "../lib/stripe/webhook.js";
@@ -217,6 +218,7 @@ declare const fullApi: ApiFromModules<{
   "lib/stripe/index": typeof lib_stripe_index;
   "lib/stripe/payment": typeof lib_stripe_payment;
   "lib/stripe/paymentIntent": typeof lib_stripe_paymentIntent;
+  "lib/stripe/refund": typeof lib_stripe_refund;
   "lib/stripe/signature": typeof lib_stripe_signature;
   "lib/stripe/status": typeof lib_stripe_status;
   "lib/stripe/webhook": typeof lib_stripe_webhook;
