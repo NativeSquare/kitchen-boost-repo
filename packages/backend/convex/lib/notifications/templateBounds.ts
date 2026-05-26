@@ -91,3 +91,46 @@ export function findTemplateBoundViolation(
   }
   return null;
 }
+
+/**
+ * 2.7-D — interpolate a template body with the campaign variable values. Each
+ * `{name}` placeholder is replaced by `values[name]`; an unfilled placeholder is
+ * left as the empty string (the resto picked a template; a missing value is a
+ * benign blank, not a crash). PURE — no Convex ctx.
+ */
+export function renderTemplate(
+  body: string,
+  values: Record<string, string>,
+): string {
+  return body.replace(VARIABLE_PATTERN, (_match, name: string) =>
+    name in values ? values[name] : "",
+  );
+}
+
+/**
+ * 2.7-D — the SEND-TIME guardrail (PRD 80 §4 / ADR 0006): bound the FINAL rendered
+ * message a tenant campaign would push. Re-checks the discount cap against the
+ * VALUE the resto filled in (`{discount}`) — the schema's `maxDiscountPercent` is
+ * the template's declared cap, but the resto could fill a higher number — and the
+ * rendered length, language and alcohol flag. Returns the FIRST violation, else
+ * `null`. PURE — the campaign mutation turns a non-null result into a throw.
+ */
+export function findRenderedViolation(input: {
+  rendered: string;
+  values: Record<string, string>;
+  language: string;
+  containsAlcohol: boolean;
+}): TemplateBoundViolation | null {
+  // Discount filled by the resto must respect the cap (anti "-80 %").
+  const discountRaw = input.values.discount;
+  if (discountRaw !== undefined && discountRaw !== "") {
+    const discount = Number.parseInt(discountRaw, 10);
+    if (Number.isFinite(discount) && discount > MAX_DISCOUNT_PERCENT) {
+      return "DISCOUNT_TOO_HIGH";
+    }
+  }
+  if (input.rendered.length >= MAX_RENDERED_LENGTH) return "BODY_TOO_LONG";
+  if (input.language !== TEMPLATE_LANGUAGE) return "NOT_FRENCH";
+  if (input.containsAlcohol) return "ALCOHOL_NOT_ALLOWED";
+  return null;
+}

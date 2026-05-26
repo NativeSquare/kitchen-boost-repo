@@ -14,6 +14,7 @@ import { menuItems } from "./table/menuItems";
 import { modifierGroups } from "./table/modifierGroups";
 import { serviceHours } from "./table/serviceHours";
 import {
+  campaignLaunches,
   notificationEvents,
   notificationTemplates,
 } from "./table/notifications";
@@ -69,6 +70,11 @@ export default defineSchema({
   // it lives in `customers.pushEnrollment` (2.1, ADR 0012); 2.7 only sends.
   notificationTemplates,
   notificationEvents,
+  // 2.7-D — Marketing campaigns. `campaignLaunches` = one row per campaign LAUNCH
+  // per resto (PRD 80 §7 anti-anomaly: > 1/48h, > 3/sem, recipient surge +50 %).
+  // Tenant-scoped (carries tenantId, ADR 0010); stores recipient COUNTS only, no
+  // nominative recipient (the MOAT). The per-send rows stay in notificationEvents.
+  campaignLaunches,
   // 2.2-A — Menu (PRD 10 §5/§6, client-ordering CONTEXT). All five tables are
   // TENANT-SCOPED (carry tenantId, ADR 0010). `menuCategories` = flat editorial
   // groups (no hierarchy V1); `menuItems` = sellable products (basePrice in

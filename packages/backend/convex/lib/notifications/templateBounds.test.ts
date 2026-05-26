@@ -4,7 +4,9 @@ import {
   MAX_DISCOUNT_PERCENT,
   MAX_RENDERED_LENGTH,
   TEMPLATE_LANGUAGE,
+  findRenderedViolation,
   findTemplateBoundViolation,
+  renderTemplate,
 } from "./templateBounds";
 
 /**
@@ -124,5 +126,85 @@ describe("2.7-A findTemplateBoundViolation — pure guardrail checker", () => {
         containsAlcohol: false,
       }),
     ).toBe("UNKNOWN_VARIABLE");
+  });
+});
+
+describe("2.7-D renderTemplate — variable interpolation", () => {
+  it("interpolates every filled variable", () => {
+    expect(
+      renderTemplate(
+        "Bonjour {prenom_client}, -{discount}% chez {nom_resto} !",
+        { prenom_client: "Sophie", discount: "20", nom_resto: "Buns & Bao" },
+      ),
+    ).toBe("Bonjour Sophie, -20% chez Buns & Bao !");
+  });
+
+  it("leaves an unfilled placeholder as an empty string (no crash)", () => {
+    expect(renderTemplate("Bonjour {prenom_client} !", {})).toBe("Bonjour  !");
+  });
+});
+
+describe("2.7-D findRenderedViolation — send-time bound check on the FINAL message", () => {
+  it("accepts a compliant rendered message", () => {
+    expect(
+      findRenderedViolation({
+        rendered: "Bonjour Sophie, -20% chez Buns & Bao !",
+        values: { discount: "20" },
+        language: "fr",
+        containsAlcohol: false,
+      }),
+    ).toBeNull();
+  });
+
+  it("rejects a discount VALUE the resto filled above 50 % (anti '-80 %')", () => {
+    expect(
+      findRenderedViolation({
+        rendered: "Promo -80% !",
+        values: { discount: "80" },
+        language: "fr",
+        containsAlcohol: false,
+      }),
+    ).toBe("DISCOUNT_TOO_HIGH");
+  });
+
+  it("accepts a discount value exactly at 50 %", () => {
+    expect(
+      findRenderedViolation({
+        rendered: "Promo -50% !",
+        values: { discount: "50" },
+        language: "fr",
+        containsAlcohol: false,
+      }),
+    ).toBeNull();
+  });
+
+  it("rejects a rendered message that reaches 200 chars", () => {
+    expect(
+      findRenderedViolation({
+        rendered: "a".repeat(200),
+        values: {},
+        language: "fr",
+        containsAlcohol: false,
+      }),
+    ).toBe("BODY_TOO_LONG");
+  });
+
+  it("rejects a non-French or alcohol-flagged message", () => {
+    expect(
+      findRenderedViolation({
+        rendered: "Hello",
+        values: {},
+        language: "en",
+        containsAlcohol: false,
+      }),
+    ).toBe("NOT_FRENCH");
+    expect(
+      findRenderedViolation({
+        rendered: "Bière offerte",
+        values: {},
+        language: "fr",
+        containsAlcohol: true,
+      }),
+    ).toBe("ALCOHOL_NOT_ALLOWED");
   });
 });

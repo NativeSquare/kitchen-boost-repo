@@ -260,8 +260,9 @@ describe("2.7-D sendTenantCampaign — kb_manager, pre-validated template", () =
         now: DAYTIME,
       },
     );
-    // The customer already hit 3/week ⇒ the 4th is rate-limited, not sent.
-    expect(result.targeted).toBe(1);
+    // The customer already hit 3/week ⇒ the 4th is rate-limited (skipped, not
+    // targeted, not sent).
+    expect(result.targeted).toBe(0);
     expect(result.sent).toBe(0);
     expect(result.skippedRateLimited).toBe(1);
   });
@@ -348,6 +349,7 @@ describe("2.7-D sendTenantCampaign — kb_manager, pre-validated template", () =
       asManagerA.mutation(
         api.lib.notifications.campaigns.sendCrossTenantCampaign,
         {
+          tenantId: seed.tenantB.tenantId,
           body: "Nouveau resto près de chez toi !",
           now: DAYTIME,
         },

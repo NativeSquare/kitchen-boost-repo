@@ -94,6 +94,20 @@ export {
   listTenantNotificationEvents,
 } from "./notificationsStore";
 export {
+  type CustomerCampaignFields,
+  type NewCampaignEvent,
+  type TenantCampaignLaunch,
+  insertCampaignEvent,
+  insertCampaignLaunch,
+  listAllLinkedTenantIds,
+  listCrossTenantCustomerIds,
+  listCustomerCampaignSendTimestamps,
+  listTenantCampaignLaunches,
+  listTenantCustomerIds,
+  readCustomerCampaignFields,
+  readNotificationTemplate,
+} from "./campaignsStore";
+export {
   type NewInteraction,
   type NewProspect,
   type ProspectPatch,

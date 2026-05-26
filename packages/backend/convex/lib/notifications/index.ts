@@ -59,5 +59,62 @@ export {
   type TemplateBoundInput,
   type TemplateBoundViolation,
   type TemplateVariable,
+  findRenderedViolation,
   findTemplateBoundViolation,
+  renderTemplate,
 } from "./templateBounds";
+
+/**
+ * 2.7-D — the MARKETING branch of the moteur (PRD 80 §2/§4/§6/§7, PRD 90 §5, ADRs
+ * 0005/0006/0010/0012). The MOAT-sensitive heart: KB sends in PROXY, the resto
+ * (`kb_manager`) NEVER sees a recipient identity — campaigns return aggregate
+ * counts only. Convex addresses the mutations by their module path
+ * (`api.lib.notifications.campaigns.*`, `api.lib.notifications.unsubscribe.*`);
+ * these re-exports only state the contract.
+ *
+ *  - `sendTenantCampaign` — `kb_manager`, pre-validated template (no free text),
+ *    cascade tenant (Web Push > Wallet > Email).
+ *  - `sendCrossTenantCampaign` — `kb_admin` ONLY (KB proxy), free content, cascade
+ *    cross-tenant (Wallet > Email, web-push excluded). A resto can NEVER fire it.
+ *  - `unsubscribe` — self-scoped global marketing opt-out (ADR 0005).
+ *
+ * The PURE seams (unit-testable in isolation, no Convex ctx):
+ *  - `marketingCascade` — pick the ONE effective channel per scope.
+ *  - `marketingRateLimit` — 3 marketing push / semaine / client GLOBAL.
+ *  - `dnt` — 22h-8h Europe/Paris quiet window + the 08:00 shift.
+ *  - `antiAnomaly` — per-resto frequency (> 1/48h, > 3/sem) + recipient surge.
+ */
+export {
+  type CampaignResult,
+  sendCrossTenantCampaign,
+  sendTenantCampaign,
+} from "./campaigns";
+export { unsubscribe } from "./unsubscribe";
+export {
+  CROSS_TENANT_CASCADE,
+  TENANT_CASCADE,
+  type MarketingChannel,
+  type MarketingReachability,
+  pickMarketingChannel,
+} from "./marketingCascade";
+export {
+  RATE_LIMIT_PER_WEEK,
+  RATE_WINDOW_MS,
+  countInWindow,
+  withinRateLimit,
+} from "./marketingRateLimit";
+export {
+  DEFAULT_DNT_END_HOUR,
+  DEFAULT_DNT_START_HOUR,
+  inDoNotTrackWindow,
+  nextSendableTime,
+  parisHour,
+} from "./dnt";
+export {
+  ANOMALY_MAX_PER_48H,
+  ANOMALY_MAX_PER_WEEK,
+  ANOMALY_RECIPIENT_SURGE_RATIO,
+  type CampaignAnomaly,
+  type CampaignLaunchRecord,
+  findCampaignAnomaly,
+} from "./antiAnomaly";
