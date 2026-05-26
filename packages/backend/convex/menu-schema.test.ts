@@ -337,6 +337,15 @@ describe("2.2-A allergens — frozen UE 1169/2011 set (14 literals, not free tex
     expect(ALLERGENS_UE_1169).toHaveLength(14);
   });
 
+  // (#106-b) The CANONICAL literal for the sesame allergen is « graines de
+  // sésame » (the client-ordering CONTEXT wording). The schema and CONTEXT must
+  // converge on this exact string — the bare « sésame » is NOT in the frozen
+  // union. Pins the divergence flagged by the 2.2 doc↔code audit.
+  it("uses « graines de sésame » as the canonical sesame literal (not bare « sésame »)", () => {
+    expect(ALLERGENS_UE_1169).toContain("graines de sésame");
+    expect(ALLERGENS_UE_1169 as readonly string[]).not.toContain("sésame");
+  });
+
   it("rejects an allergen value outside the frozen set (literal union, not free string)", async () => {
     const t = convexTest(schema, modules);
     await t.run(async (ctx) => {

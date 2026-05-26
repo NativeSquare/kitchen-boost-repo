@@ -122,6 +122,63 @@ describe("2.2-B modifierGroups (reusable) — tenant-scoped via kb_manager", () 
     ).rejects.toThrow();
   });
 
+  // (#106-d) Invariant maxSelect ≥ max(1, minSelect): a group can never allow
+  // FEWER selections than its own minimum (and never fewer than 1). Pins both the
+  // create and the update path; the consistent boundary cases (max == min, the
+  // already-covered max ≥ 1) stay valid.
+  it("createGroup refuses maxSelect < minSelect (mandatory min above the cap)", async () => {
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    await expect(
+      asManager.mutation(api.lib.menu.modifiers.createGroup, {
+        tenantId: seed.tenantA.tenantId,
+        name: "Bad",
+        minSelect: 3,
+        maxSelect: 2, // 2 < 3 ⇒ impossible to ever satisfy
+        options: [
+          { label: "a", priceDelta: 0 },
+          { label: "b", priceDelta: 0 },
+          { label: "c", priceDelta: 0 },
+        ],
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("createGroup ACCEPTS maxSelect == minSelect (exact-N choice)", async () => {
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    const id = await asManager.mutation(api.lib.menu.modifiers.createGroup, {
+      tenantId: seed.tenantA.tenantId,
+      name: "Pick exactly 2",
+      minSelect: 2,
+      maxSelect: 2,
+      options: [
+        { label: "a", priceDelta: 0 },
+        { label: "b", priceDelta: 0 },
+      ],
+    });
+    expect(id).toBeTypeOf("string");
+  });
+
+  it("updateGroup refuses maxSelect < minSelect", async () => {
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    const id = await asManager.mutation(api.lib.menu.modifiers.createGroup, {
+      tenantId: seed.tenantA.tenantId,
+      name: "Sauce",
+      minSelect: 0,
+      maxSelect: 1,
+      options: [{ label: "Ketchup", priceDelta: 0 }],
+    });
+    await expect(
+      asManager.mutation(api.lib.menu.modifiers.updateGroup, {
+        tenantId: seed.tenantA.tenantId,
+        modifierGroupId: id,
+        name: "Sauce",
+        minSelect: 2,
+        maxSelect: 1, // 1 < 2 ⇒ rejected
+        options: [{ label: "Ketchup", priceDelta: 0 }],
+      }),
+    ).rejects.toThrow();
+  });
+
   it("updateGroup edits a reusable group; the edit reflects on ALL linked items", async () => {
     const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
     const item1 = await makeItem(t, seed, "Burger1");

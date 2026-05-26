@@ -231,6 +231,49 @@ describe("2.2-C getPublicMenu — public, read-only, structured menu", () => {
     ]);
   });
 
+  // (#106-c) V1 allergen-filter scope (PRD 10 §5): getPublicMenu returns the
+  // PER-ITEM allergen set (a subset of the frozen 14 UE 1169/2011). The simple
+  // "Sans-gluten / Vegan / Végé" filter is applied FRONT-SIDE over this set —
+  // there is NO backend filtering query and NO filter argument in V1. This pins
+  // that the eater surface ships the raw declarations and nothing filters them
+  // server-side.
+  it("(V1 filter scope) returns the full per-item allergen set, unfiltered", async () => {
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    const categoryId = await asManager.mutation(
+      api.lib.menu.categories.create,
+      { tenantId: seed.tenantA.tenantId, name: "Smashs" },
+    );
+    await asManager.mutation(api.lib.menu.items.create, {
+      tenantId: seed.tenantA.tenantId,
+      categoryId,
+      name: "Multi-allergène",
+      description: "",
+      basePrice: 1290,
+      allergens: ["gluten", "lait", "graines de sésame"],
+    });
+    const menu = await t.query(api.lib.menu.catalog.getPublicMenu, {
+      tenantId: seed.tenantA.tenantId,
+    });
+    // The whole declared set is returned verbatim (no server-side filtering).
+    expect(menu.categories[0]?.items[0]?.allergens).toEqual([
+      "gluten",
+      "lait",
+      "graines de sésame",
+    ]);
+  });
+
+  it("(V1 filter scope) takes NO filter argument — filtering is front-side only", async () => {
+    // `getPublicMenu` accepts only `tenantId`. Passing a backend allergen filter
+    // must be a TYPE error: there is no server-side filter query in V1.
+    await expect(
+      t.query(api.lib.menu.catalog.getPublicMenu, {
+        tenantId: seed.tenantA.tenantId,
+        // @ts-expect-error V1 has no backend allergen filter — front-side only.
+        excludeAllergens: ["gluten"],
+      }),
+    ).resolves.toBeDefined();
+  });
+
   it("returns an empty menu (no categories) for a tenant with no menu yet", async () => {
     const menu = await t.query(api.lib.menu.catalog.getPublicMenu, {
       tenantId: seed.tenantA.tenantId,
