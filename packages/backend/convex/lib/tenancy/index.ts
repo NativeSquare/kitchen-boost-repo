@@ -74,6 +74,14 @@ export {
   setTenantStripeStatus,
 } from "./stripeAccountStore";
 export {
+  type NewPayment,
+  getPaymentByIntentId,
+  getTenantPaymentByOrder,
+  insertTenantPayment,
+  recordPaymentFailure,
+  setPaymentStatus,
+} from "./paymentsStore";
+export {
   type PricingRuleBody,
   deleteTenantPricingRule,
   getTenantPricingRule,
