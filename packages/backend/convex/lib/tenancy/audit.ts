@@ -29,8 +29,12 @@ import type { MutationCtx } from "../../_generated/server";
 
 /** Fields accepted by `logAudit`. `timestamp` is stamped by the helper. */
 export type AuditEntry = {
-  /** Who performed the action. */
-  actorUserId: Id<"users">;
+  /**
+   * Who performed the action. OMITTED for SYSTEM-SIDE writes that have no human
+   * actor (a webhook-triggered refund, a scheduler job) — those set
+   * `actorRole: "system"` instead. Most rows carry the caller's `actor.userId`.
+   */
+  actorUserId?: Id<"users">;
   /**
    * The actor's role at the time, as a free string (the table keeps it loose so
    * the trail survives role-model evolutions). Typically the effective role on

@@ -29,6 +29,25 @@
  * (action↔mutation split, STACK §2.3). Every webhook side effect is wrapped in
  * `withIdempotence(ctx, "stripe", …)`.
  *
+ * 2.5-C/D — Refund (`refund.ts`). The payment-domain MECHANISM behind a TOTAL,
+ * IMMEDIATE refund (PRD 30 §5, payment CONTEXT "Refund"/"Cmd avortée"). Two trigger
+ * paths, both ending in a Stripe `POST /refunds` on the resto's CONNECTED account
+ * (a direct charge is refunded where it lives), flipping the `payments` row to
+ * `refunded` (+ `refundId`), audited (system-side, `actorRole: "system"`):
+ *   - `refundOnRefusal` — scheduled by the Orders [[Refusal]] (#18): Orders is the
+ *     trigger (it already transitioned the order + queued the notif), Payment runs
+ *     the Stripe refund. KB does NOT refund its commission (Article 3.3).
+ *   - `refundAbortedOrder` — scheduled by the delivery course-failure (#48 Cas A,
+ *     [[Cmd avortée]]): full auto-refund + the order is pulled OUT of KB Orders
+ *     (`nouvelle → refusée`, never transmitted to the resto) + client `refund_issued`
+ *     push.
+ *   - `applyChargeRefunded` — the `charge.refunded` webhook reconciliation (a refund
+ *     made outside KB), idempotent via `withIdempotence` so a redelivered event marks
+ *     the row at most once (no double refund).
+ * Both actions are idempotent: a `payments` row already `refunded` skips the Stripe
+ * call. These are INTERNAL (system-side, no actor) — registered by module path, not
+ * re-exported here.
+ *
  * Convex registers functions by their module PATH, so callers invoke them as
  * `api.lib.stripe.account.*` / `api.lib.stripe.paymentIntent.*` /
  * `internal.lib.stripe.{webhook,payment}.*`; the guarded query/mutation/action

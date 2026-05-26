@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { internal } from "../../_generated/api";
 import type { Doc } from "../../_generated/dataModel";
 import { pricingSnapshot, refusalReason } from "../../table/orders";
 import {
@@ -196,11 +197,15 @@ export const markHandedOff = tenantMutation(OPERATIONAL_ALLOW)({
  *     order in any other state — or re-refusing an already-terminal one — throws and
  *     writes nothing (no double refund). The transition stamps `refusedAt` and
  *     appends the `refusée` `orderEvents` row carrying the closed-set `reason`.
- *  2. EMIT THE REFUND ORDER toward the 2.5 payment domain. 2.3 does NOT call Stripe
- *     and does NOT touch the (later, #42) `payments` table — it emits the ORDERS-
- *     domain event the 2.5 refund processor consumes: the `refusée` `orderEvents`
- *     row written in step 1 IS that refund order (tenant + order + reason + time).
- *     The actual `POST /refunds` is chantier 2.5 (#49), gated on the payment schema.
+ *  2. TRIGGER the 2.5 payment-domain refund MECHANISM (#49). The `refusée`
+ *     `orderEvents` row written in step 1 IS the refund order (tenant + order +
+ *     reason + time); Orders is the trigger, Payment runs the Stripe refund. The
+ *     actual `POST /refunds` lives in an action (`lib/stripe.refund.refundOnRefusal`),
+ *     SCHEDULED here via `ctx.scheduler.runAfter(0, …)` so it runs AFTER this
+ *     mutation commits (the Stripe network call belongs in an action, not a mutation,
+ *     and the refusal must be durably committed before we refund). The refund action
+ *     resolves the `payments` row itself (tenant-scoped) and is idempotent (a row
+ *     already `refunded` is a no-op — no double refund).
  *  3. EMIT THE CLIENT NOTIFICATION (`refund_issued`, PRD 80 §1 trigger 6): plan the
  *     transactional sends from the customer's 2.1 reachability (ADR 0012, never
  *     duplicated) and JOURNAL each as `queued`. The actual push/email send is 2.7 —
@@ -247,6 +252,15 @@ export const refuse = tenantMutation(OPERATIONAL_ALLOW)({
         status: "queued", // planned, not yet dispatched (the transport is 2.7)
       });
     }
+
+    // 4 — TRIGGER the Stripe refund (#49). Scheduled to run AFTER this mutation
+    // commits: the Stripe network call belongs in an action, and the refusal must be
+    // durable before we refund. The action is idempotent (a re-run is a no-op).
+    await ctx.scheduler.runAfter(
+      0,
+      internal.lib.stripe.refund.refundOnRefusal,
+      { tenantId: ctx.tenantId, orderId: args.orderId },
+    );
   },
 });
 

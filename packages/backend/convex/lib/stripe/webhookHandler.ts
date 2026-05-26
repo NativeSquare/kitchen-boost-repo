@@ -17,6 +17,9 @@ import { verifyStripeSignature } from "./signature";
  *       via `ctx.scheduler.runAfter(0, …)` (confirm the order + seed the course);
  *     - `payment_intent.payment_failed` (2.5-B) → DISPATCH `recordPaymentFailed`
  *       (3 retries max then abandon);
+ *     - `charge.refunded` (2.5-C) → DISPATCH `applyChargeRefunded` (reconcile a
+ *       refund made outside KB — e.g. the resto's Stripe Dashboard — to the local
+ *       `payments` row, idempotently via `withIdempotence`);
  *     - anything else → 200, acknowledged + ignored.
  *  3. exactly-once is enforced inside each internal mutation via
  *     `withIdempotence(ctx, "stripe", eventId, …)` (Stripe at-least-once).
@@ -82,6 +85,31 @@ export const stripeWebhook = httpAction(async (ctx, request) => {
         { eventId, paymentIntentId },
       );
     }
+    return new Response(null, { status: 200 });
+  }
+
+  // 2.5-C — a refund settled (resto's Stripe Dashboard, or KB's own refund webhook
+  // echo). The event's data object is the Charge; resolve its PaymentIntent + the
+  // latest refund id and DISPATCH the idempotent reconciliation. The tenant is
+  // resolved downstream from the paymentIntentId (ADR 0010).
+  if (event.type === "charge.refunded") {
+    const charge = event.data?.object ?? {};
+    const paymentIntentId =
+      typeof charge.payment_intent === "string" ? charge.payment_intent : null;
+    const refunds = (charge.refunds as { data?: unknown[] } | undefined)?.data;
+    const latest =
+      Array.isArray(refunds) && refunds.length > 0
+        ? (refunds[refunds.length - 1] as { id?: unknown })
+        : undefined;
+    const refundId = typeof latest?.id === "string" ? latest.id : null;
+    if (eventId === null || paymentIntentId === null || refundId === null) {
+      return new Response("Malformed event", { status: 400 });
+    }
+    await ctx.scheduler.runAfter(
+      0,
+      internal.lib.stripe.refund.applyChargeRefunded,
+      { eventId, paymentIntentId, refundId },
+    );
     return new Response(null, { status: 200 });
   }
 

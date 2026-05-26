@@ -23,8 +23,13 @@ import {
  *  - mode `click_collect` ⇒ NO Uber call, no Course created, fee 0 (no-op);
  *  - mode `delivery` ⇒ call `lib/uberDirect.createDelivery` (the ONLY Uber caller)
  *    and persist `uberDeliveryId` + status + pickup/dropoff ETA + courier on the
- *    row. If Uber REFUSES the course (PRD 40 §5 Cas A), flag the row
- *    `refused_post_payment` (the refund/incident handling is slice D).
+ *    row. If Uber REFUSES the course (PRD 40 §5 Cas A / [[Cmd avortée]]), flag the
+ *    row `refused_post_payment` AND trigger the 2.5-D auto-refund (#49): the payment
+ *    `succeeded` but the course can't be created, so KB refunds the client in full,
+ *    pulls the order out of KB Orders, and pushes the client — SCHEDULED via
+ *    `ctx.scheduler.runAfter(0, internal.lib.stripe.refund.refundAbortedOrder, …)`
+ *    (the Stripe call lives in the payment domain's action; this slice only triggers
+ *    it, exactly as 2.5-B emits the course toward delivery).
  *
  * SYSTEM-SIDE (no actor): the trigger is the Stripe webhook scheduler, which
  * carries NO user-supplied tenant id. The `tenantId` is resolved STRUCTURALLY
@@ -120,13 +125,19 @@ export const createCourseOnPaymentConfirmed = internalAction({
 
     const quoteId = delivery.quoteId;
     // Without an accepted quote there is nothing to bind the course to — flag the
-    // refusal (Cas A) rather than invent a quote.
+    // refusal (Cas A / [[Cmd avortée]]) rather than invent a quote, and trigger the
+    // 2.5-D auto-refund (#49).
     if (quoteId === undefined) {
       await ctx.runMutation(internal.lib.delivery.course.applyCourseResult, {
         tenantId: args.tenantId,
         orderId: args.orderId,
         patch: { incidentType: "refused_post_payment" },
       });
+      await ctx.scheduler.runAfter(
+        0,
+        internal.lib.stripe.refund.refundAbortedOrder,
+        { tenantId: args.tenantId, orderId: args.orderId },
+      );
       return { courseCreated: false };
     }
 
@@ -142,13 +153,20 @@ export const createCourseOnPaymentConfirmed = internalAction({
     );
 
     if (!result.ok) {
-      // Cas A — course refused by Uber post-payment (PRD 40 §5). Slice D owns the
-      // refund; here we record the incident on the delivery row.
+      // Cas A — course refused by Uber post-payment (PRD 40 §5 / [[Cmd avortée]]).
+      // Record the incident on the delivery row AND trigger the 2.5-D auto-refund
+      // (#49): full refund + the order leaves KB Orders + client push. Scheduled so
+      // the Stripe call runs in the payment domain's action after this commits.
       await ctx.runMutation(internal.lib.delivery.course.applyCourseResult, {
         tenantId: args.tenantId,
         orderId: args.orderId,
         patch: { incidentType: "refused_post_payment" },
       });
+      await ctx.scheduler.runAfter(
+        0,
+        internal.lib.stripe.refund.refundAbortedOrder,
+        { tenantId: args.tenantId, orderId: args.orderId },
+      );
       return { courseCreated: false };
     }
 
