@@ -81,6 +81,10 @@ export const deliveries = defineTable({
   incidentType: v.optional(deliveryIncidentType),
   // Cumulative ETA slip; the "petit retard" push fires past 10 min (PRD 40 §5 B).
   cumulativeEtaDriftMs: v.optional(v.number()),
+  // 2.6-D — set true on a `customer_absent` (Cas D, PRD 40 §5 / Q40-Q13): the
+  // resto MAY then issue a discretionary refund (geste commercial) — exposed to
+  // KB Orders as a manual refund button. There is NO auto-refund for Cas D.
+  manualRefundAvailable: v.optional(v.boolean()),
   createdAt: v.number(),
   updatedAt: v.number(),
 })

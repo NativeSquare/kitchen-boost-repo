@@ -41,6 +41,7 @@ export type DeliveryPatch = {
   quoteFee?: number;
   incidentType?: DeliveryIncidentType;
   cumulativeEtaDriftMs?: number;
+  manualRefundAvailable?: boolean;
 };
 
 /** The fields set when a delivery row is first created. */
