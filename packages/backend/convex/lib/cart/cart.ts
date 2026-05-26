@@ -2,6 +2,7 @@ import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx } from "../../_generated/server";
 import { orderMode } from "../../table/orders";
+import { tenantAcceptsOrderNow } from "../orders/status";
 import {
   type NewOrderItem,
   customerMutation,
@@ -10,7 +11,6 @@ import {
   listTenantItemModifierGroups,
   requireTenantItem,
 } from "../tenancy";
-import { tenantAcceptsOrderNow } from "../orders/status";
 
 /**
  * 2.3-B — `createOrderFromCart`: the checkout mutation that turns a SUBMITTED
