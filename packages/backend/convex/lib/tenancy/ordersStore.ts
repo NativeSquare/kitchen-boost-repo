@@ -331,6 +331,159 @@ export async function recordTenantOrderStatus(
 }
 
 /**
+ * 2.3-D — the resto WORKFLOW state machine (PRD 20 §5 + the issue body). The CLOSED
+ * set of legal edges: every transition NOT listed here is rejected by
+ * `assertLegalTransition`. Not invented — each edge is documented:
+ *  - `en attente de paiement → nouvelle`  : payment confirmed (2.3-C confirmPayment).
+ *  - `nouvelle → en préparation`          : acknowledge (PRD 20 §5 "Accepter").
+ *  - `nouvelle → refusée`                 : refuse (PRD 20 §6, slice E — listed legal
+ *                                           so the refusal mutation reuses this guard).
+ *  - `en préparation → prête`             : markPrepared (PRD 20 §5 "Prête").
+ *  - `prête → remise`                     : markHandedOff (PRD 20 §5 "Remise").
+ *  - `remise → livrée`                    : delivery, driven by Uber Direct events (2.6).
+ *  - `remise → collectée`                 : click & collect, immediate at handoff.
+ *
+ * Terminal states (`livrée` / `collectée` / `refusée`) have NO outgoing edge — they
+ * are non-re-transitionable.
+ */
+const LEGAL_TRANSITIONS: Readonly<Record<OrderStatus, readonly OrderStatus[]>> =
+  {
+    "en attente de paiement": ["nouvelle"],
+    nouvelle: ["en préparation", "refusée"],
+    "en préparation": ["prête"],
+    prête: ["remise"],
+    remise: ["livrée", "collectée"],
+    livrée: [],
+    collectée: [],
+    refusée: [],
+  };
+
+/**
+ * Whether `from → to` is a legal workflow edge (PRD 20 §5). Pure — no DB access.
+ */
+export function isLegalTransition(from: OrderStatus, to: OrderStatus): boolean {
+  return LEGAL_TRANSITIONS[from].includes(to);
+}
+
+/**
+ * Throw `INVALID_STATE` unless `from → to` is a legal workflow edge. Centralises the
+ * state-machine guard so a state jump (e.g. `nouvelle → remise`) or a re-transition
+ * of a terminal order (e.g. `livrée → nouvelle`) is rejected, never silently applied.
+ */
+export function assertLegalTransition(
+  from: OrderStatus,
+  to: OrderStatus,
+): void {
+  if (!isLegalTransition(from, to)) {
+    throw new ConvexError({
+      code: "INVALID_STATE",
+      message: `Illegal order transition "${from}" → "${to}".`,
+    });
+  }
+}
+
+/**
+ * 2.3-D — advance one of `tenantId`'s orders to `to` THROUGH THE STATE MACHINE: it
+ * re-checks tenant ownership (NOT_FOUND for a missing OR foreign id — no
+ * cross-tenant write), GUARDS the edge with `assertLegalTransition` (an illegal
+ * transition throws and writes nothing), patches the status + its transition
+ * timestamp, and appends a timestamped `orderEvents` row. Returns the new status.
+ * The single sanctioned `ctx.db` site for a guarded workflow transition; the
+ * business module (`lib/orders/workflow`, NOT exempt) calls THIS, never raw `ctx.db`.
+ */
+export async function transitionTenantOrder(
+  ctx: MutationCtx,
+  tenantId: Id<"tenants">,
+  orderId: Id<"orders">,
+  to: OrderStatus,
+  opts: { reason?: string; actorUserId?: Id<"users"> } = {},
+): Promise<OrderStatus> {
+  const order = await requireTenantOrder(ctx, tenantId, orderId);
+  assertLegalTransition(order.status, to);
+  await recordTenantOrderStatus(ctx, tenantId, orderId, to, opts);
+  return to;
+}
+
+/**
+ * The terminal workflow states (PRD 20 §5): an order is archived out of the kitchen
+ * queue and into the history once it reaches one of these.
+ */
+export const TERMINAL_ORDER_STATUSES: readonly OrderStatus[] = [
+  "livrée",
+  "collectée",
+  "refusée",
+];
+
+/**
+ * The KB Orders LIVE queue: a tenant's orders the kitchen is actively working,
+ * newest first. EXCLUDES `en attente de paiement` (invisible until paid, PRD 10
+ * §10/§11) AND the terminal states (archived into the history). Built on the
+ * tenant-scoped `listTenantOrders` then filtered — small per-tenant cardinality.
+ */
+export async function listTenantLiveOrders(
+  ctx: QueryCtx | MutationCtx,
+  tenantId: Id<"tenants">,
+): Promise<Doc<"orders">[]> {
+  const all = await listTenantOrders(ctx, tenantId);
+  return all.filter(
+    (o) =>
+      o.status !== "en attente de paiement" &&
+      !TERMINAL_ORDER_STATUSES.includes(o.status),
+  );
+}
+
+/** A tenant's TERMINAL orders (livrée / collectée / refusée), newest first. */
+export async function listTenantTerminalOrders(
+  ctx: QueryCtx | MutationCtx,
+  tenantId: Id<"tenants">,
+): Promise<Doc<"orders">[]> {
+  const all = await listTenantOrders(ctx, tenantId);
+  return all.filter((o) => TERMINAL_ORDER_STATUSES.includes(o.status));
+}
+
+/**
+ * A customer's OWN orders at one tenant, newest first. SELF-SCOPED: the caller
+ * (a `customerQuery` handler) has resolved `customerId` from its OWN
+ * `ctx.actor.userId`; reads are keyed on the `by_customer_created` index then
+ * filtered to `tenantId`, so no other customer's order is reachable. An order from
+ * another tenant is excluded by the `tenantId` filter.
+ */
+export async function listCustomerOwnOrdersForTenant(
+  ctx: QueryCtx | MutationCtx,
+  tenantId: Id<"tenants">,
+  customerId: Id<"customers">,
+): Promise<Doc<"orders">[]> {
+  const rows = await ctx.db
+    .query("orders")
+    .withIndex("by_customer_created", (q) => q.eq("customerId", customerId))
+    .order("desc")
+    .collect();
+  return rows.filter((o) => o.tenantId === tenantId);
+}
+
+/**
+ * One of a customer's OWN orders WITH detail (frozen items + events) at `tenantId`,
+ * or `null`. SELF-SCOPED: returns the order only if BOTH the tenant matches AND the
+ * order belongs to `customerId` (the caller's own fiche), so a foreign customer's
+ * order id reads as `null` (no existence oracle), like the resto-side
+ * `getTenantOrderWithDetail`.
+ */
+export async function getCustomerOwnOrderWithDetail(
+  ctx: QueryCtx | MutationCtx,
+  tenantId: Id<"tenants">,
+  customerId: Id<"customers">,
+  orderId: Id<"orders">,
+): Promise<OrderWithDetail | null> {
+  const order = await getTenantOrder(ctx, tenantId, orderId);
+  if (order === null || order.customerId !== customerId) return null;
+  const [items, events] = await Promise.all([
+    listTenantOrderItems(ctx, tenantId, orderId),
+    listTenantOrderEvents(ctx, tenantId, orderId),
+  ]);
+  return { ...order, items, events };
+}
+
+/**
  * 2.3-C — apply a CONFIRMED payment to one of `tenantId`'s pending orders, in a
  * SINGLE Convex transaction (atomicity = all-or-nothing):
  *  1. require the order belongs to `tenantId` (NOT_FOUND for a missing OR foreign
