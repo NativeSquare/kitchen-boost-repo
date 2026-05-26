@@ -15,11 +15,13 @@ import type { MutationCtx, QueryCtx } from "../../_generated/server";
  * business modules `lib/customer/segments` + `lib/customer/reachability` (NOT
  * exempt) call THESE helpers instead of `ctx.db`.
  *
- * ── READ-ONLY on the link (reserved 2.3) ──────────────────────────────────────
- * This slice (2.1) NEVER writes `customerOrdersPerTenant` — `totalOrders`,
- * `lastOrderAt`, `ltv` are written exclusively by chantier 2.3 (Orders). So this
- * file exposes only READS of the link; there is deliberately no insert/patch
- * helper for it here.
+ * ── The link writer is chantier 2.3 (Orders) ──────────────────────────────────
+ * Slice 2.1 only READ this link — `totalOrders` / `lastOrderAt` / `ltv` are
+ * WRITTEN exclusively by chantier 2.3 when a payment is confirmed
+ * (`recordCustomerOrderForTenant`, below). It stays in this sanctioned seam (the
+ * link carries `tenantId`, so the business module never touches raw `ctx.db`,
+ * `no-untenanted-query`); the helper is keyed on the unique `by_tenant_customer`
+ * link so a confirmed order UPSERTS the right `(tenant, customer)` row.
  *
  * ── MOAT: aggregates only, never a raw customer to a kb_manager ────────────────
  * The link reads are TENANT-SCOPED (keyed on `by_tenant`). To classify a tenant's
@@ -28,6 +30,55 @@ import type { MutationCtx, QueryCtx } from "../../_generated/server";
  * NARROW projection (no email/phone/name/address leaked out as an object; the
  * business module reduces it to COUNTS before exposing anything to the resto).
  */
+
+/** Cents → euros (the link `ltv` is cumulative in EUROS — table comment, the VIP
+ * segment threshold is 150 €; the order `pricingSnapshot.total` is in cents). */
+function centsToEuros(cents: number): number {
+  return cents / 100;
+}
+
+/**
+ * 2.3-C — record one CONFIRMED, PAID order against the `(tenantId, customerId)`
+ * link: UPSERT the unique `customerOrdersPerTenant` row keyed on
+ * `by_tenant_customer`. On the customer's FIRST paid order at this tenant the row
+ * is INSERTED (`totalOrders = 1`); on subsequent ones it is incremented
+ * (`totalOrders += 1`). `lastOrderAt` is set to `orderAt`; `ltv` accumulates the
+ * order total CONVERTED to euros (the field is stored in euros — table comment /
+ * VIP threshold). The sanctioned `ctx.db` site for this link's writes; the caller
+ * has already resolved `tenantId` (tenant wrapper) and `customerId` (the order's
+ * own customer), so the write is tenant-scoped + targets the right link.
+ */
+export async function recordCustomerOrderForTenant(
+  ctx: MutationCtx,
+  tenantId: Id<"tenants">,
+  customerId: Id<"customers">,
+  order: { totalCents: number; orderAt: number },
+): Promise<void> {
+  const existing = await ctx.db
+    .query("customerOrdersPerTenant")
+    .withIndex("by_tenant_customer", (q) =>
+      q.eq("tenantId", tenantId).eq("customerId", customerId),
+    )
+    .unique();
+
+  const deltaEur = centsToEuros(order.totalCents);
+  if (existing === null) {
+    await ctx.db.insert("customerOrdersPerTenant", {
+      customerId,
+      tenantId,
+      totalOrders: 1,
+      lastOrderAt: order.orderAt,
+      ltv: deltaEur,
+    });
+    return;
+  }
+
+  await ctx.db.patch(existing._id, {
+    totalOrders: existing.totalOrders + 1,
+    lastOrderAt: order.orderAt,
+    ltv: existing.ltv + deltaEur,
+  });
+}
 
 /** The per-tenant link rows of one tenant, keyed on `by_tenant`. */
 export async function listTenantCustomerOrders(

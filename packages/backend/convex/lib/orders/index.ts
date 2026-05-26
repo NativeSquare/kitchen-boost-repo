@@ -23,6 +23,13 @@
  *    workflow, kb_manager + staff, audited), `listOrders`, `getOrder`.
  *  - operationalPause: `setOperationalPause`, `clearOperationalPause`,
  *    `getOperationalPause`.
+ *  - workflow (2.3-C): `confirmPayment` (api.lib.orders.workflow.confirmPayment)
+ *    — the ORDER-SIDE handler of a confirmed payment. In one transaction it
+ *    transitions `en attente de paiement → nouvelle`, stamps `paidAt`, freezes the
+ *    `pricingSnapshot`, appends the `nouvelle` event, and increments
+ *    `customerOrdersPerTenant`. Consumed idempotently via the foundation
+ *    `withIdempotence` (1.x-F) so a replayed event neither re-transitions nor
+ *    double-counts. NO Stripe call here — that frontier is 2.5.
  *
  * The row shapes (status workflow, mode, source, frozen modifier, pricing
  * snapshot) live in the table validators, surfaced here as the module's typed

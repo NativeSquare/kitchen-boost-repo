@@ -41,6 +41,7 @@ import type * as lib_notifications_notify from "../lib/notifications/notify.js";
 import type * as lib_notifications_templateBounds from "../lib/notifications/templateBounds.js";
 import type * as lib_orders_index from "../lib/orders/index.js";
 import type * as lib_orders_orders from "../lib/orders/orders.js";
+import type * as lib_orders_workflow from "../lib/orders/workflow.js";
 import type * as lib_pricing_contradictions from "../lib/pricing/contradictions.js";
 import type * as lib_pricing_defaultRule from "../lib/pricing/defaultRule.js";
 import type * as lib_pricing_evaluate from "../lib/pricing/evaluate.js";
@@ -132,6 +133,7 @@ declare const fullApi: ApiFromModules<{
   "lib/notifications/templateBounds": typeof lib_notifications_templateBounds;
   "lib/orders/index": typeof lib_orders_index;
   "lib/orders/orders": typeof lib_orders_orders;
+  "lib/orders/workflow": typeof lib_orders_workflow;
   "lib/pricing/contradictions": typeof lib_pricing_contradictions;
   "lib/pricing/defaultRule": typeof lib_pricing_defaultRule;
   "lib/pricing/evaluate": typeof lib_pricing_evaluate;
