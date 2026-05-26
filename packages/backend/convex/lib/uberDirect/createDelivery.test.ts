@@ -1,6 +1,6 @@
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { api } from "../../_generated/api";
+import { api, internal } from "../../_generated/api";
 import schema from "../../schema";
 import {
   type FuzzActor,
@@ -70,7 +70,6 @@ const ARGS = {
   quoteId: "dqt_OK",
   manifestReference: "order_a_1",
   pickupName: "Buns & Bao",
-  pickupAddress: "1 rue du Resto, 75019 Paris",
   dropoffAddress: "12 rue de Paris, 91000 Évry",
 };
 
@@ -116,7 +115,7 @@ describe("2.6-C interpretCreateDeliveryResponse — pure mapping of POST /delive
   });
 });
 
-describe("2.6-C createDelivery — action: decrypt creds, OAuth, POST /deliveries", () => {
+describe("2.6-C createDelivery — internal action: system decrypt, OAuth, POST /deliveries", () => {
   let t: ReturnType<typeof convexTest>;
   let seed: Seed;
   let fetchSpy: ReturnType<typeof vi.spyOn>;
@@ -146,12 +145,12 @@ describe("2.6-C createDelivery — action: decrypt creds, OAuth, POST /deliverie
       },
     });
 
-    const res = await t
-      .withIdentity({ subject: seed.tenantA.managerId })
-      .action(api.lib.uberDirect.createDelivery.createDelivery, {
-        tenantId: seed.tenantA.tenantId,
-        ...ARGS,
-      });
+    // INTERNAL system action (the no-actor payment-confirmed flow); the tenantId
+    // is structural, so the harness drives it directly without an identity.
+    const res = await t.action(
+      internal.lib.uberDirect.createDelivery.createDelivery,
+      { tenantId: seed.tenantA.tenantId, ...ARGS },
+    );
 
     expect(res).toMatchObject({
       ok: true,
@@ -181,24 +180,20 @@ describe("2.6-C createDelivery — action: decrypt creds, OAuth, POST /deliverie
       status: 422,
       body: { code: "address_undeliverable" },
     });
-    const res = await t
-      .withIdentity({ subject: seed.tenantA.managerId })
-      .action(api.lib.uberDirect.createDelivery.createDelivery, {
-        tenantId: seed.tenantA.tenantId,
-        ...ARGS,
-      });
+    const res = await t.action(
+      internal.lib.uberDirect.createDelivery.createDelivery,
+      { tenantId: seed.tenantA.tenantId, ...ARGS },
+    );
     expect(res).toEqual({ ok: false, reason: "refused_post_payment" });
   });
 
-  it("a foreign manager cannot create a course for tenant A (cross-tenant, before Uber)", async () => {
+  it("throws when the tenant has no Uber credentials stored (no Uber call)", async () => {
     fetchSpy = vi.spyOn(global, "fetch");
     await expect(
-      t
-        .withIdentity({ subject: seed.tenantB.managerId })
-        .action(api.lib.uberDirect.createDelivery.createDelivery, {
-          tenantId: seed.tenantA.tenantId,
-          ...ARGS,
-        }),
+      t.action(internal.lib.uberDirect.createDelivery.createDelivery, {
+        tenantId: seed.tenantB.tenantId, // B has no creds
+        ...ARGS,
+      }),
     ).rejects.toThrow();
     expect(fetchSpy).not.toHaveBeenCalled();
   });

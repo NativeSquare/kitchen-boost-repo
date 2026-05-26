@@ -13,10 +13,13 @@ const rawModules = import.meta.glob([
   "!../../**/*.test.*",
 ]);
 const modules = Object.fromEntries(
-  Object.entries(rawModules).map(([path, loader]) => [
-    path.startsWith("./") ? `../../lib/delivery/${path.slice(2)}` : path,
-    loader,
-  ]),
+  Object.entries(rawModules).map(([path, loader]) => {
+    let key = path;
+    if (key.startsWith("./")) key = `../../lib/delivery/${key.slice(2)}`;
+    else if (key.startsWith("../") && !key.startsWith("../../"))
+      key = `../../lib/${key.slice(3)}`;
+    return [key, loader];
+  }),
 );
 
 /**

@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { internal } from "../../_generated/api";
 import { internalMutation } from "../../_generated/server";
 import {
   confirmTenantOrderPayment,
@@ -85,6 +86,16 @@ export const confirmPaymentSucceeded = internalMutation({
         mode: order.mode === "pickup" ? "click_collect" : "delivery",
         status: "pending",
       });
+
+      // Hand off to the delivery domain (2.6-C): once committed, create the real
+      // Uber Course (a no-op for click & collect). Scheduled AFTER this mutation
+      // commits so the seeded row is visible; the Uber HTTP call belongs in an
+      // action, not this mutation. 2.6 owns the executor — 2.5 only emits.
+      await ctx.scheduler.runAfter(
+        0,
+        internal.lib.delivery.course.createCourseOnPaymentConfirmed,
+        { tenantId: payment.tenantId, orderId: payment.orderId },
+      );
 
       applied = true;
     });
