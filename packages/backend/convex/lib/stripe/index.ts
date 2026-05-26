@@ -82,12 +82,26 @@
  *  - `verifyStripeSignature` / `parseStripeSignatureHeader` — pure HMAC verify on
  *    the raw webhook body.
  *  - `AccountUpdatedOutcome` — the idempotent `account.updated` mutation's return.
+ *  - `DisputeCreatedOutcome` — the idempotent `charge.dispute.created` (2.5-E
+ *    chargeback monitoring) mutation's return, carrying the ops Slack recap.
  *  - `PaymentStatus` — the local payment lifecycle union (`payments.status`).
  *  - `stripeWebhook` — the verified webhook httpAction (for `http.ts`).
+ *
+ * 2.5-E — Chargeback monitoring (`dispute.ts`, PRD 30 §6 + Q30-Q6, payment CONTEXT
+ * "Chargeback"). The `charge.dispute.created` webhook is MONITORING ONLY: KB is
+ * NOT merchant of record, so KB never relays evidence to Stripe, never stores
+ * evidence, and ships NO KB Admin UI in V1 (the resto answers via its native
+ * Stripe Dashboard). The single side effect is an ops Slack alert with the recap
+ * (ID cmd / montant / motif / deadline), posted ONCE thanks to
+ * `withIdempotence(ctx, "stripe", eventId, …)`. The `applyDisputeCreated`
+ * internal mutation is system-side (no actor) and resolves its tenant ONLY from
+ * the Stripe-supplied `paymentIntentId` (ADR 0010) — registered by module path,
+ * not re-exported here (only its return TYPE is surfaced).
  */
 export { APPLICATION_FEE_AMOUNT_HT, APPLICATION_FEE_AMOUNT_TTC } from "./fees";
 export { type StripeAccountSnapshot, mapStripeAccountToStatus } from "./status";
 export { parseStripeSignatureHeader, verifyStripeSignature } from "./signature";
 export { type AccountUpdatedOutcome } from "./webhook";
+export { type DisputeCreatedOutcome } from "./dispute";
 export { type PaymentStatus } from "../../table/payments";
 export { stripeWebhook } from "./webhookHandler";

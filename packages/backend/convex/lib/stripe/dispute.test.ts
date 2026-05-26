@@ -378,8 +378,12 @@ describe("2.5-E stripeWebhook — charge.dispute.created routed to monitoring + 
     );
     expect(slackCalls).toHaveLength(1);
     const body = String((slackCalls[0][1] as RequestInit).body);
-    expect(body).toContain("1585");
+    // The recap Alex pings the resto with: montant (euros), motif, deadline,
+    // and "pas merchant of record" framing (KB does not intervene).
+    expect(body).toContain("15.85");
     expect(body).toContain("fraudulent");
+    expect(body).toContain("2023-11-14"); // due_by 1_700_000_000 → 2023-11-14
+    expect(body).toContain("merchant of record");
   });
 
   it("a redelivered dispute event posts the Slack alert only ONCE (idempotent)", async () => {
