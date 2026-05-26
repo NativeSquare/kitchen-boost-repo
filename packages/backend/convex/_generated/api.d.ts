@@ -36,6 +36,7 @@ import type * as lib_customer_reachability from "../lib/customer/reachability.js
 import type * as lib_customer_rgpd from "../lib/customer/rgpd.js";
 import type * as lib_customer_segments from "../lib/customer/segments.js";
 import type * as lib_delivery_course from "../lib/delivery/course.js";
+import type * as lib_delivery_incidents from "../lib/delivery/incidents.js";
 import type * as lib_delivery_index from "../lib/delivery/index.js";
 import type * as lib_delivery_quote from "../lib/delivery/quote.js";
 import type * as lib_delivery_webhooks from "../lib/delivery/webhooks.js";
@@ -176,6 +177,7 @@ declare const fullApi: ApiFromModules<{
   "lib/customer/rgpd": typeof lib_customer_rgpd;
   "lib/customer/segments": typeof lib_customer_segments;
   "lib/delivery/course": typeof lib_delivery_course;
+  "lib/delivery/incidents": typeof lib_delivery_incidents;
   "lib/delivery/index": typeof lib_delivery_index;
   "lib/delivery/quote": typeof lib_delivery_quote;
   "lib/delivery/webhooks": typeof lib_delivery_webhooks;
