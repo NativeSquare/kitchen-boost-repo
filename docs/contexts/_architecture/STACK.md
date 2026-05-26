@@ -429,7 +429,9 @@ Helper `logAudit(ctx, {action, tenantId, targetType, targetId, metadata})` appel
 3. **Convex `"use node"` action supporte `passkit-generator`** (signature PKCS#7 OpenSSL) ? → ✅ **OK** — la lib charge + PKCS#7 (node-forge, pur JS) signe en `"use node"` ; `.pkpass` valide Apple = e2e device avec vrais certs (Phase B, #68). [Détail](../../spikes/poc-3-passkit-use-node.md)
 4. ~~Convex Auth Anonymous cookie cross-subdomain~~ — **RETIRÉ 2026-05-25** : prémisse sous-domaine caduque (domaine de marque custom par resto). Identité intra-resto + cross-resto via Wallet ([ADR 0008](../../adr/0008-identite-customer-cookie-device-only-v1.md) Amendement).
 5. **Convex `httpRouter`** supporte path params (`/webhooks/uber/:tenantId`) ? → ✅ **OK via `pathPrefix`** — `:param` nommé non supporté, mais `pathPrefix` + parse de l'URL route par tenant (pas d'offload). [Détail](../../spikes/poc-5-httprouter-path-params.md)
-6. **Stripe `clone PaymentMethod` cross-account** (carte réutilisable cross-resto) ? → ⏳ **Phase B** — exige une clé Stripe test ; si échec → fallback Apple/Google Pay only (#59 abandonné V1).
+6. **Stripe `clone PaymentMethod` cross-account** (carte réutilisable cross-resto) ? → ⏳ **Phase B** — bloqué tant que Stripe **Connect** n'est pas activé ; si échec → fallback Apple/Google Pay only (#59 abandonné V1).
+
+**Phase B (signature Wallet réelle, 2026-05-26)** → [`docs/spikes/poc-wallet-real-sign.md`](../../spikes/poc-wallet-real-sign.md) : `.pkpass` Apple signé (vrai cert Pass Type ID + WWDR G4) **et** JWT Google Wallet signé RS256 → ✅ **OK**. #68 passé `ready-for-agent`. Secrets en `.env.local` (local) ; pour le runtime déploiement, `npx convex env set …`.
 
 Délivrable POC = 1 commit par POC avec README "verdict" + benchmark si applicable.
 
