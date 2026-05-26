@@ -582,10 +582,14 @@ describe("2.3-D cross-tenant fuzz — every workflow function rejects unauthoriz
     expect(leaks).toEqual([]);
   });
 
-  it("customer self reads reject every unauthorized (pro) actor on tenant A", async () => {
-    // myOrders / myOrder require the global `customer` role — every PRO actor and
-    // the anonymous caller must be rejected. (A different customer is self-scoped
-    // by construction and asserted in the self-scope suite above.)
+  it("customer self reads reject the global root + anonymous (customer surface)", async () => {
+    // myOrders / myOrder are `customerQuery`: they require the GLOBAL `customer`
+    // role. The only GLOBAL non-customer actor is `kb_admin` (resto roles are
+    // per-tenant — a manager/staff is globally a customer and IS a legitimate eater,
+    // who simply sees their own empty self-scoped list). So the isolation pinned
+    // here is: the global root + the anonymous caller never read through the customer
+    // surface; the cross-CUSTOMER self-scope (another eater's order is unreachable)
+    // is asserted in the self-scope suite above. (Mirrors lib/customer/identity.)
     const { leaks, pairs } = await runCrossTenantFuzz(t, {
       functions: [
         api.lib.orders.workflow.myOrders,
@@ -594,14 +598,12 @@ describe("2.3-D cross-tenant fuzz — every workflow function rejects unauthoriz
       isQuery: () => true,
       tenantId: seed.tenantA.tenantId,
       actors: [
-        { label: "A-manager", subject: seed.tenantA.managerId },
-        { label: "A-staff", subject: seed.tenantA.staffId },
-        { label: "B-manager", subject: seed.tenantB.managerId },
+        { label: "kb_admin", subject: seed.adminId },
         { label: "anonymous", subject: null },
       ] satisfies FuzzActor[],
       extraArgs: { orderId },
     });
-    expect(pairs).toBe(8);
+    expect(pairs).toBe(4);
     expect(leaks).toEqual([]);
   });
 });
