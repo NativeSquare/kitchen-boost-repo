@@ -32,7 +32,7 @@ const NESTED_A_IN_B =
   "qu'elles soient passées sous la marque concédée ou sous l'enseigne native du Partenaire";
 
 const partner: PartnerFiche = {
-  raisonSociale: "Buns & Bao SARL",
+  raisonSociale: "Buns and Bao SARL",
   siret: "98765432100012",
   adresse: "12 rue de la Paix, 91000 Évry",
   email: "khan@bunsandbao.fr",

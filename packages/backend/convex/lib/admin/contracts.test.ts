@@ -35,21 +35,28 @@ const modules = Object.fromEntries(
 type Seed = Awaited<ReturnType<typeof seedTwoTenantsAllRoles>>;
 
 const PARTNER = {
-  raisonSociale: "Buns & Bao SARL",
+  raisonSociale: "Buns and Bao SARL",
   siret: "98765432100012",
   adresse: "12 rue de la Paix, 91000 Évry",
   email: "khan@bunsandbao.fr",
   representant: "Khan Diallo",
 };
 
-async function seedProspect(t: ReturnType<typeof convexTest>, seed: Seed) {
-  return t
-    .withIdentity({ subject: seed.adminId })
-    .mutation(api.lib.onboarding.crm.createProspect, {
-      name: "Buns & Bao",
+// Seed a prospect directly through the DB (the contract back-link target). We
+// insert via `t.run` rather than calling the onboarding CRM mutation so this
+// suite has no cross-module function dependency (and a stable module root).
+async function seedProspect(t: ReturnType<typeof convexTest>) {
+  return t.run(async (ctx) => {
+    const now = Date.now();
+    return ctx.db.insert("prospects", {
+      name: "Buns and Bao",
       phone: "0612345678",
+      phase: "acquisition",
       source: "cold_call",
+      createdAt: now,
+      updatedAt: now,
     });
+  });
 }
 
 describe("2.9-D contract lifecycle — generate / send / refresh / expire", () => {
@@ -62,7 +69,7 @@ describe("2.9-D contract lifecycle — generate / send / refresh / expire", () =
 
   it("generates a draft contract with rendered HTML, dated", async () => {
     const asAdmin = t.withIdentity({ subject: seed.adminId });
-    const prospectId = await seedProspect(t, seed);
+    const prospectId = await seedProspect(t);
 
     const contractId = await asAdmin.mutation(
       api.lib.admin.contracts.generateContract,
@@ -84,7 +91,7 @@ describe("2.9-D contract lifecycle — generate / send / refresh / expire", () =
 
   it("sends a draft → sent and attaches the odooLink, re-dating the status", async () => {
     const asAdmin = t.withIdentity({ subject: seed.adminId });
-    const prospectId = await seedProspect(t, seed);
+    const prospectId = await seedProspect(t);
     const contractId = await asAdmin.mutation(
       api.lib.admin.contracts.generateContract,
       { prospectId, prestation: "A", partner: PARTNER },
@@ -111,7 +118,7 @@ describe("2.9-D contract lifecycle — generate / send / refresh / expire", () =
 
   it("refreshContractStatus moves sent → signed (V1 manual check)", async () => {
     const asAdmin = t.withIdentity({ subject: seed.adminId });
-    const prospectId = await seedProspect(t, seed);
+    const prospectId = await seedProspect(t);
     const contractId = await asAdmin.mutation(
       api.lib.admin.contracts.generateContract,
       { prospectId, prestation: "B", partner: PARTNER },
@@ -135,7 +142,7 @@ describe("2.9-D contract lifecycle — generate / send / refresh / expire", () =
 
   it("refreshContractStatus leaves status untouched when not yet signed", async () => {
     const asAdmin = t.withIdentity({ subject: seed.adminId });
-    const prospectId = await seedProspect(t, seed);
+    const prospectId = await seedProspect(t);
     const contractId = await asAdmin.mutation(
       api.lib.admin.contracts.generateContract,
       { prospectId, prestation: "B", partner: PARTNER },
@@ -153,7 +160,7 @@ describe("2.9-D contract lifecycle — generate / send / refresh / expire", () =
 
   it("expires a draft / sent contract", async () => {
     const asAdmin = t.withIdentity({ subject: seed.adminId });
-    const prospectId = await seedProspect(t, seed);
+    const prospectId = await seedProspect(t);
     const contractId = await asAdmin.mutation(
       api.lib.admin.contracts.generateContract,
       { prospectId, prestation: "A", partner: PARTNER },
@@ -169,7 +176,7 @@ describe("2.9-D contract lifecycle — generate / send / refresh / expire", () =
 
   it("rejects an illegal transition (signed → expired) — terminal state", async () => {
     const asAdmin = t.withIdentity({ subject: seed.adminId });
-    const prospectId = await seedProspect(t, seed);
+    const prospectId = await seedProspect(t);
     const contractId = await asAdmin.mutation(
       api.lib.admin.contracts.generateContract,
       { prospectId, prestation: "A", partner: PARTNER },
@@ -190,7 +197,7 @@ describe("2.9-D contract lifecycle — generate / send / refresh / expire", () =
 
   it("rejects sending an already-signed contract (signed → sent illegal)", async () => {
     const asAdmin = t.withIdentity({ subject: seed.adminId });
-    const prospectId = await seedProspect(t, seed);
+    const prospectId = await seedProspect(t);
     const contractId = await asAdmin.mutation(
       api.lib.admin.contracts.generateContract,
       { prospectId, prestation: "A", partner: PARTNER },
@@ -213,7 +220,7 @@ describe("2.9-D contract lifecycle — generate / send / refresh / expire", () =
 
   it("lists contracts for a prospect", async () => {
     const asAdmin = t.withIdentity({ subject: seed.adminId });
-    const prospectId = await seedProspect(t, seed);
+    const prospectId = await seedProspect(t);
     await asAdmin.mutation(api.lib.admin.contracts.generateContract, {
       prospectId,
       prestation: "A",
@@ -248,7 +255,7 @@ describe("2.9-D contract root-only fuzz — every contract function is kb_admin-
   });
 
   it("no non-root actor can reach any contract function", async () => {
-    const prospectId = await seedProspect(t, seed);
+    const prospectId = await seedProspect(t);
     const contractId = await t
       .withIdentity({ subject: seed.adminId })
       .mutation(api.lib.admin.contracts.generateContract, {
@@ -298,7 +305,7 @@ describe("2.9-D contract root-only fuzz — every contract function is kb_admin-
   });
 
   it("a non-root caller is rejected with Forbidden", async () => {
-    const prospectId = await seedProspect(t, seed);
+    const prospectId = await seedProspect(t);
     await expect(
       t
         .withIdentity({ subject: seed.tenantA.managerId })
