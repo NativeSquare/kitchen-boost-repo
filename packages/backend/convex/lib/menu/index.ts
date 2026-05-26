@@ -41,9 +41,9 @@
  *    (out of window ⇒ payment blocked). Decision is a pure function
  *    (`isWithinServiceHours`), tested deterministically on injected clocks.
  *
- * 2.2-D — [[Item out of stock]] toggle + auto-réactivation au lendemain (PRD 10
- * §edge "Item out of stock", client-ordering CONTEXT, multi-tenant CONTEXT
- * `staff`, ADR 0010):
+ * 2.2-D / 2.2-fix (#105) — [[Item out of stock]] toggle + auto-réactivation à la
+ * première ouverture de service après `unavailableSince` (PRD 10 §edge "Item out
+ * of stock", client-ordering CONTEXT, multi-tenant CONTEXT `staff`, ADR 0010):
  * 2.2-F — [[Item]] photos via NATIVE Convex file storage (PRD 10 §5/§6,
  * client-ordering CONTEXT, ADR 0010). The KB Manager uploads a photo and
  * attaches it to an item; the URL is served read-side (already wired into
@@ -57,11 +57,14 @@
  *
  *  - `availability.setItemAvailability` — `tenantMutation` (kb_manager + staff)
  *    flipping an item's `available` and stamping / clearing `unavailableSince`.
- *  - The next-day auto-reactivation runs from the `crons.ts` Convex cron, which
- *    calls this module's `reactivateAllTenantsUnavailableItems` per tenant; the
- *    decision is the pure `itemsToReactivate` (windows + items + Europe/Paris
- *    clock → ids), tested in isolation. The reactivation helpers are plain
- *    functions (NOT registered Convex functions) — re-exported here for the cron.
+ *  - The auto-reactivation runs from the `crons.ts` Convex cron, which calls this
+ *    module's `reactivateAllTenantsUnavailableItems` per tenant; the decision is
+ *    the pure `itemsToReactivate` (windows + items + Europe/Paris clock → ids):
+ *    an item returns at the FIRST service-opening boundary strictly after its
+ *    `unavailableSince` (#105 — corrects #56's hardcoded "lendemain"), so an item
+ *    toggled off before the day's opening comes back the SAME day. Tested in
+ *    isolation. The reactivation helpers are plain functions (NOT registered
+ *    Convex functions) — re-exported here for the cron.
  */
 export * as availability from "./availability";
 export * as catalog from "./catalog";
