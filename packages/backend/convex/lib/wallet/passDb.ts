@@ -1,6 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import type { Id } from "../../_generated/dataModel";
-import { internalMutation } from "../../_generated/server";
+import { internalMutation, internalQuery } from "../../_generated/server";
 import { customerQuery } from "../tenancy/customer";
 import {
   getOrCreateCustomerFiche,
@@ -8,6 +8,7 @@ import {
   insertWalletPass,
   logAudit,
   readCustomerFicheByUser,
+  readWalletPassBySerial,
 } from "../tenancy";
 import { WALLET_PASS_TYPE_IDENTIFIER } from "./_constants";
 
@@ -78,6 +79,44 @@ export const resolveOwnPassContext = customerQuery({
       brandTenantName,
       brandTenantId,
     };
+  },
+});
+
+/**
+ * 2.8-B — INTERNAL — resolve the brand context to REBUILD the latest `.pkpass` for
+ * an EXISTING serial (US 9, the Web Service `GET pass/[serial]` re-download). The
+ * pass content is deterministic from the persisted `walletPasses` row: the serial +
+ * the brand resto name (the LAST resto ordered, `lastBrandTenantId`, a USAGE — ADR
+ * 0003). Returns `null` for an unknown serial (the route answers 404 — no
+ * fabricated pass). Reached only through the sanctioned `lib/tenancy` seam (the
+ * GLOBAL `walletPasses` / `tenants` tables). System-side (called by the signing
+ * action after the Web Service auth passed in the Node route).
+ */
+export const getPassRebuildContext = internalQuery({
+  args: { serialNumber: v.string() },
+  returns: v.union(
+    v.object({
+      serialNumber: v.string(),
+      brandTenantName: v.union(v.string(), v.null()),
+    }),
+    v.null(),
+  ),
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
+    serialNumber: string;
+    brandTenantName: string | null;
+  } | null> => {
+    const pass = await readWalletPassBySerial(ctx, args.serialNumber);
+    if (pass === null) return null;
+
+    let brandTenantName: string | null = null;
+    if (pass.lastBrandTenantId !== undefined) {
+      const tenant = await getTenantById(ctx, pass.lastBrandTenantId);
+      brandTenantName = tenant?.name ?? null;
+    }
+    return { serialNumber: pass.serialNumber, brandTenantName };
   },
 });
 

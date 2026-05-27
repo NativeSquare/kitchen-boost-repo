@@ -44,3 +44,23 @@ export {
   buildGoogleWalletClaims,
   googleWalletSaveLink,
 } from "./passBuilders";
+
+/**
+ * 2.8-B — the PURE auth helpers of the Apple Wallet Web Service (US 23 / US 10),
+ * surfaced for the Next.js Node routes (`apps/admin/api/wallet/*`) that run the
+ * binary `.pkpass` + `Authorization: ApplePass …` handling. They are PURE
+ * (`crypto.subtle`, no ctx, no signing certs), so the Node route reuses them
+ * verbatim to (a) sign / verify the internal Convex↔Node channel and (b) derive /
+ * verify the per-pass PassKit token. The Convex FUNCTIONS in `registrations.ts`
+ * (`registerDevice` / `unregisterDevice` / `verifyDeviceAuth`) are NOT re-exported
+ * — Convex addresses them by their module path (`api.lib.wallet.registrations.*`),
+ * same convention as `generatePass`.
+ */
+export {
+  type SignedInternalRequest,
+  parseApplePassAuthorization,
+  signInternalRequest,
+  verifyInternalRequest,
+  verifyWalletPassAuthToken,
+  walletPassAuthToken,
+} from "./internalAuth";

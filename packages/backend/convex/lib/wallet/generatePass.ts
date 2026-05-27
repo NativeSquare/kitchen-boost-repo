@@ -3,7 +3,7 @@
 import crypto from "node:crypto";
 import { ConvexError, v } from "convex/values";
 import { api, internal } from "../../_generated/api";
-import { action } from "../../_generated/server";
+import { action, internalAction } from "../../_generated/server";
 import {
   type ApplePassJson,
   buildApplePassJson,
@@ -220,6 +220,66 @@ export const generatePass = action({
       applePass,
       appleSigned: signedApple !== null,
       googleSaveLink,
+    };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// signPkpassForSerial — re-serve the latest .pkpass for an EXISTING serial (US 9)
+// ---------------------------------------------------------------------------
+
+/**
+ * 2.8-B — INTERNAL `"use node"` action that REBUILDS + signs the latest `.pkpass`
+ * for an EXISTING serial (US 9, the Web Service `GET pass/[serial]` re-download).
+ *
+ * The device-facing HTTP route (`apps/admin/api/wallet/pass/[serial]`, Node
+ * runtime) verifies the PassKit auth token, then asks this seam for the signed
+ * bytes — REUSING slice A's signing (`signApplePkpass`, POC #3) and the pure
+ * builder (`buildApplePassJson`), so the binary path lives in ONE place (the
+ * `"use node"` runtime, STACK §2.3) and is never duplicated/forked.
+ *
+ * The pass content is deterministic from the persisted `walletPasses` row
+ * (`getPassRebuildContext`: serial + the brand resto name, ADR 0003) — NOT a fresh
+ * generation, NO new serial, NO customer scope (the device re-downloads a card it
+ * already owns; the auth is the PassKit token checked in the Node route). An unknown
+ * serial throws NOT_FOUND (the route answers 404 — no fabricated pass).
+ *
+ * Returns the Apple `pass.json` structure + the signed bytes as base64 (or `null`
+ * in CI / dev when the real certs are absent — the structure is still
+ * mergeable/testable, the real signature is HITL: POC #3 + device e2e).
+ */
+export const signPkpassForSerial = internalAction({
+  args: { serialNumber: v.string() },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
+    applePass: ApplePassJson;
+    signed: boolean;
+    pkpassBase64: string | null;
+  }> => {
+    const rebuild = await ctx.runQuery(
+      internal.lib.wallet.passDb.getPassRebuildContext,
+      { serialNumber: args.serialNumber },
+    );
+    if (rebuild === null) {
+      throw new ConvexError({
+        code: "NOT_FOUND",
+        message: "Unknown pass serial.",
+      });
+    }
+
+    const applePass = buildApplePassJson({
+      serialNumber: rebuild.serialNumber,
+      brandTenantName: rebuild.brandTenantName ?? undefined,
+    });
+    const signed = await signApplePkpass(applePass);
+
+    return {
+      applePass,
+      signed: signed !== null,
+      pkpassBase64:
+        signed === null ? null : Buffer.from(signed).toString("base64"),
     };
   },
 });
