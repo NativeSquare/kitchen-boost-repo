@@ -452,7 +452,7 @@ Session de grilling sur le **plan du frontend `apps/admin`** (`/grill-with-docs`
 
 - **Un seul shell visuel**, sidebar conditionnelle par rôle (pas de groupes de routes séparés). Gating front = navigation/UX, **pas** la frontière de sécurité (backend, ADR 0010).
 - **Session bootstrap** : classification par **liste de tenants** (un gérant = ≥1 ligne `userTenants` active), pas par badge global.
-- **Tenant courant dans l'URL** (`/t/[id]/...`), hook auto-tenant ; **deux espaces** : `/tenants/[id]` (supervision, `kbAdminQuery`) vs `/t/[id]/...` (opérationnel, `tenantQuery`).
+- **Tenant courant dans l'URL** (`/t/[tenantId]/...`), hook auto-tenant ; **deux espaces** : `/pipeline/[prospectId]` (supervision / fiche, `kbAdminQuery`, **clé prospect** car le prospect précède le tenant) vs `/t/[tenantId]/...` (opérationnel, `tenantQuery`). Une fois provisionné, la fiche expose le tenant + bouton « Ouvrir la vue resto ».
 - **Impersonation V1 = navigation** (root override + bandeau), pas de plomberie dédiée.
 - **Switcher toujours visible**, contenu adaptatif (gérant = ses tenants ; KB Admin = recherche tous tenants + "Supervision").
 
