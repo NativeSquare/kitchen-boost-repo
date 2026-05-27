@@ -1,6 +1,6 @@
 # 70 — KitchenBoost Admin
 
-**Statut** : 🟡 Squelette · **Version** : 1.0 · **Dernière mise à jour** : 2026-05-23
+**Statut** : 🟡 Squelette · **Version** : 1.1 · **Dernière mise à jour** : 2026-05-27
 **Lié au master** : [00_master.md § 5 bloc 8](00_master.md#5-surface-fonctionnelle-macro-vue-doiseau)
 
 > **v1.0 (fusion)** : ce PRD résulte de la **fusion** des anciens `70_admin_backoffice_kb.md` v0.3 (back-office interne KB) et `75_dashboard_resto.md` v0.1 (dashboard resto). Il n'y a plus deux apps web séparées — il y a **une seule app web `KitchenBoost Admin`** dont la vue est scopée par **RBAC** : un user **KB Admin** (root) voit tous les tenants, un user **KB Manager** voit son ou ses tenants. Ancien `75` : [docs/\_archive/](../_archive/).
@@ -267,7 +267,7 @@ V2 :
 - Compteurs par segment : `actifs` / `inactifs` / `VIP` (cf. [90](90_donnees_clients_crm.md))
 - Atteignabilité par canal : `# atteignables push`, `# email`, `# SMS`
 - KPI macro : total clients tenant, nouveaux ce mois, taux de retour (% clients ayant ≥ 2 cmds)
-- Filtre temporel global (30 / 90 / 365 jours)
+- ~~Filtre temporel global (30 / 90 / 365 jours)~~ **— RETIRÉ V1** (grilling front 2026-05-27) : les 3 segments encodent déjà leurs fenêtres (actif 30 j / inactif 90 j) et `aggregateCustomerKPIs` n'expose aucun paramètre de période. Un curseur global imposerait de re-paramétrer la segmentation + un arg backend. V2.
 - **PAS de table, PAS de prénom, PAS de coordonnées, PAS d'export CSV (JAMAIS)**
 - Campagnes (V2) : le resto tape un segment, KB envoie en proxy — jamais de destinataires nominatifs visibles
 
@@ -442,8 +442,43 @@ V2 :
 - **Personnalisations (modifiers)** dans l'édition menu = parité fonctionnelle Uber Manager. Pas de système d'upsell algorithmique en plus V1.
 - **KB Admin peut éditer le menu d'un tenant sans préavis** (acté 2026-05-23, Q70-Q14). Pattern Uber Eats. En pratique KB s'auto-discipline, mais aucun garde-fou produit (pas de motif prédéfini, pas de notif obligatoire). Audit log V2 (V1 sans, cf. Q70-Q2). Le mandat KB du contrat (Article 2) suffit juridiquement.
 
+## Grilling front V1 — décisions & dépendances backend (2026-05-27)
+
+Session de grilling sur le **plan du frontend `apps/admin`** (`/grill-with-docs`). Le détail des décisions structurantes est en ADR ; ci-dessous le résumé + la liste des **dépendances backend découvertes** (le front n'est PAS du pur branchement — ces briques manquent au backend « 2.x construit » et doivent devenir des stories `/to-issues`).
+
+### Décisions actées (front shell + RBAC) — [ADR 0014](../adr/0014-shell-kb-admin-unique-scoping-rbac-front.md)
+
+- **Un seul shell visuel**, sidebar conditionnelle par rôle (pas de groupes de routes séparés). Gating front = navigation/UX, **pas** la frontière de sécurité (backend, ADR 0010).
+- **Session bootstrap** : classification par **liste de tenants** (un gérant = ≥1 ligne `userTenants` active), pas par badge global.
+- **Tenant courant dans l'URL** (`/t/[id]/...`), hook auto-tenant ; **deux espaces** : `/tenants/[id]` (supervision, `kbAdminQuery`) vs `/t/[id]/...` (opérationnel, `tenantQuery`).
+- **Impersonation V1 = navigation** (root override + bandeau), pas de plomberie dédiée.
+- **Switcher toujours visible**, contenu adaptatif (gérant = ses tenants ; KB Admin = recherche tous tenants + "Supervision").
+
+### Décisions actées (édition menu) — [ADR 0015](../adr/0015-edition-menu-brouillon-publication-globale-atomique.md)
+
+- **Personnalisations = groupes réutilisables** (N-N, modèle Uber Eats), création inline depuis l'item. Options = **label + prix delta ≥ 0**. **Pas de dish-as-option V1** (une option ne référence pas un item).
+- **Catégories à plat** (pas de sous-catégories V1).
+- **Brouillon autosauvé PUIS publication globale atomique** (instantané publié ; `getPublicMenu` lit l'instantané). Annuler / versioning = V2.
+- **Drag & drop** des catégories ET des items en V1.
+
+### Décisions actées (vue « Mes clients ») — MOAT
+
+- **KPI-only confirmé** (aucune liste/coord/export — PRD §4.4 / Q90-Q2). Le front rend `aggregateCustomerKPIs` + appelle `logKpiConsultation` à l'ouverture (trace anti-scraping).
+- **Filtre temporel global RETIRÉ V1** (cf. §4.4).
+
+### Dépendances backend à créer (stories pour `/to-issues`)
+
+| #   | Brique               | Contexte               | Spec courte                                                                                                                                                                                                                                                                                                                                               |
+| --- | -------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1  | **`getSession`**     | auth / multi-tenant    | Query exposée : `{ isAdmin, tenants: [{ tenantId, slug, name, role }] }` pour la session courante. Remplace l'usage root-only de `currentAdmin` comme garde. Alimente garde + switcher.                                                                                                                                                                   |
+| D2  | **Publication menu** | Client Ordering (menu) | Instantané publié par tenant + mutation `publishMenu` (root override) qui le reconstruit depuis le brouillon ; `getPublicMenu` lit l'**instantané** (plus les tables live) ; aperçu lit le brouillon. Le toggle `available` (rupture) doit rester **live** (sans republier tout le menu). 1ère publication requise au provisioning (sinon PWA sans menu). |
+| D3  | **`items.reorder`**  | Client Ordering (menu) | Mutation `items.reorder({ categoryId, orderedIds })` miroir de `categories.reorder` (le champ `order` existe déjà sur `menuItems`).                                                                                                                                                                                                                       |
+
+> ⚠️ Ces 3 briques bloquent la sortie complète du front correspondant. À prioriser **avant** les surfaces front qui les consomment.
+
 ## Changelog
 
-| Date       | Version | Auteur            | Notes                                                                                                                                                                                                                                                  |
-| ---------- | ------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 2026-05-23 | 1.0     | Alex (via Claude) | **Création par fusion** des anciens `70_admin_backoffice_kb.md` v0.3 + `75_dashboard_resto.md` v0.1. Une seule app `KitchenBoost Admin` avec RBAC à 3 rôles. Multi-tenant per user V1 (cas Walid). Anciens fichiers : [docs/\_archive/](../_archive/). |
+| Date       | Version | Auteur            | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ---------- | ------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-05-23 | 1.0     | Alex (via Claude) | **Création par fusion** des anciens `70_admin_backoffice_kb.md` v0.3 + `75_dashboard_resto.md` v0.1. Une seule app `KitchenBoost Admin` avec RBAC à 3 rôles. Multi-tenant per user V1 (cas Walid). Anciens fichiers : [docs/\_archive/](../_archive/).                                                                                                                                                                                                  |
+| 2026-05-27 | 1.1     | Alex (via Claude) | **Grilling front `apps/admin`** : [ADR 0014](../adr/0014-shell-kb-admin-unique-scoping-rbac-front.md) (shell unique + scoping RBAC front) + [ADR 0015](../adr/0015-edition-menu-brouillon-publication-globale-atomique.md) (édition menu brouillon → publication globale atomique). Filtre temporel « Mes clients » retiré V1. 3 dépendances backend découvertes (`getSession`, publication menu, `items.reorder`) — cf. section « Grilling front V1 ». |
