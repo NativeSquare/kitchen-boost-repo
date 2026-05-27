@@ -64,10 +64,16 @@ import {
  */
 
 /** The two Wallet channels this slice dispatches (the rest is later slices). */
-const WALLET_CHANNELS = ["wallet_push", "wallet_silent"] as const;
-type WalletChannel = (typeof WALLET_CHANNELS)[number];
+export const WALLET_CHANNELS = ["wallet_push", "wallet_silent"] as const;
+export type WalletChannel = (typeof WALLET_CHANNELS)[number];
 
-function isWalletChannel(channel: string): channel is WalletChannel {
+/**
+ * PURE — whether a journaled channel is a Wallet channel this slice dispatches. The
+ * single source of truth shared by the emitter (`notify` selects the Wallet sends to
+ * schedule) and the dispatcher (it defensively re-checks the channel off the row), so
+ * the "Wallet only" boundary lives in ONE place. No Convex ctx — unit-testable.
+ */
+export function isWalletChannel(channel: string): channel is WalletChannel {
   return (WALLET_CHANNELS as readonly string[]).includes(channel);
 }
 

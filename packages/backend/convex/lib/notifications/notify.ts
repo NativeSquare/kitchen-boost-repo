@@ -9,6 +9,7 @@ import {
   requireTenantOrder,
   tenantMutation,
 } from "../tenancy";
+import { isWalletChannel } from "./dispatch";
 import {
   type PlannedSend,
   channelAvailabilityFrom,
@@ -88,7 +89,7 @@ export const notifyOrderEvent = tenantMutation(OPERATIONAL_ALLOW)({
         // (sendable: false); web_push/email await their own transport slices.
         status: "queued",
       });
-      if (send.channel === "wallet_push" || send.channel === "wallet_silent") {
+      if (isWalletChannel(send.channel)) {
         walletEventIds.push(eventId);
       }
     }

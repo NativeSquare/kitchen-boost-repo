@@ -142,3 +142,10 @@ export {
   type CampaignLaunchRecord,
   findCampaignAnomaly,
 } from "./antiAnomaly";
+// 2.7-F — the dispatcher's PURE contract (the "Wallet only" channel predicate); the
+// Convex action `dispatchWalletSends` is internal-only and reached via internal.* .
+export {
+  WALLET_CHANNELS,
+  type WalletChannel,
+  isWalletChannel,
+} from "./dispatch";
