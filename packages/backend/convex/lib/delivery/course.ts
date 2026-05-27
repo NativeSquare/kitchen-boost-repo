@@ -8,28 +8,35 @@ import {
 } from "../../_generated/server";
 import { deliveryIncidentType } from "../../table/deliveries";
 import {
+  confirmTenantOrderPayment,
   getTenantById,
   getTenantDeliveryByOrder,
   getTenantOrder,
   patchTenantDelivery,
+  requireTenantOrder,
 } from "../tenancy";
 
 /**
- * 2.6-C — `createCourseOnPaymentConfirmed`: turn the [[Course]] seeded by 2.5 at
- * `payment_intent.succeeded` into a real Uber Direct delivery (PRD 40 §3, delivery
- * CONTEXT). 2.5 (NOT this slice) wires the Stripe webhook and SEEDS a `pending`
- * `deliveries` row at payment-confirmed; this action is the delivery-domain
- * EXECUTOR it triggers — it reads that seeded row, and:
- *  - mode `click_collect` ⇒ NO Uber call, no Course created, fee 0 (no-op);
+ * 2.6-C + 2.3-fix (#108) — `createCourseOnPaymentConfirmed`: turn the [[Course]]
+ * seeded by 2.5 at `payment_intent.succeeded` into a real Uber Direct delivery (PRD
+ * 40 §3, delivery CONTEXT) AND, under the STRICT payment↔delivery coupling (#108),
+ * be the GATE that makes a delivery order visible. 2.5 (NOT this slice) wires the
+ * Stripe webhook and SEEDS a `pending` `deliveries` row at payment-confirmed WITHOUT
+ * confirming a delivery order (it stays `en attente de paiement`, invisible,
+ * uncounted); this action is the delivery-domain EXECUTOR it triggers — it reads
+ * that seeded row, and:
+ *  - mode `click_collect` ⇒ NO Uber call, no Course created, fee 0 (no-op — the
+ *    pickup order was already confirmed at payment, no course gate);
  *  - mode `delivery` ⇒ call `lib/uberDirect.createDelivery` (the ONLY Uber caller)
  *    and persist `uberDeliveryId` + status + pickup/dropoff ETA + courier on the
- *    row. If Uber REFUSES the course (PRD 40 §5 Cas A / [[Cmd avortée]]), flag the
- *    row `refused_post_payment` AND trigger the 2.5-D auto-refund (#49): the payment
- *    `succeeded` but the course can't be created, so KB refunds the client in full,
- *    pulls the order out of KB Orders, and pushes the client — SCHEDULED via
- *    `ctx.scheduler.runAfter(0, internal.lib.stripe.refund.refundAbortedOrder, …)`
- *    (the Stripe call lives in the payment domain's action; this slice only triggers
- *    it, exactly as 2.5-B emits the course toward delivery).
+ *    row. ON SUCCESS, CONFIRM the order (`en attente de paiement → nouvelle`, freeze
+ *    pricing, +1 `customerOrdersPerTenant` MOAT stats) — this is the EXACT moment the
+ *    resto sees the order (beep), gated on the course existing. If Uber REFUSES the
+ *    course (PRD 40 §5 Cas A / [[Cmd avortée]]), the order is NEVER confirmed (it
+ *    stays invisible + uncounted): flag the row `refused_post_payment` AND trigger
+ *    the 2.5-D auto-refund (#49) — SCHEDULED via `ctx.scheduler.runAfter(0,
+ *    internal.lib.stripe.refund.refundAbortedOrder, …)` (the Stripe call lives in
+ *    the payment domain's action; this slice only triggers it).
  *
  * SYSTEM-SIDE (no actor): the trigger is the Stripe webhook scheduler, which
  * carries NO user-supplied tenant id. The `tenantId` is resolved STRUCTURALLY
@@ -96,6 +103,37 @@ export const applyCourseResult = internalMutation({
     );
     if (delivery === null) return; // no seeded row → nothing to update (no-op)
     await patchTenantDelivery(ctx, args.tenantId, delivery._id, args.patch);
+  },
+});
+
+/**
+ * 2.3-fix (#108) — CONFIRM a delivery order once its Uber course exists: the GATE
+ * that makes a delivery order visible to the resto (`en attente de paiement →
+ * nouvelle`, freeze pricing, +1 MOAT stats) under the strict payment↔delivery
+ * coupling. Runs in ONE transaction via the sanctioned `confirmTenantOrderPayment`
+ * seam (which guards the state machine + records the customer aggregates). IDEMPOTENT:
+ * a re-trigger after the order is already `nouvelle` (or any non-pending state) is a
+ * clean no-op — the `confirmTenantOrderPayment` guard requires `en attente de
+ * paiement`, so we check first and skip rather than throw. Reads the frozen pricing
+ * from the order itself (set at checkout/payment). System-side (no actor); the
+ * tenant is structural. Returns whether it confirmed on this call.
+ */
+export const confirmDeliveryOrderOnCourseCreated = internalMutation({
+  args: { tenantId: v.id("tenants"), orderId: v.id("orders") },
+  returns: v.object({ confirmed: v.boolean() }),
+  handler: async (ctx, args): Promise<{ confirmed: boolean }> => {
+    const order = await requireTenantOrder(ctx, args.tenantId, args.orderId);
+    // Only the gated pending state transitions; anything else (already confirmed on
+    // a prior run, or aborted) is left untouched — idempotent, never a double count.
+    if (order.status !== "en attente de paiement") return { confirmed: false };
+    if (order.pricingSnapshot === undefined) return { confirmed: false };
+    await confirmTenantOrderPayment(
+      ctx,
+      args.tenantId,
+      args.orderId,
+      order.pricingSnapshot,
+    );
+    return { confirmed: true };
   },
 });
 
@@ -190,6 +228,14 @@ export const createCourseOnPaymentConfirmed = internalAction({
           : {}),
       },
     });
+
+    // #108 — the course EXISTS now, so the strict coupling is satisfied: confirm the
+    // delivery order (`en attente de paiement → nouvelle` + freeze pricing + MOAT
+    // stats). This is the exact moment the resto sees it (beep). Idempotent.
+    await ctx.runMutation(
+      internal.lib.delivery.course.confirmDeliveryOrderOnCourseCreated,
+      { tenantId: args.tenantId, orderId: args.orderId },
+    );
     return { courseCreated: true };
   },
 });

@@ -38,21 +38,32 @@ const MAX_PAYMENT_ATTEMPTS = 3;
 
 /**
  * `payment_intent.succeeded` — the payment cleared on the resto's connected
- * account. In ONE transaction (idempotent per `(stripe, eventId)`):
+ * account. In ONE transaction (idempotent per `(stripe, eventId)`), applying the
+ * STRICT payment↔delivery coupling (#108 — corrects #38):
  *  1. resolve the local `payments` row from the Stripe `paymentIntentId` (an
  *     unknown intent is a clean no-op);
  *  2. mark the payment `succeeded`;
- *  3. CONFIRM the order — `en attente de paiement → nouvelle`, stamping `paidAt`
- *     and FREEZING the pricing snapshot RECEIVED from Pricing (#20), via the
- *     orders seam (which also increments the customer MOAT aggregates);
- *  4. SEED the delivery course (a `pending` `deliveries` row) — an Uber course for
- *     a `delivery` order, a click & collect row for a `pickup` order (no Uber
- *     dispatch) — then SCHEDULE the chantier 2.6-C executor
- *     (`createCourseOnPaymentConfirmed`) to make the real Uber Course once this
- *     mutation commits (a no-op for click & collect). 2.6 owns the executor; this
- *     slice only EMITS the course toward the delivery domain (the Uber HTTP call
- *     belongs in an action, not here), exactly as 2.3-E emits the refund toward
- *     Payment.
+ *  3. branch on the order's fulfilment mode (frozen at checkout):
+ *     - PICKUP (click & collect): CONFIRM the order NOW — `en attente de paiement →
+ *       nouvelle`, stamp `paidAt`, FREEZE the pricing snapshot, increment the
+ *       `customerOrdersPerTenant` MOAT aggregates — there is no Uber course to gate
+ *       on, so the resto sees it immediately (PRD 10 §10/§11, payment+delivery
+ *       CONTEXTs "Click & collect");
+ *     - DELIVERY: do NOT confirm yet — the order STAYS `en attente de paiement`
+ *       (invisible to the resto, no beep) and the stats are NOT incremented. The
+ *       transition `→ nouvelle` + the stats increment are GATED on the Uber course
+ *       being created successfully, and happen inside the 2.6-C executor
+ *       (`createCourseOnPaymentConfirmed`). This is the [[Cmd avortée]] guarantee
+ *       (payment+delivery CONTEXTs): "si l'un échoue à la création, on annule tout"
+ *       and "la cmd n'est jamais transmise à KB Orders" — so a course that fails
+ *       leaves no kitchen trace and no MOAT stat.
+ *  4. SEED the fulfilment row (`pending`) — `delivery` for a delivery order, a
+ *     `click_collect` row for a pickup (no Uber dispatch) — then SCHEDULE the 2.6-C
+ *     executor (`createCourseOnPaymentConfirmed`) to make the real Uber Course once
+ *     this mutation commits (a no-op for click & collect, which is already
+ *     confirmed). 2.6 owns the executor; this slice only EMITS toward the delivery
+ *     domain (the Uber HTTP call belongs in an action), exactly as 2.3-E emits the
+ *     refund toward Payment.
  *
  * `applied` is false on a duplicate delivery OR an unknown payment intent.
  */
@@ -69,31 +80,38 @@ export const confirmPaymentSucceeded = internalMutation({
 
       await setPaymentStatus(ctx, payment._id, "succeeded");
 
-      // Confirm the order (transition + paidAt + frozen pricing + MOAT stats). No
-      // actor — this is a system-side write.
-      await confirmTenantOrderPayment(
-        ctx,
-        payment.tenantId,
-        payment.orderId,
-        payment.pricingSnapshot,
-      );
-
-      // Seed the fulfilment course toward the delivery domain (2.6-C executes it).
       const order = await requireTenantOrder(
         ctx,
         payment.tenantId,
         payment.orderId,
       );
+      const isPickup = order.mode === "pickup";
+
+      // PICKUP only: confirm the order NOW (transition + paidAt + frozen pricing +
+      // MOAT stats) — no course to gate on. DELIVERY is gated on course-created, so
+      // it is left `en attente de paiement` here (the 2.6-C executor confirms it on
+      // success). No actor — this is a system-side write.
+      if (isPickup) {
+        await confirmTenantOrderPayment(
+          ctx,
+          payment.tenantId,
+          payment.orderId,
+          payment.pricingSnapshot,
+        );
+      }
+
+      // Seed the fulfilment row toward the delivery domain (2.6-C executes it).
       await insertTenantDelivery(ctx, payment.tenantId, {
         orderId: payment.orderId,
-        mode: order.mode === "pickup" ? "click_collect" : "delivery",
+        mode: isPickup ? "click_collect" : "delivery",
         status: "pending",
       });
 
       // Hand off to the delivery domain (2.6-C): once committed, create the real
-      // Uber Course (a no-op for click & collect). Scheduled AFTER this mutation
-      // commits so the seeded row is visible; the Uber HTTP call belongs in an
-      // action, not this mutation. 2.6 owns the executor — 2.5 only emits.
+      // Uber Course (a no-op for click & collect) and — for DELIVERY — confirm the
+      // order on success. Scheduled AFTER this mutation commits so the seeded row is
+      // visible; the Uber HTTP call belongs in an action, not this mutation. 2.6 owns
+      // the executor — 2.5 only emits.
       await ctx.scheduler.runAfter(
         0,
         internal.lib.delivery.course.createCourseOnPaymentConfirmed,

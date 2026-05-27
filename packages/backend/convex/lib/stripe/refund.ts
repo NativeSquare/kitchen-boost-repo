@@ -12,6 +12,7 @@ import {
   planTransactionalSends,
 } from "../notifications";
 import {
+  abortTenantOrder,
   getPaymentByIntentId,
   getTenantById,
   getTenantPaymentByOrder,
@@ -20,7 +21,6 @@ import {
   readCustomerAggregateFields,
   requireTenantOrder,
   setPaymentRefunded,
-  transitionTenantOrder,
 } from "../tenancy";
 import { withIdempotence } from "../webhooks";
 
@@ -176,24 +176,36 @@ export const markRefunded = internalMutation({
 });
 
 /**
- * 2.5-D — the ORDER side of the [[Cmd avortée]] auto-refund, in ONE transaction:
- * pull the order OUT of KB Orders (`nouvelle → refusée`, state-machine guarded — so
- * the resto never works it; the order is NEVER transmitted) and queue the client
- * `refund_issued` notification (the actual send is 2.7). Idempotent: an order already
- * `refusée` (a re-trigger) is left as-is and emits no second notif.
+ * 2.5-D + 2.3-fix (#108) — the ORDER side of the [[Cmd avortée]] auto-refund, in ONE
+ * transaction: pull the order OUT of KB Orders (terminal `refusée` — so the resto
+ * never works it; the order is NEVER transmitted) and queue the client
+ * `refund_issued` notification (the actual send is 2.7).
+ *
+ * Uses the system-side `abortTenantOrder` seam (#108), which handles BOTH aborted-
+ * order shapes the strict payment↔delivery coupling produces and COMPENSATES the
+ * MOAT stats when (and only when) the order had already been counted:
+ *  - the gated DELIVERY order still `en attente de paiement` (course failed before
+ *    it was ever transmitted, Cas A) — never `nouvelle`, never counted ⇒ the abort
+ *    only flips it to `refusée`, no stat to revert;
+ *  - an already-confirmed order (`nouvelle`/worked, e.g. incident-after-pickup Cas C)
+ *    ⇒ its previously-posted `customerOrdersPerTenant` increment is reverted.
+ * Idempotent: an order already `refusée` (a re-trigger) is left as-is — no second
+ * notif, no double compensation.
  */
 export const abortOrderForRefund = internalMutation({
   args: { tenantId: v.id("tenants"), orderId: v.id("orders") },
   returns: v.object({ aborted: v.boolean() }),
   handler: async (ctx, args): Promise<{ aborted: boolean }> => {
     const order = await requireTenantOrder(ctx, args.tenantId, args.orderId);
-    // Already terminal (re-trigger) ⇒ nothing to abort, no second notif.
-    if (order.status === "refusée") return { aborted: false };
-
-    // Pull it out of the live queue (terminal). System-side: no actor.
-    await transitionTenantOrder(ctx, args.tenantId, args.orderId, "refusée", {
-      reason: "autre",
-    });
+    // Pull it out (terminal `refusée`) from ANY non-terminal state, compensating the
+    // stats if they were posted. A no-op (already refused) emits no second notif.
+    const { aborted } = await abortTenantOrder(
+      ctx,
+      args.tenantId,
+      args.orderId,
+      { reason: "autre" },
+    );
+    if (!aborted) return { aborted: false };
 
     // Client "livraison impossible, vous êtes remboursé" — the refund_issued
     // transactional trigger (PRD 80 §1 trigger 6). Reachability READ from 2.1.
