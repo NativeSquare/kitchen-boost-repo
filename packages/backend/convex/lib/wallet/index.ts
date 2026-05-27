@@ -102,3 +102,19 @@ export {
   type WalletPushPayload,
   buildWalletPushPayload,
 } from "./pushPayload";
+
+/**
+ * 2.8-E — the Incentive Wallet CONDITIONAL delivery mechanism (PRD 80, ADR 0002,
+ * [[Incentive Wallet]] glossaire client-ordering, US 19 / US 20 / US 24).
+ * `deliverIncentive` is the reusable seam (takes a mutation ctx, no Convex
+ * registration): the install handler (`linkSerialToCustomer`) calls it AFTER proving
+ * the pass is REALLY installed, so the reward code is delivered ONLY on a constated
+ * `pass_installed` — there is NO alternative generation path (no fake reward, US 19).
+ * It records at most ONE delivery per pass serial (US 20 — one reward per pass, never
+ * per device) and audits the first delivery (US 24). It is surfaced here for the
+ * contract; the Convex FUNCTION (`incentiveDeliveryStatus` public guard query) is NOT
+ * re-exported — Convex addresses it by its module path
+ * (`api.lib.wallet.incentive.incentiveDeliveryStatus`), same convention as
+ * `generatePass` / `registrations` / `linkSerial` / `triggerUpdate`.
+ */
+export { deliverIncentive } from "./incentive";

@@ -166,6 +166,11 @@ export {
   setWalletPassInstalled,
 } from "./walletPassesStore";
 export {
+  type NewIncentiveDelivery,
+  readIncentiveDeliveryBySerial,
+  recordIncentiveDeliveryOnce,
+} from "./walletIncentiveDeliveriesStore";
+export {
   type NewDeviceRegistration,
   deactivateDeviceRegistration,
   insertDeviceRegistration,
