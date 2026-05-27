@@ -588,8 +588,17 @@ export async function abortTenantOrder(
     });
   }
 
-  await recordTenantOrderStatus(ctx, tenantId, orderId, "refusée", {
+  // Patch + append the terminal `refusée` event directly off the already-loaded
+  // `order` (not via `recordTenantOrderStatus`, which would re-`requireTenantOrder`
+  // — one fewer DB round-trip in this scheduled path).
+  const now = Date.now();
+  await ctx.db.patch(orderId, { status: "refusée", refusedAt: now });
+  await ctx.db.insert("orderEvents", {
+    tenantId,
+    orderId,
+    status: "refusée",
     reason: opts.reason,
+    at: now,
   });
   return { aborted: true };
 }

@@ -54,6 +54,22 @@ process.env.STRIPE_SECRET_KEY = "sk_test_dummy";
 
 type Seed = Awaited<ReturnType<typeof seedTwoTenantsAllRoles>>;
 
+/**
+ * Drain the scheduled refund ACTION (the refusal / course-failure auto-refund)
+ * under FAKE timers, robustly: `vi.runAllTimersAsync` fires the `runAfter(0, …)`
+ * jobs and awaits the promises they chain (mocked Stripe `fetch` + nested
+ * `runMutation`s), unlike the synchronous `vi.runAllTimers` whose fixed-budget pump
+ * in `finishAllScheduledFunctions` can exhaust before a slow dynamic module-import
+ * resolves under parallel-suite load. Keeps fake timers so the one-shot `fetch`
+ * mocks fire in order.
+ */
+async function drainScheduled(t: ReturnType<typeof convexTest>): Promise<void> {
+  for (let i = 0; i < 25; i++) {
+    await vi.runAllTimersAsync();
+    await t.finishInProgressScheduledFunctions();
+  }
+}
+
 const PRICING = { subtotal: 1290, deliveryFee: 295, total: 1585 };
 
 /** Mock the Stripe `POST /refunds` call with one canned response. */
@@ -341,7 +357,7 @@ describe("2.5-C refuse (#18) triggers the refund mechanism", () => {
       });
 
     // The refuse mutation schedules the payment-domain refund; run scheduled jobs.
-    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    await drainScheduled(t);
 
     expect((await readOrder(t, orderId)).order?.status).toBe("refusée");
     const payment = await readPayment(t, paymentId);
@@ -725,7 +741,7 @@ describe("2.6-C course failure (Cas A) triggers the aborted-order refund", () =>
       { tenantId: seed.tenantA.tenantId, orderId },
     );
     // The course action schedules the aborted-order refund; flush it.
-    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    await drainScheduled(t);
 
     const payment = await readPayment(t, paymentId);
     expect(payment?.status).toBe("refunded");

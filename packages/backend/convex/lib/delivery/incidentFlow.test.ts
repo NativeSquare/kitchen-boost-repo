@@ -45,6 +45,24 @@ process.env.STRIPE_SECRET_KEY = "sk_test_dummy";
 
 type Seed = Awaited<ReturnType<typeof seedTwoTenantsAllRoles>>;
 
+/**
+ * Drain the scheduled-function chain (e.g. the 2.5 `refundAbortedOrder` ACTION an
+ * incident triggers) under FAKE timers, robustly. `vi.runAllTimersAsync` fires the
+ * `runAfter(0, …)` jobs AND awaits the promises they chain (the mocked Stripe
+ * `fetch` + the nested `runMutation`s) — unlike the synchronous `vi.runAllTimers`,
+ * whose fixed-budget pump in `finishAllScheduledFunctions` occasionally exhausts
+ * before a slow dynamic module-import resolves under parallel-suite load (a flaky
+ * "did not complete after N timer pumps"). Looping a few times drains a chain that
+ * schedules further work; `finishInProgressScheduledFunctions` awaits any in-flight
+ * job. Keeps fake timers so the one-shot `fetch` mocks fire in order.
+ */
+async function drainScheduled(t: ReturnType<typeof convexTest>): Promise<void> {
+  for (let i = 0; i < 25; i++) {
+    await vi.runAllTimersAsync();
+    await t.finishInProgressScheduledFunctions();
+  }
+}
+
 const PRICING = { subtotal: 1290, deliveryFee: 295, total: 1585 };
 const UBER_CREDS = {
   clientId: "kb-client-id",
@@ -236,7 +254,7 @@ describe("2.6-D incident state machine — Cas C incident_after_pickup auto-refu
     expect(out.manualRefundAvailable).toBeUndefined();
 
     // The scheduled 2.5 refund runs.
-    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    await drainScheduled(t);
 
     const row = await readDeliveryByUberId(t, "del_casC");
     expect(row?.incidentType).toBe("incident_after_pickup");
@@ -280,7 +298,7 @@ describe("2.6-D incident state machine — Cas C incident_after_pickup auto-refu
       },
     );
     expect(out.autoRefundTriggered).toBe(true);
-    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    await drainScheduled(t);
     expect((await readPayment(t, paymentId))?.status).toBe("refunded");
   });
 
@@ -312,7 +330,7 @@ describe("2.6-D incident state machine — Cas C incident_after_pickup auto-refu
       internal.lib.delivery.webhooks.applyUberWebhookEvent,
       event,
     );
-    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    await drainScheduled(t);
 
     expect((await readPayment(t, paymentId))?.status).toBe("refunded");
     expect(await readAuditRefunds(t, seed.tenantA.tenantId)).toHaveLength(1);
@@ -373,7 +391,7 @@ describe("2.6-D incident state machine — Cas D customer_absent (NO auto-refund
     expect(out.manualRefundAvailable).toBe(true);
     expect(out.incidentPush).toBe("customer_absent");
 
-    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    await drainScheduled(t);
 
     const row = await readDeliveryByUberId(t, "del_casD");
     expect(row?.incidentType).toBe("customer_absent");
@@ -415,7 +433,7 @@ describe("2.6-D incident state machine — Cas D customer_absent (NO auto-refund
       });
     expect(out.triggered).toBe(true);
 
-    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    await drainScheduled(t);
     expect((await readPayment(t, paymentId))?.status).toBe("refunded");
     expect((await readPayment(t, paymentId))?.refundId).toBe("re_manual");
   });
@@ -584,7 +602,7 @@ describe("2.6-D — Cas A refused_post_payment is the course executor's path (no
         orderId,
       },
     );
-    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    await drainScheduled(t);
 
     const row = await t.run(async (ctx) =>
       ctx.db
