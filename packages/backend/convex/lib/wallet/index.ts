@@ -79,3 +79,26 @@ export {
  * `generatePass` / `registrations`.
  */
 export { linkSerialToCustomer } from "./linkSerial";
+
+/**
+ * 2.8-D — the Wallet push-update CHANNEL (PRD 80, ADR 0003, STACK §2.3/§5.4, US
+ * 15/16/17/22/27). `triggerUpdate` (a DEFAULT-runtime Convex action) resolves a
+ * customer's pass + active device tokens, HMAC-signs the payload and forwards it to
+ * the Next.js Node route (`apps/admin/api/wallet/push`) where the crypto-heavy APNs
+ * HTTP/2 transport runs (the auth key is read server-side THERE, never in Convex —
+ * US 22). It is the cascade channel 2.7 calls (US 15) without knowing the signature
+ * / APNs plumbing, and it distinguishes the silent Wallet update (Info statut, US
+ * 16) — also the re-branding channel (US 17 / ADR 0003) — from a lock-screen push.
+ *
+ * The PURE payload builder + its types are surfaced for the structure tests + the
+ * Node route's body typing. The Convex FUNCTIONS (`triggerUpdate` internal action,
+ * `resolvePushTargets` internal query, `recordPushResult` internal mutation) are
+ * NOT re-exported — Convex addresses them by their module path
+ * (`internal.lib.wallet.triggerUpdate.*`), same convention as `generatePass` /
+ * `registrations` / `linkSerial`.
+ */
+export {
+  type BuildWalletPushPayloadInput,
+  type WalletPushPayload,
+  buildWalletPushPayload,
+} from "./pushPayload";

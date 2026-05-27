@@ -59,6 +59,39 @@ export async function signInternalRequest(
   return { timestamp, signature };
 }
 
+/**
+ * Verify an internal-channel request (US 23). Returns `true` iff the signature is a
+ * well-formed HMAC over `${timestamp}.${body}` with `secret`. Rejects a missing /
+ * empty signature or timestamp. When `toleranceSeconds` is supplied, also rejects a
+ * stale request (replay protection). The Convex→Node direction (the push route, #71)
+ * verifies the incoming signature; the Node→Convex direction signs it.
+ */
+export async function verifyInternalRequest(args: {
+  secret: string;
+  body: string;
+  timestamp: string | null;
+  signature: string | null;
+  nowSeconds?: number;
+  toleranceSeconds?: number;
+}): Promise<boolean> {
+  if (args.signature === null || args.signature === "") return false;
+  if (args.timestamp === null || args.timestamp === "") return false;
+
+  if (args.toleranceSeconds !== undefined) {
+    const ts = Number(args.timestamp);
+    const now = args.nowSeconds ?? Math.floor(Date.now() / 1000);
+    if (!Number.isFinite(ts) || Math.abs(now - ts) > args.toleranceSeconds) {
+      return false;
+    }
+  }
+
+  const expected = await hmacSha256Hex(
+    args.secret,
+    `${args.timestamp}.${args.body}`,
+  );
+  return timingSafeEqualHex(args.signature, expected);
+}
+
 /** Derive the Apple PassKit `authenticationToken` for a serial (US 10). */
 export async function walletPassAuthToken(
   secret: string,
