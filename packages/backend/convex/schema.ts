@@ -30,6 +30,7 @@ import { users } from "./table/users";
 import { walletDeviceRegistrations } from "./table/walletDeviceRegistrations";
 import { walletIncentiveDeliveries } from "./table/walletIncentiveDeliveries";
 import { walletPasses } from "./table/walletPasses";
+import { webPushSubscriptions } from "./table/webPushSubscriptions";
 
 export default defineSchema({
   ...authTables,
@@ -148,4 +149,16 @@ export default defineSchema({
   // KB Admin Phase C (a Phase-3 front, out of scope) — this records only the
   // delivery FACT, no invented promo string.
   walletIncentiveDeliveries,
+  // 2.1-G — Web Push subscriptions (PRD 90 Customer Data, notifications CONTEXT
+  // « Push subscription », ADR 0012 push split 2.1/2.7). The persisted RFC 8291
+  // subscription objects (endpoint + client keys p256dh/auth) the send layer (#54)
+  // needs to encrypt + POST a push — data `customers.pushEnrollment` (opaque id +
+  // status only) does NOT hold. TENANT-SCOPED (carries tenantId, web-push is
+  // per-origin — « 1 origine = 1 channel », ADR 0010): the inverse of the GLOBAL
+  // Wallet registry, so it goes through the tenancy seam + ships the cross-tenant
+  // fuzz. A tenant-scoped satellite of the GLOBAL MOAT fiche (customer referenced BY
+  // ID only). `endpoint` is UNIQUE (by_endpoint): idempotent re-subscribe (refresh
+  // keys + reactivate), soft `inactive` on 410 Gone (no hard delete). The SEND
+  // itself is #54 (2.7) — this slice is storage only.
+  webPushSubscriptions,
 });

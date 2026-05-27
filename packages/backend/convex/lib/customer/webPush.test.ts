@@ -425,10 +425,10 @@ describe("2.1-G auth gate + cross-tenant fuzz — register rejects unauthorized 
     ).rejects.toThrow(/unauthenticated/i);
   });
 
-  it("throws Forbidden for a PRO (kb_manager) — web-push register is customers only", async () => {
+  it("throws Forbidden for a PRO (kb_admin) — web-push register is customers only", async () => {
     await expect(
       t
-        .withIdentity({ subject: seed.tenantA.managerId })
+        .withIdentity({ subject: seed.adminId })
         .mutation(api.lib.customer.webPush.register, {
           tenantId: seed.tenantA.tenantId,
           endpoint: FIXTURE_SUB.endpoint,
@@ -438,14 +438,41 @@ describe("2.1-G auth gate + cross-tenant fuzz — register rejects unauthorized 
     ).rejects.toThrow(/forbidden/i);
   });
 
-  it("every unauthorized actor is rejected by register (cross-tenant fuzz)", async () => {
+  it("self-scope: Bob's register never touches Alice's subscriptions/fiche", async () => {
+    const alice = await seedAnonymousCustomer(t);
+    const bob = await seedAnonymousCustomer(t);
+    const aliceFiche = await provision(t, alice, seed.tenantA.tenantId);
+    // Bob registers a web-push subscription for the SAME endpoint string.
+    await t
+      .withIdentity({ subject: bob })
+      .mutation(api.lib.customer.webPush.register, {
+        tenantId: seed.tenantA.tenantId,
+        endpoint: FIXTURE_SUB.endpoint,
+        p256dh: FIXTURE_SUB.p256dh,
+        auth: FIXTURE_SUB.auth,
+      });
+    // Alice's fiche stays unenrolled, and the only subscription belongs to Bob.
+    const aliceDoc = await t.run((ctx) => ctx.db.get(aliceFiche));
+    expect(aliceDoc?.pushEnrollment?.webPushStatus).toBeUndefined();
+    const rows = await t.run((ctx) =>
+      ctx.db.query("webPushSubscriptions").collect(),
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.customerId).not.toBe(aliceFiche);
+  });
+
+  it("the global root (kb_admin) + anonymous are rejected by register (cross-tenant fuzz)", async () => {
+    // A tenant "manager" in the seed has GLOBAL role `customer` (resto roles live
+    // on userTenants), so `customerMutation` admits them as a customer — their
+    // isolation is SELF-SCOPE (above), not a wrapper refusal. The actors a
+    // customer surface actually REFUSES are the global root + the anonymous caller
+    // (same shape as the consent suite, ADR 0010 / 0011).
     const { leaks, pairs } = await runCrossTenantFuzz(t, {
       functions: [api.lib.customer.webPush.register],
       isQuery: () => false,
       tenantId: seed.tenantA.tenantId,
       actors: [
         { label: "kb_admin", subject: seed.adminId },
-        { label: "B-manager", subject: seed.tenantB.managerId },
         { label: "anonymous", subject: null },
       ] satisfies FuzzActor[],
       extraArgs: {
@@ -454,7 +481,7 @@ describe("2.1-G auth gate + cross-tenant fuzz — register rejects unauthorized 
         auth: FIXTURE_SUB.auth,
       },
     });
-    expect(pairs).toBe(3);
+    expect(pairs).toBe(2);
     expect(leaks).toEqual([]);
   });
 });
