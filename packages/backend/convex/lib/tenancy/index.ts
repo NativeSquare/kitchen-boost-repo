@@ -112,6 +112,9 @@ export {
   listTenantCustomerNotificationEvents,
   listTenantNotificationEvents,
   markTenantNotificationEventInactive,
+  requireTenantNotificationEvent,
+  setTenantNotificationEventFailed,
+  setTenantNotificationEventSent,
 } from "./notificationsStore";
 export {
   type CustomerCampaignFields,

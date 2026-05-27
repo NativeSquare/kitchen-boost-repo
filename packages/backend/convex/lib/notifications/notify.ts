@@ -1,4 +1,6 @@
 import { v } from "convex/values";
+import { internal } from "../../_generated/api";
+import type { Id } from "../../_generated/dataModel";
 import { transactionalTrigger } from "../../table/notifications";
 import {
   type TenantRole,
@@ -34,6 +36,14 @@ import {
  * decided WHAT/WHERE, the dispatch (and the move to `sent`/`delivered`) is slice C.
  * The SMS extreme fallback is journaled too but carries `sendable: false` (no
  * provider V1, Q80-Q4) so the dispatcher knows never to attempt it.
+ *
+ * 2.7-F — the WALLET dispatch IS now wired (slice C, Wallet only). After journaling
+ * the `queued` sends, this mutation SCHEDULES `dispatchWalletSends` with the WALLET
+ * event ids it just wrote (`ctx.scheduler.runAfter(0, …)` — a `tenantMutation` cannot
+ * call an `internalAction` directly, and the APNs `fetch` belongs in an action that
+ * runs AFTER this mutation commits). The dispatch fires `triggerUpdate` and moves each
+ * Wallet row to `sent`/`failed`/`inactive_endpoint`. The `web_push`/`email`/`sms`
+ * rows stay `queued` (their transports are later slices) — they are NOT scheduled.
  */
 
 /** Emitting a transactional event is an operational action (kitchen / webhook). */
@@ -64,16 +74,33 @@ export const notifyOrderEvent = tenantMutation(OPERATIONAL_ALLOW)({
 
     const sends = planTransactionalSends(args.eventType, availability);
 
+    // Journal each planned send as `queued` and remember the WALLET ones so the
+    // dispatch (slice C) only ever targets those — the other channels' transports
+    // are later slices, their rows stay `queued`.
+    const walletEventIds: Id<"notificationEvents">[] = [];
     for (const send of sends) {
-      await insertTenantNotificationEvent(ctx, ctx.tenantId, {
+      const eventId = await insertTenantNotificationEvent(ctx, ctx.tenantId, {
         customerId: order.customerId,
         trigger: args.eventType,
         category: send.category,
         channel: send.channel,
-        // Planned, not yet dispatched (the transport is slice C). SMS stays queued
-        // and is never dispatched V1 (sendable: false).
+        // Planned, not yet dispatched. SMS stays queued and is never dispatched V1
+        // (sendable: false); web_push/email await their own transport slices.
         status: "queued",
       });
+      if (send.channel === "wallet_push" || send.channel === "wallet_silent") {
+        walletEventIds.push(eventId);
+      }
+    }
+
+    // Fire the Wallet sends AFTER this mutation commits: a tenantMutation cannot call
+    // an internalAction directly, and the APNs fetch belongs in an action, not here.
+    if (walletEventIds.length > 0) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.lib.notifications.dispatch.dispatchWalletSends,
+        { tenantId: ctx.tenantId, eventIds: walletEventIds },
+      );
     }
 
     return sends;

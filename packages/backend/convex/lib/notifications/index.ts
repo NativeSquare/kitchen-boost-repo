@@ -93,6 +93,15 @@ export {
  *  - `marketingRateLimit` — 3 marketing push / semaine / client GLOBAL.
  *  - `dnt` — 22h-8h Europe/Paris quiet window + the 08:00 shift.
  *  - `antiAnomaly` — per-resto frequency (> 1/48h, > 3/sem) + recipient surge.
+ *
+ * 2.7-F — the WALLET DISPATCHER (slice C, restricted to the Wallet channel, PRD 80
+ * §1/§7, ADR 0002/0003). After `notifyOrderEvent` journals the `queued` sends it
+ * SCHEDULES `dispatch.dispatchWalletSends` with the Wallet event ids; that internal
+ * action fires the Wallet transport (#71 `triggerUpdate`) and moves each Wallet row
+ * to `sent` / `failed` / `inactive_endpoint`. The `web_push`/`email`/`sms` rows stay
+ * `queued` (their transports are later slices). Like `triggerUpdate`, the dispatch
+ * is INTERNAL-ONLY (system-side, scheduler-invoked) and addressed by its module path
+ * (`internal.lib.notifications.dispatch.*`) — so the barrel does NOT re-export it.
  */
 export {
   type CampaignResult,
