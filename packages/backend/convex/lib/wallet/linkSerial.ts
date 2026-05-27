@@ -10,6 +10,7 @@ import {
 } from "../tenancy";
 import { withIdempotence } from "../webhooks/idempotent";
 import type { WebhookProvider } from "../webhooks/idempotent";
+import { deliverIncentive } from "./incentive";
 import { verifyWalletPassAuthToken } from "./internalAuth";
 
 /**
@@ -126,6 +127,17 @@ export async function linkSerialToCustomer(
     targetType: "walletPass",
     targetId: args.serialNumber,
     metadata: { customerId: pass.customerId },
+  });
+
+  // 3. Deliver the Incentive (2.8-E) — the SINGLE generation path of the reward
+  //    code, gated on THIS constated install (no fake reward, US 19). It is
+  //    idempotent at the data level (one reward per pass serial, US 20), so a 2ⁿᵈ
+  //    device on the same pass — or a redelivered event riding `withIdempotence` —
+  //    never issues a second reward.
+  await deliverIncentive(ctx, {
+    serialNumber: args.serialNumber,
+    customerId: pass.customerId,
+    at: args.at,
   });
 
   return { customerId: pass.customerId };

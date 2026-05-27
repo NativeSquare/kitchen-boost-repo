@@ -28,6 +28,7 @@ import { tenants } from "./table/tenants";
 import { userTenants } from "./table/userTenants";
 import { users } from "./table/users";
 import { walletDeviceRegistrations } from "./table/walletDeviceRegistrations";
+import { walletIncentiveDeliveries } from "./table/walletIncentiveDeliveries";
 import { walletPasses } from "./table/walletPasses";
 
 export default defineSchema({
@@ -134,4 +135,17 @@ export default defineSchema({
   // registration plumbing only — serial→customer (slice C) + push (slice D) come
   // later.
   walletDeviceRegistrations,
+  // 2.8-E — Incentive Wallet conditional delivery (PRD 80, ADR 0002, [[Incentive
+  // Wallet]] glossaire client-ordering). `walletIncentiveDeliveries` is the ledger
+  // proving the reward code was delivered to a Customer once the pass was REALLY
+  // installed (US 19 — no fake reward). GLOBAL with NO authoritative `tenantId`
+  // (the Incentive rides the COMMON neutral card, ADR 0003 / ADR 0010 exemption);
+  // `serialNumber` is UNIQUE (by_serial) — ONE reward per pass, never per device
+  // (US 20). The single write site is the `lib/tenancy` seam, reached ONLY from
+  // `linkSerialToCustomer` inside the install handler's `withIdempotence` block —
+  // no alternative generation path, so a row cannot exist without a constated
+  // install. The reward PARAMETRISATION (hook text + promo code value) is edited in
+  // KB Admin Phase C (a Phase-3 front, out of scope) — this records only the
+  // delivery FACT, no invented promo string.
+  walletIncentiveDeliveries,
 });
