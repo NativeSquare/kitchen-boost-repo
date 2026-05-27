@@ -54,6 +54,22 @@ process.env.STRIPE_SECRET_KEY = "sk_test_dummy";
 
 type Seed = Awaited<ReturnType<typeof seedTwoTenantsAllRoles>>;
 
+/**
+ * Drain the scheduled refund ACTION (the refusal / course-failure auto-refund)
+ * under FAKE timers, robustly: `vi.runAllTimersAsync` fires the `runAfter(0, …)`
+ * jobs and awaits the promises they chain (mocked Stripe `fetch` + nested
+ * `runMutation`s), unlike the synchronous `vi.runAllTimers` whose fixed-budget pump
+ * in `finishAllScheduledFunctions` can exhaust before a slow dynamic module-import
+ * resolves under parallel-suite load. Keeps fake timers so the one-shot `fetch`
+ * mocks fire in order.
+ */
+async function drainScheduled(t: ReturnType<typeof convexTest>): Promise<void> {
+  for (let i = 0; i < 25; i++) {
+    await vi.runAllTimersAsync();
+    await t.finishInProgressScheduledFunctions();
+  }
+}
+
 const PRICING = { subtotal: 1290, deliveryFee: 295, total: 1585 };
 
 /** Mock the Stripe `POST /refunds` call with one canned response. */
@@ -341,7 +357,7 @@ describe("2.5-C refuse (#18) triggers the refund mechanism", () => {
       });
 
     // The refuse mutation schedules the payment-domain refund; run scheduled jobs.
-    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    await drainScheduled(t);
 
     expect((await readOrder(t, orderId)).order?.status).toBe("refusée");
     const payment = await readPayment(t, paymentId);
@@ -454,6 +470,194 @@ describe("2.5-D refundAbortedOrder — auto refund + push, order never reaches K
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// #108 — aborted-order path for the STRICT payment↔delivery coupling
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PRICING_108 = { subtotal: 1290, deliveryFee: 295, total: 1585 };
+
+/** Seed a `payments` row in any status for a (tenant, order). */
+async function seedPaymentRow(
+  t: ReturnType<typeof convexTest>,
+  tenantId: Id<"tenants">,
+  orderId: Id<"orders">,
+  paymentIntentId: string,
+): Promise<void> {
+  await t.run(async (ctx) => {
+    const now = Date.now();
+    await ctx.db.insert("payments", {
+      tenantId,
+      orderId,
+      paymentIntentId,
+      status: "succeeded",
+      applicationFeeAmountHt: 200,
+      amountTotal: PRICING_108.total,
+      pricingSnapshot: PRICING_108,
+      failedAttempts: 0,
+      createdAt: now,
+      updatedAt: now,
+    });
+  });
+}
+
+async function readStats(
+  t: ReturnType<typeof convexTest>,
+  tenantId: Id<"tenants">,
+  customerId: Id<"customers">,
+) {
+  return t.run(async (ctx) =>
+    ctx.db
+      .query("customerOrdersPerTenant")
+      .withIndex("by_tenant_customer", (q) =>
+        q.eq("tenantId", tenantId).eq("customerId", customerId),
+      )
+      .unique(),
+  );
+}
+
+describe("#108 refundAbortedOrder — gated delivery order (still en attente de paiement) is aborted with no kitchen trace, no stat", () => {
+  let t: ReturnType<typeof convexTest>;
+  let seed: Seed;
+  let customerA: Id<"customers">;
+  let orderId: Id<"orders">;
+  let fetchSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(async () => {
+    t = convexTest(schema, modules);
+    seed = await seedTwoTenantsAllRoles(t);
+    await seedReadyStripeAccount(t, seed.tenantA.tenantId, "acct_resto_A");
+    customerA = await seedReachableCustomer(t, "eater-gated@x.fr");
+    // The strict-coupling state when a course fails: payment succeeded, but the
+    // order was NEVER confirmed (still pending, invisible, uncounted).
+    orderId = await t.run(async (ctx) => {
+      const now = Date.now();
+      return ctx.db.insert("orders", {
+        tenantId: seed.tenantA.tenantId,
+        customerId: customerA,
+        status: "en attente de paiement",
+        mode: "delivery",
+        source: "direct",
+        address: "12 rue de Paris, 91000 Évry",
+        createdAt: now,
+      });
+    });
+    await seedPaymentRow(t, seed.tenantA.tenantId, orderId, "pi_gated");
+  });
+
+  afterEach(() => {
+    fetchSpy?.mockRestore();
+  });
+
+  it("refunds in full, marks the order refused, and posts NO stat (none was incremented)", async () => {
+    fetchSpy = mockStripeRefund({
+      status: 200,
+      body: { id: "re_gated", status: "succeeded" },
+    });
+
+    const out = await t.action(internal.lib.stripe.refund.refundAbortedOrder, {
+      tenantId: seed.tenantA.tenantId,
+      orderId,
+    });
+    expect(out.refunded).toBe(true);
+
+    const { order } = await readOrder(t, orderId);
+    expect(order?.status).toBe("refusée");
+    // Never transmitted: it was never `nouvelle`, never beeped, never counted.
+    expect(await readStats(t, seed.tenantA.tenantId, customerA)).toBeNull();
+    // Not in the live KB Orders queue.
+    const live = await t
+      .withIdentity({ subject: seed.tenantA.managerId })
+      .query(api.lib.orders.workflow.tenantOrders, {
+        tenantId: seed.tenantA.tenantId,
+      });
+    expect(live.map((o) => o._id)).not.toContain(orderId);
+  });
+});
+
+describe("#108 refundAbortedOrder — an already-counted order (incident after pickup) is COMPENSATED", () => {
+  let t: ReturnType<typeof convexTest>;
+  let seed: Seed;
+  let customerA: Id<"customers">;
+  let orderId: Id<"orders">;
+  let fetchSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(async () => {
+    t = convexTest(schema, modules);
+    seed = await seedTwoTenantsAllRoles(t);
+    await seedReadyStripeAccount(t, seed.tenantA.tenantId, "acct_resto_A");
+    customerA = await seedReachableCustomer(t, "eater-compensate@x.fr");
+    // A confirmed, COUNTED order (paidAt set, a stats row already posted) — the Cas C
+    // shape (incident after pickup, order already worked through the kitchen).
+    orderId = await t.run(async (ctx) => {
+      const now = Date.now();
+      const oid = await ctx.db.insert("orders", {
+        tenantId: seed.tenantA.tenantId,
+        customerId: customerA,
+        status: "remise",
+        mode: "delivery",
+        source: "direct",
+        address: "12 rue de Paris, 91000 Évry",
+        pricingSnapshot: PRICING_108,
+        createdAt: now,
+        paidAt: now,
+      });
+      // The stats already posted at confirmation (2 prior orders worth + this one).
+      await ctx.db.insert("customerOrdersPerTenant", {
+        customerId: customerA,
+        tenantId: seed.tenantA.tenantId,
+        totalOrders: 3,
+        lastOrderAt: now,
+        ltv: 47.55, // 3 × 15.85 €
+      });
+      return oid;
+    });
+    await seedPaymentRow(t, seed.tenantA.tenantId, orderId, "pi_compensate");
+  });
+
+  afterEach(() => {
+    fetchSpy?.mockRestore();
+  });
+
+  it("decrements the MOAT stats it had previously incremented (one order worth)", async () => {
+    fetchSpy = mockStripeRefund({
+      status: 200,
+      body: { id: "re_compensate", status: "succeeded" },
+    });
+
+    await t.action(internal.lib.stripe.refund.refundAbortedOrder, {
+      tenantId: seed.tenantA.tenantId,
+      orderId,
+    });
+
+    const { order } = await readOrder(t, orderId);
+    expect(order?.status).toBe("refusée");
+
+    // Compensation: one order's worth removed (totalOrders 3 → 2, ltv −15.85 €).
+    const stats = await readStats(t, seed.tenantA.tenantId, customerA);
+    expect(stats?.totalOrders).toBe(2);
+    expect(stats?.ltv).toBeCloseTo(31.7, 2);
+  });
+
+  it("idempotence: re-triggering does NOT decrement the stats twice", async () => {
+    fetchSpy = mockStripeRefund({
+      status: 200,
+      body: { id: "re_compensate2", status: "succeeded" },
+    });
+
+    await t.action(internal.lib.stripe.refund.refundAbortedOrder, {
+      tenantId: seed.tenantA.tenantId,
+      orderId,
+    });
+    await t.action(internal.lib.stripe.refund.refundAbortedOrder, {
+      tenantId: seed.tenantA.tenantId,
+      orderId,
+    });
+
+    const stats = await readStats(t, seed.tenantA.tenantId, customerA);
+    expect(stats?.totalOrders).toBe(2); // compensated once only
+  });
+});
+
 describe("2.6-C course failure (Cas A) triggers the aborted-order refund", () => {
   const UBER_CREDS = {
     clientId: "kb-client-id",
@@ -537,7 +741,7 @@ describe("2.6-C course failure (Cas A) triggers the aborted-order refund", () =>
       { tenantId: seed.tenantA.tenantId, orderId },
     );
     // The course action schedules the aborted-order refund; flush it.
-    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    await drainScheduled(t);
 
     const payment = await readPayment(t, paymentId);
     expect(payment?.status).toBe("refunded");

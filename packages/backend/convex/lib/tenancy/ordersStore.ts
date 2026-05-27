@@ -7,7 +7,10 @@ import type {
   OrderStatus,
   PricingSnapshot,
 } from "../../table/orders";
-import { recordCustomerOrderForTenant } from "./customerOrdersStore";
+import {
+  recordCustomerOrderForTenant,
+  revertCustomerOrderForTenant,
+} from "./customerOrdersStore";
 
 /**
  * 2.3-A — the SANCTIONED tenant-scoped data-access seam for the `orders`,
@@ -334,7 +337,16 @@ export async function recordTenantOrderStatus(
  * 2.3-D — the resto WORKFLOW state machine (PRD 20 §5 + the issue body). The CLOSED
  * set of legal edges: every transition NOT listed here is rejected by
  * `assertLegalTransition`. Not invented — each edge is documented:
- *  - `en attente de paiement → nouvelle`  : payment confirmed (2.3-C confirmPayment).
+ *  - `en attente de paiement → nouvelle`  : payment confirmed — for DELIVERY this is
+ *                                           gated on the Uber course being created
+ *                                           (#108 strict coupling), for PICKUP it is
+ *                                           immediate at payment (2.5-B / 2.3-C).
+ *  - `en attente de paiement → refusée`   : [[Cmd avortée]] — the delivery course
+ *                                           failed post-payment, so the order is
+ *                                           aborted while STILL invisible (it was
+ *                                           never transmitted to KB Orders, never
+ *                                           `nouvelle`), then auto-refunded (#108/#49,
+ *                                           payment + delivery CONTEXTs "Cmd avortée").
  *  - `nouvelle → en préparation`          : acknowledge (PRD 20 §5 "Accepter").
  *  - `nouvelle → refusée`                 : refuse (PRD 20 §6, slice E — listed legal
  *                                           so the refusal mutation reuses this guard).
@@ -348,7 +360,7 @@ export async function recordTenantOrderStatus(
  */
 const LEGAL_TRANSITIONS: Readonly<Record<OrderStatus, readonly OrderStatus[]>> =
   {
-    "en attente de paiement": ["nouvelle"],
+    "en attente de paiement": ["nouvelle", "refusée"],
     nouvelle: ["en préparation", "refusée"],
     "en préparation": ["prête"],
     prête: ["remise"],
@@ -535,6 +547,60 @@ export async function confirmTenantOrderPayment(
     totalCents: pricingSnapshot.total,
     orderAt: now,
   });
+}
+
+/**
+ * 2.3-fix (#108) — the SYSTEM-SIDE [[Cmd avortée]] abort: pull one of `tenantId`'s
+ * orders OUT of KB Orders to the TERMINAL `refusée` from ANY non-terminal state,
+ * COMPENSATING the MOAT stats if (and only if) the order had already been counted.
+ * Distinct from the kitchen `transitionTenantOrder`: this is not a kitchen action
+ * (it is the auto-refund's order side, #49), so it does NOT go through the kitchen
+ * state-machine edge guard — instead it accepts the two real aborted-order shapes
+ * the strict coupling produces:
+ *  - the gated DELIVERY order still `en attente de paiement` (course failed before
+ *    it was ever transmitted) — never `nouvelle`, never counted ⇒ no compensation;
+ *  - an already-confirmed order (`nouvelle`+ worked, e.g. incident-after-pickup Cas C)
+ *    ⇒ its previously-posted `customerOrdersPerTenant` increment is reverted.
+ * IDEMPOTENT: an order already `refusée` (a re-trigger) is left as-is — no second
+ * event, no double compensation. Returns whether it aborted this call. The "already
+ * counted" signal is `paidAt` being set — it is stamped EXACTLY when the order is
+ * confirmed and its stats are recorded (`confirmTenantOrderPayment`), so the two are
+ * always in lockstep. Re-checks tenant ownership (NOT_FOUND for a foreign id).
+ */
+export async function abortTenantOrder(
+  ctx: MutationCtx,
+  tenantId: Id<"tenants">,
+  orderId: Id<"orders">,
+  opts: { reason?: string } = {},
+): Promise<{ aborted: boolean }> {
+  const order = await requireTenantOrder(ctx, tenantId, orderId);
+  // Already terminal (re-trigger) ⇒ nothing to abort, no second compensation.
+  if (TERMINAL_ORDER_STATUSES.includes(order.status)) {
+    return { aborted: false };
+  }
+
+  // Compensate the MOAT stats ONLY if they were posted (order had been confirmed —
+  // `paidAt` is set in lockstep with the stats increment). The gated delivery order
+  // (`en attente de paiement`, never confirmed) has no `paidAt` ⇒ nothing to revert.
+  if (order.paidAt !== undefined && order.pricingSnapshot !== undefined) {
+    await revertCustomerOrderForTenant(ctx, tenantId, order.customerId, {
+      totalCents: order.pricingSnapshot.total,
+    });
+  }
+
+  // Patch + append the terminal `refusée` event directly off the already-loaded
+  // `order` (not via `recordTenantOrderStatus`, which would re-`requireTenantOrder`
+  // — one fewer DB round-trip in this scheduled path).
+  const now = Date.now();
+  await ctx.db.patch(orderId, { status: "refusée", refusedAt: now });
+  await ctx.db.insert("orderEvents", {
+    tenantId,
+    orderId,
+    status: "refusée",
+    reason: opts.reason,
+    at: now,
+  });
+  return { aborted: true };
 }
 
 // ---------------------------------------------------------------------------

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { api } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 import schema from "../../schema";
+import { isLegalTransition } from "../tenancy";
 import {
   type FuzzActor,
   runCrossTenantFuzz,
@@ -253,6 +254,24 @@ describe("2.3-D workflow transitions — legal edges advance + stamp events", ()
       "prête",
       "remise",
     ]);
+  });
+});
+
+describe("#108 state machine — the aborted-before-transmission edge", () => {
+  it("`en attente de paiement → refusée` is legal (Cmd avortée before transmission)", () => {
+    // A delivery course that fails post-payment aborts the order while it is still
+    // `en attente de paiement` (never transmitted to KB Orders) — this terminal edge
+    // is what the auto-refund uses, so the order leaves without ever being `nouvelle`.
+    expect(isLegalTransition("en attente de paiement", "refusée")).toBe(true);
+  });
+
+  it("the kitchen confirm edge `en attente de paiement → nouvelle` stays legal", () => {
+    expect(isLegalTransition("en attente de paiement", "nouvelle")).toBe(true);
+  });
+
+  it("a terminal order still has no outgoing edge (refusée is terminal)", () => {
+    expect(isLegalTransition("refusée", "nouvelle")).toBe(false);
+    expect(isLegalTransition("livrée", "refusée")).toBe(false);
   });
 });
 

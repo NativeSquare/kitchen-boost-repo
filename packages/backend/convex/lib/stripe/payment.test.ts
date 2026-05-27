@@ -22,14 +22,21 @@ const modules = Object.fromEntries(
 );
 
 /**
- * 2.5-B — the payment webhook side of the direct-charge flow, written BEFORE the
- * implementation (TDD red). The INTERNAL mutations dispatched by the verified
- * `stripeWebhook` httpAction:
+ * 2.5-B + 2.3-fix (#108) — the payment webhook side of the direct-charge flow.
+ * The INTERNAL mutations dispatched by the verified `stripeWebhook` httpAction:
  *  - `confirmPaymentSucceeded` — `payment_intent.succeeded` → mark the payment
- *    `succeeded`, CONFIRM the order (`en attente de paiement → nouvelle`, freezing
- *    the pricing snapshot it received), and SEED the delivery course (a `pending`
- *    `deliveries` row) for a `delivery`-mode order. Idempotent per
- *    `(stripe, eventId)`: a replay neither double-confirms nor double-seeds.
+ *    `succeeded`, then apply the STRICT payment↔delivery coupling (#108):
+ *      - PICKUP (click & collect): CONFIRM the order immediately
+ *        (`en attente de paiement → nouvelle`, freezing the pricing snapshot +
+ *        incrementing the `customerOrdersPerTenant` MOAT stats) and seed a
+ *        `click_collect` delivery row — no course gate.
+ *      - DELIVERY: do NOT confirm the order yet (it stays `en attente de paiement`,
+ *        INVISIBLE to the resto — no beep) and do NOT increment stats; only SEED
+ *        the `pending` `deliveries` row and HAND OFF to the course executor. The
+ *        `→ nouvelle` transition + the stats increment happen ONLY once the Uber
+ *        course is created successfully (2.6-C `createCourseOnPaymentConfirmed`).
+ *    Idempotent per `(stripe, eventId)`: a replay neither double-confirms nor
+ *    double-seeds.
  *  - `recordPaymentFailed` — `payment_intent.payment_failed` → mark `payment_failed`
  *    and count the attempt; the order is NEVER confirmed (3 attempts max then
  *    abandon, no order created as `nouvelle`).
@@ -147,6 +154,22 @@ async function readDeliveries(
   );
 }
 
+/** The `customerOrdersPerTenant` MOAT stats row for a (tenant, customer), or null. */
+async function readStats(
+  t: ReturnType<typeof convexTest>,
+  tenantId: Id<"tenants">,
+  customerId: Id<"customers">,
+) {
+  return t.run(async (ctx) =>
+    ctx.db
+      .query("customerOrdersPerTenant")
+      .withIndex("by_tenant_customer", (q) =>
+        q.eq("tenantId", tenantId).eq("customerId", customerId),
+      )
+      .unique(),
+  );
+}
+
 describe("2.5-B confirmPaymentSucceeded — confirms the order + seeds the course", () => {
   let t: ReturnType<typeof convexTest>;
   let seed: Seed;
@@ -161,34 +184,40 @@ describe("2.5-B confirmPaymentSucceeded — confirms the order + seeds the cours
     paymentId = await seedPayment(t, seed.tenantA.tenantId, orderId, "pi_ok");
   });
 
-  it("succeeded → payment succeeded, order nouvelle, pricing frozen, course seeded", async () => {
+  it("#108 DELIVERY: succeeded marks the payment + seeds the course but does NOT make the order visible (no nouvelle, no stats) until the course is created", async () => {
     const out = await t.mutation(
       internal.lib.stripe.payment.confirmPaymentSucceeded,
       { eventId: "evt_ok", paymentIntentId: "pi_ok" },
     );
     expect(out.applied).toBe(true);
 
+    // The payment cleared.
     expect((await readPayment(t, paymentId))?.status).toBe("succeeded");
 
+    // STRICT COUPLING: the delivery order is NOT yet transmitted to KB Orders — it
+    // stays `en attente de paiement` (invisible, no beep), no `paidAt`, no workflow
+    // event, and the pricing is NOT yet frozen onto the order.
     const { order, events } = await readOrder(t, orderId);
-    expect(order?.status).toBe("nouvelle");
-    expect(order?.paidAt).toBeTypeOf("number");
-    expect(order?.pricingSnapshot?.total).toBe(1585);
-    expect(events).toHaveLength(1);
-    expect(events[0].status).toBe("nouvelle");
+    expect(order?.status).toBe("en attente de paiement");
+    expect(order?.paidAt).toBeUndefined();
+    expect(events).toHaveLength(0);
 
-    // The delivery course is SEEDED as a pending row (the actual Uber call is 2.6-C).
+    // ...and the MOAT stats are NOT incremented yet (gated on course-created).
+    expect(await readStats(t, seed.tenantA.tenantId, customerA)).toBeNull();
+
+    // The delivery course IS SEEDED as a pending row (the actual Uber call is 2.6-C).
     const deliveries = await readDeliveries(t, seed.tenantA.tenantId, orderId);
     expect(deliveries).toHaveLength(1);
     expect(deliveries[0].mode).toBe("delivery");
     expect(deliveries[0].status).toBe("pending");
   });
 
-  it("a pickup order is confirmed but seeds NO Uber course (click & collect)", async () => {
+  it("#108 PICKUP: a click & collect order goes `nouvelle` + stats immediately at payment (no course gate)", async () => {
+    const pickupCustomer = await seedCustomer(t, "eater-pickup@x.fr");
     const pickupOrder = await seedPendingOrder(
       t,
       seed.tenantA.tenantId,
-      customerA,
+      pickupCustomer,
       "pickup",
     );
     await seedPayment(t, seed.tenantA.tenantId, pickupOrder, "pi_pickup");
@@ -198,7 +227,17 @@ describe("2.5-B confirmPaymentSucceeded — confirms the order + seeds the cours
       paymentIntentId: "pi_pickup",
     });
 
-    expect((await readOrder(t, pickupOrder)).order?.status).toBe("nouvelle");
+    // Pickup is visible immediately — no course gate.
+    const { order, events } = await readOrder(t, pickupOrder);
+    expect(order?.status).toBe("nouvelle");
+    expect(order?.paidAt).toBeTypeOf("number");
+    expect(events).toHaveLength(1);
+    expect(events[0].status).toBe("nouvelle");
+    // Stats incremented immediately for the pickup customer.
+    expect(
+      (await readStats(t, seed.tenantA.tenantId, pickupCustomer))?.totalOrders,
+    ).toBe(1);
+
     const deliveries = await readDeliveries(
       t,
       seed.tenantA.tenantId,
@@ -210,7 +249,7 @@ describe("2.5-B confirmPaymentSucceeded — confirms the order + seeds the cours
     expect(deliveries[0].uberDeliveryId).toBeUndefined();
   });
 
-  it("idempotence: replaying the same event confirms + seeds exactly once", async () => {
+  it("idempotence: replaying the same event seeds the course exactly once (delivery: no transition)", async () => {
     const call = () =>
       t.mutation(internal.lib.stripe.payment.confirmPaymentSucceeded, {
         eventId: "evt_dup",
@@ -221,8 +260,10 @@ describe("2.5-B confirmPaymentSucceeded — confirms the order + seeds the cours
     expect(first.applied).toBe(true);
     expect(second.applied).toBe(false); // duplicate → clean no-op
 
-    const { events } = await readOrder(t, orderId);
-    expect(events).toHaveLength(1); // one transition only
+    // DELIVERY (#108): no transition happens at payment — gated on course-created.
+    const { order, events } = await readOrder(t, orderId);
+    expect(order?.status).toBe("en attente de paiement");
+    expect(events).toHaveLength(0);
     const deliveries = await readDeliveries(t, seed.tenantA.tenantId, orderId);
     expect(deliveries).toHaveLength(1); // one course only
 
@@ -258,11 +299,21 @@ describe("2.5-B confirmPaymentSucceeded — confirms the order + seeds the cours
       paymentIntentId: "pi_ok",
     });
 
-    expect((await readOrder(t, orderId)).order?.status).toBe("nouvelle");
-    // tenant B's order untouched.
+    // A's delivery payment cleared (succeeded) but the order stays gated, and its
+    // delivery course was seeded — tenant B is never touched.
+    expect(
+      (await readDeliveries(t, seed.tenantA.tenantId, orderId)).length,
+    ).toBe(1);
+    expect((await readOrder(t, orderId)).order?.status).toBe(
+      "en attente de paiement",
+    );
+    // tenant B's order untouched (no course seeded, still awaiting payment).
     expect((await readOrder(t, orderB)).order?.status).toBe(
       "en attente de paiement",
     );
+    expect(
+      (await readDeliveries(t, seed.tenantB.tenantId, orderB)).length,
+    ).toBe(0);
   });
 });
 

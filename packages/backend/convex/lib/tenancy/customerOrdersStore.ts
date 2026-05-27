@@ -80,6 +80,40 @@ export async function recordCustomerOrderForTenant(
   });
 }
 
+/**
+ * 2.3-fix (#108) — COMPENSATE a previously-recorded order against the
+ * `(tenantId, customerId)` link: undo exactly ONE order's worth of MOAT aggregates
+ * after a [[Cmd avortée]] whose order had ALREADY been counted (the incident-after-
+ * pickup case — the order was confirmed, worked, then refunded). Decrements
+ * `totalOrders` and removes the order's euro share from `ltv`, both CLAMPED at 0 so
+ * a double compensation (or a row that was never incremented) can never drive the
+ * aggregates negative. `lastOrderAt` is left as-is — it is a "last seen" marker, not
+ * a count, and we cannot reconstruct the previous order's timestamp. A no-op when
+ * there is no link row (the order was never counted — the strict-coupling delivery
+ * abort, where the order stayed `en attente de paiement`). The sanctioned `ctx.db`
+ * site; the caller has already resolved `tenantId` + the order's own `customerId`.
+ */
+export async function revertCustomerOrderForTenant(
+  ctx: MutationCtx,
+  tenantId: Id<"tenants">,
+  customerId: Id<"customers">,
+  order: { totalCents: number },
+): Promise<void> {
+  const existing = await ctx.db
+    .query("customerOrdersPerTenant")
+    .withIndex("by_tenant_customer", (q) =>
+      q.eq("tenantId", tenantId).eq("customerId", customerId),
+    )
+    .unique();
+  if (existing === null) return; // never counted → nothing to compensate
+
+  const deltaEur = centsToEuros(order.totalCents);
+  await ctx.db.patch(existing._id, {
+    totalOrders: Math.max(0, existing.totalOrders - 1),
+    ltv: Math.max(0, existing.ltv - deltaEur),
+  });
+}
+
 /** The per-tenant link rows of one tenant, keyed on `by_tenant`. */
 export async function listTenantCustomerOrders(
   ctx: QueryCtx | MutationCtx,
