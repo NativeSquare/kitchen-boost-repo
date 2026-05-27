@@ -98,11 +98,15 @@ UI multi-step (9 étapes) pour provisionner un nouveau tenant en < 30 min : info
 _Avoid_: Setup wizard, Tenant creation form
 
 **Édition menu** :
-Vue arborescente Catégories → Items → Modifiers accessible côté KB Manager (et KB Admin via impersonation ou édition d'assistance). CRUD complet + logique upsell. Publication propage en [[Client Ordering]] sous 30 sec.
-_Avoid_: Menu builder, Catalog edit
+Surface [[Vue opérationnelle]] (KB Manager, ou KB Admin en [[Impersonation]]) pour gérer le catalogue d'un tenant : **Catégories** (groupes éditoriaux **à plat** — pas de sous-catégories V1) → **Items** → **[[Personnalisations]]** (groupes réutilisables attachés). CRUD complet + photos + dispo (out of stock) + plages de service. L'édition se fait en **brouillon autosauvé** ; la PWA ne voit le menu qu'après [[Publication menu]]. Le modèle de menu **appartient à Client Ordering** (PRD 10 §6, backend `api.lib.menu.*`) ; l'édition menu n'est que sa surface côté admin.
+_Avoid_: Menu builder, Catalog edit, Arborescence (trompeur — les personnalisations ne sont pas une branche de l'item, ce sont des groupes réutilisables liés N-N)
+
+**Publication menu** :
+Action [[KB Manager]] (ou [[KB Admin]] en assistance) qui rend public le menu en brouillon. **Globale et atomique** : un seul « Publier » reconstruit l'**instantané publié** du tenant — ce que lit la PWA ([[Client Ordering]]) ; **pas** de publication par item. Le brouillon = les tables menu live (autosave) ; l'aperçu lit le brouillon. Un tenant tant qu'il n'a jamais publié = pas de menu public. « Annuler » / versioning = V2. Cf. [ADR 0015](../../adr/0015-edition-menu-brouillon-publication-globale-atomique.md).
+_Avoid_: Save menu, Go live, Mise en ligne
 
 **Personnalisations** (= **Modifiers**) :
-Terme UX dans `KitchenBoost Admin` pour parler des choix attachés à un item (sauces, suppléments, cuisson, etc.). C'est le **même concept** que [[Modifier]] (cf. [Client Ordering](../client-ordering/CONTEXT.md)) — juste le mot business côté édition. UX identique à Uber Manager. Pas de système séparé de "suggestions cross-sell" V1.
+Groupes de choix **réutilisables** attachés aux items (sauces, suppléments, cuisson). Même concept que [[Modifier]] (cf. [Client Ordering](../client-ordering/CONTEXT.md)) — le mot business côté édition. **Réutilisables** (modèle Uber Eats) : un groupe créé une fois, attaché à N items (lien N-N), édité une fois → répercuté partout ; détacher d'un item laisse le groupe + les autres items intacts. Un groupe porte `minSelect`/`maxSelect` (0 = optionnel / ≥1 = obligatoire ; 1 = choix unique / >1 = multi). **Chaque option = label + prix delta** (centimes, **≥ 0** — supplément ou gratuit, jamais de remise V1). **V1 : une option ne peut PAS référencer un item** (pas de "plat comme option" / combo lié — reporté V2). Pas de "suggestions cross-sell" séparées V1.
 _Avoid_: Upsell (ambigu — désigne l'effet business, pas la feature ; à réserver pour parler de KPI panier moyen), Options (générique)
 
 **Upsell** :

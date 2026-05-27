@@ -22,6 +22,7 @@ Format : conforme au skill [`grill-with-docs`](../../../.claude/skills/grill-wit
 | [0012](0012-push-enrollment-identite-customer-data-envoi-notifications.md) | Inscription push : identité+joignabilité dans Customer Data, envoi dans Notifications | accepted                                                 | 2026-05-25 |
 | [0013](0013-pricing-engine-backend-only.md)                                | Moteur Pricing exécuté côté backend uniquement (pas de partage front)                 | accepted                                                 | 2026-05-25 |
 | [0014](0014-shell-kb-admin-unique-scoping-rbac-front.md)                   | Shell KB Admin unique + scoping RBAC côté front (tenant-in-URL, switcher adaptatif)   | accepted                                                 | 2026-05-27 |
+| [0015](0015-edition-menu-brouillon-publication-globale-atomique.md)        | Édition menu V1 — brouillon autosauvé + publication globale atomique (instantané)     | accepted                                                 | 2026-05-27 |
 
 ## Quand créer un ADR
 
