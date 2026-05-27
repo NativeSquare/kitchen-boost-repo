@@ -25,12 +25,20 @@ Rôle employé d'un tenant précis (cuisinier, caissier). Accès limité : consu
 _Avoid_: Employee, Worker
 
 **Impersonation** :
-Action [[KB Admin]] pour se connecter en tant qu'un [[KB Manager]] (assistance, debug). Audit log obligatoire. V2 : bannière visible côté KB Manager "KB est connecté à votre compte".
-_Avoid_: Sudo, Login-as
+Action [[KB Admin]] pour assister un resto en agissant sur ses surfaces opérationnelles ([[Vue opérationnelle]]). **V1 = pas de plomberie dédiée** : le KB Admin ouvre simplement la vue opérationnelle d'un tenant (le root override des wrappers lui donne accès), signalé par un **bandeau côté KB Admin** ("Mode admin — tu consultes \<resto\>"). Le bandeau côté KB Manager ("KB est connecté à votre compte") + l'audit log = V2. Cf. [ADR 0014](../../adr/0014-shell-kb-admin-unique-scoping-rbac-front.md).
+_Avoid_: Sudo, Login-as, Act-as
 
 **Switcher tenant courant** :
-Sélecteur en header de l'app pour un user attaché à N tenants. Sélection persistée par device (cookie `kb_current_tenant`). KB Admin (root) a une option "Tous tenants" en plus du filtre par tenant.
+Sélecteur **toujours présent** dans le header. Sa **valeur** = le contexte courant ; ses **options** s'adaptent au rôle. [[KB Manager]] → ses tenants (`session.tenants`) ; [[KB Admin]] → recherche sur **tous** les tenants + une entrée [[Mode supervision]]. Le tenant courant est porté par l'URL ; le cookie `kb_current_tenant` n'est qu'un indice du dernier resto ouvert. Cf. [ADR 0014](../../adr/0014-shell-kb-admin-unique-scoping-rbac-front.md).
 _Avoid_: Tenant picker
+
+**Mode supervision** :
+État du [[KB Admin]] quand il opère "au-dessus de tous les tenants" (pipeline onboarding, CRM KB, monitoring, liste tenants) — aucun tenant précis n'est courant. S'oppose à la [[Vue opérationnelle]]. Le [[Switcher tenant courant]] affiche alors "Supervision".
+_Avoid_: Vue globale, Dashboard admin
+
+**Vue opérationnelle** (resto) :
+Les surfaces scopées à UN tenant (édition menu, commandes, vue "Mes clients", campagnes, pricing, QR, paramètres), vues par le [[KB Manager]] de ce tenant — ou par le [[KB Admin]] en assistance ([[Impersonation]]). Backend = wrappers `tenantQuery` ; le tenant courant vient de l'URL.
+_Avoid_: Dashboard resto, Espace resto
 
 **Pipeline onboarding** :
 Vue Kanban / liste matérialisant le parcours d'un resto. **Source de vérité = DB de `KitchenBoost Admin`** (acté 2026-05-23). Le doc `project_onboarding_process.md` reste mais devient **narratif uniquement** (le pourquoi du process, pas l'état opérationnel par resto). Accessible côté rôle KB Admin uniquement. Structure à 2 niveaux : phases macro + milestones d'intégration (cf. [[Milestone]]).
