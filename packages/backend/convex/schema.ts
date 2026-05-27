@@ -27,6 +27,7 @@ import { tenantCredentials } from "./table/tenantCredentials";
 import { tenants } from "./table/tenants";
 import { userTenants } from "./table/userTenants";
 import { users } from "./table/users";
+import { walletDeviceRegistrations } from "./table/walletDeviceRegistrations";
 import { walletPasses } from "./table/walletPasses";
 
 export default defineSchema({
@@ -123,4 +124,14 @@ export default defineSchema({
   // 2.1 (`customers.pushEnrollment.walletSerialNumber`, ADR 0008/0012) — NOT
   // duplicated here. Reached only through the sanctioned `lib/tenancy` seam.
   walletPasses,
+  // 2.8-B — Wallet device registry (PRD 80, ADR 0003, STACK §5.4). The device↔pass
+  // couples the Apple Wallet Web Service registers (POST) / unregisters (DELETE) so
+  // KB can push card updates over APNs. GLOBAL with NO authoritative `tenantId`
+  // (like `walletPasses` — the common neutral card is one channel for all restos,
+  // ADR 0010 documented exemption); the `(deviceLibraryIdentifier, serialNumber)`
+  // couple is UNIQUE (idempotent register, soft `inactive` on unregister). Reached
+  // only through the sanctioned `lib/tenancy` seam. This slice is the device-
+  // registration plumbing only — serial→customer (slice C) + push (slice D) come
+  // later.
+  walletDeviceRegistrations,
 });

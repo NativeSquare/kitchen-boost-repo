@@ -165,6 +165,14 @@ export {
   readWalletPassBySerial,
 } from "./walletPassesStore";
 export {
+  type NewDeviceRegistration,
+  deactivateDeviceRegistration,
+  insertDeviceRegistration,
+  listActiveRegistrationsBySerial,
+  readDeviceRegistration,
+  refreshDeviceRegistration,
+} from "./walletDeviceRegistrationsStore";
+export {
   type ItemBody,
   type ModifierGroupBody,
   attachTenantGroupToItem,

@@ -4,6 +4,10 @@ import { auth } from "./auth";
 import { uberWebhook } from "./lib/delivery/webhooks";
 import { resend } from "./emails";
 import { stripeWebhook } from "./lib/stripe";
+import {
+  walletPassDownload,
+  walletRegistrationWebhook,
+} from "./lib/wallet/webService";
 
 const http = httpRouter();
 
@@ -44,6 +48,32 @@ http.route({
   pathPrefix: "/webhooks/uber/",
   method: "POST",
   handler: uberWebhook,
+});
+
+// 2.8-B — Apple Wallet Web Service device registration over the HMAC-signed
+// internal channel (PRD 80, ADR 0003, STACK §2.3/§5.4, US 23). Apple's servers
+// call the device-facing Node routes (`apps/admin/api/wallet/*`); after parsing
+// the `Authorization: ApplePass …` header + URL params, those routes FORWARD the
+// register/unregister to this endpoint signed with `WALLET_INTERNAL_HMAC_SECRET`
+// (x-kb-timestamp / x-kb-signature). The handler verifies the channel HMAC on the
+// RAW body, then dispatches to registerDevice / unregisterDevice (which re-verify
+// the per-pass PassKit token). Only authenticated KB traffic mutates the registry.
+http.route({
+  path: "/wallet/registrations",
+  method: "POST",
+  handler: walletRegistrationWebhook,
+});
+
+// 2.8-B — Apple Wallet Web Service pass DOWNLOAD over the HMAC-signed internal
+// channel (US 9). The device-facing Node route (`apps/admin/api/wallet/pass/
+// [serial]`) verifies the PassKit token, then forwards the serial here signed with
+// `WALLET_INTERNAL_HMAC_SECRET`; this endpoint re-builds + signs the latest
+// `.pkpass` through slice A's `"use node"` seam and returns the base64 bytes the
+// route streams as `application/vnd.apple.pkpass`.
+http.route({
+  path: "/wallet/pass",
+  method: "POST",
+  handler: walletPassDownload,
 });
 
 export default http;

@@ -110,6 +110,7 @@ import type * as lib_tenancy_stripeAccountStore from "../lib/tenancy/stripeAccou
 import type * as lib_tenancy_tenantsStore from "../lib/tenancy/tenantsStore.js";
 import type * as lib_tenancy_userTenantsStore from "../lib/tenancy/userTenantsStore.js";
 import type * as lib_tenancy_usersStore from "../lib/tenancy/usersStore.js";
+import type * as lib_tenancy_walletDeviceRegistrationsStore from "../lib/tenancy/walletDeviceRegistrationsStore.js";
 import type * as lib_tenancy_walletPassesStore from "../lib/tenancy/walletPassesStore.js";
 import type * as lib_tenancy_withTenant from "../lib/tenancy/withTenant.js";
 import type * as lib_uberDirect_createDelivery from "../lib/uberDirect/createDelivery.js";
@@ -121,8 +122,11 @@ import type * as lib_uberDirect_webhookEvents from "../lib/uberDirect/webhookEve
 import type * as lib_wallet__constants from "../lib/wallet/_constants.js";
 import type * as lib_wallet_generatePass from "../lib/wallet/generatePass.js";
 import type * as lib_wallet_index from "../lib/wallet/index.js";
+import type * as lib_wallet_internalAuth from "../lib/wallet/internalAuth.js";
 import type * as lib_wallet_passBuilders from "../lib/wallet/passBuilders.js";
 import type * as lib_wallet_passDb from "../lib/wallet/passDb.js";
+import type * as lib_wallet_registrations from "../lib/wallet/registrations.js";
+import type * as lib_wallet_webService from "../lib/wallet/webService.js";
 import type * as lib_webhooks_idempotent from "../lib/webhooks/idempotent.js";
 import type * as lib_webhooks_index from "../lib/webhooks/index.js";
 import type * as migrations from "../migrations.js";
@@ -151,6 +155,7 @@ import type * as table_tenantCredentials from "../table/tenantCredentials.js";
 import type * as table_tenants from "../table/tenants.js";
 import type * as table_userTenants from "../table/userTenants.js";
 import type * as table_users from "../table/users.js";
+import type * as table_walletDeviceRegistrations from "../table/walletDeviceRegistrations.js";
 import type * as table_walletPasses from "../table/walletPasses.js";
 import type * as utils_generateFunctions from "../utils/generateFunctions.js";
 
@@ -263,6 +268,7 @@ declare const fullApi: ApiFromModules<{
   "lib/tenancy/tenantsStore": typeof lib_tenancy_tenantsStore;
   "lib/tenancy/userTenantsStore": typeof lib_tenancy_userTenantsStore;
   "lib/tenancy/usersStore": typeof lib_tenancy_usersStore;
+  "lib/tenancy/walletDeviceRegistrationsStore": typeof lib_tenancy_walletDeviceRegistrationsStore;
   "lib/tenancy/walletPassesStore": typeof lib_tenancy_walletPassesStore;
   "lib/tenancy/withTenant": typeof lib_tenancy_withTenant;
   "lib/uberDirect/createDelivery": typeof lib_uberDirect_createDelivery;
@@ -274,8 +280,11 @@ declare const fullApi: ApiFromModules<{
   "lib/wallet/_constants": typeof lib_wallet__constants;
   "lib/wallet/generatePass": typeof lib_wallet_generatePass;
   "lib/wallet/index": typeof lib_wallet_index;
+  "lib/wallet/internalAuth": typeof lib_wallet_internalAuth;
   "lib/wallet/passBuilders": typeof lib_wallet_passBuilders;
   "lib/wallet/passDb": typeof lib_wallet_passDb;
+  "lib/wallet/registrations": typeof lib_wallet_registrations;
+  "lib/wallet/webService": typeof lib_wallet_webService;
   "lib/webhooks/idempotent": typeof lib_webhooks_idempotent;
   "lib/webhooks/index": typeof lib_webhooks_index;
   migrations: typeof migrations;
@@ -304,6 +313,7 @@ declare const fullApi: ApiFromModules<{
   "table/tenants": typeof table_tenants;
   "table/userTenants": typeof table_userTenants;
   "table/users": typeof table_users;
+  "table/walletDeviceRegistrations": typeof table_walletDeviceRegistrations;
   "table/walletPasses": typeof table_walletPasses;
   "utils/generateFunctions": typeof utils_generateFunctions;
 }>;
