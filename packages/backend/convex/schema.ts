@@ -27,6 +27,7 @@ import { tenantCredentials } from "./table/tenantCredentials";
 import { tenants } from "./table/tenants";
 import { userTenants } from "./table/userTenants";
 import { users } from "./table/users";
+import { walletPasses } from "./table/walletPasses";
 
 export default defineSchema({
   ...authTables,
@@ -112,4 +113,14 @@ export default defineSchema({
   // boundary.
   prospects,
   contracts,
+  // 2.8-A — Wallet pass (PRD 80 Notifications, ADR 0003 carte commune marque
+  // neutre). `walletPasses` is GLOBAL with NO authoritative `tenantId` (like
+  // `customers`, ADR 0010): the card is ONE common card under a neutral consumer
+  // brand for ALL restos — the visible branding (`lastBrandTenantId`) is a USAGE,
+  // not an ownership. It holds the TECHNICAL pass state only (serialNumber unique
+  // via by_serial, FIXED passTypeIdentifier, a Customer ref, install state,
+  // lifecycle status); the AUTHORITATIVE serial→customer identity bridge lives in
+  // 2.1 (`customers.pushEnrollment.walletSerialNumber`, ADR 0008/0012) — NOT
+  // duplicated here. Reached only through the sanctioned `lib/tenancy` seam.
+  walletPasses,
 });
