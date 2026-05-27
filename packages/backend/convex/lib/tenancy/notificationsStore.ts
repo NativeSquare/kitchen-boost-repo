@@ -78,6 +78,24 @@ export async function markTenantNotificationEventInactive(
   tenantId: Id<"tenants">,
   eventId: Id<"notificationEvents">,
 ): Promise<void> {
+  const row = await requireTenantNotificationEvent(ctx, tenantId, eventId);
+  await ctx.db.patch(row._id, { status: "inactive_endpoint" });
+}
+
+/**
+ * 2.7-F — read ONE of a tenant's journal rows with an ownership re-check (the
+ * dispatcher resolves the channel + the customer id BY ID off the queued row before
+ * firing the Wallet transport). TENANT-SCOPED: a missing OR foreign `eventId` throws
+ * a typed `NOT_FOUND` (no cross-tenant existence oracle — the `requireTenantOrder`
+ * discipline). The single sanctioned read-by-id site for `notificationEvents`; the
+ * business module `lib/notifications/dispatch` (NOT exempt) calls THIS, never raw
+ * `ctx.db`. The row carries `customerId` BY ID only — no nominative copy (the MOAT).
+ */
+export async function requireTenantNotificationEvent(
+  ctx: QueryCtx | MutationCtx,
+  tenantId: Id<"tenants">,
+  eventId: Id<"notificationEvents">,
+): Promise<Doc<"notificationEvents">> {
   const row = await ctx.db.get(eventId);
   if (row === null || row.tenantId !== tenantId) {
     throw new ConvexError({
@@ -85,7 +103,39 @@ export async function markTenantNotificationEventInactive(
       message: "Notification event not found for this tenant.",
     });
   }
-  await ctx.db.patch(eventId, { status: "inactive_endpoint" });
+  return row;
+}
+
+/**
+ * 2.7-F — move a tenant's journal row to `sent` (+`sentAt`): the dispatcher's
+ * success transition once the Wallet transport pushed to at least one live device.
+ * TENANT-SCOPED with the same ownership re-check (foreign `eventId` → NOT_FOUND).
+ * The single sanctioned `ctx.db.patch` site for this transition.
+ */
+export async function setTenantNotificationEventSent(
+  ctx: MutationCtx,
+  tenantId: Id<"tenants">,
+  eventId: Id<"notificationEvents">,
+  sentAt: number,
+): Promise<void> {
+  const row = await requireTenantNotificationEvent(ctx, tenantId, eventId);
+  await ctx.db.patch(row._id, { status: "sent", sentAt });
+}
+
+/**
+ * 2.7-F — move a tenant's journal row to `failed`: the dispatcher's transport-error
+ * transition (the Node push route was unreachable / rejected the payload). Distinct
+ * from `inactive_endpoint` (a DEAD endpoint, which feeds 2.1 reachability) — a
+ * `failed` send is a transient transport problem, NOT a reachability signal, so it
+ * is NEVER propagated to 2.1. TENANT-SCOPED (foreign `eventId` → NOT_FOUND).
+ */
+export async function setTenantNotificationEventFailed(
+  ctx: MutationCtx,
+  tenantId: Id<"tenants">,
+  eventId: Id<"notificationEvents">,
+): Promise<void> {
+  const row = await requireTenantNotificationEvent(ctx, tenantId, eventId);
+  await ctx.db.patch(row._id, { status: "failed" });
 }
 
 /** All of a tenant's journal rows, keyed on `by_tenant` (newest first). */
