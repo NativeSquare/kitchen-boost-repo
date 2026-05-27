@@ -47,12 +47,23 @@
  * Both reach the GLOBAL `customers` table ONLY through the sanctioned tenancy seam;
  * cross-tenant fuzzed (ADR 0010).
  *
+ * 2.1-G — Web Push subscription STORAGE (PRD 90, notifications CONTEXT « Push
+ * subscription », ADR 0012). `register` (self-scoped `customerMutation`) persists
+ * the RFC 8291 subscription (endpoint + client keys p256dh/auth) the send layer
+ * (#54) needs — data the opaque `pushEnrollment.webPushSubscriptionId` does NOT
+ * hold — into the TENANT-SCOPED `webPushSubscriptions` table (idempotent upsert by
+ * endpoint, soft `inactive` on 410), AND sets `pushEnrollment.webPushStatus =
+ * "enrolled"` (reachability source of truth in 2.1). Reaches both the tenant-scoped
+ * table and the GLOBAL fiche ONLY through the sanctioned `lib/tenancy` seam
+ * (`webPushSubscriptionsStore` / `customerOrdersStore`); cross-tenant fuzzed (ADR
+ * 0010). The web-push SEND + the PWA subscribe UI are out of scope (#54 / frontend).
+ *
  * Convex registers functions by their module PATH, so callers invoke them as
  * `api.lib.customer.identity.*` / `api.lib.customer.consent.*` /
  * `api.lib.customer.cgv.*` / `api.lib.customer.segments.*` /
  * `api.lib.customer.reachability.*` / `api.lib.customer.kpi.*` /
- * `api.lib.customer.rgpd.*`; re-exporting here does not change that path, it just
- * states the module's contract in one place.
+ * `api.lib.customer.rgpd.*` / `api.lib.customer.webPush.*`; re-exporting here does
+ * not change that path, it just states the module's contract in one place.
  */
 export { getCurrentCustomer, getOrCreateCurrentCustomer } from "./identity";
 export {
@@ -85,3 +96,4 @@ export {
   logKpiConsultation,
 } from "./kpi";
 export { anonymizeCustomer, getCustomerForSupport } from "./rgpd";
+export { register } from "./webPush";

@@ -35,6 +35,7 @@ import type * as lib_customer_kpi from "../lib/customer/kpi.js";
 import type * as lib_customer_reachability from "../lib/customer/reachability.js";
 import type * as lib_customer_rgpd from "../lib/customer/rgpd.js";
 import type * as lib_customer_segments from "../lib/customer/segments.js";
+import type * as lib_customer_webPush from "../lib/customer/webPush.js";
 import type * as lib_delivery_course from "../lib/delivery/course.js";
 import type * as lib_delivery_incidents from "../lib/delivery/incidents.js";
 import type * as lib_delivery_index from "../lib/delivery/index.js";
@@ -114,6 +115,7 @@ import type * as lib_tenancy_usersStore from "../lib/tenancy/usersStore.js";
 import type * as lib_tenancy_walletDeviceRegistrationsStore from "../lib/tenancy/walletDeviceRegistrationsStore.js";
 import type * as lib_tenancy_walletIncentiveDeliveriesStore from "../lib/tenancy/walletIncentiveDeliveriesStore.js";
 import type * as lib_tenancy_walletPassesStore from "../lib/tenancy/walletPassesStore.js";
+import type * as lib_tenancy_webPushSubscriptionsStore from "../lib/tenancy/webPushSubscriptionsStore.js";
 import type * as lib_tenancy_withTenant from "../lib/tenancy/withTenant.js";
 import type * as lib_uberDirect_createDelivery from "../lib/uberDirect/createDelivery.js";
 import type * as lib_uberDirect_credentials from "../lib/uberDirect/credentials.js";
@@ -164,6 +166,7 @@ import type * as table_users from "../table/users.js";
 import type * as table_walletDeviceRegistrations from "../table/walletDeviceRegistrations.js";
 import type * as table_walletIncentiveDeliveries from "../table/walletIncentiveDeliveries.js";
 import type * as table_walletPasses from "../table/walletPasses.js";
+import type * as table_webPushSubscriptions from "../table/webPushSubscriptions.js";
 import type * as utils_generateFunctions from "../utils/generateFunctions.js";
 
 import type {
@@ -200,6 +203,7 @@ declare const fullApi: ApiFromModules<{
   "lib/customer/reachability": typeof lib_customer_reachability;
   "lib/customer/rgpd": typeof lib_customer_rgpd;
   "lib/customer/segments": typeof lib_customer_segments;
+  "lib/customer/webPush": typeof lib_customer_webPush;
   "lib/delivery/course": typeof lib_delivery_course;
   "lib/delivery/incidents": typeof lib_delivery_incidents;
   "lib/delivery/index": typeof lib_delivery_index;
@@ -279,6 +283,7 @@ declare const fullApi: ApiFromModules<{
   "lib/tenancy/walletDeviceRegistrationsStore": typeof lib_tenancy_walletDeviceRegistrationsStore;
   "lib/tenancy/walletIncentiveDeliveriesStore": typeof lib_tenancy_walletIncentiveDeliveriesStore;
   "lib/tenancy/walletPassesStore": typeof lib_tenancy_walletPassesStore;
+  "lib/tenancy/webPushSubscriptionsStore": typeof lib_tenancy_webPushSubscriptionsStore;
   "lib/tenancy/withTenant": typeof lib_tenancy_withTenant;
   "lib/uberDirect/createDelivery": typeof lib_uberDirect_createDelivery;
   "lib/uberDirect/credentials": typeof lib_uberDirect_credentials;
@@ -329,6 +334,7 @@ declare const fullApi: ApiFromModules<{
   "table/walletDeviceRegistrations": typeof table_walletDeviceRegistrations;
   "table/walletIncentiveDeliveries": typeof table_walletIncentiveDeliveries;
   "table/walletPasses": typeof table_walletPasses;
+  "table/webPushSubscriptions": typeof table_webPushSubscriptions;
   "utils/generateFunctions": typeof utils_generateFunctions;
 }>;
 

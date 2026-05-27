@@ -183,6 +183,12 @@ export {
   refreshDeviceRegistration,
 } from "./walletDeviceRegistrationsStore";
 export {
+  type WebPushSubscriptionInput,
+  deactivateWebPushSubscription,
+  listActiveWebPushSubscriptions,
+  registerWebPushSubscription,
+} from "./webPushSubscriptionsStore";
+export {
   type ItemBody,
   type ModifierGroupBody,
   attachTenantGroupToItem,
