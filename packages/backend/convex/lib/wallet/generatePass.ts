@@ -99,6 +99,44 @@ function signGoogleSaveLink(
 }
 
 /**
+ * Extract the PEM signer certificate + (encrypted) private key from a PKCS#12
+ * bundle. `passkit-generator` wants a PEM cert + PEM key, NOT a raw p12, so the
+ * env `WALLET_PASS_CERT_P12_BASE64` (the Pass Type ID p12 the POC round-tripped)
+ * is unpacked here with `node-forge` (the pure-JS lib passkit-generator already
+ * relies on — POC #3, no native OpenSSL binding). The key stays PEM-encrypted; we
+ * hand its passphrase to passkit-generator via `signerKeyPassphrase`.
+ */
+async function pemFromP12(
+  p12Base64: string,
+  passphrase: string,
+): Promise<{ signerCert: string; signerKey: string }> {
+  const forge = (await import("node-forge")).default;
+  const der = forge.util.decode64(p12Base64);
+  const asn1 = forge.asn1.fromDer(der);
+  const p12 = forge.pkcs12.pkcs12FromAsn1(asn1, passphrase);
+
+  const certBag = p12.getBags({ bagType: forge.pki.oids.certBag })[
+    forge.pki.oids.certBag
+  ]?.[0];
+  const keyBag = p12.getBags({
+    bagType: forge.pki.oids.pkcs8ShroudedKeyBag,
+  })[forge.pki.oids.pkcs8ShroudedKeyBag]?.[0];
+  if (!certBag?.cert || !keyBag?.key) {
+    throw new ConvexError({
+      code: "MISCONFIGURED",
+      message: "Pass Type ID p12 is missing its certificate or private key.",
+    });
+  }
+
+  return {
+    signerCert: forge.pki.certificateToPem(certBag.cert),
+    // Re-encrypt the key with the same passphrase so it travels PEM-encrypted;
+    // passkit-generator decrypts it with `signerKeyPassphrase`.
+    signerKey: forge.pki.encryptRsaPrivateKey(keyBag.key, passphrase),
+  };
+}
+
+/**
  * Sign the `.pkpass` (PKCS#7) with the real Apple certs read from env
  * (`WALLET_PASS_CERT_P12_BASE64` + `WALLET_PASS_CERT_PASSWORD` + `WALLET_WWDR_CERT_BASE64`),
  * via `passkit-generator` (POC #3 / Phase B). Returns the signed bundle bytes, or
@@ -113,13 +151,14 @@ async function signApplePkpass(
   const wwdrB64 = process.env.WALLET_WWDR_CERT_BASE64;
   if (!p12B64 || !passphrase || !wwdrB64) return null;
 
+  const { signerCert, signerKey } = await pemFromP12(p12B64, passphrase);
   const { PKPass } = await import("passkit-generator");
   const instance = new PKPass(
     { "pass.json": Buffer.from(JSON.stringify(pass)) },
     {
       wwdr: Buffer.from(wwdrB64, "base64"),
-      signerCert: Buffer.from(p12B64, "base64"),
-      signerKey: Buffer.from(p12B64, "base64"),
+      signerCert,
+      signerKey,
       signerKeyPassphrase: passphrase,
     },
   );

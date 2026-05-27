@@ -586,6 +586,9 @@ importers:
       convex-helpers:
         specifier: ^0.1.111
         version: 0.1.111(@standard-schema/spec@1.1.0)(convex@1.31.7(@clerk/clerk-react@5.60.0(react-dom@19.2.4(react@18.2.0))(react@18.2.0))(react@18.2.0))(react@18.2.0)(typescript@5.9.3)(zod@4.3.6)
+      node-forge:
+        specifier: ^1.4.0
+        version: 1.4.0
       oslo:
         specifier: ^1.2.1
         version: 1.2.1
@@ -605,6 +608,9 @@ importers:
       "@packages/eslint-config-kitchenboost":
         specifier: workspace:*
         version: link:../eslint-config-kitchenboost
+      "@types/node-forge":
+        specifier: ^1.3.14
+        version: 1.3.14
       "@types/react":
         specifier: ~19.1.0
         version: 19.1.17
@@ -6130,6 +6136,12 @@ packages:
         integrity: sha512-dRLjCWHYg4oaA77cxO64oO+7JwCwnIzkZPdrrC71jQmQtlhM556pwKo5bUzqvZndkVbeFLIIi+9TC40JNF5hNQ==,
       }
 
+  "@types/node-forge@1.3.14":
+    resolution:
+      {
+        integrity: sha512-mhVF2BnD4BO+jtOp7z1CdzaK4mbuK0LLQYAvdOLqHTavxFNq4zA1EmYkpnFjP8HOUzedfQkRnp0E2ulSAYSzAw==,
+      }
+
   "@types/node@20.19.32":
     resolution:
       {
@@ -11189,6 +11201,13 @@ packages:
     resolution:
       {
         integrity: sha512-rLvcdSyRCyouf6jcOIPe/BgwG/d7hKjzMKOas33/pHEr6gbq18IK9zV7DiPvzsz0oBJPme6qr6H6kGZuI9/DZg==,
+      }
+    engines: { node: ">= 6.13.0" }
+
+  node-forge@1.4.0:
+    resolution:
+      {
+        integrity: sha512-LarFH0+6VfriEhqMMcLX2F7SwSXeWwnEAJEsYm5QKWchiVYVvJyV9v7UDvUv+w5HO23ZpQTXDv/GxdDdMyOuoQ==,
       }
     engines: { node: ">= 6.13.0" }
 
@@ -18517,6 +18536,10 @@ snapshots:
 
   "@types/json5@0.0.29": {}
 
+  "@types/node-forge@1.3.14":
+    dependencies:
+      "@types/node": 20.19.32
+
   "@types/node@20.19.32":
     dependencies:
       undici-types: 6.21.0
@@ -22191,6 +22214,8 @@ snapshots:
 
   node-forge@1.3.3: {}
 
+  node-forge@1.4.0: {}
+
   node-int64@0.4.0: {}
 
   node-releases@2.0.27: {}
@@ -22389,7 +22414,7 @@ snapshots:
     dependencies:
       do-not-zip: 1.0.0
       joi: 17.4.2
-      node-forge: 1.3.3
+      node-forge: 1.4.0
       tslib: 2.8.1
 
   path-exists@4.0.0: {}
