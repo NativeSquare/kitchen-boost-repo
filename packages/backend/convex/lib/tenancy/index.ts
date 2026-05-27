@@ -60,6 +60,7 @@ export {
   patchCustomerPushEnrollment,
   readCustomerAggregateFields,
   recordCustomerOrderForTenant,
+  revertCustomerOrderForTenant,
 } from "./customerOrdersStore";
 export {
   closeActiveCgvVersions,
@@ -217,6 +218,7 @@ export {
   type NewPendingOrder,
   type OrderWithDetail,
   TERMINAL_ORDER_STATUSES,
+  abortTenantOrder,
   assertLegalTransition,
   clearTenantOperationalPause,
   confirmTenantOrderPayment,

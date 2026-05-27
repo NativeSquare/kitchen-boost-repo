@@ -343,3 +343,40 @@ describe("2.6-C createCourseOnPaymentConfirmed — delivery mode creates an Uber
     expect(after.stats).toBeNull();
   });
 });
+
+describe("#108 confirmDeliveryOrderOnCourseCreated — cross-tenant isolation (ADR 0010)", () => {
+  let t: ReturnType<typeof convexTest>;
+  let seed: Seed;
+
+  beforeEach(async () => {
+    t = convexTest(schema, modules);
+    seed = await seedTwoTenantsAllRoles(t);
+  });
+
+  it("confirming under a FOREIGN tenant throws and never touches the owning tenant's order/stats", async () => {
+    // Tenant A owns a gated delivery order (en attente de paiement, uncounted).
+    const { orderId, customerId } = await seedOrderWithDelivery(
+      t,
+      seed.tenantA.tenantId,
+      "delivery",
+    );
+
+    // Resolving A's order under tenant B is unreachable (NOT_FOUND), so an attacker
+    // routing through another tenant can neither confirm it nor post its stats.
+    await expect(
+      t.mutation(
+        internal.lib.delivery.course.confirmDeliveryOrderOnCourseCreated,
+        { tenantId: seed.tenantB.tenantId, orderId },
+      ),
+    ).rejects.toThrow();
+
+    const after = await readOrderAndStats(
+      t,
+      seed.tenantA.tenantId,
+      orderId,
+      customerId,
+    );
+    expect(after.order?.status).toBe("en attente de paiement"); // untouched
+    expect(after.stats).toBeNull(); // never counted under the wrong tenant
+  });
+});

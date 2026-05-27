@@ -22,10 +22,16 @@
  *    `readServiceOpen` (tenant-scoped 2.2 read + the fuzzable access gate). The
  *    verdict shape is `DeliveryQuoteVerdict` / `deliveryQuoteVerdict`; the pure
  *    `crossQuoteWithServiceHours` is the deterministically-tested decision.
- *  - course (2.6-C): `createCourseOnPaymentConfirmed` (INTERNAL action — the
+ *  - course (2.6-C + #108): `createCourseOnPaymentConfirmed` (INTERNAL action — the
  *    delivery-domain executor triggered by 2.5's `payment_intent.succeeded`
  *    signal; turns the seeded `pending` row into a real Uber [[Course]], no-op for
  *    click & collect). The Uber call is owned by `lib/uberDirect.createDelivery`.
+ *    Under the STRICT payment↔delivery coupling (#108) it is also the GATE that makes
+ *    a delivery order visible: 2.5 leaves a delivery order `en attente de paiement`
+ *    (invisible, uncounted), and ONLY a successfully created course confirms it
+ *    (`confirmDeliveryOrderOnCourseCreated` → `nouvelle` + MOAT stats). A refused
+ *    course (Cas A / [[Cmd avortée]]) never confirms it — it triggers the auto-refund
+ *    (#49), so the order leaves no kitchen trace and no stat.
  *  - webhooks (2.6-C): `uberWebhook` (the per-tenant `…/webhooks/uber/<tenantId>`
  *    httpAction — raw-body `x-uber-signature` verify, tenant routing, idempotent
  *    apply) + `applyUberWebhookEvent` (the system-side idempotent write, EXTENDED in
