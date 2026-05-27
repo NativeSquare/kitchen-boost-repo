@@ -151,6 +151,7 @@ import type * as table_tenantCredentials from "../table/tenantCredentials.js";
 import type * as table_tenants from "../table/tenants.js";
 import type * as table_userTenants from "../table/userTenants.js";
 import type * as table_users from "../table/users.js";
+import type * as table_walletDeviceRegistrations from "../table/walletDeviceRegistrations.js";
 import type * as table_walletPasses from "../table/walletPasses.js";
 import type * as utils_generateFunctions from "../utils/generateFunctions.js";
 
@@ -304,6 +305,7 @@ declare const fullApi: ApiFromModules<{
   "table/tenants": typeof table_tenants;
   "table/userTenants": typeof table_userTenants;
   "table/users": typeof table_users;
+  "table/walletDeviceRegistrations": typeof table_walletDeviceRegistrations;
   "table/walletPasses": typeof table_walletPasses;
   "utils/generateFunctions": typeof utils_generateFunctions;
 }>;
