@@ -269,6 +269,8 @@ V2 :
 - KPI macro : total clients tenant, nouveaux ce mois, taux de retour (% clients ayant ≥ 2 cmds)
 - ~~Filtre temporel global (30 / 90 / 365 jours)~~ **— RETIRÉ V1** (grilling front 2026-05-27) : les 3 segments encodent déjà leurs fenêtres (actif 30 j / inactif 90 j) et `aggregateCustomerKPIs` n'expose aucun paramètre de période. Un curseur global imposerait de re-paramétrer la segmentation + un arg backend. V2.
 - **PAS de table, PAS de prénom, PAS de coordonnées, PAS d'export CSV (JAMAIS)**
+- **Trace d'audit** (acté 2026-05-27) : le front appelle `logKpiConsultation` **une fois à l'ouverture** de la vue (1 enregistrement / visite, pas par re-render) — détection scraping (PRD 90 §4).
+- **Anti-extraction front sans objet V1** (acté 2026-05-27) : les mesures du CONTEXT Customer Data (`user-select:none`, watermark, pagination ≤ 20) **ne s'appliquent pas** — il n'y a aucune donnée individuelle affichée, uniquement des agrégats. Elles redeviennent pertinentes en V2 si une liste apparaît.
 - Campagnes (V2) : le resto tape un segment, KB envoie en proxy — jamais de destinataires nominatifs visibles
 
 #### 4.5 Campagnes marketing
