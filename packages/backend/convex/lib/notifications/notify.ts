@@ -9,7 +9,7 @@ import {
   requireTenantOrder,
   tenantMutation,
 } from "../tenancy";
-import { isWalletChannel } from "./dispatch";
+import { isWalletChannel, isWebPushChannel } from "./dispatch";
 import {
   type PlannedSend,
   channelAvailabilityFrom,
@@ -75,10 +75,12 @@ export const notifyOrderEvent = tenantMutation(OPERATIONAL_ALLOW)({
 
     const sends = planTransactionalSends(args.eventType, availability);
 
-    // Journal each planned send as `queued` and remember the WALLET ones so the
-    // dispatch (slice C) only ever targets those — the other channels' transports
-    // are later slices, their rows stay `queued`.
+    // Journal each planned send as `queued` and remember the WALLET (#126) and
+    // WEB-PUSH (#54) ones so each dispatch (slice C) only ever targets its own
+    // channel — the remaining channels' transports are later slices (email) or never
+    // dispatched V1 (sms, sendable: false), so their rows stay `queued`.
     const walletEventIds: Id<"notificationEvents">[] = [];
+    const webPushEventIds: Id<"notificationEvents">[] = [];
     for (const send of sends) {
       const eventId = await insertTenantNotificationEvent(ctx, ctx.tenantId, {
         customerId: order.customerId,
@@ -86,21 +88,32 @@ export const notifyOrderEvent = tenantMutation(OPERATIONAL_ALLOW)({
         category: send.category,
         channel: send.channel,
         // Planned, not yet dispatched. SMS stays queued and is never dispatched V1
-        // (sendable: false); web_push/email await their own transport slices.
+        // (sendable: false); email awaits its own transport slice.
         status: "queued",
       });
       if (isWalletChannel(send.channel)) {
         walletEventIds.push(eventId);
+      } else if (isWebPushChannel(send.channel)) {
+        webPushEventIds.push(eventId);
       }
     }
 
-    // Fire the Wallet sends AFTER this mutation commits: a tenantMutation cannot call
-    // an internalAction directly, and the APNs fetch belongs in an action, not here.
+    // Fire the sends AFTER this mutation commits: a tenantMutation cannot call an
+    // internalAction directly, and the crypto-heavy fetch belongs in an action, not
+    // here. Each channel is dispatched by its own internal action (Wallet → APNs
+    // route #71; web-push → the Node `web-push` VAPID route #54).
     if (walletEventIds.length > 0) {
       await ctx.scheduler.runAfter(
         0,
         internal.lib.notifications.dispatch.dispatchWalletSends,
         { tenantId: ctx.tenantId, eventIds: walletEventIds },
+      );
+    }
+    if (webPushEventIds.length > 0) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.lib.notifications.dispatch.dispatchWebPushSends,
+        { tenantId: ctx.tenantId, eventIds: webPushEventIds },
       );
     }
 

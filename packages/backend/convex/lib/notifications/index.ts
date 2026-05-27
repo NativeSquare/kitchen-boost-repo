@@ -98,10 +98,20 @@ export {
  * §1/§7, ADR 0002/0003). After `notifyOrderEvent` journals the `queued` sends it
  * SCHEDULES `dispatch.dispatchWalletSends` with the Wallet event ids; that internal
  * action fires the Wallet transport (#71 `triggerUpdate`) and moves each Wallet row
- * to `sent` / `failed` / `inactive_endpoint`. The `web_push`/`email`/`sms` rows stay
- * `queued` (their transports are later slices). Like `triggerUpdate`, the dispatch
+ * to `sent` / `failed` / `inactive_endpoint`. The `email`/`sms` rows stay `queued`
+ * (their transports are later slices / never V1). Like `triggerUpdate`, the dispatch
  * is INTERNAL-ONLY (system-side, scheduler-invoked) and addressed by its module path
  * (`internal.lib.notifications.dispatch.*`) — so the barrel does NOT re-export it.
+ *
+ * 2.7-C (#54) — the WEB-PUSH DISPATCHER (slice C, the second effective channel after
+ * Wallet, PRD 80 §1/§3, STACK §5.5, POC #2). Same shape as the Wallet dispatcher:
+ * `notifyOrderEvent` SCHEDULES `dispatch.dispatchWebPushSends` with the `web_push`
+ * event ids; that internal action reads the customer's ACTIVE subscriptions through
+ * the #128 tenant-scoped read seam, HMAC-signs a `fetch` to the Next.js Node route
+ * (`apps/web/app/api/push/send`, where the `web-push` VAPID encryption runs — the V8
+ * Convex runtime can't do ECDH AES-GCM), and moves each row to `sent` / `failed` /
+ * `inactive_endpoint` (on a 410 Gone it soft-deactivates the endpoint via the #128
+ * seam). Also INTERNAL-ONLY — the barrel exposes only the pure channel predicate.
  */
 export {
   type CampaignResult,
@@ -142,10 +152,13 @@ export {
   type CampaignLaunchRecord,
   findCampaignAnomaly,
 } from "./antiAnomaly";
-// 2.7-F — the dispatcher's PURE contract (the "Wallet only" channel predicate); the
-// Convex action `dispatchWalletSends` is internal-only and reached via internal.* .
+// 2.7-F / 2.7-C — the dispatchers' PURE contracts (the channel predicates); the
+// Convex actions `dispatchWalletSends` / `dispatchWebPushSends` are internal-only and
+// reached via internal.* — the barrel deliberately does NOT re-export them.
 export {
   WALLET_CHANNELS,
+  WEB_PUSH_CHANNEL,
   type WalletChannel,
   isWalletChannel,
+  isWebPushChannel,
 } from "./dispatch";
