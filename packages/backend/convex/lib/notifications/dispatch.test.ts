@@ -257,9 +257,12 @@ describe("2.7-F Wallet dispatcher — fires triggerUpdate per Wallet channel", (
     expect(typeof walletRow?.sentAt).toBe("number");
   });
 
-  it("leaves web_push / email rows queued — never dispatched here", async () => {
+  it("leaves email rows queued — the Wallet dispatcher never sends email", async () => {
     t = convexTest(schema, modules);
     seed = await seedTwoTenantsAllRoles(t);
+    // Wallet-enrolled with a device, but NO web-push subscription rows. (The fiche's
+    // webPushStatus is `enrolled`, so the engine still routes a web_push send; with
+    // no active subscription the web-push dispatcher #54 marks it inactive_endpoint.)
     const customerId = await seedWalletCustomer(t, "a@x.fr", "kb-disp-3", [
       "tok-a",
     ]);
@@ -280,13 +283,17 @@ describe("2.7-F Wallet dispatcher — fires triggerUpdate per Wallet channel", (
     });
     await drainScheduled(t);
 
-    // Only the wallet_push channel was dispatched (one fetch).
+    // Only the wallet_push channel hit the transport (one fetch); web_push had no
+    // active subscription so the web-push dispatcher made no fetch.
     expect(calls.length).toBe(1);
 
     const rows = await eventsFor(t, customerId);
     expect(rows.find((r) => r.channel === "wallet_push")?.status).toBe("sent");
-    // The non-Wallet channels are untouched (later slices own them).
-    expect(rows.find((r) => r.channel === "web_push")?.status).toBe("queued");
+    // web_push is now owned by the #54 dispatcher (no active subscription here →
+    // inactive_endpoint); email's transport is still a later slice (stays queued).
+    expect(rows.find((r) => r.channel === "web_push")?.status).toBe(
+      "inactive_endpoint",
+    );
     expect(rows.find((r) => r.channel === "email")?.status).toBe("queued");
   });
 
