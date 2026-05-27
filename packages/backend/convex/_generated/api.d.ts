@@ -123,6 +123,7 @@ import type * as lib_wallet__constants from "../lib/wallet/_constants.js";
 import type * as lib_wallet_generatePass from "../lib/wallet/generatePass.js";
 import type * as lib_wallet_index from "../lib/wallet/index.js";
 import type * as lib_wallet_internalAuth from "../lib/wallet/internalAuth.js";
+import type * as lib_wallet_linkSerial from "../lib/wallet/linkSerial.js";
 import type * as lib_wallet_passBuilders from "../lib/wallet/passBuilders.js";
 import type * as lib_wallet_passDb from "../lib/wallet/passDb.js";
 import type * as lib_wallet_registrations from "../lib/wallet/registrations.js";
@@ -281,6 +282,7 @@ declare const fullApi: ApiFromModules<{
   "lib/wallet/generatePass": typeof lib_wallet_generatePass;
   "lib/wallet/index": typeof lib_wallet_index;
   "lib/wallet/internalAuth": typeof lib_wallet_internalAuth;
+  "lib/wallet/linkSerial": typeof lib_wallet_linkSerial;
   "lib/wallet/passBuilders": typeof lib_wallet_passBuilders;
   "lib/wallet/passDb": typeof lib_wallet_passDb;
   "lib/wallet/registrations": typeof lib_wallet_registrations;
