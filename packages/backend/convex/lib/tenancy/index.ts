@@ -160,6 +160,11 @@ export {
   upsertTenantServiceHours,
 } from "./serviceHoursStore";
 export {
+  type NewWalletPass,
+  insertWalletPass,
+  readWalletPassBySerial,
+} from "./walletPassesStore";
+export {
   type ItemBody,
   type ModifierGroupBody,
   attachTenantGroupToItem,

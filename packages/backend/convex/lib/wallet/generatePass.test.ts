@@ -217,22 +217,39 @@ describe("2.8-A generatePass — common neutral card, both ecosystems (ADR 0003)
 // Secrets never leave the server (US 22) — no query returns the Wallet secrets
 // ---------------------------------------------------------------------------
 
-describe("2.8-A wallet secrets — never exposed via a Convex query (US 22)", () => {
-  it("the wallet module exports NO query reading the cert / service-account env", async () => {
-    // The only exported entrypoint is the action `generatePass`; there is no
-    // query that returns the P12 / passphrase / SA JSON. Assert at the API level
-    // that no `*.wallet.*` query exists that could leak a secret.
-    const walletApi = (api.lib.wallet ?? {}) as Record<string, unknown>;
-    const exportedModules = Object.values(walletApi);
-    // generatePass is an ACTION (not a query), and there is no other wallet fn.
-    expect("generatePass" in (api.lib.wallet.generatePass as object)).toBe(
-      true,
+describe("2.8-A wallet secrets — never exposed to the client (US 22)", () => {
+  it("generatePass returns the pass STRUCTURE only — never the cert / SA secret material", async () => {
+    const sa = throwawayServiceAccountJson();
+    process.env.GOOGLE_WALLET_SERVICE_ACCOUNT_JSON = Buffer.from(
+      sa.json,
+    ).toString("base64");
+    process.env.GOOGLE_WALLET_ISSUER_ID = GOOGLE_ISSUER_ID;
+    // A throwaway Apple passphrase the result must never echo back.
+    process.env.WALLET_PASS_CERT_PASSWORD = "throwaway-passphrase-secret";
+
+    const t = convexTest(schema, modules);
+    const seed = await seedTwoTenantsAllRoles(t);
+    const eaterUser = await t.run(async (ctx) =>
+      ctx.db.insert("users", { email: "eater@x.fr", role: "customer" }),
     );
-    // No exported module name hints at returning a secret.
-    const flat = JSON.stringify(exportedModules);
-    expect(flat.toLowerCase()).not.toContain("p12");
-    expect(flat.toLowerCase()).not.toContain("passphrase");
-    expect(flat.toLowerCase()).not.toContain("serviceaccount");
+    await seedCustomerForUser(t, eaterUser);
+
+    const res = await t
+      .withIdentity({ subject: eaterUser })
+      .action(api.lib.wallet.generatePass.generatePass, {
+        tenantId: seed.tenantA.tenantId,
+      });
+
+    // The signed JWT is in the link, but NONE of the raw secret material (the SA
+    // private key, the Apple passphrase) is in the returned payload — secrets stay
+    // server-side (read from env, never returned to the client).
+    const flat = JSON.stringify(res);
+    expect(flat).not.toContain("throwaway-passphrase-secret");
+    expect(flat).not.toContain("PRIVATE KEY");
+
+    delete process.env.WALLET_PASS_CERT_PASSWORD;
+    delete process.env.GOOGLE_WALLET_SERVICE_ACCOUNT_JSON;
+    delete process.env.GOOGLE_WALLET_ISSUER_ID;
   });
 });
 
@@ -260,7 +277,7 @@ describe("2.8-A generatePass — cross-tenant fuzz (ADR 0010)", () => {
     ];
 
     const { leaks } = await runCrossTenantFuzz(t, {
-      functions: [api.lib.wallet.generatePass.resolveOwnPassContext],
+      functions: [api.lib.wallet.passDb.resolveOwnPassContext],
       isQuery: () => true,
       tenantId: seed.tenantA.tenantId,
       actors,

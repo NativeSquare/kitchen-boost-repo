@@ -110,6 +110,7 @@ import type * as lib_tenancy_stripeAccountStore from "../lib/tenancy/stripeAccou
 import type * as lib_tenancy_tenantsStore from "../lib/tenancy/tenantsStore.js";
 import type * as lib_tenancy_userTenantsStore from "../lib/tenancy/userTenantsStore.js";
 import type * as lib_tenancy_usersStore from "../lib/tenancy/usersStore.js";
+import type * as lib_tenancy_walletPassesStore from "../lib/tenancy/walletPassesStore.js";
 import type * as lib_tenancy_withTenant from "../lib/tenancy/withTenant.js";
 import type * as lib_uberDirect_createDelivery from "../lib/uberDirect/createDelivery.js";
 import type * as lib_uberDirect_credentials from "../lib/uberDirect/credentials.js";
@@ -117,6 +118,11 @@ import type * as lib_uberDirect_deliveries from "../lib/uberDirect/deliveries.js
 import type * as lib_uberDirect_index from "../lib/uberDirect/index.js";
 import type * as lib_uberDirect_quote from "../lib/uberDirect/quote.js";
 import type * as lib_uberDirect_webhookEvents from "../lib/uberDirect/webhookEvents.js";
+import type * as lib_wallet__constants from "../lib/wallet/_constants.js";
+import type * as lib_wallet_generatePass from "../lib/wallet/generatePass.js";
+import type * as lib_wallet_index from "../lib/wallet/index.js";
+import type * as lib_wallet_passBuilders from "../lib/wallet/passBuilders.js";
+import type * as lib_wallet_passDb from "../lib/wallet/passDb.js";
 import type * as lib_webhooks_idempotent from "../lib/webhooks/idempotent.js";
 import type * as lib_webhooks_index from "../lib/webhooks/index.js";
 import type * as migrations from "../migrations.js";
@@ -257,6 +263,7 @@ declare const fullApi: ApiFromModules<{
   "lib/tenancy/tenantsStore": typeof lib_tenancy_tenantsStore;
   "lib/tenancy/userTenantsStore": typeof lib_tenancy_userTenantsStore;
   "lib/tenancy/usersStore": typeof lib_tenancy_usersStore;
+  "lib/tenancy/walletPassesStore": typeof lib_tenancy_walletPassesStore;
   "lib/tenancy/withTenant": typeof lib_tenancy_withTenant;
   "lib/uberDirect/createDelivery": typeof lib_uberDirect_createDelivery;
   "lib/uberDirect/credentials": typeof lib_uberDirect_credentials;
@@ -264,6 +271,11 @@ declare const fullApi: ApiFromModules<{
   "lib/uberDirect/index": typeof lib_uberDirect_index;
   "lib/uberDirect/quote": typeof lib_uberDirect_quote;
   "lib/uberDirect/webhookEvents": typeof lib_uberDirect_webhookEvents;
+  "lib/wallet/_constants": typeof lib_wallet__constants;
+  "lib/wallet/generatePass": typeof lib_wallet_generatePass;
+  "lib/wallet/index": typeof lib_wallet_index;
+  "lib/wallet/passBuilders": typeof lib_wallet_passBuilders;
+  "lib/wallet/passDb": typeof lib_wallet_passDb;
   "lib/webhooks/idempotent": typeof lib_webhooks_idempotent;
   "lib/webhooks/index": typeof lib_webhooks_index;
   migrations: typeof migrations;

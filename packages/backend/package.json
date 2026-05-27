@@ -27,6 +27,7 @@
     "convex": "^1.29.3",
     "convex-helpers": "^0.1.111",
     "oslo": "^1.2.1",
+    "passkit-generator": "^3.5.7",
     "resend": "3.2.0"
   },
   "peerDependencies": {
