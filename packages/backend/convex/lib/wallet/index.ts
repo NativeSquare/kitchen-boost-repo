@@ -64,3 +64,18 @@ export {
   verifyWalletPassAuthToken,
   walletPassAuthToken,
 } from "./internalAuth";
+
+/**
+ * 2.8-C — the cross-device IDENTITY BRIDGE (ADR 0008/0012) + the `pass_installed`
+ * event. `linkSerialToCustomer` is the reusable seam (takes a mutation ctx, no
+ * Convex registration): on a real install it writes the Wallet `serial → customer_id`
+ * onto the 2.1 Customer Data fiche (`pushEnrollment`, the AUTHORITATIVE bridge) +
+ * flips the wallet push enrollment to `enrolled` (joignabilité = source de vérité
+ * 2.1, ADR 0012), and marks its OWN technical pass row `installed`. It returns only
+ * the bridged `customerId` — NEVER a raw `customer` (the MOAT). It is surfaced here
+ * for the contract; the Convex FUNCTIONS (`handlePassInstalled` internal mutation +
+ * `verifyInstallAuth` public guard) are NOT re-exported — Convex addresses them by
+ * their module path (`api.lib.wallet.linkSerial.*`), same convention as
+ * `generatePass` / `registrations`.
+ */
+export { linkSerialToCustomer } from "./linkSerial";

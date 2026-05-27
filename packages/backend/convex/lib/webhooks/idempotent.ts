@@ -1,13 +1,21 @@
 import type { MutationCtx } from "../../_generated/server";
 
 /**
- * Source of a webhook event. V1 ships Stripe, Uber Direct and Resend; Hubrise
- * lands in V2. Kept as a string union (not a Convex enum) because `provider` is
- * persisted as `v.string()` in `processedWebhookEvents` and the dedup key is the
- * `(provider, externalId)` pair — the union just documents the call sites and
- * gives them autocomplete. STACK.md §2.7.
+ * Source of a webhook event. V1 ships Stripe, Uber Direct, Resend and the two
+ * Wallet ecosystems (Apple PassKit / Google Wallet, whose register/install
+ * callbacks are idempotently dedup'd here — 2.8-C); Hubrise lands in V2. Kept as a
+ * string union (not a Convex enum) because `provider` is persisted as `v.string()`
+ * in `processedWebhookEvents` and the dedup key is the `(provider, externalId)`
+ * pair — so two providers may reuse the same id without colliding. The union just
+ * documents the call sites and gives them autocomplete. STACK.md §2.7.
  */
-export type WebhookProvider = "stripe" | "uber_direct" | "resend" | "hubrise";
+export type WebhookProvider =
+  | "stripe"
+  | "uber_direct"
+  | "resend"
+  | "hubrise"
+  | "apple_wallet"
+  | "google_wallet";
 
 /** The dedup ledger table + its composite `(provider, externalId)` index. */
 const LEDGER_TABLE = "processedWebhookEvents" as const;

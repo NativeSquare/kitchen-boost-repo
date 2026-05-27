@@ -163,6 +163,7 @@ export {
   type NewWalletPass,
   insertWalletPass,
   readWalletPassBySerial,
+  setWalletPassInstalled,
 } from "./walletPassesStore";
 export {
   type NewDeviceRegistration,

@@ -56,3 +56,21 @@ export async function insertWalletPass(
     createdAt: Date.now(),
   });
 }
+
+/**
+ * 2.8-C — flip a pass row to `installed` once the device confirms the install
+ * (Apple PassKit register / Google Wallet add). Stamps `installedAt` (kept on the
+ * FIRST install — a re-install of the same pass is a no-op re-stamp, harmless).
+ * The single sanctioned `ctx.db.patch` site for the install state of the GLOBAL
+ * `walletPasses` table; the business module `lib/wallet` (NOT exempt) calls THIS
+ * instead of raw `ctx.db` (ADR 0010). This carries only the TECHNICAL pass state —
+ * the AUTHORITATIVE serial→customer identity bridge is written into 2.1
+ * (`customers.pushEnrollment`), never duplicated here.
+ */
+export async function setWalletPassInstalled(
+  ctx: MutationCtx,
+  passId: Id<"walletPasses">,
+  at: number,
+): Promise<void> {
+  await ctx.db.patch(passId, { status: "installed", installedAt: at });
+}
