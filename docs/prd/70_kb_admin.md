@@ -181,6 +181,8 @@ Consolide l'actuel `crm_prospects.csv` + `crm_view.html` en UI persistante.
 
 S'appuie sur l'outillage existant — **pas de réimplémentation**.
 
+**V1 front simplifié (acté 2026-05-29, grilling) — iframe-only** : le front V1 fait UNIQUEMENT « Générer contrat → afficher le HTML dans un iframe ». L'**envoi vers Odoo**, le **tracking de statut** (`sent` / `signed` / `expired`) et le **refresh** sont **manuels hors-app** (Alex va sur Odoo directement). Les mutations backend `sendContract` / `refreshContractStatus` / `expireContract` existent mais ne sont **pas branchées au front V1**.
+
 - **Bouton "Générer contrat"** sur page détail resto (depuis phase A ou B)
 - **Inputs pré-remplis** depuis la fiche : raison sociale, SIRET, adresse, email, représentant
 - **Sélecteur prestation** : A seul / B seul / A&B (cf. [contrat_template.md](../legal/contrat_template.md))
@@ -198,7 +200,7 @@ S'appuie sur l'outillage existant — **pas de réimplémentation**.
 - **Step 1 — Créer le compte resto** : nom, SIRET, adresse, contact, **email gérant**, slug (auto-pré-rempli, éditable). → `api.lib.onboarding.provisioning.provisionTenant` → tenant `pending` créé + ligne `userTenants` (kb_manager) + back-link prospect.
 - **Step 2 — Domaine personnalisé** (optionnel) : `customDomain` (face publique, norme V1, modèle Owner.com) ou rester sur le sous-domaine bootstrap `<slug>.kitchen-boost.fr`.
 - **Step 3 — Stripe Connect KYC** : déclenche `lib.stripe.account.createStripeAccountLink(tenantId)` (action 2.5), récupère l'URL d'onboarding à transmettre au resto. Cas SIRET partagé : cf. [50](50_multi_tenant_saas.md).
-- **Step 4 — Branding** : upload logo + couleur primaire → dép. **D5** `tenant.updateBranding`.
+- **Step 4 — Branding** : upload logo + couleur primaire → dép. **D5** `tenant.updateSettings` (élargie : couvre aussi adresse + téléphone + modes acceptés du §4.8).
 - **Step 5 — Menu** : saisie manuelle catégories / items / personnalisations (V1, Q70-Q5 acté ; CSV / OCR = V2) via `api.lib.menu.{categories,items,modifiers}.*`. **1ʳᵉ publication requise avant l'activation** (sinon PWA sans menu, cf. [ADR 0015](../adr/0015-edition-menu-brouillon-publication-globale-atomique.md)) → dép. **D2** `publishMenu`.
 - **Step 6 — QR sticker** : rendu PDF imprimable côté front (`@react-pdf/renderer`) à partir de `qr.pwaUrl` retourné par `provisionTenant`.
 - **Step 7 — Invitation gérant** : envoi du lien magique à l'email du gérant → dép. **D7** `inviteManager` (**décalque** de `inviteAdmin` / `adminInvites` / `sendAdminInviteEmail` existants ; à l'acceptation, crée la ligne `userTenants` au lieu de set `users.role = "kb_admin"`).
@@ -239,6 +241,8 @@ V2 :
 - Statut tenant (ouvert / fermé / pause)
 - Alertes (cmd en attente refus, stock bas — V2)
 - Bandeau "KB est connecté à votre compte" si impersonation en cours (V2)
+
+**Backend (acté 2026-05-29, grilling) — dép. D9** : les KPIs jour (CA total, nb cmds, panier moyen, cmds en cours) sont la query `dailyKpis` de D9 (cf. §4.10 et table dépendances §Grilling).
 
 #### 4.2 Édition menu
 
@@ -308,6 +312,8 @@ V2 :
   - Branding tenant (logo + couleur)
 - Templates multiples : sticker rond, format A6 carte, format A4 affiche
 
+**100 % front (acté 2026-05-29, grilling) — aucune dép backend** : la génération du QR et du PDF se fait **dans le navigateur** via `@react-pdf/renderer` (déjà au stack admin) à partir de `qr.pwaUrl` retourné par `provisionTenant`. L'URL existe déjà, le QR + le PDF sont du calcul navigateur. Aucune fonction backend à créer.
+
 #### 4.8 Paramètres tenant
 
 - Infos : nom, adresse, téléphone, horaires d'ouverture
@@ -315,6 +321,8 @@ V2 :
 - **Modes acceptés** : livraison (toggle) + click & collect (toggle)
 - Zone livraison : automatiquement gérée par Uber Direct (affichage informatif)
 - Notifications : config DNT heures, fallback SMS opt-in
+
+**Backend (acté 2026-05-29, grilling) — dép. D5 élargie** : tous les updates de paramètres tenant passent par une mutation unique `tenant.updateSettings({tenantId, patch})` couvrant logo + couleur primaire + adresse + téléphone + **modes acceptés** (delivery / click & collect). Les horaires de service vivent dans `serviceHours.*` (déjà exposé, module menu). Cf. table dépendances §Grilling.
 
 #### 4.9 Statuts intégrations (lecture seule côté KB Manager)
 
@@ -331,6 +339,8 @@ V2 :
 - Heures de pointe
 - Taux conversion PWA (visites → cmds)
 - Comparatif CA direct vs Uber Eats / Deliveroo (avec Hubrise V1)
+
+**Backend (acté 2026-05-29, grilling) — dép. D9 nouvelle** : ~5-7 queries d'agrégation à exposer (`revenuePerDay`, `topItems`, `hoursHeatmap`, `dailyKpis`, `conversionRate`, `directVsMarketplace`). Sans elles, l'écran est vide. Cf. table dépendances §Grilling.
 
 #### 4.11 Support / aide
 
@@ -495,6 +505,13 @@ Session de grilling sur le **plan du frontend `apps/admin`** (`/grill-with-docs`
 - **PAS de picker push/email** : la cascade automatique per-client (Web Push > Wallet > Email) décide. Le resto ne choisit pas le canal.
 - **Stats V1 = agrégats serveur uniquement** (`{targeted, sent, queued, skippedIneligible, skippedRateLimited, skippedUnreachable}`). Opens / clicks / conversions = V2 (transport-level feedback).
 
+### Décisions actées (passe de clôture — contrats / QR / paramètres / stats)
+
+- **Contrats §3.5 V1 simplifié** : front = générer + iframe seulement. Envoi Odoo + tracking statut + refresh = manuel hors-app (Alex sur Odoo direct). `sendContract` / `refreshContractStatus` / `expireContract` non branchés au front V1.
+- **QR §4.7 = 100 % front** : `@react-pdf/renderer` + `qr.pwaUrl` (du `provisionTenant`). **Zéro dép backend**.
+- **Paramètres §4.8 → D5 élargi** : `tenant.updateSettings` (logo + couleur + adresse + téléphone + modes acceptés delivery/click&collect), pas seulement branding.
+- **Dashboard home §4.1 + Stats §4.10 → D9 nouveau** : ~5-7 queries d'agrégation (`revenuePerDay`, `topItems`, `hoursHeatmap`, `dailyKpis`, `conversionRate`, `directVsMarketplace`).
+
 ### Dépendances backend à créer (stories pour `/to-issues`)
 
 | #   | Brique                              | Contexte               | Spec courte                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
@@ -504,17 +521,19 @@ Session de grilling sur le **plan du frontend `apps/admin`** (`/grill-with-docs`
 | D3  | **`items.reorder`**                 | Client Ordering (menu) | Mutation `items.reorder({ categoryId, orderedIds })` miroir de `categories.reorder` (le champ `order` existe déjà sur `menuItems`).                                                                                                                                                                                                                                                                                                                                                                                  |
 | D4  | **Mutations milestone granulaires** | KB Admin (onboarding)  | `setMilestone(prospectId, key, achieved?)` (coche/décoche un milestone binaire = set/clear timestamp) + `recordIntegrationStatus(prospectId, provider, status)` (maj `current` + **append** à `history[]`). Ré-évalue le Closing et **bascule automatiquement** (acquisition→préparation) quand applicable. Remplace le read-modify-write wholesale de `editProspect` + l'appel séparé `applyClosing` (inutilisable pour une checklist : courses de données, reconstruction manuelle de l'historique d'intégration). |
 
-| D5 | **`tenant.updateBranding`** | KB Admin (tenancy) | Mutation `tenant.updateBranding({tenantId, logoStorageId?, primaryColor?})` — pour le step 4 du wizard (branding) et la page Paramètres tenant. Pas de fonction d'update tenant exposée aujourd'hui après création. |
+| D5 | **`tenant.updateSettings`** (élargi) | KB Admin (tenancy) | Mutation `tenant.updateSettings({tenantId, patch})` couvrant **logo + couleur primaire + adresse + téléphone + modes acceptés (delivery / click & collect)**. Utilisée par le step 4 du wizard (branding) ET la page Paramètres tenant §4.8. Pas de fonction d'update tenant exposée aujourd'hui après création. Les horaires de service restent dans `serviceHours.*` (déjà exposé). |
 | D6 | **`tenant.activate`** | KB Admin (tenancy) | Mutation `tenant.activate({tenantId})` (`pending → active`, audité, root-only). Pour le step 8 du wizard (« Activer »). Aujourd'hui le tenant naît `pending` et il n'existe aucun moyen de le passer `active`. |
 | D7 | **Invitation gérant (magic-link)** | KB Admin (auth) | **Décalque** du flow admin existant : (a) table `managerInvites` (token, email, name, tenantId, expiresAt, acceptedAt) — ou extension de `adminInvites` avec `targetRole` + `tenantId` ; (b) mutation `inviteManager(tenantId, email, name?)` ; (c) email template `sendManagerInviteEmail` ; (d) page `accept-invite` à l'acceptation crée la ligne `userTenants` (`role: kb_manager`) au lieu de set `users.role = "kb_admin"`. Réutilise `ResendOTP` / Resend déjà câblés. |
 
 | D8 | **`listTenantTemplates`** | Notifications (campagnes) | Query exposée `tenantQuery({allow: ["kb_manager"]})` retournant les templates campagne disponibles pour le tenant courant (filtre `scope: "tenant"` + `active: true` + match `tenantId` ou central). Sans elle, l'écran « Campagnes » n'a aucun moyen d'afficher le picker de templates ([ADR 0006](../adr/0006-templates-campagnes-pre-valides.md)). Mince décalque tenantQuery par-dessus le store. |
 
-> ⚠️ Ces 8 briques bloquent la sortie complète du front correspondant. À prioriser **avant** les surfaces front qui les consomment.
+| D9 | **Queries d'agrégation stats** | KB Admin (stats — nouveau module) | ~5-7 `tenantQuery` exposées : `revenuePerDay({tenantId, range})`, `topItems({tenantId, range, limit})`, `hoursHeatmap({tenantId, range})`, `dailyKpis({tenantId})` (CA total, nb cmds, panier moyen, cmds en cours), `conversionRate({tenantId, range})` (visites PWA → cmds), `directVsMarketplace({tenantId, range})` (V1 = direct only, Hubrise V2). Sans elles, le Dashboard home §4.1 et les Stats §4.10 sont des écrans vides. Nouveau module backend à créer (probablement `lib/stats/`). |
+
+> ⚠️ Ces 9 briques bloquent la sortie complète du front correspondant. À prioriser **avant** les surfaces front qui les consomment.
 
 ## Changelog
 
-| Date       | Version | Auteur            | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| ---------- | ------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-05-23 | 1.0     | Alex (via Claude) | **Création par fusion** des anciens `70_admin_backoffice_kb.md` v0.3 + `75_dashboard_resto.md` v0.1. Une seule app `KitchenBoost Admin` avec RBAC à 3 rôles. Multi-tenant per user V1 (cas Walid). Anciens fichiers : [docs/\_archive/](../_archive/).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| 2026-05-27 | 1.1     | Alex (via Claude) | **Grilling front `apps/admin`** : [ADR 0014](../adr/0014-shell-kb-admin-unique-scoping-rbac-front.md) (shell unique + scoping RBAC front) + [ADR 0015](../adr/0015-edition-menu-brouillon-publication-globale-atomique.md) (édition menu brouillon → publication globale atomique). Filtre temporel « Mes clients » retiré V1. **8 dépendances backend** découvertes (D1 `getSession`, D2 publication menu, D3 `items.reorder`, D4 mutations milestone granulaires, D5 `tenant.updateBranding`, D6 `tenant.activate`, D7 invitation gérant magic-link, D8 `listTenantTemplates`). §3.6 wizard réordonné (provisionTenant au step 1). §4.5 campagnes alignées sur backend ([ADR 0006](../adr/0006-templates-campagnes-pre-valides.md) confirmé, pas de segment/picker canal V1, stats agrégats V1). Cf. section « Grilling front V1 ». |
+| Date       | Version | Auteur            | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ---------- | ------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-05-23 | 1.0     | Alex (via Claude) | **Création par fusion** des anciens `70_admin_backoffice_kb.md` v0.3 + `75_dashboard_resto.md` v0.1. Une seule app `KitchenBoost Admin` avec RBAC à 3 rôles. Multi-tenant per user V1 (cas Walid). Anciens fichiers : [docs/\_archive/](../_archive/).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| 2026-05-27 | 1.1     | Alex (via Claude) | **Grilling front `apps/admin`** : [ADR 0014](../adr/0014-shell-kb-admin-unique-scoping-rbac-front.md) (shell unique + scoping RBAC front) + [ADR 0015](../adr/0015-edition-menu-brouillon-publication-globale-atomique.md) (édition menu brouillon → publication globale atomique). Filtre temporel « Mes clients » retiré V1. **9 dépendances backend** découvertes (D1 `getSession`, D2 publication menu, D3 `items.reorder`, D4 mutations milestone granulaires, D5 `tenant.updateSettings` — élargi, D6 `tenant.activate`, D7 invitation gérant magic-link, D8 `listTenantTemplates`, D9 queries d'agrégation stats — nouveau module). §3.6 wizard réordonné (provisionTenant au step 1). §3.5 contrats V1 = iframe-only (envoi+tracking manuel hors-app). §4.5 campagnes alignées backend ([ADR 0006](../adr/0006-templates-campagnes-pre-valides.md) confirmé après détour rejeté). §4.6 pricing alignée (auto-priorité, 6 conditions / 3 actions). §4.7 QR = 100 % front. §4.8 paramètres = D5. §4.10 stats + §4.1 dashboard = D9. Cf. section « Grilling front V1 ». |
