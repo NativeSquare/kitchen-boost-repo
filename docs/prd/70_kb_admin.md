@@ -193,16 +193,17 @@ S'appuie sur l'outillage existant — **pas de réimplémentation**.
 
 #### 3.6 Wizard création tenant
 
-- Step 1 : infos resto (nom, SIRET, adresse, contact)
-- Step 2 : générer slug, vérifier dispo
-- Step 3 : config domain (sous-domaine KB ou custom CNAME)
-- Step 4 : créer ou rattacher Stripe Connect (cf. cas SIRET partagé [50](50_multi_tenant_saas.md))
-- Step 5 : upload logo + couleur primaire
-- Step 6 : import menu (CSV ou manual, parse Uber Eats Manager V2)
-- Step 7 : générer QR sticker PDF imprimable
-- Step 8 : créer ou rattacher KB Manager (user existant ou nouveau via email invite)
-- Step 9 : activer tenant
-- Total < 30 min
+**Réordonné 2026-05-29 (grilling front)** : le tenant **naît au step 1** (`provisionTenant` appelé immédiatement) ; tous les steps suivants opèrent sur le tenant **`pending`** ; le step final = activation explicite (`pending → active`, dép. **D6**). L'email gérant est remonté au step 1 (sinon `provisionTenant` ne peut pas tourner — c'est un argument obligatoire). Le slug est auto-généré via `generateSlug` à partir du nom, éditable au step 1, **immuable après**.
+
+- **Step 1 — Créer le compte resto** : nom, SIRET, adresse, contact, **email gérant**, slug (auto-pré-rempli, éditable). → `api.lib.onboarding.provisioning.provisionTenant` → tenant `pending` créé + ligne `userTenants` (kb_manager) + back-link prospect.
+- **Step 2 — Domaine personnalisé** (optionnel) : `customDomain` (face publique, norme V1, modèle Owner.com) ou rester sur le sous-domaine bootstrap `<slug>.kitchen-boost.fr`.
+- **Step 3 — Stripe Connect KYC** : déclenche `lib.stripe.account.createStripeAccountLink(tenantId)` (action 2.5), récupère l'URL d'onboarding à transmettre au resto. Cas SIRET partagé : cf. [50](50_multi_tenant_saas.md).
+- **Step 4 — Branding** : upload logo + couleur primaire → dép. **D5** `tenant.updateBranding`.
+- **Step 5 — Menu** : saisie manuelle catégories / items / personnalisations (V1, Q70-Q5 acté ; CSV / OCR = V2) via `api.lib.menu.{categories,items,modifiers}.*`. **1ʳᵉ publication requise avant l'activation** (sinon PWA sans menu, cf. [ADR 0015](../adr/0015-edition-menu-brouillon-publication-globale-atomique.md)) → dép. **D2** `publishMenu`.
+- **Step 6 — QR sticker** : rendu PDF imprimable côté front (`@react-pdf/renderer`) à partir de `qr.pwaUrl` retourné par `provisionTenant`.
+- **Step 7 — Invitation gérant** : envoi du lien magique à l'email du gérant → dép. **D7** `inviteManager` (**décalque** de `inviteAdmin` / `adminInvites` / `sendAdminInviteEmail` existants ; à l'acceptation, crée la ligne `userTenants` au lieu de set `users.role = "kb_admin"`).
+- **Step 8 — Activer** : passe `pending → active` → dép. **D6** `tenant.activate` (audité). Le resto devient visible côté client.
+- Total < 30 min.
 
 #### 3.7 Partage clients KB → resto — V2 (pas V1)
 
@@ -468,6 +469,12 @@ Session de grilling sur le **plan du frontend `apps/admin`** (`/grill-with-docs`
 - **KPI-only confirmé** (aucune liste/coord/export — PRD §4.4 / Q90-Q2). Le front rend `aggregateCustomerKPIs` + appelle `logKpiConsultation` à l'ouverture (trace anti-scraping).
 - **Filtre temporel global RETIRÉ V1** (cf. §4.4).
 
+### Décisions actées (Pipeline / CRM + Wizard provisioning)
+
+- **Fiche de supervision clé-prospect** (`/pipeline/[prospectId]`, pas `/tenants/[id]`) — le prospect précède le tenant ; le `tenantId` est un back-link posé au provisioning. Cf. [ADR 0014 — Amendement 2026-05-27](../adr/0014-shell-kb-admin-unique-scoping-rbac-front.md#amendement-2026-05-27--fiche-de-supervision-clé-prospect).
+- **Kanban drag = `changePhase`** (gates indicatifs, Q70-Q10) : confirm-dialog sur bypass-avant listant les milestones manquants ; libre en arrière (correction sans warning) ; **toast sur bascule auto** Closing (Acquisition→Préparation déclenchée par la cochage du dernier milestone Closing via D4).
+- **Wizard `provisionTenant` au step 1** (cf. §3.6 réordonné) : le tenant naît immédiatement en `pending` ; tous les steps suivants opèrent sur le tenant vivant ; l'**email gérant** est remonté au step 1 (sinon `provisionTenant` ne peut pas tourner) ; step 8 = activation explicite (D6).
+
 ### Dépendances backend à créer (stories pour `/to-issues`)
 
 | #   | Brique                              | Contexte               | Spec courte                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
@@ -477,11 +484,15 @@ Session de grilling sur le **plan du frontend `apps/admin`** (`/grill-with-docs`
 | D3  | **`items.reorder`**                 | Client Ordering (menu) | Mutation `items.reorder({ categoryId, orderedIds })` miroir de `categories.reorder` (le champ `order` existe déjà sur `menuItems`).                                                                                                                                                                                                                                                                                                                                                                                  |
 | D4  | **Mutations milestone granulaires** | KB Admin (onboarding)  | `setMilestone(prospectId, key, achieved?)` (coche/décoche un milestone binaire = set/clear timestamp) + `recordIntegrationStatus(prospectId, provider, status)` (maj `current` + **append** à `history[]`). Ré-évalue le Closing et **bascule automatiquement** (acquisition→préparation) quand applicable. Remplace le read-modify-write wholesale de `editProspect` + l'appel séparé `applyClosing` (inutilisable pour une checklist : courses de données, reconstruction manuelle de l'historique d'intégration). |
 
-> ⚠️ Ces 4 briques bloquent la sortie complète du front correspondant. À prioriser **avant** les surfaces front qui les consomment.
+| D5 | **`tenant.updateBranding`** | KB Admin (tenancy) | Mutation `tenant.updateBranding({tenantId, logoStorageId?, primaryColor?})` — pour le step 4 du wizard (branding) et la page Paramètres tenant. Pas de fonction d'update tenant exposée aujourd'hui après création. |
+| D6 | **`tenant.activate`** | KB Admin (tenancy) | Mutation `tenant.activate({tenantId})` (`pending → active`, audité, root-only). Pour le step 8 du wizard (« Activer »). Aujourd'hui le tenant naît `pending` et il n'existe aucun moyen de le passer `active`. |
+| D7 | **Invitation gérant (magic-link)** | KB Admin (auth) | **Décalque** du flow admin existant : (a) table `managerInvites` (token, email, name, tenantId, expiresAt, acceptedAt) — ou extension de `adminInvites` avec `targetRole` + `tenantId` ; (b) mutation `inviteManager(tenantId, email, name?)` ; (c) email template `sendManagerInviteEmail` ; (d) page `accept-invite` à l'acceptation crée la ligne `userTenants` (`role: kb_manager`) au lieu de set `users.role = "kb_admin"`. Réutilise `ResendOTP` / Resend déjà câblés. |
+
+> ⚠️ Ces 7 briques bloquent la sortie complète du front correspondant. À prioriser **avant** les surfaces front qui les consomment.
 
 ## Changelog
 
-| Date       | Version | Auteur            | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| ---------- | ------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-05-23 | 1.0     | Alex (via Claude) | **Création par fusion** des anciens `70_admin_backoffice_kb.md` v0.3 + `75_dashboard_resto.md` v0.1. Une seule app `KitchenBoost Admin` avec RBAC à 3 rôles. Multi-tenant per user V1 (cas Walid). Anciens fichiers : [docs/\_archive/](../_archive/).                                                                                                                                                                                                                                   |
-| 2026-05-27 | 1.1     | Alex (via Claude) | **Grilling front `apps/admin`** : [ADR 0014](../adr/0014-shell-kb-admin-unique-scoping-rbac-front.md) (shell unique + scoping RBAC front) + [ADR 0015](../adr/0015-edition-menu-brouillon-publication-globale-atomique.md) (édition menu brouillon → publication globale atomique). Filtre temporel « Mes clients » retiré V1. 4 dépendances backend découvertes (`getSession`, publication menu, `items.reorder`, mutations milestone granulaires) — cf. section « Grilling front V1 ». |
+| Date       | Version | Auteur            | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ---------- | ------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-05-23 | 1.0     | Alex (via Claude) | **Création par fusion** des anciens `70_admin_backoffice_kb.md` v0.3 + `75_dashboard_resto.md` v0.1. Une seule app `KitchenBoost Admin` avec RBAC à 3 rôles. Multi-tenant per user V1 (cas Walid). Anciens fichiers : [docs/\_archive/](../_archive/).                                                                                                                                                                                                                                                                                                                                                                                |
+| 2026-05-27 | 1.1     | Alex (via Claude) | **Grilling front `apps/admin`** : [ADR 0014](../adr/0014-shell-kb-admin-unique-scoping-rbac-front.md) (shell unique + scoping RBAC front) + [ADR 0015](../adr/0015-edition-menu-brouillon-publication-globale-atomique.md) (édition menu brouillon → publication globale atomique). Filtre temporel « Mes clients » retiré V1. 7 dépendances backend découvertes (`getSession`, publication menu, `items.reorder`, mutations milestone granulaires, `tenant.updateBranding`, `tenant.activate`, invitation gérant magic-link — décalque admin). §3.6 wizard réordonné (provisionTenant au step 1). Cf. section « Grilling front V1 ». |
