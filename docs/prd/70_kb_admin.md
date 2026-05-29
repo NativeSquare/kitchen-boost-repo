@@ -289,10 +289,15 @@ V2 :
 
 #### 4.6 Configuration moteur pricing livraison
 
-- UI no-code pour configurer les règles (cf. [35_pricing_engine.md](35_pricing_engine.md) section 2)
-- Liste règles (priorité **automatique/déterministe** : la règle qui minimise les frais client gagne — pas d'ordre manuel, Q35-Q2)
-- Activate / Deactivate par règle
-- Simulator V2 : "Si client X commande Y € à Z heure, voilà ce qui se passe"
+**Précisé 2026-05-29 (grilling front) — aucune dép backend nouvelle** : tout est exposé par `api.lib.pricing.rules.*`.
+
+- **UI no-code par type-picker** (cf. [35_pricing_engine.md](35_pricing_engine.md) section 2 + [table/pricingRules.ts](../../packages/backend/convex/table/pricingRules.ts)) :
+  - **6 conditions** (V1, liste fermée) : `total_panier` (≥/≤), `premiere_cmd_client` (oui/non), `nombre_cmds_client` (≥/≤), `plage_horaire` (HH:MM), `jour_semaine` (multi LU-DI), `contient_item` (catégorie ou item). Toutes AND-ées.
+  - **3 actions** (V1, liste fermée) : `livraison_offerte_resto`, `frais_livraison_part_resto_fixe` (centimes), `frais_livraison_part_resto_pourcentage_panier` (%). **`livraison_offerte_client` non exposée** — KB ne subventionne pas en V1 (Q35-Q1).
+- **Liste règles + bandeau explicatif** sur l'auto-priorité (pas de drag-handle, pas de champ `priority`/`order` dans le schéma) : _« Quand plusieurs règles s'appliquent, KB applique automatiquement celle qui est la plus avantageuse pour ton client. Pas d'ordre à gérer. »_ (priorité déterministe Q35-Q2 / [ADR 0013](../adr/0013-pricing-engine-backend-only.md)).
+- **Activate / Deactivate par règle** (toggle, garde la définition).
+- Erreur `CONTRADICTORY_CONDITIONS` au save (ex. `panier ≥ 50€ ET ≤ 30€`) → message clair côté front (le backend la lève en pré-écriture).
+- **Simulator V2** : « Si client X commande Y € à Z heure, voilà ce qui se passe ».
 
 #### 4.7 Génération QR code
 
@@ -475,6 +480,13 @@ Session de grilling sur le **plan du frontend `apps/admin`** (`/grill-with-docs`
 - **Fiche de supervision clé-prospect** (`/pipeline/[prospectId]`, pas `/tenants/[id]`) — le prospect précède le tenant ; le `tenantId` est un back-link posé au provisioning. Cf. [ADR 0014 — Amendement 2026-05-27](../adr/0014-shell-kb-admin-unique-scoping-rbac-front.md#amendement-2026-05-27--fiche-de-supervision-clé-prospect).
 - **Kanban drag = `changePhase`** (gates indicatifs, Q70-Q10) : confirm-dialog sur bypass-avant listant les milestones manquants ; libre en arrière (correction sans warning) ; **toast sur bascule auto** Closing (Acquisition→Préparation déclenchée par la cochage du dernier milestone Closing via D4).
 - **Wizard `provisionTenant` au step 1** (cf. §3.6 réordonné) : le tenant naît immédiatement en `pending` ; tous les steps suivants opèrent sur le tenant vivant ; l'**email gérant** est remonté au step 1 (sinon `provisionTenant` ne peut pas tourner) ; step 8 = activation explicite (D6).
+
+### Décisions actées (Pricing UI) — aucune dép backend
+
+- **No-code par type-picker** : 6 conditions fermées V1 + 3 actions fermées V1 (cf. §4.6) ; tout est exposé par `api.lib.pricing.rules.*`.
+- **Pas de drag / pas de `priority`** : auto-priorité déterministe (la règle minimisant les frais client gagne — Q35-Q2 / [ADR 0013](../adr/0013-pricing-engine-backend-only.md)). Un **bandeau explicatif** en haut de la liste assume la pédagogie.
+- **Simulator V2** (déjà acté PRD §4.6).
+- **`CONTRADICTORY_CONDITIONS`** au save (backend) → message clair front.
 
 ### Décisions actées (Campagnes marketing) — [ADR 0006](../adr/0006-templates-campagnes-pre-valides.md) confirmé
 
