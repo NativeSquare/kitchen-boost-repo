@@ -33,18 +33,7 @@ import type { FunctionReference, FunctionReturnType } from "convex/server";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
 
 import { useCurrentTenantId } from "@/components/app/tenant-context";
-import { mergeTenantArgs } from "./merge-tenant-args";
-
-/**
- * Strip the `tenantId` field from a query's args so the public hook signature
- * doesn't ask the caller for what we inject ourselves. We strip without
- * narrowing on `tenantId`'s exact type — any field named `tenantId` is the
- * one the hook owns.
- */
-type PublicArgsOf<Q extends FunctionReference<"query">> = Omit<
-  Q["_args"],
-  "tenantId"
->;
+import { mergeTenantArgs, type PublicTenantArgs } from "./merge-tenant-args";
 
 /**
  * If the public args object has no remaining required keys, allow omitting
@@ -52,9 +41,9 @@ type PublicArgsOf<Q extends FunctionReference<"query">> = Omit<
  * ergonomics for zero-arg queries).
  */
 type ArgsTuple<Q extends FunctionReference<"query">> =
-  keyof PublicArgsOf<Q> extends never
-    ? [args?: PublicArgsOf<Q> | "skip"]
-    : [args: PublicArgsOf<Q> | "skip"];
+  keyof PublicTenantArgs<Q> extends never
+    ? [args?: PublicTenantArgs<Q> | "skip"]
+    : [args: PublicTenantArgs<Q> | "skip"];
 
 export function useTenantQuery<Q extends FunctionReference<"query">>(
   query: Q,

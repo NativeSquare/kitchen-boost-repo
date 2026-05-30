@@ -30,16 +30,11 @@ import { useMutation } from "convex/react";
 import type { FunctionReference, FunctionReturnType } from "convex/server";
 
 import { useCurrentTenantId } from "@/components/app/tenant-context";
-import { mergeTenantArgs } from "./merge-tenant-args";
-
-type PublicArgsOf<M extends FunctionReference<"mutation">> = Omit<
-  M["_args"],
-  "tenantId"
->;
+import { mergeTenantArgs, type PublicTenantArgs } from "./merge-tenant-args";
 
 /** Match Convex's `OptionalRestArgs` ergonomics for zero-public-arg mutations. */
 type ArgsTuple<M extends FunctionReference<"mutation">> =
-  keyof PublicArgsOf<M> extends never ? [] : [args: PublicArgsOf<M>];
+  keyof PublicTenantArgs<M> extends never ? [] : [args: PublicTenantArgs<M>];
 
 type Trigger<M extends FunctionReference<"mutation">> = (
   ...rest: ArgsTuple<M>

@@ -10,4 +10,8 @@
  */
 export { useTenantQuery } from "./use-tenant-query";
 export { useTenantMutation } from "./use-tenant-mutation";
-export { mergeTenantArgs, type TenantQueryArgs } from "./merge-tenant-args";
+export {
+  mergeTenantArgs,
+  type PublicTenantArgs,
+  type TenantQueryArgs,
+} from "./merge-tenant-args";

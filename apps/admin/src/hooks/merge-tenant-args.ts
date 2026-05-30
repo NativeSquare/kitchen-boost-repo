@@ -25,6 +25,7 @@
  * `environment: "node"` and the bundle lean.
  */
 
+import type { FunctionReference } from "convex/server";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
 
 /**
@@ -32,6 +33,16 @@ import type { Id } from "@packages/backend/convex/_generated/dataModel";
  * `"skip"` sentinel that opts out of the subscription.
  */
 export type TenantQueryArgs<TArgs> = TArgs | "skip";
+
+/**
+ * The args a Convex `tenantQuery` / `tenantMutation` exposes once `tenantId`
+ * is stripped — i.e. the args the public hook signature asks the caller for.
+ * Centralised here (the type-companion to `mergeTenantArgs`) so the two hooks
+ * stay in sync on what "tenantId is hook-managed" means.
+ */
+export type PublicTenantArgs<
+  F extends FunctionReference<"query" | "mutation">,
+> = Omit<F["_args"], "tenantId">;
 
 /**
  * Merge `tenantId` into `args`, with the `"skip"` passthrough preserved.
