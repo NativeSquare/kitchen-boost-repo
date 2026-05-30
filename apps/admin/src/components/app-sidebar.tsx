@@ -42,7 +42,6 @@ import {
   IconLayoutKanban,
   IconSpeakerphone,
   IconQrcode,
-  IconReceipt,
   IconSettings,
   IconShoppingCart,
   IconTag,
