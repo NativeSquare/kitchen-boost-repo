@@ -48,6 +48,7 @@ import type * as lib_menu_index from "../lib/menu/index.js";
 import type * as lib_menu_items from "../lib/menu/items.js";
 import type * as lib_menu_modifiers from "../lib/menu/modifiers.js";
 import type * as lib_menu_photos from "../lib/menu/photos.js";
+import type * as lib_menu_publication from "../lib/menu/publication.js";
 import type * as lib_menu_serviceHours from "../lib/menu/serviceHours.js";
 import type * as lib_notifications_antiAnomaly from "../lib/notifications/antiAnomaly.js";
 import type * as lib_notifications_campaigns from "../lib/notifications/campaigns.js";
@@ -217,6 +218,7 @@ declare const fullApi: ApiFromModules<{
   "lib/menu/items": typeof lib_menu_items;
   "lib/menu/modifiers": typeof lib_menu_modifiers;
   "lib/menu/photos": typeof lib_menu_photos;
+  "lib/menu/publication": typeof lib_menu_publication;
   "lib/menu/serviceHours": typeof lib_menu_serviceHours;
   "lib/notifications/antiAnomaly": typeof lib_notifications_antiAnomaly;
   "lib/notifications/campaigns": typeof lib_notifications_campaigns;
