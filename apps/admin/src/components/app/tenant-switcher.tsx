@@ -228,47 +228,29 @@ export function buildSwitchTarget(
 }
 
 // ---------------------------------------------------------------------------
-// 2. Stub `useAllTenants()` — to be replaced when listAllTenants ships
+// 2. `useAllTenants()` — wired to api.lib.admin.tenants.listAllTenants
 // ---------------------------------------------------------------------------
 
 /**
  * Lazy query of every tenant in the DB. Consumed by the KB Admin combobox.
  *
- * Today, the backend query `api.table.tenants.listAllTenants` is NOT yet
- * merged (it's the dependency carried by ADR 0014 §7 — a new `kbAdminQuery`
- * returning `{ tenantId, slug, name }[]`, optionally accepting a search
- * string). To keep this story unblockable per the issue body ("Si la query
- * backend listAllTenants n'est pas encore mergée, mocker côté front avec
- * un stub typé"), we ship a STUB that:
+ * The backend dependency (ADR 0014 §7 — a `kbAdminQuery` returning
+ * `{ tenantId, slug, name }[]` filtered by an optional `search`) lives in
+ * `packages/backend/convex/lib/admin/tenants.ts` and is exposed as
+ * `api.lib.admin.tenants.listAllTenants`.
  *
- *   - exposes the exact future signature (`(searchQuery?: string) => TenantOption[] | undefined`)
- *   - returns `undefined` (in-flight) so the React layer renders a skeleton
- *     / empty list with a hint, not a misleading "0 tenants" copy
- *
- * When the backend query lands, this hook switches to
- * `useQuery(api.table.tenants.listAllTenants, { search })` and nothing else
- * in the switcher changes — the consuming surface only sees `AllTenantsLookup`.
+ * History: this hook originally shipped (issue #208) as a stub that probed
+ * the api object for `api.table.tenants.listAllTenants` and skipped the
+ * useQuery if absent. That stub broke at runtime because `useQuery(undefined,
+ * "skip")` throws before the fallback's `return undefined` can fire — see
+ * the Convex error `Could not find public function for 'table/tenants:
+ * listAllTenants'` raised on first manual login. This is now the real
+ * useQuery against the backend query that landed in the same fix.
  */
-type ListAllTenantsApi = {
-  table?: { tenants?: { listAllTenants?: unknown } };
-};
-
 export function useAllTenants(searchQuery?: string): AllTenantsLookup {
-  // Probe the api object at runtime — when the backend query lands it appears
-  // here automatically (Convex generates `api.table.tenants.listAllTenants`),
-  // and we use it; until then we no-op gracefully. This keeps the front
-  // unblocked without faking data on screen.
-  const apiAny = api as unknown as ListAllTenantsApi;
-  const listAllTenantsRef = apiAny.table?.tenants?.listAllTenants;
-  // `useQuery` is conditionally called via the "skip" pattern: when the
-  // backend isn't there yet, we skip and return `undefined`.
-  const result = useQuery(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (listAllTenantsRef ?? undefined) as any,
-    listAllTenantsRef ? { search: searchQuery ?? "" } : "skip",
-  );
-  if (!listAllTenantsRef) return undefined;
-  return result as AllTenantsLookup;
+  return useQuery(api.lib.admin.tenants.listAllTenants, {
+    search: searchQuery ?? "",
+  });
 }
 
 // ---------------------------------------------------------------------------

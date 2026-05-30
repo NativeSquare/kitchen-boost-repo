@@ -150,6 +150,7 @@ export {
   getTenantById,
   getTenantBySlug,
   insertTenant,
+  listAllTenants,
   updateTenantSettings,
 } from "./tenantsStore";
 export {

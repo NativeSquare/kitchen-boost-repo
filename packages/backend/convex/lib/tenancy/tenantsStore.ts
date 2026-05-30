@@ -76,6 +76,25 @@ export async function getTenantById(
 }
 
 /**
+ * List every tenant in the DB. The KB Admin combobox in the shell switcher
+ * consumes this via `api.lib.admin.tenants.listAllTenants` (ADR 0014 §7) —
+ * the root-gated exposing wrapper. The CALLER (a `kbAdminQuery` handler)
+ * has already proven root access, so this is not a tenancy bypass — same
+ * exempt-path discipline as `insertTenant` / `getTenantById`.
+ *
+ * Returned in `_creationTime` ascending order (Convex default). V1 keeps the
+ * search filtering in the caller for simplicity (no compound index needed
+ * yet) — the switcher only loads on root open and the tenant count stays low
+ * in V1 (PRD 70). If the catalog grows past a few hundred a `by_name` /
+ * `by_slug` paginated scan can replace this — the type stays the same.
+ */
+export async function listAllTenants(
+  ctx: QueryCtx | MutationCtx,
+): Promise<Doc<"tenants">[]> {
+  return ctx.db.query("tenants").collect();
+}
+
+/**
  * Insert a fresh tenant in `pending` lifecycle status (PRD 50 §1.1 — a tenant
  * is `pending` until activated, the wizard's final step is out of this slice).
  * The `customDomain` (public face, norm V1) is stamped when supplied; the
