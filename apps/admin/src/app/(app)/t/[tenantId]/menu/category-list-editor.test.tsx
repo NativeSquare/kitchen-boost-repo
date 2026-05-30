@@ -55,8 +55,58 @@ vi.mock("react", async () => {
       return [v, () => {}];
     },
     useEffect: () => {},
+    // F-MENU-03 (#206) — the editor uses `useMemo` to derive the displayed
+    // ordered list (optimistic UI for drag&drop) + the id→doc lookup. Under
+    // `environment: "node"` (no React renderer), the real `useMemo` throws
+    // « can't read properties of null ». Stub it to call the factory.
+    useMemo: <T,>(factory: () => T) => factory(),
   };
 });
+
+// F-MENU-03 (#206) — dnd-kit primitives call React hooks internally
+// (`useSyncExternalStore`, `useContext`, etc.) which all throw under
+// `environment: "node"`. We replace the three load-bearing pieces with thin
+// passthroughs so the editor renders to the React element tree we want to
+// assert on (the actual drag-and-drop is exercised at e2e level — see the
+// PR body « Tests E2E proposés »).
+vi.mock("@dnd-kit/core", () => {
+  const passthrough = ({
+    children,
+  }: {
+    children?: React.ReactNode;
+  }): React.ReactNode => children ?? null;
+  return {
+    DndContext: passthrough,
+    KeyboardSensor: function KeyboardSensor() {},
+    PointerSensor: function PointerSensor() {},
+    closestCenter: () => [],
+    useSensor: () => ({}),
+    useSensors: () => [],
+  };
+});
+vi.mock("@dnd-kit/sortable", () => {
+  const passthrough = ({
+    children,
+  }: {
+    children?: React.ReactNode;
+  }): React.ReactNode => children ?? null;
+  return {
+    SortableContext: passthrough,
+    sortableKeyboardCoordinates: () => ({}),
+    useSortable: () => ({
+      attributes: {},
+      listeners: {},
+      setNodeRef: () => {},
+      transform: null,
+      transition: undefined,
+      isDragging: false,
+    }),
+    verticalListSortingStrategy: () => null,
+  };
+});
+vi.mock("@dnd-kit/utilities", () => ({
+  CSS: { Transform: { toString: () => undefined } },
+}));
 
 const { CategoryListEditor } = await import("./category-list-editor");
 

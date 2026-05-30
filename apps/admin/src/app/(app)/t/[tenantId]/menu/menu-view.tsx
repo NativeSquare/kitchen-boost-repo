@@ -59,6 +59,12 @@ export type MenuViewProps = {
   onRenameCategory?: (categoryId: Id<"menuCategories">, name: string) => void;
   /** F-MENU-02 (#200) — drop a category (the editor gates this behind a confirmation dialog). */
   onDeleteCategory?: (categoryId: Id<"menuCategories">) => void;
+  /**
+   * F-MENU-03 (#206) — persist a new full ordered ids list after a drag&drop
+   * (the backend `categories.reorder` rejects partial payloads — invariant
+   * pinned by `packages/backend/convex/lib/menu/categories.test.ts`).
+   */
+  onReorderCategories?: (orderedIds: Id<"menuCategories">[]) => void;
 };
 
 export function MenuView({
@@ -66,6 +72,7 @@ export function MenuView({
   onCreateCategory,
   onRenameCategory,
   onDeleteCategory,
+  onReorderCategories,
 }: MenuViewProps) {
   const hasCrud =
     onCreateCategory !== undefined &&
@@ -81,6 +88,7 @@ export function MenuView({
           onCreateCategory={onCreateCategory}
           onRenameCategory={onRenameCategory}
           onDeleteCategory={onDeleteCategory}
+          onReorderCategories={onReorderCategories}
         />
       </div>
     </div>
@@ -129,6 +137,7 @@ function MenuBody({
   onCreateCategory,
   onRenameCategory,
   onDeleteCategory,
+  onReorderCategories,
 }: MenuBodyProps) {
   if (categories === undefined) {
     return <CategoryListSkeleton />;
@@ -152,6 +161,7 @@ function MenuBody({
         onCreate={onCreateCategory}
         onRename={onRenameCategory}
         onDelete={onDeleteCategory}
+        onReorder={onReorderCategories}
       />
     );
   }

@@ -35,12 +35,70 @@
  *     « Publier » / badge » → assert the three labels surface AND the
  *     buttons are `disabled`.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ReactElement, ReactNode } from "react";
 
 import type { Doc } from "@packages/backend/convex/_generated/dataModel";
 
-import { MenuView } from "./menu-view";
+// F-MENU-02 (#200) / F-MENU-03 (#206) — when CRUD/reorder callbacks are
+// wired, `MenuView` renders `CategoryListEditor` (which uses `useState`,
+// `useEffect`, `useMemo` + the dnd-kit primitives). Under
+// `environment: "node"` (no React renderer), every hook + dnd-kit
+// `useSyncExternalStore` throws. Mock them away so we can keep asserting on
+// the rendered React-element tree via the serializer below.
+vi.mock("react", async () => {
+  const actual = await vi.importActual<typeof import("react")>("react");
+  return {
+    ...actual,
+    useState: <T,>(initial: T | (() => T)) => {
+      const v =
+        typeof initial === "function" ? (initial as () => T)() : initial;
+      return [v, () => {}];
+    },
+    useEffect: () => {},
+    useMemo: <T,>(factory: () => T) => factory(),
+  };
+});
+vi.mock("@dnd-kit/core", () => {
+  const passthrough = ({
+    children,
+  }: {
+    children?: React.ReactNode;
+  }): React.ReactNode => children ?? null;
+  return {
+    DndContext: passthrough,
+    KeyboardSensor: function KeyboardSensor() {},
+    PointerSensor: function PointerSensor() {},
+    closestCenter: () => [],
+    useSensor: () => ({}),
+    useSensors: () => [],
+  };
+});
+vi.mock("@dnd-kit/sortable", () => {
+  const passthrough = ({
+    children,
+  }: {
+    children?: React.ReactNode;
+  }): React.ReactNode => children ?? null;
+  return {
+    SortableContext: passthrough,
+    sortableKeyboardCoordinates: () => ({}),
+    useSortable: () => ({
+      attributes: {},
+      listeners: {},
+      setNodeRef: () => {},
+      transform: null,
+      transition: undefined,
+      isDragging: false,
+    }),
+    verticalListSortingStrategy: () => null,
+  };
+});
+vi.mock("@dnd-kit/utilities", () => ({
+  CSS: { Transform: { toString: () => undefined } },
+}));
+
+const { MenuView } = await import("./menu-view");
 
 // ---------------------------------------------------------------------------
 // Tiny React-tree serializer — same shape as mes-clients-view.test.tsx,
