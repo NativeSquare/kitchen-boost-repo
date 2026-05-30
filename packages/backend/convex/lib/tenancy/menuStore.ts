@@ -680,6 +680,94 @@ export async function deletePublishedMenu(
 }
 
 /**
+ * B-MENU-PUBLICATION slice 5 (#176) — earliest `_creationTime` strictly greater
+ * than `sinceMs` across the FOUR live draft tables of `tenantId`
+ * (`menuCategories`, `menuItems`, `modifierGroups`, `menuItemModifierGroups`),
+ * or `null` if none.
+ *
+ * Powers the `changedSince` field of `hasUnpublishedChanges` (ADR 0015 «
+ * indicateur modifications non publiées »): it's a best-effort LOWER bound on
+ * « when did unpublished changes first appear » since Convex doesn't refresh
+ * `_creationTime` on a patch (so pure renames/edits don't bump it, by design).
+ * The boolean answer is computed elsewhere via deep-equality of the projection
+ * — this seam only supplies the timestamp hint.
+ *
+ * Tenant-scoped by construction: each table is read on its `by_tenant` index
+ * (the link table carries `tenantId` denormalised for exactly this kind of fan
+ * read, cf. table comment), so a foreign row is never reachable.
+ */
+export async function earliestDraftCreationTimeSince(
+  ctx: QueryCtx | MutationCtx,
+  tenantId: Id<"tenants">,
+  sinceMs: number,
+): Promise<number | null> {
+  let earliest: number | null = null;
+  const consider = (t: number) => {
+    if (t > sinceMs && (earliest === null || t < earliest)) {
+      earliest = t;
+    }
+  };
+  const cats = await ctx.db
+    .query("menuCategories")
+    .withIndex("by_tenant", (q) => q.eq("tenantId", tenantId))
+    .collect();
+  for (const c of cats) consider(c._creationTime);
+  const items = await ctx.db
+    .query("menuItems")
+    .withIndex("by_tenant", (q) => q.eq("tenantId", tenantId))
+    .collect();
+  for (const i of items) consider(i._creationTime);
+  const groups = await ctx.db
+    .query("modifierGroups")
+    .withIndex("by_tenant", (q) => q.eq("tenantId", tenantId))
+    .collect();
+  for (const g of groups) consider(g._creationTime);
+  // The N-N link table has no `by_tenant` index (it's normally walked by item or
+  // group) — but it CARRIES `tenantId`, so we walk per-item to stay tenant-scoped
+  // (ADR 0010): an attacker can never reach a foreign edge from here because we
+  // only enter via items already filtered on `tenantId`.
+  for (const i of items) {
+    const edges = await ctx.db
+      .query("menuItemModifierGroups")
+      .withIndex("by_item", (q) => q.eq("itemId", i._id))
+      .collect();
+    for (const e of edges) consider(e._creationTime);
+  }
+  return earliest;
+}
+
+/**
+ * B-MENU-PUBLICATION slice 5 (#176) — "is there any DRAFT row at all for this
+ * tenant?" across the FOUR live draft tables. Powers the V1 indicator's
+ * `hasChanges` answer in the « never published » edge:
+ *   - never published + empty draft  ⇒ hasChanges = false
+ *   - never published + non-empty   ⇒ hasChanges = true
+ *
+ * Tenant-scoped via `by_tenant` (same discipline as `earliestDraftCreationTimeSince`).
+ */
+export async function hasAnyDraftRow(
+  ctx: QueryCtx | MutationCtx,
+  tenantId: Id<"tenants">,
+): Promise<boolean> {
+  const oneCat = await ctx.db
+    .query("menuCategories")
+    .withIndex("by_tenant", (q) => q.eq("tenantId", tenantId))
+    .first();
+  if (oneCat !== null) return true;
+  const oneItem = await ctx.db
+    .query("menuItems")
+    .withIndex("by_tenant", (q) => q.eq("tenantId", tenantId))
+    .first();
+  if (oneItem !== null) return true;
+  const oneGroup = await ctx.db
+    .query("modifierGroups")
+    .withIndex("by_tenant", (q) => q.eq("tenantId", tenantId))
+    .first();
+  if (oneGroup !== null) return true;
+  return false;
+}
+
+/**
  * B-MENU-PUBLICATION slice 3 (#160) — bulk-read the LIVE `available` flag for a
  * set of item ids OWNED by `tenantId`, returned as a `Map<itemId, boolean>`.
  *

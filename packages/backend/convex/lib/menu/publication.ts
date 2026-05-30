@@ -2,6 +2,9 @@ import type { Id } from "../../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../../_generated/server";
 import type { PublishedMenuPayload } from "../../table/publishedMenus";
 import {
+  earliestDraftCreationTimeSince,
+  getPublishedMenu,
+  hasAnyDraftRow,
   listTenantCategories,
   listTenantItemModifierGroups,
   listTenantItemsByCategory,
@@ -209,5 +212,142 @@ export const previewMenu = tenantQuery({ allow: ["kb_manager"] })({
   handler: async (ctx): Promise<PublicMenu> => {
     const payload = await buildSnapshotPayload(ctx, ctx.tenantId);
     return resolvePublicMenuFromPayload(ctx, ctx.tenantId, payload);
+  },
+});
+
+/**
+ * Structural deep-equality between two `PublishedMenuPayload`s. The payload is
+ * a closed, finite shape (categories → items → modifierGroups → options;
+ * numbers, strings, optional `Id<"_storage">` for the photo) — no Dates, no
+ * functions, no cycles — so a depth-first walk over the known fields is exact
+ * AND cheap. We don't use `JSON.stringify` deliberately: an `undefined`
+ * `photoStorageId` would be stringified inconsistently, and key order would
+ * matter; this walk treats `undefined` vs absent identically (both sides go
+ * through the same validator) and ignores key order.
+ */
+function arraysEqualBy<T>(
+  a: T[],
+  b: T[],
+  eq: (x: T, y: T) => boolean,
+): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (!eq(a[i] as T, b[i] as T)) return false;
+  }
+  return true;
+}
+
+function payloadsEqual(
+  a: PublishedMenuPayload,
+  b: PublishedMenuPayload,
+): boolean {
+  return arraysEqualBy(a.categories, b.categories, (ca, cb) => {
+    if (ca._id !== cb._id) return false;
+    if (ca.name !== cb.name) return false;
+    return arraysEqualBy(ca.items, cb.items, (ia, ib) => {
+      if (ia._id !== ib._id) return false;
+      if (ia.name !== ib.name) return false;
+      if (ia.description !== ib.description) return false;
+      if (ia.basePrice !== ib.basePrice) return false;
+      if (ia.photoStorageId !== ib.photoStorageId) return false;
+      if (!arraysEqualBy(ia.allergens, ib.allergens, (x, y) => x === y)) {
+        return false;
+      }
+      return arraysEqualBy(ia.modifierGroups, ib.modifierGroups, (ga, gb) => {
+        if (ga._id !== gb._id) return false;
+        if (ga.name !== gb.name) return false;
+        if (ga.minSelect !== gb.minSelect) return false;
+        if (ga.maxSelect !== gb.maxSelect) return false;
+        return arraysEqualBy(ga.options, gb.options, (oa, ob) => {
+          return oa.label === ob.label && oa.priceDelta === ob.priceDelta;
+        });
+      });
+    });
+  });
+}
+
+/**
+ * B-MENU-PUBLICATION slice 5 (#176) — `hasUnpublishedChanges` editor indicator
+ * (ADR 0015 « indicateur "modifications non publiées" » + ADR 0010).
+ *
+ * The KB Admin editor displays this signal continuously (« X modifications non
+ * publiées »): it MUST be `true` whenever the draft would project to a payload
+ * different from the last published snapshot, and `false` again after the next
+ * `publishMenu`. The « ruptures » (`available` toggle) DO NOT count as
+ * unpublished changes — `available` is a LIVE overlay, NOT part of the payload
+ * (ADR 0015 pivot « la rupture ne doit pas exiger une republication globale »).
+ *
+ * Decision approach (issue § Decision to lock in this slice):
+ * approach (a) literally (compare `publishedAt` with `_creationTime` of draft
+ * rows) wouldn't catch in-place updates — Convex doesn't refresh
+ * `_creationTime` on a patch — so renames/edits would falsely report no
+ * changes. We use the cheapest variant that handles updates: project the live
+ * draft via the SHARED `buildSnapshotPayload` (DRY with `publishMenu` /
+ * `previewMenu`) and deep-compare with the published payload. The projection
+ * is already O(menu) and runs once per call; the comparison adds no
+ * indexes/queries. This is approach (b) but free because the projection is
+ * already there for the two sibling surfaces.
+ *
+ * Edge cases pinned by the test suite:
+ *  - Never published + empty draft        ⇒ hasChanges = false (« nothing to publish »).
+ *  - Never published + non-empty draft    ⇒ hasChanges = true  (« needs first publication »).
+ *  - After publishMenu                    ⇒ hasChanges = false.
+ *  - After any draft mutation             ⇒ hasChanges = true.
+ *  - After republish                      ⇒ hasChanges = false again, `lastPublishedAt` updates.
+ *  - `available` toggle (out-of-stock)    ⇒ hasChanges UNCHANGED (overlay, not in payload).
+ *
+ * Return:
+ *  - `hasChanges` — the boolean the front renders. Load-bearing field.
+ *  - `lastPublishedAt` — `publishedMenus.publishedAt` of the tenant, `null` if
+ *    never published.
+ *  - `changedSince` — best-effort LOWER bound on when changes first appeared:
+ *    earliest `_creationTime` of any draft row strictly newer than
+ *    `lastPublishedAt`, else `null`. Pure renames/edits don't surface here
+ *    (Convex doesn't refresh `_creationTime` on patch) — V1 informational only.
+ *
+ * RBAC: `tenantQuery({ allow: ["kb_manager"] })` with root override for
+ * `kb_admin` (assistance). Staff REJECTED — the indicator is editor-only,
+ * cohérent avec `publishMenu` / `previewMenu`.
+ */
+export const hasUnpublishedChanges = tenantQuery({ allow: ["kb_manager"] })({
+  args: {},
+  handler: async (
+    ctx,
+  ): Promise<{
+    hasChanges: boolean;
+    lastPublishedAt: number | null;
+    changedSince: number | null;
+  }> => {
+    const snapshot = await getPublishedMenu(ctx, ctx.tenantId);
+    const lastPublishedAt = snapshot?.publishedAt ?? null;
+
+    if (snapshot === null) {
+      // Never published: hasChanges iff the draft is non-empty (else nothing to
+      // signal). `changedSince` is the earliest draft row creation time (>0
+      // sentinel selects every row).
+      const draftHasRows = await hasAnyDraftRow(ctx, ctx.tenantId);
+      const changedSince = draftHasRows
+        ? await earliestDraftCreationTimeSince(ctx, ctx.tenantId, 0)
+        : null;
+      return {
+        hasChanges: draftHasRows,
+        lastPublishedAt,
+        changedSince,
+      };
+    }
+
+    // Has been published — project the LIVE draft via the shared helper and
+    // deep-equate with the snapshot payload. Equal ⇒ nothing to publish.
+    const currentProjection = await buildSnapshotPayload(ctx, ctx.tenantId);
+    const equal = payloadsEqual(currentProjection, snapshot.payload);
+    if (equal) {
+      return { hasChanges: false, lastPublishedAt, changedSince: null };
+    }
+    const changedSince = await earliestDraftCreationTimeSince(
+      ctx,
+      ctx.tenantId,
+      snapshot.publishedAt,
+    );
+    return { hasChanges: true, lastPublishedAt, changedSince };
   },
 });
