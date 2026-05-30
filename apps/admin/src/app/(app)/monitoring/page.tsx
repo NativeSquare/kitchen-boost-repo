@@ -25,6 +25,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "convex/react";
 
 import { api } from "@packages/backend/convex/_generated/api";
+import type { Incident } from "@packages/backend/convex/lib/admin/monitoring";
 
 import { useSession } from "@/lib/session";
 
@@ -56,6 +57,11 @@ export default function MonitoringPage() {
   const incidents = useQuery(api.lib.admin.monitoring.previewIncidents);
   const now = useNow();
   const [filters, setFilters] = useState<IncidentFilters>(ALL_PASS_FILTERS);
+  // Drill-down panel selection (issue #207). Owned here so `MonitoringView`
+  // stays a pure-callable function for vitest.
+  const [selectedIncident, setSelectedIncident] = useState<Incident | null>(
+    null,
+  );
   return (
     <MonitoringView
       session={session}
@@ -63,6 +69,8 @@ export default function MonitoringPage() {
       now={now}
       filters={filters}
       onFiltersChange={setFilters}
+      selectedIncident={selectedIncident}
+      onSelectedIncidentChange={setSelectedIncident}
     />
   );
 }
