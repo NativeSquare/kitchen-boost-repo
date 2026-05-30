@@ -126,6 +126,7 @@ export {
   listCrossTenantCustomerIds,
   listCustomerCampaignSendTimestamps,
   listTenantCampaignLaunches,
+  listTenantCampaignTemplates,
   listTenantCustomerIds,
   readCustomerCampaignFields,
   readNotificationTemplate,
