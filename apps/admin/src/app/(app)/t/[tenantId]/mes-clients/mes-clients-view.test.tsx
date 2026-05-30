@@ -176,6 +176,21 @@ const EMPTY_KPIS: CustomerKPIs = {
   returnRate: 0,
 };
 
+/**
+ * F-MES-CLIENTS [3/4] (#190) fixture — distinct numbers across the macro and
+ * reachability blocks, so a swap (e.g. push ↔ email, total ↔ newThisMonth) is
+ * caught by the per-card "label + number colocation" assertions. Numbers picked
+ * to be unique across the whole payload AND to not collide with each other on a
+ * bare `\b<n>\b` search.
+ */
+const SLICE3_KPIS: CustomerKPIs = {
+  segments: { actif: 11, inactif: 22, vip: 33 },
+  reachability: { push: 77, email: 88, sms: 99 },
+  total: 123,
+  newThisMonth: 45,
+  returnRate: 0.42,
+};
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -317,5 +332,219 @@ describe("MesClientsView — F-MES-CLIENTS [2/4] (#186)", () => {
   it("AC6 — anti-PII: empty branch leaks no email / tel / prénom / adresse / nom labels", () => {
     const text = allText(serialize(MesClientsView({ kpis: EMPTY_KPIS })));
     assertNoPii(text);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Slice 3 (#190) — reachability cards + macro cards + responsive grid.
+//
+// Same view, additive: when KPIs are present, the page surfaces 3 reachability
+// cards (push / email / SMS) AND 3 macro cards (Total / Nouveaux ce mois /
+// Taux de retour %) ALONGSIDE the slice-2 segment cards. The grids are
+// responsive: 1 column mobile, 3 columns lg+ desktop. The returnRate is a
+// fraction (0..1) and MUST be rendered as a human-readable percentage (e.g.
+// `0.42` → "42 %"). Everything that holds for slice 2 still holds (no PII, no
+// table/list, segments still render).
+// ---------------------------------------------------------------------------
+
+/**
+ * Find the card (data-slot="card") that contains a given label, then return
+ * the concatenated text of that subtree. Lets a test say "the push card MUST
+ * surface 77" without coupling to the exact internal structure of the card.
+ *
+ * Cards rendered by `MesClientsView` are flat siblings; we walk the tree and
+ * pick the first card whose subtree text matches `labelRegex`. Returns `null`
+ * when no card matches — the assertion then fails loudly on the label, not on
+ * a missing-card NPE further down.
+ */
+function findCardTextByLabel(
+  tree: SerializedNode,
+  labelRegex: RegExp,
+): string | null {
+  const stack: SerializedNode[] = [tree];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (node === null || node === undefined) continue;
+    if ("text" in node) continue;
+    if (node.props["data-slot"] === "card") {
+      const text = allText(node);
+      if (labelRegex.test(text)) return text;
+    }
+    for (const c of node.children) stack.push(c);
+  }
+  return null;
+}
+
+describe("MesClientsView — F-MES-CLIENTS [3/4] (#190) reachability + macro + responsive grid", () => {
+  it("AC1 — renders the 3 reachability cards with the right labels AND numbers (push / email / SMS)", () => {
+    const tree = serialize(MesClientsView({ kpis: SLICE3_KPIS }));
+    // Each reachability card MUST colocate its label and its number — pinned
+    // per-card so a "push: 88" / "email: 77" swap fails (a global text-scan
+    // would let that bug ship).
+    const pushCard = findCardTextByLabel(tree, /push/i);
+    expect(pushCard, "push card should exist").not.toBeNull();
+    expect(pushCard!).toMatch(/\b77\b/);
+
+    const emailCard = findCardTextByLabel(tree, /e-mail|email/i);
+    expect(emailCard, "email card should exist").not.toBeNull();
+    expect(emailCard!).toMatch(/\b88\b/);
+
+    const smsCard = findCardTextByLabel(tree, /sms/i);
+    expect(smsCard, "sms card should exist").not.toBeNull();
+    expect(smsCard!).toMatch(/\b99\b/);
+  });
+
+  it("AC2 — renders the 3 macro cards with the right labels AND numbers (Total / Nouveaux ce mois / Taux de retour)", () => {
+    const tree = serialize(MesClientsView({ kpis: SLICE3_KPIS }));
+
+    const totalCard = findCardTextByLabel(tree, /total\s+clients/i);
+    expect(totalCard, "total clients card should exist").not.toBeNull();
+    expect(totalCard!).toMatch(/\b123\b/);
+
+    const newCard = findCardTextByLabel(tree, /nouveaux\s+ce\s+mois/i);
+    expect(newCard, "nouveaux ce mois card should exist").not.toBeNull();
+    expect(newCard!).toMatch(/\b45\b/);
+
+    const returnCard = findCardTextByLabel(tree, /taux\s+de\s+retour/i);
+    expect(returnCard, "taux de retour card should exist").not.toBeNull();
+    // returnRate = 0.42 → "42 %" (formatted as a human-readable percentage).
+    // The raw fraction "0.42" must NOT leak.
+    expect(returnCard!).toMatch(/42\s*%/);
+    expect(returnCard!).not.toMatch(/0\.42/);
+  });
+
+  it("AC3 — returnRate is rendered as a human-readable percentage (0..1 → 0..100 %)", () => {
+    // Pin the percentage formatting with several explicit fractions so an
+    // off-by-100 (e.g. 0.42 → "0 %") or a missing format ("0.42") regresses.
+    for (const { rate, expected } of [
+      { rate: 0, expected: /\b0\s*%/ },
+      { rate: 0.05, expected: /\b5\s*%/ },
+      { rate: 0.5, expected: /\b50\s*%/ },
+      { rate: 1, expected: /\b100\s*%/ },
+    ]) {
+      const kpis: CustomerKPIs = { ...SLICE3_KPIS, returnRate: rate };
+      const tree = serialize(MesClientsView({ kpis }));
+      const returnCard = findCardTextByLabel(tree, /taux\s+de\s+retour/i);
+      expect(returnCard, `taux de retour card for rate=${rate}`).not.toBeNull();
+      expect(returnCard!).toMatch(expected);
+      // The raw fraction must never leak (the format must round-trip).
+      if (rate > 0 && rate < 1) {
+        expect(returnCard!).not.toMatch(new RegExp(`\\b0\\.\\d`));
+      }
+    }
+  });
+
+  it("AC4 — responsive grids: every cards grid is 1 col mobile + 3 cols lg+ desktop", () => {
+    // Spec #190: "Grille responsive : 3 colonnes desktop, 1 colonne mobile".
+    // In a node-env test we can't query CSS at a viewport — we pin the Tailwind
+    // classes that ENCODE the responsive behavior. Every grid block that
+    // renders cards MUST carry `grid-cols-1` (mobile default) AND a `lg:grid-cols-3`
+    // (desktop). Mobile = 1 col is therefore the absence of any `md:`/`lg:`/`xl:`
+    // wider count on the same block; we assert the lg+ variant explicitly.
+    const tree = serialize(MesClientsView({ kpis: SLICE3_KPIS }));
+    // Pick every node carrying `grid` in className AND containing >=1 card in
+    // its subtree (skip non-grid wrappers like the outer flex column).
+    const gridNodes = flatten(tree).filter((n) => {
+      if (n === null || "text" in n) return false;
+      const cls = n.props["className"];
+      if (typeof cls !== "string") return false;
+      if (!/\bgrid\b/.test(cls)) return false;
+      // Must contain at least one card subtree (otherwise it's some unrelated
+      // layout grid that the responsive contract doesn't apply to).
+      const hasCard = flatten(n).some(
+        (c) => c !== null && !("text" in c) && c.props["data-slot"] === "card",
+      );
+      return hasCard;
+    });
+    // At least 3 grids (segments + reachability + macro).
+    expect(gridNodes.length).toBeGreaterThanOrEqual(3);
+    for (const g of gridNodes) {
+      if (g === null || "text" in g) continue;
+      const cls = g.props["className"] as string;
+      // Mobile default = 1 column.
+      expect(cls, `grid className: ${cls}`).toMatch(/\bgrid-cols-1\b/);
+      // Desktop lg+ = 3 columns.
+      expect(cls, `grid className: ${cls}`).toMatch(/\blg:grid-cols-3\b/);
+    }
+  });
+
+  it("AC5 — anti-PII: reachability + macro additions leak no email value / tel / prénom / adresse / nom (only label « E-mail » as channel name is allowed, value side stays a count)", () => {
+    // The reachability card LABEL is "E-mail" (channel name) but no value
+    // contains an email/phone address, no card surfaces a prénom or an
+    // adresse field. We can't reuse `assertNoPii` literally because the email
+    // CHANNEL label is fine here — we assert instead:
+    //   - no `@` (no actual email address leaking),
+    //   - no FR phone pattern,
+    //   - no "prénom" / "adresse" / "nom" word.
+    const text = allText(serialize(MesClientsView({ kpis: SLICE3_KPIS })));
+    expect(text).not.toMatch(/@/);
+    // FR phone shapes: 0X XX XX XX XX, +33..., 10-digit blocks.
+    expect(text).not.toMatch(/\b0[1-9](?:[\s.-]?\d{2}){4}\b/);
+    expect(text).not.toMatch(/\+33\d/);
+    expect(text).not.toMatch(/\bpr[ée]nom\b/i);
+    expect(text).not.toMatch(/\badresse\b/i);
+    expect(text).not.toMatch(/\bnom\b/i);
+  });
+
+  it("AC6 — regression: segments cards (slice 2) still render with KPIs present", () => {
+    // The 3 segment cards from slice 2 MUST keep rendering — slice 3 is
+    // additive, not a replacement. Pinned via the segment labels.
+    const tree = serialize(MesClientsView({ kpis: SLICE3_KPIS }));
+    const text = allText(tree);
+    expect(text).toMatch(/Actifs/);
+    expect(text).toMatch(/Inactifs/);
+    expect(text).toMatch(/VIP/);
+    // Pinned per-card so an accidental drop of the SegmentCards block fails.
+    const actifCard = findCardTextByLabel(tree, /Actifs/);
+    expect(actifCard, "actif card should still exist").not.toBeNull();
+    expect(actifCard!).toMatch(/\b11\b/);
+  });
+
+  it("AC6 — regression: at least 9 cards total when KPIs are populated (3 segments + 3 reachability + 3 macro)", () => {
+    const tree = serialize(MesClientsView({ kpis: SLICE3_KPIS }));
+    const cardSlots = flatten(tree)
+      .map((n) => {
+        if (n === null || "text" in n) return null;
+        const ds = n.props["data-slot"];
+        return typeof ds === "string" ? ds : null;
+      })
+      .filter((s): s is string => s !== null)
+      .filter((s) => s === "card");
+    // Exactly 9 cards — 3 segments + 3 reachability + 3 macro (#190 issue body).
+    expect(cardSlots).toHaveLength(9);
+  });
+
+  it("AC6 — regression: empty branch (total === 0) still renders the empty state, NOT 9 zero cards", () => {
+    // The empty-state fallback from slice 1/2 MUST stay — even though we now
+    // have macro cards (Total: 0 / Nouveaux ce mois: 0 / Taux de retour: 0 %)
+    // that COULD render meaningfully on an empty tenant, the contract is
+    // "if total === 0 → friendly empty state, not a 0/0/0 wall".
+    const tree = serialize(MesClientsView({ kpis: EMPTY_KPIS }));
+    const text = allText(tree);
+    expect(text).toMatch(/aucun client encore/i);
+    const cardSlots = flatten(tree)
+      .map((n) => {
+        if (n === null || "text" in n) return null;
+        const ds = n.props["data-slot"];
+        return typeof ds === "string" ? ds : null;
+      })
+      .filter((s): s is string => s !== null);
+    expect(cardSlots.filter((s) => s === "card")).toHaveLength(0);
+  });
+
+  it("AC6 — regression: KPI-only surface, no <table> / <ul> / <li> introduced by macro or reachability blocks", () => {
+    // Slice 2 pinned this for the segments branch; slice 3 must keep the same
+    // discipline (no list element sneaking in for reachability or macro).
+    const types = flatten(serialize(MesClientsView({ kpis: SLICE3_KPIS })))
+      .map((n) => (n && "type" in n ? n.type : null))
+      .filter((t): t is string => t !== null)
+      .map((t) => t.toLowerCase());
+    expect(types).not.toContain("table");
+    expect(types).not.toContain("thead");
+    expect(types).not.toContain("tbody");
+    expect(types).not.toContain("tr");
+    expect(types).not.toContain("ul");
+    expect(types).not.toContain("ol");
+    expect(types).not.toContain("li");
   });
 });
