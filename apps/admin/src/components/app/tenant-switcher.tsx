@@ -237,20 +237,33 @@ export function buildSwitchTarget(
  * The backend dependency (ADR 0014 §7 — a `kbAdminQuery` returning
  * `{ tenantId, slug, name }[]` filtered by an optional `search`) lives in
  * `packages/backend/convex/lib/admin/tenants.ts` and is exposed as
- * `api.lib.admin.tenants.listAllTenants`.
+ * `api.lib.admin.tenants.listAllTenants`. It is a ROOT-ONLY query —
+ * `kbAdminQuery` throws `FORBIDDEN: kb_admin role required` for any caller
+ * with a non-`kb_admin` global role.
+ *
+ * The hook therefore SKIPS the network round-trip unless the session is
+ * resolved AND `isAdmin === true`. A KB Manager would otherwise see the
+ * shell hard-crash with a Convex FORBIDDEN at first render (TenantSwitcher
+ * is mounted in the shared site-header — it runs for every actor). The
+ * gating lives in the hook (not the component) so the only consumer can't
+ * forget it.
  *
  * History: this hook originally shipped (issue #208) as a stub that probed
  * the api object for `api.table.tenants.listAllTenants` and skipped the
  * useQuery if absent. That stub broke at runtime because `useQuery(undefined,
- * "skip")` throws before the fallback's `return undefined` can fire — see
- * the Convex error `Could not find public function for 'table/tenants:
- * listAllTenants'` raised on first manual login. This is now the real
- * useQuery against the backend query that landed in the same fix.
+ * "skip")` throws before the fallback's `return undefined` can fire. The
+ * real backend query landed (lib/admin/tenants.ts), and this hook then
+ * called it unconditionally — which crashed for managers as soon as
+ * acceptInvite started producing them properly (B-AUTH-3 wiring). The
+ * `isAdmin` skip below closes that hole.
  */
 export function useAllTenants(searchQuery?: string): AllTenantsLookup {
-  return useQuery(api.lib.admin.tenants.listAllTenants, {
-    search: searchQuery ?? "",
-  });
+  const session = useSession();
+  const isAdmin = session.status === "ready" && session.session.isAdmin;
+  return useQuery(
+    api.lib.admin.tenants.listAllTenants,
+    isAdmin ? { search: searchQuery ?? "" } : "skip",
+  );
 }
 
 // ---------------------------------------------------------------------------
