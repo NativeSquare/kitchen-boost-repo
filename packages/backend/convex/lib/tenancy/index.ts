@@ -223,6 +223,7 @@ export {
   listTenantUnavailableItems,
   patchTenantItem,
   patchTenantModifierGroup,
+  readTenantItemsAvailability,
   renameTenantCategory,
   reorderTenantCategories,
   requireTenantCategory,

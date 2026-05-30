@@ -98,6 +98,11 @@ describe("2.2-F item photos — tenant-scoped via kb_manager", () => {
       itemId: itemA,
       storageId,
     });
+    // After slice 3 (#160), `getPublicMenu` reads the snapshot — publish first
+    // so the photo (snapshotted via `photoStorageId`) reaches the public read.
+    await asManager.mutation(api.lib.menu.publication.publishMenu, {
+      tenantId: seed.tenantA.tenantId,
+    });
 
     // The id is persisted on the tenant-scoped item.
     const item = await t.run(async (ctx) => ctx.db.get(itemA as never));
@@ -160,6 +165,11 @@ describe("2.2-F item photos — tenant-scoped via kb_manager", () => {
     expect(
       (item as { photoStorageId?: string }).photoStorageId,
     ).toBeUndefined();
+    // Publish so the public read picks up the cleared `photoStorageId` (after
+    // slice 3 (#160), the public menu reads the snapshot, not the live draft).
+    await asManager.mutation(api.lib.menu.publication.publishMenu, {
+      tenantId: seed.tenantA.tenantId,
+    });
     // And the public menu serves null again.
     const menu = await t.query(api.lib.menu.catalog.getPublicMenu, {
       tenantId: seed.tenantA.tenantId,

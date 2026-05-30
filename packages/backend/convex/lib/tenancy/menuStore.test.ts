@@ -5,6 +5,7 @@ import schema from "../../schema";
 import {
   deletePublishedMenu,
   getPublishedMenu,
+  readTenantItemsAvailability,
   writePublishedMenu,
 } from "./menuStore";
 import { seedTwoTenantsAllRoles } from "./fuzz";
@@ -393,5 +394,79 @@ describe("B-MENU-PUBLICATION slice 1 — publishedMenus seam (ADR 0015 + 0010)",
     // @ts-expect-error — `available` MUST NOT exist on the snapshot item shape.
     type _NoAvailable = Item["available"];
     expect(true).toBe(true);
+  });
+
+  // ---------------------------------------------------------------------------
+  // B-MENU-PUBLICATION slice 3 (#160) — live `available` overlay helper.
+  // ---------------------------------------------------------------------------
+
+  it("readTenantItemsAvailability returns the LIVE `available` map for tenant-owned ids", async () => {
+    // The publication snapshot strips `available` (ADR 0015 pivot) — slice 3's
+    // `getPublicMenu` reads it LIVE from `menuItems` per item id. This seam is
+    // the sanctioned bulk-read helper for that overlay.
+    // (Convex serialisation does not allow Maps across the t.run boundary, so we
+    // project to a plain record inside the closure and assert on that.)
+    const itemA2 = await t.run(async (ctx) => {
+      const id = await ctx.db.insert("menuItems", {
+        tenantId: seed.tenantA.tenantId,
+        categoryId: catA1,
+        name: "Smash Triple",
+        description: "Triple smash burger.",
+        basePrice: 1500,
+        allergens: [],
+        available: false,
+        order: 1,
+        createdAt: Date.now(),
+      });
+      return id;
+    });
+    const result = await t.run(async (ctx) => {
+      const map = await readTenantItemsAvailability(
+        ctx,
+        seed.tenantA.tenantId,
+        [itemA1, itemA2],
+      );
+      return Object.fromEntries(map);
+    });
+    expect(result[itemA1]).toBe(true);
+    expect(result[itemA2]).toBe(false);
+  });
+
+  it("readTenantItemsAvailability omits ids that don't belong to the tenant (live overlay cannot leak across tenants)", async () => {
+    const result = await t.run(async (ctx) => {
+      const map = await readTenantItemsAvailability(
+        ctx,
+        seed.tenantA.tenantId,
+        [itemA1, itemB1],
+      );
+      return Object.fromEntries(map);
+    });
+    expect(result[itemA1]).toBe(true);
+    expect(itemB1 in result).toBe(false);
+  });
+
+  it("readTenantItemsAvailability omits ids whose live row was deleted (caller treats missing as `false`)", async () => {
+    const result = await t.run(async (ctx) => {
+      await ctx.db.delete(itemA1);
+      const map = await readTenantItemsAvailability(
+        ctx,
+        seed.tenantA.tenantId,
+        [itemA1],
+      );
+      return Object.fromEntries(map);
+    });
+    expect(itemA1 in result).toBe(false);
+  });
+
+  it("readTenantItemsAvailability returns an empty map for an empty input list (no-op)", async () => {
+    const result = await t.run(async (ctx) => {
+      const map = await readTenantItemsAvailability(
+        ctx,
+        seed.tenantA.tenantId,
+        [],
+      );
+      return Object.fromEntries(map);
+    });
+    expect(Object.keys(result)).toHaveLength(0);
   });
 });

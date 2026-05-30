@@ -678,3 +678,33 @@ export async function deletePublishedMenu(
     await ctx.db.delete(row._id);
   }
 }
+
+/**
+ * B-MENU-PUBLICATION slice 3 (#160) — bulk-read the LIVE `available` flag for a
+ * set of item ids OWNED by `tenantId`, returned as a `Map<itemId, boolean>`.
+ *
+ * Why a dedicated helper: ADR 0015's pivot keeps `available` OFF the snapshot
+ * (« la rupture ne doit pas exiger une republication globale »), so
+ * `getPublicMenu` reads each item's availability LIVE on top of the snapshot
+ * payload. This seam is the sanctioned bulk-read used by that overlay — same
+ * tenant-scoping discipline as every other helper here (re-checks ownership
+ * before reporting, so a foreign id is silently omitted, never leaked).
+ *
+ * Missing rows (foreign / deleted live row) are deliberately omitted from the
+ * map — the caller treats "not in map" as `available: false` (safe default:
+ * the eater never sees a phantom item as orderable, and a tenant boundary
+ * cross is structurally impossible from here).
+ */
+export async function readTenantItemsAvailability(
+  ctx: QueryCtx | MutationCtx,
+  tenantId: Id<"tenants">,
+  itemIds: Id<"menuItems">[],
+): Promise<Map<Id<"menuItems">, boolean>> {
+  const map = new Map<Id<"menuItems">, boolean>();
+  for (const id of itemIds) {
+    const row = await ctx.db.get(id);
+    if (row === null || row.tenantId !== tenantId) continue;
+    map.set(id, row.available);
+  }
+  return map;
+}

@@ -26,11 +26,16 @@
  *
  * 2.2-C — the PUBLIC (unauthenticated) eater-facing READ on top of the same
  * tables, via the foundation `publicTenantQuery` (NO kb_manager rights), still
- * tenant-scoped through the `menuStore` seam:
+ * tenant-scoped through the `menuStore` seam. Sourced from the [[Instantané
+ * publié]] since B-MENU-PUBLICATION slice 3 (#160, ADR 0015):
  *  - `catalog.getPublicMenu` — the UNIQUE eater surface: categories ordered →
  *    items (incl. unavailable, with the availability flag) → modifier groups
  *    resolved via the N-N link (options + priceDelta + min/max). Read-only, no
- *    public mutation twin.
+ *    public mutation twin. Reads the snapshot (`getPublishedMenu`) — a tenant
+ *    that has never published returns `{ categories: [] }`. `available` is read
+ *    LIVE from `menuItems` via `readTenantItemsAvailability` (ADR 0015 pivot:
+ *    the rupture toggle does NOT trigger a republication). `photoUrl` is
+ *    resolved at read time from the snapshot `photoStorageId`.
  *
  * 2.2-E — [[Plage horaire de service]] + `isOpenNow` (PRD 10 §4 / edge "resto
  * fermé", delivery CONTEXT, ADR 0010). KB is the SOURCE OF TRUTH of the resto's
