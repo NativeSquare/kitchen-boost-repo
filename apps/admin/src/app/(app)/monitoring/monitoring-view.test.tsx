@@ -431,3 +431,42 @@ describe("MonitoringView — filters (#197)", () => {
     expect(source).toMatch(/S[ée]v[ée]rit[ée]/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Drill-down panel — F-MONITORING (#207)
+// ---------------------------------------------------------------------------
+//
+// Clicking a row opens a shadcn `Sheet` (`IncidentDetailSheet`) with every
+// raw field of the selected incident + a contextual link per kind. Click
+// state is owned by `MonitoringView` (the page-level `useState` only owns
+// the filter dropdowns); the row click handler sets the « selected
+// incident » and opens the sheet, the sheet's `onOpenChange(false)` clears
+// it. Tests pin the contract via source-level greps because the row click
+// dispatches React-DOM event handlers we can't drive without jsdom, and
+// the Sheet body itself is verified in `incident-detail-sheet.test.tsx`.
+describe("MonitoringView — drill-down panel (#207)", () => {
+  it("each row exposes a click handler that opens the drill-down sheet (source-level contract)", () => {
+    const source = readFileSync(
+      path.resolve(__dirname, "./monitoring-view.tsx"),
+      "utf8",
+    );
+    // The view mounts the new drill-down primitive.
+    expect(source).toMatch(/IncidentDetailSheet/);
+    expect(source).toMatch(/from "\.\/incident-detail-sheet"/);
+    // Rows wire an `onClick` (or `onSelect`-equivalent) so the user can
+    // open the panel by clicking anywhere on the row, per AC.
+    expect(source).toMatch(/onClick=/);
+  });
+
+  it("mounts the drill-down sheet exactly once at the bottom of the body (not per-row), so the controlled open flag stays single-source-of-truth", () => {
+    const source = readFileSync(
+      path.resolve(__dirname, "./monitoring-view.tsx"),
+      "utf8",
+    );
+    // Cheap structural guard: the view file mentions the IncidentDetailSheet
+    // primitive exactly once in JSX usage. Multiple mounts would race on the
+    // controlled `open` flag and surface stale incident data.
+    const usages = source.match(/<IncidentDetailSheet/g) ?? [];
+    expect(usages.length).toBe(1);
+  });
+});
