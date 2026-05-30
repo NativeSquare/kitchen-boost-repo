@@ -446,3 +446,249 @@ describe("2.2-fix reactivation cron — per-tenant, tenant-isolated (ADR 0010)",
     expect(b?.available).toBe(false); // B: Tuesday noon = today's opening already passed before it
   });
 });
+
+// --- B-MENU-PUBLICATION slice 6 (#191) — PIVOT: toggle setItemAvailability
+//     does NOT trigger a republication of the [[Instantané publié]] (ADR 0015).
+//
+// This block is the canonical PIN of the ADR 0015 « rupture / pivot » contract:
+// the staff's 1-tap out-of-stock toggle is ORTHOGONAL to publication. The
+// snapshot's `publishedAt` MUST NOT move on a toggle, and a toggle MUST NOT
+// implicitly republish any other pending draft change. The overlay live read in
+// `getPublicMenu` (slice 3 / #160) is what surfaces the toggle to the eater
+// without rebuilding the snapshot.
+//
+// Slices 2 (#155), 3 (#160) and 4 (#166) already wired the moving parts; this
+// suite is the assertion-only layer that locks the contract down so any future
+// refactor that accidentally republishes on toggle (or freezes `available` into
+// the snapshot payload) will turn red here.
+// ----------------------------------------------------------------------------
+
+describe("B-MENU-PUBLICATION slice 6 (#191) — pivot: toggle does NOT republish (ADR 0015)", () => {
+  let t: ReturnType<typeof convexTest>;
+  let seed: Seed;
+  /** The `menuItems` id under test (tenant A). */
+  let itemId: Id<"menuItems">;
+  /** The `menuCategories` id holding `itemId` (used by the « no implicit republish » pivot). */
+  let categoryId: Id<"menuCategories">;
+
+  beforeEach(async () => {
+    t = convexTest(schema, modules);
+    seed = await seedTwoTenantsAllRoles(t);
+    const asMgr = t.withIdentity({ subject: seed.tenantA.managerId });
+    categoryId = (await asMgr.mutation(api.lib.menu.categories.create, {
+      tenantId: seed.tenantA.tenantId,
+      name: "Smashs",
+    })) as Id<"menuCategories">;
+    itemId = (await asMgr.mutation(api.lib.menu.items.create, {
+      tenantId: seed.tenantA.tenantId,
+      categoryId,
+      name: "Smash Double",
+      description: "desc",
+      basePrice: 1290,
+      allergens: [],
+    })) as Id<"menuItems">;
+    // Publish the initial draft so a snapshot exists with a `publishedAt`.
+    await asMgr.mutation(api.lib.menu.publication.publishMenu, {
+      tenantId: seed.tenantA.tenantId,
+    });
+  });
+
+  /** Read the tenant's `publishedMenus.publishedAt`, or throw if absent. */
+  async function getPublishedAt(tenantId: Id<"tenants">): Promise<number> {
+    const row = await t.run(async (ctx) =>
+      ctx.db
+        .query("publishedMenus")
+        .withIndex("by_tenant", (q) => q.eq("tenantId", tenantId))
+        .unique(),
+    );
+    if (row === null) {
+      throw new Error(
+        `expected a publishedMenus row for tenant ${tenantId}, found none`,
+      );
+    }
+    return row.publishedAt;
+  }
+
+  it("PIVOT 1: publish → toggle(false) → getPublicMenu reflects available=false WITHOUT moving publishedAt", async () => {
+    const asMgr = t.withIdentity({ subject: seed.tenantA.managerId });
+    const publishedAtBefore = await getPublishedAt(seed.tenantA.tenantId);
+
+    await asMgr.mutation(api.lib.menu.availability.setItemAvailability, {
+      tenantId: seed.tenantA.tenantId,
+      itemId,
+      available: false,
+    });
+
+    // The eater immediately sees the rupture via the overlay.
+    const menu = await t.query(api.lib.menu.catalog.getPublicMenu, {
+      tenantId: seed.tenantA.tenantId,
+    });
+    const item = menu.categories[0]?.items[0];
+    expect(item?._id).toBe(itemId);
+    expect(item?.available).toBe(false);
+
+    // KEY PIVOT: the snapshot was NOT rebuilt — publishedAt is byte-identical.
+    const publishedAtAfter = await getPublishedAt(seed.tenantA.tenantId);
+    expect(publishedAtAfter).toBe(publishedAtBefore);
+  });
+
+  it("PIVOT 2: a toggle does NOT implicitly republish a pending draft change (category rename stays invisible)", async () => {
+    const asMgr = t.withIdentity({ subject: seed.tenantA.managerId });
+    const publishedAtBefore = await getPublishedAt(seed.tenantA.tenantId);
+
+    // 1) Mutate the draft (rename the category) WITHOUT publishing.
+    await asMgr.mutation(api.lib.menu.categories.rename, {
+      tenantId: seed.tenantA.tenantId,
+      categoryId,
+      name: "Smashs v2 (DRAFT)",
+    });
+    // 2) Toggle the item out of stock — must NOT republish the snapshot.
+    await asMgr.mutation(api.lib.menu.availability.setItemAvailability, {
+      tenantId: seed.tenantA.tenantId,
+      itemId,
+      available: false,
+    });
+
+    // 3) The eater STILL sees the published category name, not the draft rename
+    //    (proof the toggle didn't trigger an implicit republication).
+    const menu = await t.query(api.lib.menu.catalog.getPublicMenu, {
+      tenantId: seed.tenantA.tenantId,
+    });
+    expect(menu.categories[0]?.name).toBe("Smashs");
+    // …but the live overlay flipped the item.
+    expect(menu.categories[0]?.items[0]?.available).toBe(false);
+
+    const publishedAtAfter = await getPublishedAt(seed.tenantA.tenantId);
+    expect(publishedAtAfter).toBe(publishedAtBefore);
+  });
+
+  it("PIVOT 3: toggling BACK to available=true is also overlay-only — publishedAt stays put", async () => {
+    const asMgr = t.withIdentity({ subject: seed.tenantA.managerId });
+    const publishedAtBefore = await getPublishedAt(seed.tenantA.tenantId);
+
+    await asMgr.mutation(api.lib.menu.availability.setItemAvailability, {
+      tenantId: seed.tenantA.tenantId,
+      itemId,
+      available: false,
+    });
+    await asMgr.mutation(api.lib.menu.availability.setItemAvailability, {
+      tenantId: seed.tenantA.tenantId,
+      itemId,
+      available: true,
+    });
+
+    const menu = await t.query(api.lib.menu.catalog.getPublicMenu, {
+      tenantId: seed.tenantA.tenantId,
+    });
+    expect(menu.categories[0]?.items[0]?.available).toBe(true);
+
+    const publishedAtAfter = await getPublishedAt(seed.tenantA.tenantId);
+    expect(publishedAtAfter).toBe(publishedAtBefore);
+  });
+
+  it("PIVOT 4: republishing AFTER a toggle DOES move publishedAt; overlay keeps reading live (orthogonality preserved)", async () => {
+    const asMgr = t.withIdentity({ subject: seed.tenantA.managerId });
+    const publishedAtBefore = await getPublishedAt(seed.tenantA.tenantId);
+
+    // Flip the item OFF via the overlay (no republication).
+    await asMgr.mutation(api.lib.menu.availability.setItemAvailability, {
+      tenantId: seed.tenantA.tenantId,
+      itemId,
+      available: false,
+    });
+    // Force `Date.now()` to advance at least 1 ms so republish stamps a strictly
+    // greater `publishedAt` (Date.now()'s ms resolution can collide in tight loops).
+    const beforeRepublish = Date.now();
+    while (Date.now() === beforeRepublish) {
+      /* spin briefly to ensure publishedAt changes */
+    }
+    // Republish — snapshot rebuilt, publishedAt MUST move.
+    await asMgr.mutation(api.lib.menu.publication.publishMenu, {
+      tenantId: seed.tenantA.tenantId,
+    });
+    const publishedAtAfter = await getPublishedAt(seed.tenantA.tenantId);
+    expect(publishedAtAfter).toBeGreaterThan(publishedAtBefore);
+
+    // The overlay is still live: re-toggling does NOT bump publishedAt either,
+    // and the snapshot did NOT freeze `available=false` into its payload (the
+    // snapshot's source of truth for availability is always the live row).
+    await asMgr.mutation(api.lib.menu.availability.setItemAvailability, {
+      tenantId: seed.tenantA.tenantId,
+      itemId,
+      available: true,
+    });
+    const menu = await t.query(api.lib.menu.catalog.getPublicMenu, {
+      tenantId: seed.tenantA.tenantId,
+    });
+    expect(menu.categories[0]?.items[0]?.available).toBe(true);
+    expect(await getPublishedAt(seed.tenantA.tenantId)).toBe(publishedAtAfter);
+  });
+
+  it("PIVOT 5: item DELETED from the draft post-publish stays in the snapshot but is greyed (available=false, no throw, publishedAt untouched)", async () => {
+    const asMgr = t.withIdentity({ subject: seed.tenantA.managerId });
+    const publishedAtBefore = await getPublishedAt(seed.tenantA.tenantId);
+
+    // Remove the item from the live draft WITHOUT republishing.
+    await asMgr.mutation(api.lib.menu.items.remove, {
+      tenantId: seed.tenantA.tenantId,
+      itemId,
+    });
+
+    // getPublicMenu must NOT throw — it returns the snapshot's item with
+    // available=false (overlay defaults to false when the live row is missing).
+    const menu = await t.query(api.lib.menu.catalog.getPublicMenu, {
+      tenantId: seed.tenantA.tenantId,
+    });
+    const item = menu.categories[0]?.items[0];
+    expect(item?._id).toBe(itemId);
+    expect(item?.name).toBe("Smash Double");
+    expect(item?.available).toBe(false);
+
+    // The deletion went through `lib/menu/items.remove`, not through
+    // `publishMenu`, so the snapshot's `publishedAt` MUST stay put.
+    expect(await getPublishedAt(seed.tenantA.tenantId)).toBe(publishedAtBefore);
+  });
+
+  it("PIVOT 6 — cross-tenant (ADR 0010): toggling tenant A's item touches NEITHER tenant B's snapshot NOR its overlay", async () => {
+    const asMgrA = t.withIdentity({ subject: seed.tenantA.managerId });
+    const asMgrB = t.withIdentity({ subject: seed.tenantB.managerId });
+
+    // Seed + publish tenant B with its own item, so B has a snapshot too.
+    const bCategoryId = (await asMgrB.mutation(api.lib.menu.categories.create, {
+      tenantId: seed.tenantB.tenantId,
+      name: "B-cat",
+    })) as Id<"menuCategories">;
+    const bItemId = (await asMgrB.mutation(api.lib.menu.items.create, {
+      tenantId: seed.tenantB.tenantId,
+      categoryId: bCategoryId,
+      name: "B-item",
+      description: "",
+      basePrice: 500,
+      allergens: [],
+    })) as Id<"menuItems">;
+    await asMgrB.mutation(api.lib.menu.publication.publishMenu, {
+      tenantId: seed.tenantB.tenantId,
+    });
+    const bPublishedAtBefore = await getPublishedAt(seed.tenantB.tenantId);
+
+    // Toggle tenant A's item OFF.
+    await asMgrA.mutation(api.lib.menu.availability.setItemAvailability, {
+      tenantId: seed.tenantA.tenantId,
+      itemId,
+      available: false,
+    });
+
+    // Tenant B's snapshot stamp is untouched.
+    expect(await getPublishedAt(seed.tenantB.tenantId)).toBe(
+      bPublishedAtBefore,
+    );
+    // And tenant B's overlay-read availability for its OWN item is still true
+    // (the toggle on A did not bleed into B's `menuItems.available`).
+    const menuB = await t.query(api.lib.menu.catalog.getPublicMenu, {
+      tenantId: seed.tenantB.tenantId,
+    });
+    const bItem = menuB.categories[0]?.items[0];
+    expect(bItem?._id).toBe(bItemId);
+    expect(bItem?.available).toBe(true);
+  });
+});
