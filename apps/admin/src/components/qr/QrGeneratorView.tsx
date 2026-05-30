@@ -1,68 +1,72 @@
 /**
  * F-QR.3 (#182) — `QrGeneratorView` : the consumer-facing orchestrator of the
- * F-QR chain. Wires the `generateQrDataUrl` helper (#167) and the
- * `QrPdfDocument` (#173) into a usable surface: format selector, PDF preview,
+ * F-QR chain. Wires `generateQrDataUrl` (#167) and `buildQrPdfBlob` (#173,
+ * post-jspdf migration) into a usable surface: format selector, PDF preview,
  * download button, regenerate button.
  *
  * Consumed by
  * -----------
- * - the standalone page `/t/[tenantId]/qr` (#142.4, future story) — KB Manager
- *   navigates here to grab the printable PDF on demand;
+ * - the standalone page `/t/[tenantId]/qr` (#198) — KB Manager grabs the
+ *   printable PDF on demand;
  * - **and** the step 6 of the F-WIZARD onboarding flow (PRD 70 §3.6 + §4.7) —
  *   same UI, same module, no duplication.
  *
- * Architecture choices (locked by the issue body, do NOT re-litigate)
- * ------------------------------------------------------------------
+ * Architecture choices
+ * --------------------
  * 1. **100 % front.** Zero backend round-trip — the caller passes the already-
- *    known `pwaUrl` (resolved upstream from the tenant query, via
- *    `tenantPwaUrl()` of #167). PRD 70 §4.7, acté 2026-05-29.
- * 2. **`next/dynamic({ ssr: false })`** for the heavy PDF primitives. The
- *    `@react-pdf/renderer` bundle is ~500 KB; importing it statically would
- *    inflate every shell page that doesn't even render PDFs. By lazy-loading
- *    `PDFViewer`, `PDFDownloadLink`, and `QrPdfDocument` itself, the shell
- *    pays nothing until the user actually opens this view. Issue body
- *    explicit + PRD §4.7 Implementation Decisions.
- * 3. **Three formats only V1** — `sticker-50mm`, `a6-card`, `a4-poster`
- *    (mirror of `QrPdfFormat` from #173). Default `sticker-50mm` (the
- *    primary terrain artefact = sticker dans le sac Uber Eats).
- * 4. **Pure controls split out** in `QrGeneratorControls` so the format
+ *    known `pwaUrl` (resolved upstream via `tenantPwaUrl()`). PRD 70 §4.7.
+ * 2. **`jspdf` (no React reconciler embedded)**. The original tracer-bullet
+ *    used `@react-pdf/renderer`, whose embedded reconciler shipped pre-bundled
+ *    against an older React and started crashing under React 19.2+ with
+ *    `su is not a function` (upstream issue diegomura/react-pdf#3223, open
+ *    since Oct 2024). `jspdf` is imperative, React-agnostic, ~150 KB, and
+ *    plays no game with React internals. The migration kept the public
+ *    `QrGeneratorViewProps` contract unchanged.
+ * 3. **Blob → object URL** is the only browser interface we use:
+ *    - preview = `<iframe src={blobUrl} />`
+ *    - download = `<a href={blobUrl} download={fileName} />`
+ *    Both are stable, work in every modern browser, and don't depend on any
+ *    framework's lazy loading. The blob URL is revoked when the next blob
+ *    supersedes it (and on unmount) to avoid leaking object refs.
+ * 4. **Three formats only V1** — `sticker-50mm`, `a6-card`, `a4-poster`.
+ *    Default `sticker-50mm` (the primary terrain artefact).
+ * 5. **Pure controls split out** in `QrGeneratorControls` so the format
  *    selector + Regenerate button are testable under the lean
  *    `environment: "node"` vitest config without jsdom or RTL.
  *
  * Behaviour
  * ---------
- * - On mount and whenever `pwaUrl` changes, the component regenerates the
- *   `qrDataUrl` via `generateQrDataUrl()` and stores it in state.
- * - "Régénérer" forces a refresh (useful if the caller upgraded `pwaUrl`
- *   in-place — e.g. after a `customDomain` swap from the Paramètres page —
- *   without remounting the view). It bumps an internal `regenKey` counter
- *   that is read by the effect's dependency list.
- * - While the QR data URL is being computed, the preview / download surface
- *   shows a lean inline placeholder rather than mounting the PDF runtime
- *   (which would otherwise try to render with an empty `qrDataUrl`).
+ * - On mount and whenever `pwaUrl` / `format` / branding props change, the
+ *   component regenerates the QR data URL (async), then rebuilds the PDF
+ *   blob (sync), then refreshes the object URL the preview/download consume.
+ * - "Régénérer" forces a refresh (useful if `pwaUrl` changed in place — e.g.
+ *   after a `customDomain` swap from Paramètres — without remounting). It
+ *   bumps an internal `regenKey` counter wired into the effect deps.
+ * - While the QR is being computed, the preview shows a lean inline
+ *   placeholder rather than mounting a stale blob.
  *
  * Out of scope (V1)
  * -----------------
- * - Custom number of stickers per A4 sheet (default 12, locked in #173).
+ * - Custom number of stickers per A4 sheet (locked to 12).
  * - Custom accroche text — locked to `Scannez pour commander direct chez
  *   <restoName>` in #173.
- * - Server-side rendering of the PDF — explicitly rejected in the parent
- *   epic (#142).
+ * - Server-side rendering of the PDF — explicitly rejected in parent epic
+ *   (#142).
  */
 "use client";
 
-import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ComponentType } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { generateQrDataUrl } from "@/lib/qr-data-url";
 import { cn } from "@/lib/utils";
 
-import type { QrPdfDocumentProps, QrPdfFormat } from "./QrPdfDocument";
+import type { QrPdfBuildOptions, QrPdfFormat } from "./QrPdfDocument";
+import { buildQrPdfBlob } from "./QrPdfDocument";
 
 // ---------------------------------------------------------------------------
 // Public props (frozen by the issue body — DO NOT widen without product input)
 // ---------------------------------------------------------------------------
+
 /**
  * Public contract of `QrGeneratorView`. Matches the shape declared in issue
  * #182 verbatim — used by the standalone page AND by the F-WIZARD step 6.
@@ -79,65 +83,12 @@ export type QrGeneratorViewProps = {
 };
 
 // ---------------------------------------------------------------------------
-// Dynamic imports — heavy PDF runtime stays out of the shell bundle
-// ---------------------------------------------------------------------------
-// `@react-pdf/renderer` weighs ~500 KB and only makes sense in the browser
-// (it relies on DOM + canvas-like primitives behind PDFViewer). We pin
-// `ssr: false` so Next never tries to render it server-side.
-//
-// We also dynamic-load `QrPdfDocument` itself: it statically imports the
-// heavy renderer (see `QrPdfDocument.tsx`), so any module that re-exports it
-// would pull the same weight. Lazy-loading its module keeps the shell lean.
-//
-// We type the dynamic components explicitly so consumers + tests keep
-// inference (instead of `ComponentType<unknown>`).
-type PDFViewerProps = {
-  children: React.ReactNode;
-  style?: React.CSSProperties;
-  width?: number | string;
-  height?: number | string;
-  showToolbar?: boolean;
-  className?: string;
-};
-
-type PDFDownloadLinkProps = {
-  document: React.ReactElement;
-  fileName?: string;
-  children: React.ReactNode | ((p: { loading: boolean }) => React.ReactNode);
-  className?: string;
-};
-
-const PDFViewer = dynamic<PDFViewerProps>(
-  async () => {
-    const mod = await import("@react-pdf/renderer");
-    return mod.PDFViewer as unknown as ComponentType<PDFViewerProps>;
-  },
-  { ssr: false },
-);
-
-const PDFDownloadLink = dynamic<PDFDownloadLinkProps>(
-  async () => {
-    const mod = await import("@react-pdf/renderer");
-    return mod.PDFDownloadLink as unknown as ComponentType<PDFDownloadLinkProps>;
-  },
-  { ssr: false },
-);
-
-const QrPdfDocumentLazy = dynamic<QrPdfDocumentProps>(
-  async () => {
-    const mod = await import("./QrPdfDocument");
-    return mod.QrPdfDocument as unknown as ComponentType<QrPdfDocumentProps>;
-  },
-  { ssr: false },
-);
-
-// ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
+
 /**
  * Stable display labels for the 3 V1 formats. Localised FR (KB Manager =
- * French restaurateur). Kept here (not in the sub-component) so the
- * canonical list is one source of truth.
+ * French restaurateur).
  */
 const FORMAT_OPTIONS: ReadonlyArray<{ value: QrPdfFormat; label: string }> = [
   { value: "sticker-50mm", label: "Sticker rond 50 mm (planche A4)" },
@@ -145,15 +96,9 @@ const FORMAT_OPTIONS: ReadonlyArray<{ value: QrPdfFormat; label: string }> = [
   { value: "a4-poster", label: "Affiche A4" },
 ];
 
-/** Default format on mount — the primary terrain artefact (sticker dans le sac). */
 const DEFAULT_FORMAT: QrPdfFormat = "sticker-50mm";
 
-/**
- * Build a deterministic, filesystem-friendly base filename for the PDF
- * download. We don't sanitise heavily — the OS download UI will accept
- * accented characters fine and we want the file to be recognisable by the
- * restaurateur, not opaque.
- */
+/** Build a filesystem-friendly base filename for the PDF download. */
 function buildPdfFileName(restoName: string, format: QrPdfFormat): string {
   const slug = restoName
     .normalize("NFD")
@@ -168,11 +113,11 @@ function buildPdfFileName(restoName: string, format: QrPdfFormat): string {
 // ---------------------------------------------------------------------------
 // `QrGeneratorControls` — pure, headless-friendly sub-component
 // ---------------------------------------------------------------------------
+
 /**
  * Props for the pure controls sub-component. Kept separate from
  * `QrGeneratorViewProps` because this sub-component is reused by the test
- * harness (lean `environment: "node"` vitest, no DOM) without exercising
- * the dynamic PDF runtime.
+ * harness (lean `environment: "node"` vitest, no DOM).
  */
 export type QrGeneratorControlsProps = {
   format: QrPdfFormat;
@@ -182,15 +127,6 @@ export type QrGeneratorControlsProps = {
   isRegenerating: boolean;
 };
 
-/**
- * Format selector + Regenerate button. Pure presentational, no side effects.
- * Uses a native `<select>` (not the Radix `Select` wrapper) because:
- *   1. The 3-option case doesn't justify a Radix portal / popper.
- *   2. The native control is fully accessible by default and works under
- *      the lean vitest env (no jsdom needed).
- *   3. It keeps the tree shallow enough to assert via the React-tree
- *      serializer in `QrGeneratorView.test.tsx`.
- */
 export function QrGeneratorControls(props: QrGeneratorControlsProps) {
   const { format, onFormatChange, onRegenerate, isRegenerating } = props;
   return (
@@ -238,66 +174,89 @@ export function QrGeneratorControls(props: QrGeneratorControlsProps) {
 // ---------------------------------------------------------------------------
 // `QrGeneratorView` — the orchestrator
 // ---------------------------------------------------------------------------
-/**
- * Main exported component. See file header for the full contract.
- */
+
 export function QrGeneratorView(props: QrGeneratorViewProps) {
   const { pwaUrl, restoName, logoUrl, primaryColor } = props;
 
   const [format, setFormat] = useState<QrPdfFormat>(DEFAULT_FORMAT);
   const [regenKey, setRegenKey] = useState(0);
-  // We coalesce the async QR-generation outcome into one piece of state so the
-  // effect makes a SINGLE `setState` call per resolution — which avoids the
-  // `react-hooks/set-state-in-effect` lint warning that fires when an effect
-  // body itself sets state synchronously (it would do so to flip a spinner
-  // ON, then again to flip it OFF in the .then). Instead, we encode both the
-  // in-flight + resolved states in `qrState`, keyed by the trigger pair
-  // (`pwaUrl`, `regenKey`). The "in-flight" state is derived purely:
-  // `qrState.key !== currentKey ⇒ regenerating`.
-  type QrState =
+
+  // Coalesced async state for the QR-then-PDF pipeline. `key` ties a
+  // resolved blob URL to the exact triggers it was built from, so we can
+  // tell "regenerating" purely from `state.key !== currentKey`.
+  type PdfState =
     | { kind: "idle" }
-    | { kind: "ready"; key: string; dataUrl: string }
+    | { kind: "ready"; key: string; blobUrl: string }
     | { kind: "error"; key: string };
-  const [qrState, setQrState] = useState<QrState>({ kind: "idle" });
+  const [state, setState] = useState<PdfState>({ kind: "idle" });
 
-  const currentKey = `${pwaUrl}#${regenKey}`;
+  // Track the most recent blob URL so we can revoke it when a new one
+  // supersedes it (and on unmount) — otherwise the browser leaks the
+  // underlying PDF bytes for the lifetime of the page.
+  const blobUrlRef = useRef<string | null>(null);
 
-  // (Re)generate the QR data URL whenever `pwaUrl` changes OR the user
-  // explicitly hits "Régénérer" (regenKey++). We intentionally don't depend
-  // on `format` here — the data URL encodes the same `pwaUrl` regardless of
-  // the layout chosen; the layout only affects how the PDF lays the QR out.
-  //
-  // The effect body has ZERO synchronous setState calls — only the async
-  // resolution callbacks set state, which is the recommended shape for
-  // effects synchronising with an external async source (the QR lib).
+  // The trigger pair — bumping `regenKey` or changing any input invalidates
+  // the previous blob.
+  const currentKey = `${pwaUrl}#${format}#${logoUrl ?? ""}#${primaryColor ?? ""}#${regenKey}`;
+
+  // Async pipeline: generate QR PNG data URL → build PDF Blob → wrap in
+  // object URL. We commit ONE setState per resolution; the in-flight state
+  // is derived (no spinner-toggle dance).
   useEffect(() => {
     let cancelled = false;
+    let producedUrl: string | null = null;
     generateQrDataUrl(pwaUrl, { margin: 1, width: 512 })
-      .then((url) => {
-        if (!cancelled) {
-          setQrState({ kind: "ready", key: currentKey, dataUrl: url });
+      .then((qrDataUrl) => {
+        if (cancelled) return;
+        const opts: QrPdfBuildOptions = {
+          pwaUrl,
+          qrDataUrl,
+          restoName,
+          logoUrl,
+          primaryColor,
+          format,
+        };
+        const blob = buildQrPdfBlob(opts);
+        const url = URL.createObjectURL(blob);
+        producedUrl = url;
+        // Revoke the previous URL only after the new one is ready, so the
+        // preview iframe never points at a freed object.
+        if (blobUrlRef.current !== null) {
+          URL.revokeObjectURL(blobUrlRef.current);
         }
+        blobUrlRef.current = url;
+        setState({ kind: "ready", key: currentKey, blobUrl: url });
       })
       .catch(() => {
-        if (!cancelled) {
-          // Even on error, clear the spinner — the empty preview surface
-          // makes the failure visible without crashing the shell. A proper
-          // error toast lives at the page level (#142.4).
-          setQrState({ kind: "error", key: currentKey });
-        }
+        if (cancelled) return;
+        setState({ kind: "error", key: currentKey });
       });
     return () => {
       cancelled = true;
+      // If the effect re-fires before its async pipeline resolves, the URL
+      // it eventually produces would never be reached by the UI — revoke it
+      // to avoid the leak. The ref still points to the *committed* URL
+      // (handled by the next render's revoke path above).
+      if (producedUrl !== null && blobUrlRef.current !== producedUrl) {
+        URL.revokeObjectURL(producedUrl);
+      }
     };
-  }, [pwaUrl, regenKey, currentKey]);
+  }, [pwaUrl, format, logoUrl, primaryColor, regenKey, currentKey, restoName]);
 
-  const qrDataUrl =
-    qrState.kind === "ready" && qrState.key === currentKey
-      ? qrState.dataUrl
-      : null;
-  // We're "regenerating" until the latest trigger resolves (either ready or
-  // error for the current key). Derived state — no extra setState dance.
-  const isRegenerating = qrState.kind === "idle" || qrState.key !== currentKey;
+  // Final cleanup on unmount — release whatever URL we hold so the browser
+  // can reclaim the PDF bytes.
+  useEffect(() => {
+    return () => {
+      if (blobUrlRef.current !== null) {
+        URL.revokeObjectURL(blobUrlRef.current);
+        blobUrlRef.current = null;
+      }
+    };
+  }, []);
+
+  const blobUrl =
+    state.kind === "ready" && state.key === currentKey ? state.blobUrl : null;
+  const isRegenerating = state.kind === "idle" || state.key !== currentKey;
 
   const handleRegenerate = useCallback(() => {
     setRegenKey((k) => k + 1);
@@ -307,23 +266,6 @@ export function QrGeneratorView(props: QrGeneratorViewProps) {
     () => buildPdfFileName(restoName, format),
     [restoName, format],
   );
-
-  // The document element we pass to PDFViewer + PDFDownloadLink. Memoised
-  // so changing the format doesn't rebuild the QR (the data URL is reused).
-  // We can't render the PDF runtime until `qrDataUrl` is known, so we gate
-  // both surfaces on that.
-  const pdfDocument = useMemo(() => {
-    if (!qrDataUrl) return null;
-    const docProps: QrPdfDocumentProps = {
-      pwaUrl,
-      qrDataUrl,
-      restoName,
-      logoUrl,
-      primaryColor,
-      format,
-    };
-    return <QrPdfDocumentLazy {...docProps} />;
-  }, [qrDataUrl, pwaUrl, restoName, logoUrl, primaryColor, format]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -335,30 +277,32 @@ export function QrGeneratorView(props: QrGeneratorViewProps) {
       />
       <div className="flex flex-col gap-3">
         <div className="border-input bg-muted/30 h-[600px] w-full overflow-hidden rounded-md border">
-          {pdfDocument ? (
-            <PDFViewer width="100%" height="100%" showToolbar={false}>
-              {pdfDocument}
-            </PDFViewer>
+          {blobUrl !== null ? (
+            <iframe
+              src={blobUrl}
+              title={`QR ${restoName} (${format})`}
+              className="h-full w-full"
+            />
           ) : (
             <div className="text-muted-foreground flex h-full items-center justify-center text-sm">
-              Génération du QR code…
+              {state.kind === "error"
+                ? "Erreur lors de la génération du PDF."
+                : "Génération du QR code…"}
             </div>
           )}
         </div>
         <div>
-          {pdfDocument ? (
-            <PDFDownloadLink
-              document={pdfDocument}
-              fileName={fileName}
+          {blobUrl !== null ? (
+            <a
+              href={blobUrl}
+              download={fileName}
               className={cn(
                 "bg-primary text-primary-foreground hover:bg-primary/90 inline-flex h-9 items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium shadow-xs outline-none",
                 "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
               )}
             >
-              {({ loading }) =>
-                loading ? "Préparation du PDF…" : "Télécharger PDF"
-              }
-            </PDFDownloadLink>
+              Télécharger PDF
+            </a>
           ) : (
             <button
               type="button"

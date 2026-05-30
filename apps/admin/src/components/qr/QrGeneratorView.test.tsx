@@ -1,24 +1,29 @@
 /**
  * F-QR.3 (#182) — `QrGeneratorView` : the consumer-facing orchestrator that
- * wires the `QrPdfDocument` (#173) and the `generateQrDataUrl` helper (#167)
- * into a usable surface (format selector + preview + download + regenerate).
+ * wires `buildQrPdfBlob` (post-jspdf migration of #173) and
+ * `generateQrDataUrl` (#167) into a usable surface (format selector +
+ * preview + download + regenerate).
  *
  * Why a tree snapshot + per-AC assertions, not RTL?
  * -------------------------------------------------
  * `apps/admin/vitest.config.ts` runs vitest with `environment: "node"` — no
  * jsdom, no `@testing-library/react`. We reuse the same pure React-tree-
- * serializer pattern already used by `QrPdfDocument.test.tsx` and
- * `mes-clients/empty-state.test.tsx` so the assertions stay within the
- * lean node env.
+ * serializer pattern already used elsewhere in the codebase so the
+ * assertions stay within the lean node env.
  *
- * The orchestrator itself depends on `next/dynamic({ ssr: false })` to lazy-
- * load `@react-pdf/renderer` (≈ 500 KB) — we cannot actually mount it in a
- * vitest run (no DOM, no Next runtime). To keep the component testable in
- * isolation, the static parts of the UI (format selector + Regenerate button)
- * are factored into a pure sub-component (`QrGeneratorControls`) that this
- * test exercises directly. The dynamic PDF surface is exercised by the
- * acceptance test of issue #142.4 (the actual `/t/[tenantId]/qr` page) and
- * by the manual E2E proposed in the PR body.
+ * The mounted view builds the PDF synchronously (`buildQrPdfBlob`, jspdf)
+ * and exposes it via an object URL — `<iframe src={blobUrl} />` for preview
+ * and `<a href={blobUrl} download />` for download. Both depend on the
+ * browser `URL.createObjectURL` API; we cannot exercise the async pipeline
+ * from vitest-node, so we pin the static surface (the sub-component
+ * `QrGeneratorControls`) only. The mounted view is exercised by manual E2E.
+ *
+ * History — the original version of this test pinned, by source-level regex
+ * inspection, that `@react-pdf/renderer` was loaded via `next/dynamic({
+ * ssr: false })`. The migration to `jspdf` made both checks obsolete: the
+ * PDF lib no longer needs lazy-loading (jspdf is small + browser-only at
+ * the API surface anyway), so we dropped that assertion. The companion
+ * test `QrPdfDocument.test.ts` now pins the layout planner directly.
  *
  * Acceptance criteria covered (#182):
  *   - AC: « Selector des 3 formats fonctionnel » — assert the three options
@@ -29,14 +34,8 @@
  *   - AC: contract typing — the public `QrGeneratorViewProps` type stays the
  *     one declared in the issue body, enforced by a compile-time
  *     `satisfies` check below.
- *   - AC: « `@react-pdf/renderer` importé via `next/dynamic` avec
- *     `ssr: false` » — asserted by a source-level regex check (the only way
- *     to inspect the dynamic-import contract without actually running it),
- *     mirrored from how the project pins ESLint / lint rules.
  */
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import type { ReactElement, ReactNode } from "react";
 import {
   QrGeneratorControls,
@@ -231,7 +230,7 @@ describe("QrGeneratorControls — F-QR.3 (#182)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// `QrGeneratorView` — module-level contracts (type + dynamic-import shape)
+// `QrGeneratorView` — module-level contracts (type)
 // ---------------------------------------------------------------------------
 describe("QrGeneratorView — module contract (#182)", () => {
   it("exposes the public props type promised by the issue body", () => {
@@ -247,31 +246,5 @@ describe("QrGeneratorView — module contract (#182)", () => {
     void _propsLike;
     // Runtime sanity: the props type description is exported (just touch it).
     expect(true).toBe(true);
-  });
-
-  it("imports `@react-pdf/renderer` via `next/dynamic({ ssr: false })` only (no top-level static import)", () => {
-    // We cannot actually exercise next/dynamic in a vitest node run, so we
-    // pin the contract at the source-file level: the component file must NOT
-    // contain a top-level `import ... from "@react-pdf/renderer"` (that would
-    // ship the 500 KB bundle to the shell), and MUST contain `next/dynamic`
-    // wired with `ssr: false`. PRD §4.7 + issue Implementation Decisions.
-    //
-    // Importing the QrPdfDocument from the sibling file is OK — that file
-    // owns the static `@react-pdf/renderer` import; what matters is that the
-    // viewer/download primitives (PDFViewer, PDFDownloadLink) are wrapped in
-    // next/dynamic so they're code-split from the shell.
-    const source = readFileSync(
-      path.resolve(__dirname, "./QrGeneratorView.tsx"),
-      "utf8",
-    );
-    // No bare top-level static import of @react-pdf/renderer (we look at the
-    // whole file — the only acceptable mention is inside a dynamic(() => ...)
-    // expression).
-    const staticImport = /^\s*import[^;]*from\s+["']@react-pdf\/renderer["']/m;
-    expect(source).not.toMatch(staticImport);
-    // Must use next/dynamic.
-    expect(source).toMatch(/from\s+["']next\/dynamic["']/);
-    // Must pin ssr: false to avoid server bundling.
-    expect(source).toMatch(/ssr\s*:\s*false/);
   });
 });
