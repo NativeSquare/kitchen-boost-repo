@@ -288,3 +288,261 @@ describe("B-TENANT-LIFECYCLE [3/4] tenant.updateSettings — cross-tenant fuzz",
     ).rejects.toThrow(/unauthenticated/i);
   });
 });
+
+// ===========================================================================
+// B-TENANT-LIFECYCLE [4/4] — `tenant.activate` mutation (D6, PRD 70 §3.6 step 8),
+// written BEFORE the implementation (TDD red).
+//
+// Wrapper: `kbAdminMutation({ action: "tenant.activate" })`. Root-only — never
+// delegated to a kb_manager (activation is the KB Admin wizard step 8). Defers
+// the transition guard to `assertLegalTenantTransition` from slice 2: only
+// `pending → active` is legal in V1. Calling on a tenant that doesn't exist
+// throws NOT_FOUND. Calling twice on an already-`active` tenant throws
+// INVALID_STATE (non-idempotent V1, consistent with contracts lifecycle).
+//
+// Audit — DOUBLE LAYER mirroring `provisionTenant`:
+//  - the wrapper auto-logs the root mutation
+//  - the handler emits an EXPLICIT richer `logAudit` carrying
+//    `metadata: { fromStatus: <previous status> }` for ops reconstruction.
+//
+// Acceptance criteria covered:
+//  - happy path: pending → active, status persisted, audit row with
+//    metadata.fromStatus === "pending"
+//  - illegal transitions: active → active, suspended → active, disabled →
+//    active all throw ConvexError({ code: "INVALID_STATE" })
+//  - non-existent tenant: NOT_FOUND
+//  - double-call: second activate on now-active tenant throws INVALID_STATE
+//  - wrapper enforcement: kb_manager / staff / customer / detached / anonymous
+//    are all refused (FORBIDDEN / UNAUTHENTICATED) via the cross-tenant fuzz
+// ===========================================================================
+
+/**
+ * Helper — insert a fresh tenant in the requested lifecycle status, returning
+ * its id. The fuzz seed creates `active` tenants only; `activate` tests need
+ * `pending` / `suspended` / `disabled` source statuses.
+ */
+async function insertTenantWithStatus(
+  t: ReturnType<typeof convexTest>,
+  slug: string,
+  status: "pending" | "active" | "suspended" | "disabled",
+) {
+  return t.run((ctx) =>
+    ctx.db.insert("tenants", {
+      slug,
+      name: `Tenant ${slug}`,
+      siret: `siret-${slug}`,
+      status,
+      createdAt: Date.now(),
+    }),
+  );
+}
+
+describe("B-TENANT-LIFECYCLE [4/4] tenant.activate — happy path", () => {
+  let t: ReturnType<typeof convexTest>;
+  let seed: Seed;
+  beforeEach(async () => {
+    t = convexTest(schema, modules);
+    seed = await seedTwoTenantsAllRoles(t);
+  });
+
+  it("kb_admin activates a pending tenant → status active, persisted in DB", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    const pendingId = await insertTenantWithStatus(t, "pending-1", "pending");
+
+    await asAdmin.mutation(api.lib.admin.tenantSettings.activate, {
+      tenantId: pendingId,
+    });
+
+    const tenant = await t.run((ctx) => ctx.db.get(pendingId));
+    expect(tenant?.status).toBe("active");
+  });
+
+  it("emits an EXPLICIT audit row with metadata.fromStatus === 'pending'", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    const pendingId = await insertTenantWithStatus(t, "pending-2", "pending");
+
+    await asAdmin.mutation(api.lib.admin.tenantSettings.activate, {
+      tenantId: pendingId,
+    });
+
+    const rows = await readAuditLog(t);
+    // Two audit rows on success: the wrapper's auto-log + the explicit richer
+    // row. We assert on the explicit one (the only one carrying metadata).
+    const explicit = rows.find(
+      (r) =>
+        r.action === "tenant.activate" &&
+        r.metadata !== undefined &&
+        r.metadata !== null,
+    );
+    expect(explicit).toBeDefined();
+    expect(explicit?.actorUserId).toBe(seed.adminId);
+    expect(explicit?.actorRole).toBe("kb_admin");
+    expect(explicit?.tenantId).toBe(pendingId);
+    expect(explicit?.targetType).toBe("tenant");
+    expect(explicit?.targetId).toBe(pendingId);
+    expect(explicit?.metadata).toEqual({ fromStatus: "pending" });
+  });
+});
+
+describe("B-TENANT-LIFECYCLE [4/4] tenant.activate — guard rejections", () => {
+  let t: ReturnType<typeof convexTest>;
+  let seed: Seed;
+  beforeEach(async () => {
+    t = convexTest(schema, modules);
+    seed = await seedTwoTenantsAllRoles(t);
+  });
+
+  it("active → active is rejected with INVALID_STATE", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    const activeId = await insertTenantWithStatus(t, "active-1", "active");
+
+    await expect(
+      asAdmin.mutation(api.lib.admin.tenantSettings.activate, {
+        tenantId: activeId,
+      }),
+    ).rejects.toThrow(/INVALID_STATE/);
+
+    const tenant = await t.run((ctx) => ctx.db.get(activeId));
+    expect(tenant?.status).toBe("active");
+  });
+
+  it("suspended → active is rejected with INVALID_STATE (V1 strict)", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    const suspId = await insertTenantWithStatus(t, "susp-1", "suspended");
+
+    await expect(
+      asAdmin.mutation(api.lib.admin.tenantSettings.activate, {
+        tenantId: suspId,
+      }),
+    ).rejects.toThrow(/INVALID_STATE/);
+
+    const tenant = await t.run((ctx) => ctx.db.get(suspId));
+    expect(tenant?.status).toBe("suspended");
+  });
+
+  it("disabled → active is rejected with INVALID_STATE", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    const disId = await insertTenantWithStatus(t, "dis-1", "disabled");
+
+    await expect(
+      asAdmin.mutation(api.lib.admin.tenantSettings.activate, {
+        tenantId: disId,
+      }),
+    ).rejects.toThrow(/INVALID_STATE/);
+
+    const tenant = await t.run((ctx) => ctx.db.get(disId));
+    expect(tenant?.status).toBe("disabled");
+  });
+
+  it("non-existent tenant throws NOT_FOUND", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+
+    // Insert + delete to obtain a syntactically-valid but absent tenant id.
+    const ghost = await t.run(async (ctx) => {
+      const id = await ctx.db.insert("tenants", {
+        slug: "ghost-activate",
+        name: "Ghost",
+        siret: "00000000000000",
+        status: "pending",
+        createdAt: Date.now(),
+      });
+      await ctx.db.delete(id);
+      return id;
+    });
+
+    await expect(
+      asAdmin.mutation(api.lib.admin.tenantSettings.activate, {
+        tenantId: ghost,
+      }),
+    ).rejects.toThrow(/NOT_FOUND/);
+  });
+
+  it("double-call: second activate on now-active tenant throws INVALID_STATE", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    const pendingId = await insertTenantWithStatus(
+      t,
+      "pending-double",
+      "pending",
+    );
+
+    // First call: legal pending → active.
+    await asAdmin.mutation(api.lib.admin.tenantSettings.activate, {
+      tenantId: pendingId,
+    });
+    // Second call: active → active is now illegal.
+    await expect(
+      asAdmin.mutation(api.lib.admin.tenantSettings.activate, {
+        tenantId: pendingId,
+      }),
+    ).rejects.toThrow(/INVALID_STATE/);
+  });
+});
+
+describe("B-TENANT-LIFECYCLE [4/4] tenant.activate — wrapper enforcement (root-only)", () => {
+  let t: ReturnType<typeof convexTest>;
+  let seed: Seed;
+  beforeEach(async () => {
+    t = convexTest(schema, modules);
+    seed = await seedTwoTenantsAllRoles(t);
+  });
+
+  it("non-kb_admin actors are refused (FORBIDDEN / UNAUTHENTICATED)", async () => {
+    const pendingId = await insertTenantWithStatus(
+      t,
+      "pending-fuzz",
+      "pending",
+    );
+
+    const actors = [
+      { label: "A-manager", subject: seed.tenantA.managerId },
+      { label: "A-staff", subject: seed.tenantA.staffId },
+      { label: "B-manager", subject: seed.tenantB.managerId },
+      { label: "plain-customer", subject: seed.customerId },
+      { label: "detached", subject: seed.detachedUserId },
+      { label: "anonymous", subject: null },
+    ];
+
+    // `kbAdminMutation` does NOT consume a `tenantId` arg via the wrapper — it
+    // belongs to the handler's business args. Pass it via `extraArgs` and
+    // disable the harness's auto-injection by passing `tenantId: undefined`.
+    const { leaks, pairs } = await runCrossTenantFuzz(t, {
+      functions: [api.lib.admin.tenantSettings.activate],
+      isQuery: () => false,
+      tenantId: undefined,
+      actors,
+      extraArgs: { tenantId: pendingId },
+    });
+
+    expect(leaks).toEqual([]);
+    expect(pairs).toBe(actors.length);
+
+    // No side effect leaked through.
+    const tenant = await t.run((ctx) => ctx.db.get(pendingId));
+    expect(tenant?.status).toBe("pending");
+  });
+
+  it("kb_manager calling activate throws FORBIDDEN explicitly", async () => {
+    const asMgr = t.withIdentity({ subject: seed.tenantA.managerId });
+    const pendingId = await insertTenantWithStatus(t, "pending-mgr", "pending");
+
+    await expect(
+      asMgr.mutation(api.lib.admin.tenantSettings.activate, {
+        tenantId: pendingId,
+      }),
+    ).rejects.toThrow(/forbidden/i);
+  });
+
+  it("anonymous caller throws UNAUTHENTICATED explicitly", async () => {
+    const pendingId = await insertTenantWithStatus(
+      t,
+      "pending-anon",
+      "pending",
+    );
+
+    await expect(
+      t.mutation(api.lib.admin.tenantSettings.activate, {
+        tenantId: pendingId,
+      }),
+    ).rejects.toThrow(/unauthenticated/i);
+  });
+});

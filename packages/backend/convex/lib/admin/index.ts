@@ -64,7 +64,14 @@ export {
 // audit: true, action: "tenant.updateSettings" }); kb_admin root override
 // (withTenant.ts) covers the wizard caller — one mutation, two callers.
 // Convex registers it as `api.lib.admin.tenantSettings.updateSettings`.
-export { updateSettings } from "./tenantSettings";
+//
+// B-TENANT-LIFECYCLE [4/4] — `tenant.activate` mutation (D6, PRD 70 §3.6
+// step 8). Wrapper: kbAdminMutation({ action: "tenant.activate" }) — root-only,
+// flips a freshly-provisioned tenant `pending → active`. Defers to
+// assertLegalTenantTransition (V1 strict: only `pending → active`); double
+// audit (wrapper auto + explicit metadata.fromStatus). Convex registers it as
+// `api.lib.admin.tenantSettings.activate`.
+export { activate, updateSettings } from "./tenantSettings";
 export {
   expireContract,
   generateContract,
