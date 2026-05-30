@@ -282,7 +282,30 @@ describe("CategoryListEditor — F-MENU-02 (#200)", () => {
     expect(onDelete).not.toHaveBeenCalled();
   });
 
-  it("AC4 — no drag&drop affordance in this slice (lands in F-MENU-03)", () => {
+  it("F-MENU-03 (#206) — exposes a drag handle per row when onReorder is wired (a11y keyboard sortable)", () => {
+    // The drag handle is the load-bearing affordance for the « réordonnable au
+    // clavier » a11y requirement (apps/admin = outil pro). It's a button-like
+    // element with `data-slot="menu-category-drag-handle"` carrying an
+    // aria-label that mentions « Réordonner » so screen readers announce it.
+    const tree = serialize(
+      CategoryListEditor({
+        categories: CATEGORIES,
+        onCreate: vi.fn(),
+        onRename: vi.fn(),
+        onDelete: vi.fn(),
+        onReorder: vi.fn(),
+      }),
+    );
+    const handles = findBySlot(tree, "menu-category-drag-handle");
+    expect(handles).toHaveLength(CATEGORIES.length);
+    for (const h of handles) {
+      const aria = h.props["aria-label"];
+      expect(typeof aria).toBe("string");
+      expect(aria as string).toMatch(/r[ée]ordonner/i);
+    }
+  });
+
+  it("F-MENU-03 (#206) — no drag handle without an onReorder callback (read-only-ordering preserved)", () => {
     const tree = serialize(
       CategoryListEditor({
         categories: CATEGORIES,
@@ -291,15 +314,8 @@ describe("CategoryListEditor — F-MENU-02 (#200)", () => {
         onDelete: vi.fn(),
       }),
     );
-    // No drag-handle data-slot, no draggable attribute, no role=button with
-    // "drag" / "réordonner" copy.
-    expect(findBySlot(tree, "menu-category-drag-handle")).toHaveLength(0);
-    const draggables = flatten(tree).filter((n) => {
-      if (n === null || "text" in n) return false;
-      return n.props["draggable"] === true;
-    });
-    expect(draggables).toHaveLength(0);
-    expect(allText(tree)).not.toMatch(/r[ée]ordonner/i);
+    const handles = findBySlot(tree, "menu-category-drag-handle");
+    expect(handles).toHaveLength(0);
   });
 
   it("renders ONE row per category, matched on data-slot=menu-category-row", () => {

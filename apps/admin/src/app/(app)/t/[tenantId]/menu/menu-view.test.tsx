@@ -332,6 +332,48 @@ describe("MenuView — F-MENU-01 (#187)", () => {
     expect(addButtons.length).toBeGreaterThanOrEqual(1);
   });
 
+  // -------------------------------------------------------------------------
+  // F-MENU-03 (#206) — drag&drop reorder callback forwarded through MenuView
+  // -------------------------------------------------------------------------
+  // The page passes `onReorderCategories` (bound to
+  // `useTenantMutation(api.lib.menu.categories.reorder)`) down through
+  // `MenuView` to `CategoryListEditor`. When the prop is wired, each row
+  // gets a drag handle (`data-slot="menu-category-drag-handle"`); when it
+  // isn't, the editor stays orderable-from-elsewhere only.
+
+  it("F-MENU-03 — without onReorderCategories, no drag handle surfaces (read-only ordering)", () => {
+    const tree = serialize(
+      MenuView({
+        categories: UNORDERED_CATEGORIES,
+        onCreateCategory: () => {},
+        onRenameCategory: () => {},
+        onDeleteCategory: () => {},
+      }),
+    );
+    const handles = flatten(tree).filter((n) => {
+      if (n === null || "text" in n) return false;
+      return n.props["data-slot"] === "menu-category-drag-handle";
+    });
+    expect(handles).toHaveLength(0);
+  });
+
+  it("F-MENU-03 — with onReorderCategories, surfaces a drag handle on each category row", () => {
+    const tree = serialize(
+      MenuView({
+        categories: UNORDERED_CATEGORIES,
+        onCreateCategory: () => {},
+        onRenameCategory: () => {},
+        onDeleteCategory: () => {},
+        onReorderCategories: () => {},
+      }),
+    );
+    const handles = flatten(tree).filter((n) => {
+      if (n === null || "text" in n) return false;
+      return n.props["data-slot"] === "menu-category-drag-handle";
+    });
+    expect(handles).toHaveLength(UNORDERED_CATEGORIES.length);
+  });
+
   it("AC3 — renders one category per row (count matches input length)", () => {
     // Pin the row count, so a future refactor that flattens children into
     // a single string (or duplicates them) fails. The rows are pinned by
