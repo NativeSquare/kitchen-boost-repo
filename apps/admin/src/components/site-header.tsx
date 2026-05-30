@@ -1,9 +1,9 @@
-"use client"
+"use client";
 
-import { usePathname } from "next/navigation"
-import Link from "next/link"
-import { Separator } from "@/components/ui/separator"
-import { SidebarTrigger } from "@/components/ui/sidebar"
+import { usePathname } from "next/navigation";
+import Link from "next/link";
+import { Separator } from "@/components/ui/separator";
+import { SidebarTrigger } from "@/components/ui/sidebar";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -11,46 +11,47 @@ import {
   BreadcrumbList,
   BreadcrumbPage,
   BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb"
+} from "@/components/ui/breadcrumb";
+import { TenantSwitcher } from "@/components/app/tenant-switcher";
 
 export function SiteHeader() {
-  const pathname = usePathname()
+  const pathname = usePathname();
 
   const getBreadcrumbs = () => {
-    const segments = pathname.split("/").filter(Boolean)
+    const segments = pathname.split("/").filter(Boolean);
 
     if (segments.length === 0) {
-      return [{ label: "General", href: "/", isCurrentPage: true }]
+      return [{ label: "General", href: "/", isCurrentPage: true }];
     }
 
     if (segments[0] === "team") {
       if (segments.length === 1) {
-        return [{ label: "Team", href: "/team", isCurrentPage: true }]
+        return [{ label: "Team", href: "/team", isCurrentPage: true }];
       }
       if (segments.length === 2) {
         return [
           { label: "Team", href: "/team", isCurrentPage: false },
           { label: "Member Details", href: pathname, isCurrentPage: true },
-        ]
+        ];
       }
     }
 
     if (segments[0] === "users") {
       if (segments.length === 1) {
-        return [{ label: "Users", href: "/users", isCurrentPage: true }]
+        return [{ label: "Users", href: "/users", isCurrentPage: true }];
       }
       if (segments.length === 2) {
         return [
           { label: "Users", href: "/users", isCurrentPage: false },
           { label: "User Details", href: pathname, isCurrentPage: true },
-        ]
+        ];
       }
     }
 
-    return [{ label: "General", href: "/", isCurrentPage: true }]
-  }
+    return [{ label: "General", href: "/", isCurrentPage: true }];
+  };
 
-  const breadcrumbs = getBreadcrumbs()
+  const breadcrumbs = getBreadcrumbs();
 
   return (
     <header className="flex h-(--header-height) shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-(--header-height)">
@@ -83,7 +84,13 @@ export function SiteHeader() {
             ))}
           </BreadcrumbList>
         </Breadcrumb>
+        {/* F-SHELL-07 (#208) — TenantSwitcher always visible in the header.
+            Its shape (display-only / dropdown / cherchable + Supervision)
+            adapts to the role via decideTenantSwitcher. */}
+        <div className="ml-auto">
+          <TenantSwitcher />
+        </div>
       </div>
     </header>
-  )
+  );
 }
