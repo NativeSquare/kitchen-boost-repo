@@ -1,6 +1,7 @@
 import { convexTest } from "convex-test";
 import { describe, expect, it } from "vitest";
 import { api } from "../../_generated/api";
+import type { Id } from "../../_generated/dataModel";
 import schema from "../../schema";
 
 // convex-test needs the function modules; array-negation glob form is required —
@@ -80,20 +81,42 @@ describe("B-AUTH-1 getSession — three skeleton branches", () => {
     expect(session).toEqual({ isAdmin: false, tenants: [] });
   });
 
-  it("returns { isAdmin: false, tenants: [] } even when a userTenants row exists (slice B-AUTH-2 fills the list)", async () => {
-    // This slice deliberately ignores `userTenants` — the contract is the SHAPE
-    // (isAdmin + tenants array). Filling `tenants` for managers is the next
-    // tracer-bullet (B-AUTH-2). A manager today therefore still observes the
-    // empty list, not an undefined/missing field.
+  // NOTE — the historical "userTenants row but still returns []" placeholder
+  // from B-AUTH-1 is removed by B-AUTH-2 (issue #171): once a manager has at
+  // least one ACTIVE attachment, `getSession` MUST surface it. The dedicated
+  // mono-tenant case below is the new replacement assertion.
+});
+
+/**
+ * B-AUTH-2 — `getSession` hydrate la liste `tenants` pour un gérant/staff
+ * (issue #171). Deuxième tracer-bullet de D1 (ADR 0014 §3) : on lit les lignes
+ * `userTenants` ACTIVES du caller (`detachedAt === undefined`), on joint chaque
+ * ligne avec sa table `tenants` pour récupérer `slug` + `name`, et on renvoie
+ * `{ tenantId, slug, name, role }` par ligne. Le `role` reste celui de la ligne
+ * `userTenants` (`kb_manager | staff`) — PAS un badge global.
+ *
+ * Règles de résilience non négociables :
+ *  - Une ligne `userTenants` avec `detachedAt !== undefined` est IGNORÉE (un
+ *    rattachement révoqué disparaît immédiatement du switcher du gérant).
+ *  - Une ligne pointant vers un tenant SUPPRIMÉ (`ctx.db.get(tenantId) === null`)
+ *    est IGNORÉE silencieusement — pas de throw — pour rester résilient au cas
+ *    où la suppression du tenant arrive après la révocation des rattachements.
+ *
+ * Le contrat `kb_admin` reste inchangé : `tenants: []` (le root n'a pas de
+ * ligne `userTenants` par convention ; son propre switcher est hydraté par une
+ * query séparée, hors scope de cet épique).
+ */
+describe("B-AUTH-2 getSession — hydrate tenants for managers/staff", () => {
+  it("returns the single attached tenant for a mono-tenant manager", async () => {
     const t = convexTest(schema, modules);
-    const { userId } = await t.run(async (ctx) => {
+    const { userId, tenantId } = await t.run(async (ctx) => {
       const userId = await ctx.db.insert("users", {
-        email: "mgr@x.fr",
+        email: "khan@x.fr",
         role: "customer",
       });
       const tenantId = await ctx.db.insert("tenants", {
-        slug: "t1",
-        name: "Resto 1",
+        slug: "khan",
+        name: "Khan",
         siret: "1",
         status: "active",
         createdAt: Date.now(),
@@ -105,12 +128,277 @@ describe("B-AUTH-1 getSession — three skeleton branches", () => {
         attachedAt: Date.now(),
         attachedBy: userId,
       });
-      return { userId };
+      return { userId, tenantId };
     });
     const session = await t
       .withIdentity({ subject: userId })
       .query(api.lib.auth.getSession.getSession, {});
-    expect(session).toEqual({ isAdmin: false, tenants: [] });
+    expect(session).toEqual({
+      isAdmin: false,
+      tenants: [{ tenantId, slug: "khan", name: "Khan", role: "kb_manager" }],
+    });
+  });
+
+  it("returns all three attached tenants for a multi-tenant manager (Walid case)", async () => {
+    const t = convexTest(schema, modules);
+    const { userId, ids } = await t.run(async (ctx) => {
+      const userId = await ctx.db.insert("users", {
+        email: "walid@x.fr",
+        role: "customer",
+      });
+      const t1 = await ctx.db.insert("tenants", {
+        slug: "thai-1",
+        name: "Thai Street 1",
+        siret: "1",
+        status: "active",
+        createdAt: Date.now(),
+      });
+      const t2 = await ctx.db.insert("tenants", {
+        slug: "thai-2",
+        name: "Thai Street 2",
+        siret: "2",
+        status: "active",
+        createdAt: Date.now(),
+      });
+      const t3 = await ctx.db.insert("tenants", {
+        slug: "thai-3",
+        name: "Thai Street 3",
+        siret: "3",
+        status: "active",
+        createdAt: Date.now(),
+      });
+      for (const tenantId of [t1, t2, t3]) {
+        await ctx.db.insert("userTenants", {
+          userId,
+          tenantId,
+          role: "kb_manager",
+          attachedAt: Date.now(),
+          attachedBy: userId,
+        });
+      }
+      return { userId, ids: [t1, t2, t3] };
+    });
+    const session = await t
+      .withIdentity({ subject: userId })
+      .query(api.lib.auth.getSession.getSession, {});
+    expect(session.isAdmin).toBe(false);
+    expect(session.tenants).toHaveLength(3);
+    // Order-independent comparison — index order is not part of the contract.
+    const byId = new Map(session.tenants.map((row) => [row.tenantId, row]));
+    expect(byId.get(ids[0]!)).toEqual({
+      tenantId: ids[0],
+      slug: "thai-1",
+      name: "Thai Street 1",
+      role: "kb_manager",
+    });
+    expect(byId.get(ids[1]!)).toEqual({
+      tenantId: ids[1],
+      slug: "thai-2",
+      name: "Thai Street 2",
+      role: "kb_manager",
+    });
+    expect(byId.get(ids[2]!)).toEqual({
+      tenantId: ids[2],
+      slug: "thai-3",
+      name: "Thai Street 3",
+      role: "kb_manager",
+    });
+  });
+
+  it("ignores detached userTenants rows (mix of 2 active + 1 detached → 2 tenants)", async () => {
+    const t = convexTest(schema, modules);
+    const { userId, activeIds } = await t.run(async (ctx) => {
+      const userId = await ctx.db.insert("users", {
+        email: "mixed@x.fr",
+        role: "customer",
+      });
+      const a = await ctx.db.insert("tenants", {
+        slug: "active-1",
+        name: "Active 1",
+        siret: "1",
+        status: "active",
+        createdAt: Date.now(),
+      });
+      const b = await ctx.db.insert("tenants", {
+        slug: "active-2",
+        name: "Active 2",
+        siret: "2",
+        status: "active",
+        createdAt: Date.now(),
+      });
+      const d = await ctx.db.insert("tenants", {
+        slug: "detached-3",
+        name: "Detached 3",
+        siret: "3",
+        status: "active",
+        createdAt: Date.now(),
+      });
+      for (const tenantId of [a, b]) {
+        await ctx.db.insert("userTenants", {
+          userId,
+          tenantId,
+          role: "kb_manager",
+          attachedAt: Date.now(),
+          attachedBy: userId,
+        });
+      }
+      await ctx.db.insert("userTenants", {
+        userId,
+        tenantId: d,
+        role: "staff",
+        attachedAt: Date.now(),
+        attachedBy: userId,
+        detachedAt: Date.now(), // revoked → must NOT appear in the switcher
+      });
+      return { userId, activeIds: [a, b] };
+    });
+    const session = await t
+      .withIdentity({ subject: userId })
+      .query(api.lib.auth.getSession.getSession, {});
+    expect(session.tenants).toHaveLength(2);
+    const ids = session.tenants.map((row) => row.tenantId).sort();
+    expect(ids).toEqual([...activeIds].sort());
+    // The detached row's slug must not leak in.
+    expect(session.tenants.some((r) => r.slug === "detached-3")).toBe(false);
+  });
+
+  it("ignores active userTenants rows pointing to a deleted/null tenant (resilience, no throw)", async () => {
+    const t = convexTest(schema, modules);
+    const { userId, survivingTenantId } = await t.run(async (ctx) => {
+      const userId = await ctx.db.insert("users", {
+        email: "orphan-link@x.fr",
+        role: "customer",
+      });
+      // One healthy attachment.
+      const survivingTenantId = await ctx.db.insert("tenants", {
+        slug: "alive",
+        name: "Alive",
+        siret: "1",
+        status: "active",
+        createdAt: Date.now(),
+      });
+      await ctx.db.insert("userTenants", {
+        userId,
+        tenantId: survivingTenantId,
+        role: "kb_manager",
+        attachedAt: Date.now(),
+        attachedBy: userId,
+      });
+      // One attachment whose tenant gets deleted AFTER the row was written —
+      // simulates the « tenant supprimé avant que les rattachements aient été
+      // révoqués » edge case. The attachment is still active, but the join must
+      // skip it silently (no throw, just drop the row).
+      const doomedTenantId = await ctx.db.insert("tenants", {
+        slug: "doomed",
+        name: "Doomed",
+        siret: "2",
+        status: "active",
+        createdAt: Date.now(),
+      });
+      await ctx.db.insert("userTenants", {
+        userId,
+        tenantId: doomedTenantId,
+        role: "kb_manager",
+        attachedAt: Date.now(),
+        attachedBy: userId,
+      });
+      await ctx.db.delete(doomedTenantId);
+      return { userId, survivingTenantId };
+    });
+    const session = await t
+      .withIdentity({ subject: userId })
+      .query(api.lib.auth.getSession.getSession, {});
+    expect(session).toEqual({
+      isAdmin: false,
+      tenants: [
+        {
+          tenantId: survivingTenantId,
+          slug: "alive",
+          name: "Alive",
+          role: "kb_manager",
+        },
+      ],
+    });
+  });
+
+  it("surfaces the per-tenant role (staff stays staff, kb_manager stays kb_manager, not a global badge)", async () => {
+    const t = convexTest(schema, modules);
+    const { userId, managerTenantId, staffTenantId } = await t.run(
+      async (ctx) => {
+        const userId = await ctx.db.insert("users", {
+          email: "mixed-roles@x.fr",
+          role: "customer",
+        });
+        const managerTenantId = await ctx.db.insert("tenants", {
+          slug: "owned",
+          name: "Owned resto",
+          siret: "1",
+          status: "active",
+          createdAt: Date.now(),
+        });
+        const staffTenantId = await ctx.db.insert("tenants", {
+          slug: "helping",
+          name: "Helping at",
+          siret: "2",
+          status: "active",
+          createdAt: Date.now(),
+        });
+        await ctx.db.insert("userTenants", {
+          userId,
+          tenantId: managerTenantId,
+          role: "kb_manager",
+          attachedAt: Date.now(),
+          attachedBy: userId,
+        });
+        await ctx.db.insert("userTenants", {
+          userId,
+          tenantId: staffTenantId,
+          role: "staff",
+          attachedAt: Date.now(),
+          attachedBy: userId,
+        });
+        return { userId, managerTenantId, staffTenantId };
+      },
+    );
+    const session = await t
+      .withIdentity({ subject: userId })
+      .query(api.lib.auth.getSession.getSession, {});
+    const byId = new Map(session.tenants.map((row) => [row.tenantId, row]));
+    expect(byId.get(managerTenantId)?.role).toBe("kb_manager");
+    expect(byId.get(staffTenantId)?.role).toBe("staff");
+  });
+
+  it("kb_admin keeps tenants: [] even with stray userTenants rows (root convention preserved)", async () => {
+    // The root has no `userTenants` rows by convention — but if a stray one
+    // existed, getSession must NOT surface it for a kb_admin: the root switcher
+    // is hydrated by a separate query (out of scope here).
+    const t = convexTest(schema, modules);
+    const userId: Id<"users"> = await t.run(async (ctx) => {
+      const userId = await ctx.db.insert("users", {
+        email: "root@kb.fr",
+        role: "kb_admin",
+      });
+      const tenantId = await ctx.db.insert("tenants", {
+        slug: "stray",
+        name: "Stray",
+        siret: "1",
+        status: "active",
+        createdAt: Date.now(),
+      });
+      // Stray row — should NOT bleed into the admin's session payload.
+      await ctx.db.insert("userTenants", {
+        userId,
+        tenantId,
+        role: "kb_manager",
+        attachedAt: Date.now(),
+        attachedBy: userId,
+      });
+      return userId;
+    });
+    const session = await t
+      .withIdentity({ subject: userId })
+      .query(api.lib.auth.getSession.getSession, {});
+    expect(session).toEqual({ isAdmin: true, tenants: [] });
   });
 });
 
