@@ -208,6 +208,47 @@ export async function listTenantItemsByCategory(
   return rows.sort((a, b) => a.order - b.order);
 }
 
+/**
+ * Rewrite the display `order` of the items of ONE category, scoped to
+ * `tenantId`. Strict mirror of `reorderTenantCategories`: `orderedIds` MUST be
+ * EXACTLY the set of the category's item ids (same length, all owned, no
+ * duplicates) — a partial set is a client bug, not a silent partial reorder.
+ *
+ * The category must be owned by `tenantId` (NOT_FOUND otherwise via
+ * `listTenantItemsByCategory`). After validation the patches all happen inside
+ * the same Convex mutation tx, so a failure mid-loop rolls back any partial
+ * write (atomicity contract pinned by the items.reorder test suite).
+ */
+export async function reorderTenantItems(
+  ctx: MutationCtx,
+  tenantId: Id<"tenants">,
+  categoryId: Id<"menuCategories">,
+  orderedIds: Id<"menuItems">[],
+): Promise<void> {
+  const existing = await listTenantItemsByCategory(ctx, tenantId, categoryId);
+  const existingIds = new Set(existing.map((i) => i._id));
+  const seen = new Set<string>();
+  if (orderedIds.length !== existing.length) {
+    throw new ConvexError({
+      code: "INVALID_REORDER",
+      message: "orderedIds must list every item of the category exactly once.",
+    });
+  }
+  for (const id of orderedIds) {
+    if (!existingIds.has(id) || seen.has(id)) {
+      throw new ConvexError({
+        code: "INVALID_REORDER",
+        message:
+          "orderedIds must list every item of the category exactly once.",
+      });
+    }
+    seen.add(id);
+  }
+  for (let i = 0; i < orderedIds.length; i += 1) {
+    await ctx.db.patch(orderedIds[i] as Id<"menuItems">, { order: i });
+  }
+}
+
 /** Read one item by id ONLY IF it belongs to `tenantId`; else `null`. */
 export async function getTenantItem(
   ctx: QueryCtx | MutationCtx,

@@ -234,6 +234,7 @@ export {
   readTenantItemsAvailability,
   renameTenantCategory,
   reorderTenantCategories,
+  reorderTenantItems,
   requireTenantCategory,
   requireTenantItem,
   requireTenantModifierGroup,
