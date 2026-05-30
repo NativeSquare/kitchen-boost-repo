@@ -1,0 +1,150 @@
+import { ConvexError, v } from "convex/values";
+import type { Id } from "../../_generated/dataModel";
+import {
+  deleteAdminInvite,
+  getActiveUserTenant,
+  getManagerInviteForTenant,
+  getTenantById,
+  getUserByEmail,
+  insertManagerInvite,
+  kbAdminMutation,
+} from "../tenancy";
+
+/**
+ * B-AUTH-4 (#204, EPIC #134) — `inviteManager(tenantId, email, name?)`, the
+ * root-only manager pendant of `inviteAdmin` (`convex/table/admin.ts` lignes
+ * 169-232). PRD 50 §1.1 / multi-tenant CONTEXT D7 (gérant magic-link).
+ *
+ * Wrapper: `kbAdminMutation({ action: "manager.invite" })`. V1 strict: only the
+ * KB Admin (root) can invite a gérant on any tenant — a `kb_manager` / `staff`
+ * / `customer` is refused FORBIDDEN by the wrapper. The wrapper auto-audits.
+ * Identity flows only via `getCurrentActor` (ADR 0011) — no direct
+ * `getAuthUserId` call here (forbidden outside the sanctioned auth point).
+ *
+ * Tenancy discipline (ADR 0010): no raw `ctx.db` in this business module
+ * (`no-untenanted-query` enforces it). Persistence goes through the sanctioned
+ * `lib/tenancy/adminInvitesStore` seam; the existence checks reuse the
+ * pre-existing seams (`tenantsStore`, `usersStore`, `userTenantsStore`,
+ * `adminInvitesStore`).
+ *
+ * Validation pipeline (each rejection is a `ConvexError({ code, message })`):
+ *  - `NOT_FOUND`        — `tenantId` does not resolve to a tenants row;
+ *  - `ALREADY_MEMBER`   — an existing user with this email already has an
+ *                         ACTIVE `userTenants` row (`detachedAt === undefined`)
+ *                         on this tenant — already gérant, no spam magic-link.
+ *                         A DETACHED attachment does NOT block (re-invite OK);
+ *  - `ALREADY_INVITED`  — a pending non-expired invite for `(email, tenantId)`
+ *                         already exists — no spam magic-link;
+ *  - else if an EXPIRED invite exists for `(email, tenantId)`, delete it and
+ *    create a fresh one (relance — admin can re-invite a gérant who never
+ *    clicked within 7 days).
+ *
+ * Insert: `targetRole: "kb_manager"`, `tenantId`, `email`, `name`
+ * (default = email prefix), `token` (32-char alphanum, same shape as
+ * `inviteAdmin`), `invitedBy = actor.userId`, `expiresAt = now + 7d`. No
+ * `acceptedAt`. The same email may be invited on N DIFFERENT tenants in
+ * parallel (cas Walid Thai Street — the `by_email_tenant` index is the key).
+ *
+ * NO email scheduling here — B-AUTH-5 wires `sendManagerInviteEmail`. Between
+ * the two slices the invite exists but is not consumable; `acceptInvite` is
+ * extended in B-AUTH-6.
+ *
+ * Convex registers this by module PATH, so callers invoke
+ * `api.lib.admin.managerInvites.inviteManager`.
+ */
+
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Generate a 32-char alphanumeric token (same shape as `inviteAdmin` in
+ * `convex/table/admin.ts`). Crypto-strength is not required: the token's only
+ * job is to look up the invite by the magic-link URL it is embedded in
+ * (B-AUTH-6 consumes it); the spam guards above are what stop abuse.
+ */
+function generateToken(): string {
+  const chars =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  let token = "";
+  for (let i = 0; i < 32; i++) {
+    token += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return token;
+}
+
+/** Derive the default display name from the email (everything before the @). */
+function defaultNameFromEmail(email: string): string {
+  const at = email.indexOf("@");
+  return at > 0 ? email.slice(0, at) : email;
+}
+
+export const inviteManager = kbAdminMutation({
+  args: {
+    tenantId: v.id("tenants"),
+    email: v.string(),
+    name: v.optional(v.string()),
+  },
+  action: "manager.invite",
+  handler: async (ctx, args): Promise<Id<"adminInvites">> => {
+    // 1. The tenant must exist (NOT_FOUND surfaces a stale / mistyped id).
+    const tenant = await getTenantById(ctx, args.tenantId);
+    if (tenant === null) {
+      throw new ConvexError({
+        code: "NOT_FOUND",
+        message: "Tenant not found.",
+      });
+    }
+
+    // 2. ALREADY_MEMBER guard — refuse if a user with this email is already an
+    //    ACTIVE member of this tenant (a soft-detached attachment does NOT
+    //    block: an ex-gérant must be re-invitable, mirrors `getCurrentActor`'s
+    //    "detached ⇒ no role" rule).
+    const existingUser = await getUserByEmail(ctx, args.email);
+    if (existingUser !== null) {
+      const active = await getActiveUserTenant(
+        ctx,
+        existingUser._id,
+        args.tenantId,
+      );
+      if (active !== null) {
+        throw new ConvexError({
+          code: "ALREADY_MEMBER",
+          message: `${args.email} is already a gérant on this tenant.`,
+        });
+      }
+    }
+
+    // 3. Pending / relance guard on the (email, tenantId) couple via the
+    //    `by_email_tenant` compound index (B-AUTH-3). A non-expired,
+    //    not-yet-accepted invite blocks; an EXPIRED one is deleted so a fresh
+    //    one can take its place (relance).
+    const existingInvite = await getManagerInviteForTenant(
+      ctx,
+      args.email,
+      args.tenantId,
+    );
+    if (existingInvite !== null) {
+      const stillPending =
+        existingInvite.acceptedAt === undefined &&
+        existingInvite.expiresAt > Date.now();
+      if (stillPending) {
+        throw new ConvexError({
+          code: "ALREADY_INVITED",
+          message: `An invitation has already been sent to ${args.email} for this tenant.`,
+        });
+      }
+      // Expired (or somehow accepted but stuck) → drop it so a fresh invite
+      // can replace it. Same transaction: a later throw would roll this back.
+      await deleteAdminInvite(ctx, existingInvite._id);
+    }
+
+    // 4. Insert the fresh manager invite via the sanctioned seam.
+    return insertManagerInvite(ctx, {
+      email: args.email,
+      name: args.name ?? defaultNameFromEmail(args.email),
+      token: generateToken(),
+      invitedBy: ctx.actor.userId,
+      expiresAt: Date.now() + SEVEN_DAYS_MS,
+      tenantId: args.tenantId,
+    });
+  },
+});
