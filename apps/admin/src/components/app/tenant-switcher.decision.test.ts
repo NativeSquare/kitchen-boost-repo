@@ -204,11 +204,14 @@ describe("decideTenantSwitcher — F-SHELL-07 (#208)", () => {
     expect(result.kind).toBe("admin");
     if (result.kind === "admin") {
       expect(result.current.kind).toBe("supervision");
-      // Pinned supervision entry is ALWAYS exposed for KB Admin.
+      // Pinned supervision entry is ALWAYS exposed for KB Admin. The `href`
+      // is the live supervision route (currently `/monitoring` while
+      // `/pipeline` ships in a separate epic — see SUPERVISION_PINNED
+      // docblock in tenant-switcher.tsx).
       expect(result.supervisionPinned).toEqual({
         kind: "supervision",
         label: "Supervision",
-        href: "/pipeline",
+        href: "/monitoring",
       });
     }
   });

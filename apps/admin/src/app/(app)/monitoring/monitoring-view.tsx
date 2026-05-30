@@ -14,8 +14,11 @@
  * pattern already used by neighbouring tests.
  *
  * Branches:
- *   - `session.isAdmin === false` → « Accès refusé » + back link to `/`.
- *     This is the UX layer; the real security boundary is backend
+ *   - `session.isAdmin === false` → shared `UnauthorizedCard` (« Accès non
+ *     autorisé ») with a back link to `/`. The card is the single source
+ *     for the three refusal sites of the shell — tenant gate, monitoring,
+ *     no-tenant — so the vocabulary stays consistent (A4 de la checklist
+ *     E2E manuelle). The real security boundary remains backend
  *     (`kbAdminQuery` rejects, ADR 0014).
  *   - `incidents === undefined` → loading state (the query is still in
  *     flight — must NOT look like the empty state).
@@ -37,6 +40,7 @@ import Link from "next/link";
 
 import type { Incident } from "@packages/backend/convex/lib/admin/monitoring";
 import type { SessionState } from "@/lib/session";
+import { UnauthorizedCard } from "@/components/app/unauthorized-card";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -113,21 +117,20 @@ export function MonitoringView({
   onSelectedIncidentChange,
 }: MonitoringViewProps) {
   // ── Access guard (UX layer; real isolation is backend `kbAdminQuery`) ──
+  // Uses the shared UnauthorizedCard so the vocabulary stays consistent with
+  // every other auth refusal in the shell (manager-on-other-tenant, no-tenant
+  // empty state). See `components/app/unauthorized-card.tsx`.
   if (session.status !== "ready" || !session.session.isAdmin) {
     return (
-      <div className="flex flex-col items-center justify-center gap-4 px-6 py-24 text-center">
-        <h1 className="text-2xl font-bold">Accès refusé</h1>
-        <p className="text-muted-foreground max-w-md text-sm">
-          Cette page est réservée à l&apos;équipe KitchenBoost. Si vous pensez
-          que c&apos;est une erreur, contactez le support.
-        </p>
-        <Link
-          href="/"
-          className="text-sm text-blue-600 underline hover:no-underline"
-        >
-          Retour au dashboard
-        </Link>
-      </div>
+      <UnauthorizedCard
+        description={
+          <>
+            Cette page est réservée à l&apos;équipe KitchenBoost. Si vous pensez
+            que c&apos;est une erreur, contactez le support.
+          </>
+        }
+        primaryAction={{ label: "Retour au dashboard", href: "/" }}
+      />
     );
   }
 

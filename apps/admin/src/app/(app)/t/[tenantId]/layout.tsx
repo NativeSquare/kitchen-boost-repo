@@ -9,7 +9,8 @@
  *
  *   1. Read `tenantId` from the URL segment (`useParams`).
  *   2. Validate it against the session (KB Manager must own it; KB Admin can
- *      reach any existing tenant; otherwise → redirect or 404).
+ *      reach any existing tenant; otherwise → explicit UnauthorizedCard or
+ *      404 — A4 of the manual E2E checklist; no silent redirect).
  *   3. Provide the validated `tenantId` to children via `<TenantProvider/>`
  *      so `useCurrentTenantId()` (and, downstream, F-SHELL-05's
  *      `useTenantQuery` / `useTenantMutation`) can inject it everywhere.
@@ -31,7 +32,7 @@
  * scope of this issue per epic #139.)
  */
 
-import { notFound, useParams, useRouter } from "next/navigation";
+import { notFound, useParams } from "next/navigation";
 import { useEffect, useMemo } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
@@ -46,6 +47,8 @@ import {
   parseTenantCookie,
 } from "@/components/app/tenant-context";
 import type { AdminTenantLookup } from "@/components/app/tenant-context";
+import { UnauthorizedCard } from "@/components/app/unauthorized-card";
+import { IconBuildingStore } from "@tabler/icons-react";
 
 export default function TenantLayout({
   children,
@@ -56,7 +59,6 @@ export default function TenantLayout({
   const urlTenantId = params?.tenantId as unknown as Id<"tenants">;
 
   const session = useSession();
-  const router = useRouter();
 
   // Cookie is read on every render (cheap, lives on document). The decision
   // function consumes it as a hint when the manager lands on a tenant they
@@ -92,14 +94,9 @@ export default function TenantLayout({
     adminTenantLookup,
   });
 
-  // Side-effects (router.replace + cookie write) live in useEffect so the
-  // render is always pure.
-  useEffect(() => {
-    if (decision.kind === "redirect") {
-      router.replace(`/t/${decision.tenantId}`);
-    }
-  }, [decision, router]);
-
+  // Cookie write on allow lives in useEffect so the render stays pure. We
+  // NO LONGER auto-redirect on `not-authorized` — see UnauthorizedCard
+  // branch below for the explicit-CTA UX (A4 of the manual E2E checklist).
   useEffect(() => {
     if (decision.kind === "allow" && typeof document !== "undefined") {
       document.cookie = formatTenantCookie(decision.tenantId);
@@ -110,7 +107,31 @@ export default function TenantLayout({
     notFound();
   }
 
-  if (decision.kind === "wait" || decision.kind === "redirect") {
+  if (decision.kind === "not-authorized") {
+    // Explicit refusal — the previous implementation silently teleported
+    // the user to their own tenant, which was indistinguishable from a
+    // routing bug. Now we render an UnauthorizedCard with a single CTA
+    // pointing at their fallback resto; the user CHOOSES to navigate.
+    const href = `/t/${decision.redirectTo as unknown as string}`;
+    return (
+      <UnauthorizedCard
+        description={
+          <>
+            Ce restaurant ne fait pas partie de votre périmètre. Si vous pensez
+            qu&apos;il devrait, contactez l&apos;équipe KitchenBoost pour faire
+            rattacher votre compte.
+          </>
+        }
+        primaryAction={{
+          label: "Aller à mon resto",
+          href,
+          icon: <IconBuildingStore />,
+        }}
+      />
+    );
+  }
+
+  if (decision.kind === "wait") {
     return (
       <div className="flex h-[60vh] w-full items-center justify-center">
         <Spinner className="h-8 w-8" />

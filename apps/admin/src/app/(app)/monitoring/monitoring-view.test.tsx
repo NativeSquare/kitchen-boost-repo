@@ -11,9 +11,12 @@
  * `mes-clients/empty-state.test.tsx` / `QrGeneratorView.test.tsx`.
  *
  * Acceptance criteria covered (#184):
- *   - AC: « `useSession().isAdmin === false` → composant "Accès refusé" +
- *     lien retour, pas la table » — assert the access-denied surface is
- *     rendered and the table is NOT rendered.
+ *   - AC: « `useSession().isAdmin === false` → composant "Accès non
+ *     autorisé" (via le UnauthorizedCard partagé) + lien retour, pas la
+ *     table » — assert the access-denied surface is rendered and the table
+ *     is NOT rendered. The wording moved from « Accès refusé » to « Accès
+ *     non autorisé » when the three refusal sites of the shell were
+ *     unifiés sous le même composant (A4 de la checklist E2E manuelle).
  *   - AC: « Mock `useQuery` retournant un incident de chaque kind → la
  *     table affiche les bonnes colonnes pour chaque ligne » — assert the
  *     table contains rows whose visible text carries the per-kind inline
@@ -193,7 +196,7 @@ const ONE_OF_EACH_KIND: Incident[] = [
 // Tests
 // ---------------------------------------------------------------------------
 describe("MonitoringView — F-MONITORING (#184)", () => {
-  it("refuses access cleanly when `session.isAdmin === false` — shows « Accès refusé », no table", () => {
+  it("refuses access cleanly when `session.isAdmin === false` — shows « Accès non autorisé » via the shared UnauthorizedCard, no table", () => {
     const tree = serialize(
       MonitoringView({
         session: managerSession(),
@@ -202,7 +205,10 @@ describe("MonitoringView — F-MONITORING (#184)", () => {
       }),
     );
     const text = allText(tree);
-    expect(text).toMatch(/Acc[èe]s refus[ée]/i);
+    // Canonical vocabulary from UnauthorizedCard — pinned here so a future
+    // copy drift breaks the test rather than silently desynchronising the
+    // three sites that share this card (tenant gate, monitoring, no-tenant).
+    expect(text).toMatch(/Acc[èe]s non autoris[ée]/i);
     // The table MUST NOT render — assert the underlying DOM tag <table> is
     // absent (the serializer unwraps function components down to native tags,
     // so any leaked shadcn `<Table>` would surface as a "table" type here).
@@ -210,17 +216,14 @@ describe("MonitoringView — F-MONITORING (#184)", () => {
     expect(types).not.toContain("table");
     expect(types).not.toContain("thead");
     expect(types).not.toContain("tbody");
-    // Back link to the dashboard surfaces, per AC. The serializer can't
-    // safely unwrap next/link in node env (it depends on a real Next runtime),
-    // so we pin the contract at the *source-file* level — the access-denied
-    // surface MUST mount a `<Link href="/">` (the simplest navigation back
-    // from a refused state). A source regex is more honest than chasing the
-    // refreshing implementation of next/link.
+    // The back-to-dashboard CTA renders as `primaryAction.href = "/"` on
+    // the card. Source-level check (the serializer can't safely unwrap
+    // next/link in node env — see `next/link` runtime dependency).
     const source = readFileSync(
       path.resolve(__dirname, "./monitoring-view.tsx"),
       "utf8",
     );
-    expect(source).toMatch(/href=["']\/["']/);
+    expect(source).toMatch(/href:\s*["']\/["']/);
     expect(source).toMatch(/Retour au dashboard/);
   });
 

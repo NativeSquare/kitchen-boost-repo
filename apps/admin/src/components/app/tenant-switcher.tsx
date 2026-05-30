@@ -83,11 +83,14 @@ export type TenantSwitcherCurrent =
   | { kind: "supervision" }
   | { kind: "tenant"; tenantId: Id<"tenants">; name: string };
 
-/** Pinned "Supervision" entry exposed to the KB Admin shape. */
+/** Pinned "Supervision" entry exposed to the KB Admin shape.
+ *  The `href` literal stays parametric (string) so the temporary swap
+ *  `/pipeline` → `/monitoring` (see SUPERVISION_PINNED docblock) does not
+ *  ripple into a brittle type change every time the canonical URL moves. */
 export type SupervisionEntry = {
   kind: "supervision";
   label: "Supervision";
-  href: "/pipeline";
+  href: string;
 };
 
 export type TenantSwitcherInput = {
@@ -127,10 +130,22 @@ function parseTenantIdFromPath(pathname: string | null): Id<"tenants"> | null {
   return match[1] as unknown as Id<"tenants">;
 }
 
+/**
+ * Pinned "Supervision" entry exposed to the KB Admin shape.
+ *
+ * `href` history — the canonical supervision URL per ADR 0014 §5 is
+ * `/pipeline`, but that page is a separate epic still in the backlog. Until
+ * it ships, we navigate to `/monitoring` (the only live supervision route
+ * today, and the destination already used by the root entry redirect in
+ * `(app)/page.tsx`). The two MUST stay in sync — when `/pipeline` lands,
+ * change both lines and the contract holds. Pointing at `/pipeline` while
+ * the page didn't exist surfaced as a dead "Supervision" button (no
+ * navigation, no error) — A2 of the manual E2E checklist.
+ */
 const SUPERVISION_PINNED: SupervisionEntry = {
   kind: "supervision",
   label: "Supervision",
-  href: "/pipeline",
+  href: "/monitoring",
 };
 
 /**

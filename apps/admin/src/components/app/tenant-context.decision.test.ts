@@ -10,21 +10,25 @@
  * DOM, no Convex client — same split as `decideSessionGate` (#164).
  *
  * The pure function answers ONE of four actions:
- *   - `wait`     → session still loading, or admin tenant lookup in flight.
- *   - `redirect` → KB Manager landed on a tenant they don't own → push them
- *                  to a default tenant they DO own (cookie hint > first in
- *                  `session.tenants`).
- *   - `not-found`→ KB Admin landed on a tenantId that does not exist in DB
- *                  → render Next.js `notFound()`.
- *   - `allow`    → tenant is valid for this actor; render children + provide
- *                  `tenantId` via context + write cookie.
+ *   - `wait`            → session still loading, or admin tenant lookup in
+ *                          flight.
+ *   - `not-authorized`  → KB Manager landed on a tenant they don't own. The
+ *                          decision carries a `redirectTo` (cookie hint >
+ *                          first in `session.tenants`) which the React layer
+ *                          surfaces as an EXPLICIT "Aller à mon resto" CTA
+ *                          (UnauthorizedCard). No silent teleport — A4 of
+ *                          the manual E2E checklist.
+ *   - `not-found`       → KB Admin landed on a tenantId that does not exist
+ *                          in DB → render Next.js `notFound()`.
+ *   - `allow`           → tenant is valid for this actor; render children +
+ *                          provide `tenantId` via context + write cookie.
  *
  * The cookie `kb_current_tenant` is NEVER the source of truth (ADR 0014 §4):
  *   - On `allow` it is REWRITTEN to the current `tenantId` (so the next
  *     session resumes here).
- *   - On `redirect` it is used as a HINT to pick the default tenant when
- *     valid; ignored when stale (pointing at a tenant the manager no longer
- *     owns).
+ *   - On `not-authorized` it is used as a HINT to pick the `redirectTo`
+ *     target when valid; ignored when stale (pointing at a tenant the
+ *     manager no longer owns).
  */
 import { describe, expect, it } from "vitest";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
@@ -103,7 +107,7 @@ describe("decideTenantGate", () => {
     });
   });
 
-  it("KB Manager on a tenant NOT in their list, cookie valid → `redirect` to cookie tenant (last-opened resto)", () => {
+  it("KB Manager on a tenant NOT in their list, cookie valid → `not-authorized` carrying the cookie tenant as redirectTo (last-opened resto)", () => {
     const input: TenantGateInput = {
       session: managerSession([
         { id: TENANT_A, slug: "a", name: "A" },
@@ -114,12 +118,12 @@ describe("decideTenantGate", () => {
       adminTenantLookup: undefined,
     };
     expect(decideTenantGate(input)).toEqual({
-      kind: "redirect",
-      tenantId: TENANT_B,
+      kind: "not-authorized",
+      redirectTo: TENANT_B,
     });
   });
 
-  it("KB Manager on a tenant NOT in their list, cookie ALSO stale → `redirect` to first tenant in session.tenants", () => {
+  it("KB Manager on a tenant NOT in their list, cookie ALSO stale → `not-authorized` carrying the first session tenant as redirectTo", () => {
     const input: TenantGateInput = {
       session: managerSession([
         { id: TENANT_A, slug: "a", name: "A" },
@@ -130,12 +134,12 @@ describe("decideTenantGate", () => {
       adminTenantLookup: undefined,
     };
     expect(decideTenantGate(input)).toEqual({
-      kind: "redirect",
-      tenantId: TENANT_A,
+      kind: "not-authorized",
+      redirectTo: TENANT_A,
     });
   });
 
-  it("KB Manager on a tenant NOT in their list, no cookie → `redirect` to first tenant", () => {
+  it("KB Manager on a tenant NOT in their list, no cookie → `not-authorized` carrying the first session tenant as redirectTo", () => {
     const input: TenantGateInput = {
       session: managerSession([
         { id: TENANT_A, slug: "a", name: "A" },
@@ -146,8 +150,8 @@ describe("decideTenantGate", () => {
       adminTenantLookup: undefined,
     };
     expect(decideTenantGate(input)).toEqual({
-      kind: "redirect",
-      tenantId: TENANT_A,
+      kind: "not-authorized",
+      redirectTo: TENANT_A,
     });
   });
 

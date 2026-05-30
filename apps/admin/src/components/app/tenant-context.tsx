@@ -110,9 +110,19 @@ export type TenantGateInput = {
   adminTenantLookup: AdminTenantLookup;
 };
 
+/**
+ * History — an earlier version of this union carried a `{kind: "redirect"}`
+ * branch used to SILENTLY teleport a KB Manager away from a `/t/<id>` they
+ * didn't own to a `/t/<owned>` of theirs. That UX was indistinguishable from
+ * a routing bug (A4 of the manual E2E checklist — the user saw the URL
+ * change but never learned WHY). It was replaced by `not-authorized`, which
+ * still carries the redirect target (`redirectTo`) but lets the React layer
+ * render an UnauthorizedCard with a CTA the user must click — making the
+ * refusal explicit.
+ */
 export type TenantGateDecision =
   | { kind: "wait" }
-  | { kind: "redirect"; tenantId: Id<"tenants"> }
+  | { kind: "not-authorized"; redirectTo: Id<"tenants"> }
   | { kind: "not-found" }
   | { kind: "allow"; tenantId: Id<"tenants"> };
 
@@ -150,10 +160,17 @@ export function decideTenantGate(input: TenantGateInput): TenantGateDecision {
     return { kind: "allow", tenantId: urlTenantId };
   }
 
-  // Not owned → pick a redirect target: cookie hint if it's still valid,
-  // otherwise the first tenant of the list. Empty list isn't expected here
-  // (SessionGuard would already render NoTenantEmptyState), but if it ever
-  // happens we treat it as `not-found` rather than crash.
+  // Not owned → surface explicitly as `not-authorized` (no silent redirect,
+  // A4 of the manual E2E checklist). The layout renders an UnauthorizedCard
+  // with a CTA pointing at `redirectTo` so the user CHOOSES the navigation
+  // rather than being teleported away. `redirectTo` is the same fallback
+  // target the old silent-redirect picked: cookie hint when still valid,
+  // otherwise the first tenant of the list.
+  //
+  // Edge case — empty list isn't expected here (SessionGuard would already
+  // render NoTenantEmptyState upstream), but if it ever leaks we treat it
+  // as `not-found` rather than crash (defensive — the typed return must
+  // always provide a usable shape).
   const cookieValid =
     cookieTenantId !== undefined &&
     tenants.some((t) => t.tenantId === cookieTenantId);
@@ -161,7 +178,7 @@ export function decideTenantGate(input: TenantGateInput): TenantGateDecision {
   if (target === undefined) {
     return { kind: "not-found" };
   }
-  return { kind: "redirect", tenantId: target };
+  return { kind: "not-authorized", redirectTo: target };
 }
 
 // ---------------------------------------------------------------------------

@@ -83,10 +83,16 @@ export function AcceptInviteForm({
   // `useEffect` below uses it to gate the `acceptInvite` call.
   const { isAuthenticated } = useConvexAuth();
 
-  const invite = useQuery(
+  // `useQuery` is skipped when `token` is empty (URL sans `?token=`, lien
+  // tronqué dans un client mail, etc.) — in that case `inviteQuery` reste
+  // `undefined` indéfiniment. On force la résolution à `null` (fallback
+  // "Invalid invitation") pour ne PAS laisser le spinner tourner ad vitam.
+  // C'est A5 de la checklist E2E.
+  const inviteQuery = useQuery(
     api.table.admin.getInvite,
     token ? { token } : "skip",
   );
+  const invite = token === "" ? null : inviteQuery;
 
   const [phase, setPhase] = React.useState<Phase>("password");
   const [otp, setOtp] = React.useState("");
