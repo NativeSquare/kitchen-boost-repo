@@ -59,6 +59,12 @@ export {
   isValidHexColor,
   normalisePhone,
 } from "./tenantSettingsValidation";
+// B-TENANT-LIFECYCLE [3/4] — `tenant.updateSettings` mutation (D5 élargi,
+// PRD 70 §3.6 step 4 + §4.8). Wrapper: tenantMutation({ allow: ["kb_manager"],
+// audit: true, action: "tenant.updateSettings" }); kb_admin root override
+// (withTenant.ts) covers the wizard caller — one mutation, two callers.
+// Convex registers it as `api.lib.admin.tenantSettings.updateSettings`.
+export { updateSettings } from "./tenantSettings";
 export {
   expireContract,
   generateContract,
