@@ -44,6 +44,21 @@ export {
   assertLegalContractTransition,
   isLegalContractTransition,
 } from "./lifecycle";
+// B-TENANT-LIFECYCLE [2/4] — pure tenant lifecycle state machine + settings
+// validation helpers, co-located with the contract lifecycle (same pattern).
+// Consumed by the upcoming `tenant.updateSettings` (D5) and `tenant.activate`
+// (D6) mutations. NO DB, NO ctx — both modules are trivially unit-testable.
+export {
+  TENANT_STATUS_TRANSITIONS,
+  type TenantStatus,
+  assertLegalTenantTransition,
+  isLegalTenantTransition,
+} from "./tenantLifecycle";
+export {
+  assertNonEmptyString,
+  isValidHexColor,
+  normalisePhone,
+} from "./tenantSettingsValidation";
 export {
   expireContract,
   generateContract,
