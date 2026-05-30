@@ -23,6 +23,7 @@ import type * as lib_admin_tenantSettingsValidation from "../lib/admin/tenantSet
 import type * as lib_auth_ResendOTP from "../lib/auth/ResendOTP.js";
 import type * as lib_auth_ResendOTPPasswordReset from "../lib/auth/ResendOTPPasswordReset.js";
 import type * as lib_auth_getCurrentActor from "../lib/auth/getCurrentActor.js";
+import type * as lib_auth_getSession from "../lib/auth/getSession.js";
 import type * as lib_auth_index from "../lib/auth/index.js";
 import type * as lib_cart_cart from "../lib/cart/cart.js";
 import type * as lib_cart_index from "../lib/cart/index.js";
@@ -195,6 +196,7 @@ declare const fullApi: ApiFromModules<{
   "lib/auth/ResendOTP": typeof lib_auth_ResendOTP;
   "lib/auth/ResendOTPPasswordReset": typeof lib_auth_ResendOTPPasswordReset;
   "lib/auth/getCurrentActor": typeof lib_auth_getCurrentActor;
+  "lib/auth/getSession": typeof lib_auth_getSession;
   "lib/auth/index": typeof lib_auth_index;
   "lib/cart/cart": typeof lib_cart_cart;
   "lib/cart/index": typeof lib_cart_index;

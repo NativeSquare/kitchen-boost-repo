@@ -18,3 +18,11 @@ export {
   type GlobalRole,
   type EffectiveRole,
 } from "./getCurrentActor";
+
+/**
+ * `getSession` (B-AUTH-1) — bootstrap query of the unique shell described by
+ * ADR 0014 §3. Re-exported from the module's barrel for non-Convex callers
+ * (other backend modules / type imports). Convex itself still registers the
+ * function by file path (`api.lib.auth.getSession.getSession`).
+ */
+export { getSession } from "./getSession";
