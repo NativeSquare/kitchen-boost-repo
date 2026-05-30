@@ -728,3 +728,405 @@ export const wipeE2EAuthAccounts = internalMutation({
     };
   },
 });
+
+// -----------------------------------------------------------------------------
+// E2E-MC seed — populate the « Mes clients » KPI dashboard with non-zero
+// aggregates so the 9 cards render instead of the empty-state. Inserts 6
+// `customers` (each behind its own auth user) + their `customerOrdersPerTenant`
+// links to the requested `tenantId`. Distribution covers every visible KPI:
+//   - Segments        : 2 actif + 2 inactif + 2 vip
+//   - Reachability    : 2 email-only + 2 phone-only + 2 with email+phone+push
+//   - Macro / total   : 6 total ; 6 newThisMonth (links insérés maintenant) ;
+//                       returnRate = 4/6 (4 customers have totalOrders >= 2)
+//
+// Sentinel email pattern (`*@kb-e2e-kpi.test`) lets `wipeE2ECustomerKPIs`
+// delete *exactly* what this seed inserted without touching real data.
+// -----------------------------------------------------------------------------
+
+/** Email suffix tagging seeded MC customers (used by both seed + wipe). */
+const E2E_KPI_EMAIL_SUFFIX = "@kb-e2e-kpi.test";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Tag for the seeded MC fixture rows. Pure data (no I/O), exported so the
+ * wipe can apply the exact same filter without drift.
+ */
+type MCSeedSpec = {
+  /** Local part of the seed email (full email = `${local}${E2E_KPI_EMAIL_SUFFIX}`). */
+  local: string;
+  /** Stored on `customers.firstName`. */
+  firstName: string;
+  /** Segment intent (drives totalOrders + lastOrderAt). */
+  segment: "actif" | "inactif" | "vip";
+  /** Reachability intent (drives email/phone/pushEnrollment). */
+  reach: "email_only" | "phone_only" | "all_three";
+};
+
+const MC_SEED_SPECS: readonly MCSeedSpec[] = [
+  // 2 actifs (lastOrder ≤ 30 j, totalOrders ≥ 1)
+  {
+    local: "actif-email",
+    firstName: "Anne",
+    segment: "actif",
+    reach: "email_only",
+  },
+  {
+    local: "actif-phone",
+    firstName: "Bruno",
+    segment: "actif",
+    reach: "phone_only",
+  },
+  // 2 inactifs (lastOrder > 90 j, totalOrders ≥ 1)
+  {
+    local: "inactif-email",
+    firstName: "Claire",
+    segment: "inactif",
+    reach: "email_only",
+  },
+  {
+    local: "inactif-phone",
+    firstName: "David",
+    segment: "inactif",
+    reach: "phone_only",
+  },
+  // 2 VIP (totalOrders ≥ 5 OU ltv ≥ 150)
+  { local: "vip-1", firstName: "Emma", segment: "vip", reach: "all_three" },
+  { local: "vip-2", firstName: "Farid", segment: "vip", reach: "all_three" },
+];
+
+/** Build the per-segment KPI fields (totalOrders / lastOrderAt / ltv). */
+function mcSegmentFields(
+  segment: MCSeedSpec["segment"],
+  now: number,
+): { totalOrders: number; lastOrderAt: number; ltv: number } {
+  switch (segment) {
+    case "actif":
+      // Within 30 d window, ≥ 1 order, < 5 orders, < 150€ → "actif".
+      return { totalOrders: 2, lastOrderAt: now - 7 * DAY_MS, ltv: 40 };
+    case "inactif":
+      // > 90 d since last order, ≥ 1 order → "inactif".
+      return { totalOrders: 2, lastOrderAt: now - 120 * DAY_MS, ltv: 35 };
+    case "vip":
+      // ≥ 5 orders → "vip" (also satisfies LTV threshold redundantly).
+      return { totalOrders: 6, lastOrderAt: now - 10 * DAY_MS, ltv: 220 };
+  }
+}
+
+/** Build the reachability fields (email / phone / pushEnrollment). */
+function mcReachabilityFields(
+  reach: MCSeedSpec["reach"],
+  email: string,
+): {
+  email?: string;
+  phone?: string;
+  pushEnrollment?: Doc<"customers">["pushEnrollment"];
+} {
+  switch (reach) {
+    case "email_only":
+      return { email };
+    case "phone_only":
+      return { phone: "+33600000000" };
+    case "all_three":
+      return {
+        email,
+        phone: "+33600000001",
+        pushEnrollment: { webPushStatus: "enrolled" },
+      };
+  }
+}
+
+/**
+ * Seed step for the « Mes clients » KPI dashboard of a specific tenant.
+ *
+ * Idempotent: if the seeded customers already exist (re-run), the existing
+ * rows are reused and only the per-tenant link is upserted; no duplicates.
+ * This lets the seed run twice across different tenants and keeps the global
+ * fiches reusable (the link table carries the tenantId, ADR 0010 + PRD 90).
+ *
+ * Returns a small JSON report of how many rows were inserted vs reused, so
+ * the operator can sanity-check the result from the CLI.
+ */
+export const seedE2ECustomerKPIs = internalMutation({
+  args: {
+    tenantId: v.id("tenants"),
+  },
+  returns: v.object({
+    tenantId: v.id("tenants"),
+    customersCreated: v.number(),
+    customersReused: v.number(),
+    linksCreated: v.number(),
+    linksUpdated: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const tenant = await ctx.db.get(args.tenantId);
+    if (tenant === null) {
+      throw new ConvexError({
+        message: `Tenant ${String(args.tenantId)} not found — seed the tenants first (e2e:bootstrapE2EInvites).`,
+      });
+    }
+
+    const now = Date.now();
+    let customersCreated = 0;
+    let customersReused = 0;
+    let linksCreated = 0;
+    let linksUpdated = 0;
+
+    for (const spec of MC_SEED_SPECS) {
+      const email = `${spec.local}${E2E_KPI_EMAIL_SUFFIX}`;
+
+      // 1. The anonymous Convex Auth user that IS this customer (ADR 0008).
+      //    We bypass the real signUp flow on purpose — the customer here exists
+      //    purely to carry a userId for the `customers` fiche. No password,
+      //    no session, no auth login from this account.
+      let user = await ctx.db
+        .query("users")
+        .withIndex("email", (q) => q.eq("email", email))
+        .first();
+      if (user === null) {
+        const userId = await ctx.db.insert("users", {
+          email,
+          name: spec.firstName,
+        });
+        user = await ctx.db.get(userId);
+      }
+      if (user === null) {
+        throw new ConvexError({ message: "User insert failed (impossible)" });
+      }
+
+      // 2. The global customer fiche.
+      let customer = await ctx.db
+        .query("customers")
+        .withIndex("by_user", (q) => q.eq("userId", user._id))
+        .first();
+      const reachFields = mcReachabilityFields(spec.reach, email);
+      if (customer === null) {
+        const customerId = await ctx.db.insert("customers", {
+          userId: user._id,
+          firstName: spec.firstName,
+          createdAt: now,
+          ...reachFields,
+        });
+        customer = await ctx.db.get(customerId);
+        customersCreated += 1;
+      } else {
+        // Re-run: refresh reachability fields in case the spec evolved.
+        await ctx.db.patch(customer._id, reachFields);
+        customersReused += 1;
+      }
+      if (customer === null) {
+        throw new ConvexError({
+          message: "Customer insert failed (impossible)",
+        });
+      }
+
+      // 3. The per-tenant link — the only carrier of `tenantId` for this
+      //    customer (ADR 0010 MOAT). Upsert by (tenantId, customerId).
+      const segmentFields = mcSegmentFields(spec.segment, now);
+      const existingLink = await ctx.db
+        .query("customerOrdersPerTenant")
+        .withIndex("by_tenant_customer", (q) =>
+          q.eq("tenantId", args.tenantId).eq("customerId", customer._id),
+        )
+        .unique();
+      if (existingLink === null) {
+        await ctx.db.insert("customerOrdersPerTenant", {
+          customerId: customer._id,
+          tenantId: args.tenantId,
+          ...segmentFields,
+        });
+        linksCreated += 1;
+      } else {
+        await ctx.db.patch(existingLink._id, segmentFields);
+        linksUpdated += 1;
+      }
+    }
+
+    return {
+      tenantId: args.tenantId,
+      customersCreated,
+      customersReused,
+      linksCreated,
+      linksUpdated,
+    };
+  },
+});
+
+/**
+ * Wipe the E2E-MC customer KPI seed.
+ *
+ * Filters by the sentinel email pattern (`*@kb-e2e-kpi.test`) — guarantees we
+ * never touch a real customer row. Deletes : customers rows + their users +
+ * every `customerOrdersPerTenant` link they own (on ANY tenant, not just the
+ * caller's), since this seed is the only writer of these specific rows and
+ * the link rows are 1-to-N off the customer.
+ */
+export const wipeE2ECustomerKPIs = internalMutation({
+  args: {},
+  returns: v.object({
+    customersDeleted: v.number(),
+    usersDeleted: v.number(),
+    linksDeleted: v.number(),
+  }),
+  handler: async (ctx) => {
+    let customersDeleted = 0;
+    let usersDeleted = 0;
+    let linksDeleted = 0;
+
+    for (const spec of MC_SEED_SPECS) {
+      const email = `${spec.local}${E2E_KPI_EMAIL_SUFFIX}`;
+      const user = await ctx.db
+        .query("users")
+        .withIndex("email", (q) => q.eq("email", email))
+        .first();
+      if (user === null) continue;
+
+      const customer = await ctx.db
+        .query("customers")
+        .withIndex("by_user", (q) => q.eq("userId", user._id))
+        .first();
+
+      if (customer !== null) {
+        // All per-tenant links owned by this customer (any tenant).
+        const links = await ctx.db
+          .query("customerOrdersPerTenant")
+          .withIndex("by_customer", (q) => q.eq("customerId", customer._id))
+          .collect();
+        for (const link of links) {
+          await ctx.db.delete(link._id);
+          linksDeleted += 1;
+        }
+        await ctx.db.delete(customer._id);
+        customersDeleted += 1;
+      }
+
+      await ctx.db.delete(user._id);
+      usersDeleted += 1;
+    }
+
+    return { customersDeleted, usersDeleted, linksDeleted };
+  },
+});
+
+// -----------------------------------------------------------------------------
+// E2E-MO seed — populate the `/monitoring` dashboard with non-zero incidents
+// so MO1/MO3/MO4 are testable end-to-end. We insert 2 `prospects` whose
+// integration milestones are in `pending_kyc` for > 48 h (PRD 70 §3.8 KYC
+// pending threshold). The webhook-latency + paid-no-course incident kinds
+// are NOT seedable from here — they are feature-flagged off by default and
+// their live data sources live in the 2.5 / 2.6 chantiers ; testing them
+// requires flipping `MONITORING_WEBHOOK_LATENCY_ENABLED` /
+// `MONITORING_PAID_NO_COURSE_ENABLED` and seeding the underlying tables
+// (out of scope of this MC/MO checklist).
+//
+// Sentinel name prefix (`[E2E Monitoring]`) lets `wipeE2EMonitoringIncidents`
+// delete *exactly* what this seed inserted without touching real prospects.
+// -----------------------------------------------------------------------------
+
+const E2E_MONITORING_PROSPECT_PREFIX = "[E2E Monitoring] ";
+
+/** The 2 monitoring prospects this seed always inserts (idempotent by name). */
+const MO_SEED_SPECS: ReadonlyArray<{
+  nameSuffix: string;
+  provider: "stripeConnect" | "uberDirect";
+  pendingSinceDays: number;
+}> = [
+  { nameSuffix: "Stripe KYC", provider: "stripeConnect", pendingSinceDays: 3 },
+  {
+    nameSuffix: "Uber Direct KYC",
+    provider: "uberDirect",
+    pendingSinceDays: 5,
+  },
+];
+
+/**
+ * Seed 2 prospects whose KYC has been `pending_kyc` for > 48 h (3 d and 5 d
+ * respectively). `previewIncidents` reads these via `listProspects` and the
+ * pure `detectKycPendingIncidents` returns one Incident per (prospect, provider).
+ *
+ * Idempotent: re-run = patches the existing prospects (refreshes the timestamps
+ * so the incidents stay above threshold even if the clock has moved a lot since
+ * the previous seed run).
+ */
+export const seedE2EMonitoringIncidents = internalMutation({
+  args: {},
+  returns: v.object({
+    prospectsCreated: v.number(),
+    prospectsUpdated: v.number(),
+  }),
+  handler: async (ctx) => {
+    const now = Date.now();
+    let prospectsCreated = 0;
+    let prospectsUpdated = 0;
+
+    for (const spec of MO_SEED_SPECS) {
+      const name = `${E2E_MONITORING_PROSPECT_PREFIX}${spec.nameSuffix}`;
+      const pendingSince = now - spec.pendingSinceDays * DAY_MS;
+
+      const milestones =
+        spec.provider === "stripeConnect"
+          ? {
+              stripeConnect: {
+                current: "pending_kyc" as const,
+                history: [{ status: "pending_kyc" as const, at: pendingSince }],
+              },
+            }
+          : {
+              uberDirect: {
+                current: "pending_kyc" as const,
+                history: [{ status: "pending_kyc" as const, at: pendingSince }],
+              },
+            };
+
+      const existing = await ctx.db
+        .query("prospects")
+        .filter((q) => q.eq(q.field("name"), name))
+        .first();
+
+      if (existing === null) {
+        await ctx.db.insert("prospects", {
+          name,
+          phone: "+33600000000",
+          phase: "preparation",
+          source: "cold_call",
+          milestones,
+          createdAt: now,
+          updatedAt: now,
+        });
+        prospectsCreated += 1;
+      } else {
+        await ctx.db.patch(existing._id, {
+          milestones,
+          updatedAt: now,
+        });
+        prospectsUpdated += 1;
+      }
+    }
+
+    return { prospectsCreated, prospectsUpdated };
+  },
+});
+
+/**
+ * Wipe the E2E-MO monitoring seed. Filters by the sentinel name prefix
+ * (`[E2E Monitoring] *`) — guarantees we never touch a real prospect row.
+ */
+export const wipeE2EMonitoringIncidents = internalMutation({
+  args: {},
+  returns: v.object({ prospectsDeleted: v.number() }),
+  handler: async (ctx) => {
+    let prospectsDeleted = 0;
+    for (const spec of MO_SEED_SPECS) {
+      const name = `${E2E_MONITORING_PROSPECT_PREFIX}${spec.nameSuffix}`;
+      const existing = await ctx.db
+        .query("prospects")
+        .filter((q) => q.eq(q.field("name"), name))
+        .first();
+      if (existing !== null) {
+        await ctx.db.delete(existing._id);
+        prospectsDeleted += 1;
+      }
+    }
+    return { prospectsDeleted };
+  },
+});
