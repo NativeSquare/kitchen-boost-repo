@@ -1,8 +1,13 @@
 import { ConvexError, v } from "convex/values";
 import {
+  activateTenant,
+  getTenantById,
+  kbAdminMutation,
+  logAudit,
   tenantMutation,
   updateTenantSettings as updateTenantSettingsStore,
 } from "../tenancy";
+import { assertLegalTenantTransition } from "./tenantLifecycle";
 import {
   assertNonEmptyString,
   isValidHexColor,
@@ -128,5 +133,89 @@ export const updateSettings = tenantMutation({ allow: ["kb_manager"] })({
     // ── Persistence — delegate to the sanctioned store seam (deep-merge on
     //    branding lives there). Empty patch ⇒ store no-op. ───────────────────
     await updateTenantSettingsStore(ctx, ctx.tenantId, normalised);
+  },
+});
+
+/**
+ * B-TENANT-LIFECYCLE [4/4] — `tenant.activate` mutation (D6, PRD 70 §3.6 step 8),
+ * the backend brick that lets the KB Admin Wizard step 8 ("Activer") flip a
+ * freshly-provisioned tenant from `pending` to `active`, opening the PWA to
+ * customers.
+ *
+ * Wrapper: `kbAdminMutation({ action: "tenant.activate" })`. Activation is a
+ * KB-internal ops act, never delegated to a KB Manager — root-only (a
+ * `kb_manager` / `staff` / `customer` is refused Forbidden by the wrapper). The
+ * tenant id is passed as a regular handler arg (the kb_admin wrapper does NOT
+ * consume `tenantId`); the cross-tenant fuzz still verifies role enforcement.
+ *
+ * Transition guard: only `pending → active` is legal in V1. Defers to
+ * `assertLegalTenantTransition` from slice 2 — any other source status
+ * (`active`, `suspended`, `disabled`) throws `INVALID_STATE`. V2 will widen by
+ * editing the transitions map only (e.g. `pending → suspended`, `suspended →
+ * active`); the mutation needs no change.
+ *
+ * Idempotence: NON-IDEMPOTENT V1. Calling `activate` twice on an
+ * already-`active` tenant throws `INVALID_STATE` (consistent with the
+ * contracts lifecycle; the front checks status before calling). V2 can relax.
+ *
+ * Audit — DOUBLE LAYER (mirrors `provisionTenant` in
+ * `lib/onboarding/provisioning.ts`):
+ *  - the wrapper auto-logs the root mutation (every `kbAdminMutation` is
+ *    audited);
+ *  - the handler emits an EXPLICIT richer `logAudit` carrying
+ *    `metadata: { fromStatus: <previous status> }` — lifecycle transitions
+ *    deserve extra metadata for ops reconstruction.
+ *
+ * Persistence is delegated to the sanctioned `lib/tenancy/tenantsStore` seam
+ * (`getTenantById` + `activateTenant`) — no raw `ctx.db` in this business
+ * module (ADR 0010, `no-untenanted-query`).
+ *
+ * Error codes the frontend can branch on:
+ *  - `FORBIDDEN` / `UNAUTHENTICATED` (from the wrapper)
+ *  - `NOT_FOUND` (tenant id syntactically valid but no row)
+ *  - `INVALID_STATE` (source status is not `pending`)
+ *
+ * Convex registers this by module PATH, so callers invoke
+ * `api.lib.admin.tenantSettings.activate`. Re-exported from
+ * `lib/admin/index.ts` following the `updateSettings` / contracts /
+ * monitoring pattern.
+ */
+export const activate = kbAdminMutation({
+  args: { tenantId: v.id("tenants") },
+  action: "tenant.activate",
+  handler: async (ctx, args): Promise<void> => {
+    // 1. Read the current tenant via the sanctioned seam. A syntactically
+    //    valid but absent id maps to NOT_FOUND (the wrapper has no tenant
+    //    membership concept for root mutations).
+    const current = await getTenantById(ctx, args.tenantId);
+    if (current === null) {
+      throw new ConvexError({
+        code: "NOT_FOUND",
+        message: "Tenant not found.",
+      });
+    }
+
+    // 2. Defer to the pure state machine — only `pending → active` legal V1.
+    //    Any other source status (`active`, `suspended`, `disabled`) is
+    //    rejected with INVALID_STATE; covers both the illegal-source case
+    //    AND the V1 non-idempotence (active → active is illegal).
+    assertLegalTenantTransition(current.status, "active");
+
+    // 3. Flip the lifecycle via the sanctioned seam. The seam is intentionally
+    //    dumb (no guard there) so V2's new transitions can reuse it as-is.
+    await activateTenant(ctx, args.tenantId);
+
+    // 4. Explicit richer audit row on top of the wrapper's auto root-mutation
+    //    log — carries metadata.fromStatus for ops reconstruction (mirrors
+    //    provisionTenant's tenant.provision row).
+    await logAudit(ctx, {
+      actorUserId: ctx.actor.userId,
+      actorRole: ctx.actor.role,
+      action: "tenant.activate",
+      tenantId: args.tenantId,
+      targetType: "tenant",
+      targetId: args.tenantId,
+      metadata: { fromStatus: current.status },
+    });
   },
 });
