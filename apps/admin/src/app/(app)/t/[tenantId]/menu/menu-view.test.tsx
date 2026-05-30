@@ -1,0 +1,289 @@
+/**
+ * F-MENU-01 (#187) — `MenuView`, pure presentational shell of the menu page
+ * (read-only categories list, slice 1 of EPIC F-MENU #149).
+ *
+ * Owns the three branches the page can be in:
+ *   - `categories === undefined` → loading skeletons (no blank flash, no shell
+ *     swap when the data lands).
+ *   - `categories.length === 0`  → empty state (« Aucune catégorie… »).
+ *   - else                       → vertical list of categories, ordered by
+ *     `order` field, FLAT (no sub-categories V1, ADR 0010 / PRD 10 §5).
+ *
+ * Header (always rendered, regardless of branch):
+ *   - title « Menu »
+ *   - INACTIVE placeholders « Aperçu » / « Publier » + badge
+ *     « modifications non publiées » (câblés à F-MENU-10, #254 — not this
+ *     story). The buttons MUST be `disabled` so a manager can't trigger a
+ *     publish before the publication wiring lands.
+ *
+ * Split out of `page.tsx` (which owns `useTenantQuery`) so vitest can pin
+ * every branch under `environment: "node"` — same React-tree-serializer
+ * pattern as `mes-clients-view.test.tsx` and `empty-state.test.tsx`. The
+ * page hands `categories` in as a prop; the view is a pure function of its
+ * props.
+ *
+ * Acceptance criteria covered (#187):
+ *   - AC1 « Route accessible sous layout (app) » — pinned by `page.test.ts`.
+ *   - AC2 « `useTenantQuery(api.lib.menu.categories.list)` câblé ; loading +
+ *     empty state propres » → loading + empty branches pinned here, wiring
+ *     pinned by `page.test.ts`.
+ *   - AC3 « Catégories affichées en liste verticale à plat (pas de sous-cat
+ *     V1), ordonnées par `order` » → assert the rendered names appear in
+ *     ascending `order`, in a flat list (no `<ul>/<ol>` nesting deeper than
+ *     1, no recursive children prop).
+ *   - AC4 « Header avec titre et placeholders inactifs « Aperçu » /
+ *     « Publier » / badge » → assert the three labels surface AND the
+ *     buttons are `disabled`.
+ */
+import { describe, expect, it } from "vitest";
+import type { ReactElement, ReactNode } from "react";
+
+import type { Doc } from "@packages/backend/convex/_generated/dataModel";
+
+import { MenuView } from "./menu-view";
+
+// ---------------------------------------------------------------------------
+// Tiny React-tree serializer — same shape as mes-clients-view.test.tsx,
+// trimmed to what we need here.
+// ---------------------------------------------------------------------------
+type SerializedNode =
+  | { type: string; props: Record<string, unknown>; children: SerializedNode[] }
+  | { text: string }
+  | null;
+
+function isReactElement(node: unknown): node is ReactElement {
+  return (
+    typeof node === "object" &&
+    node !== null &&
+    "type" in node &&
+    "props" in node
+  );
+}
+
+function typeName(t: unknown): string {
+  if (typeof t === "string") return t;
+  if (typeof t === "function") {
+    return (
+      (t as { displayName?: string; name?: string }).displayName ??
+      (t as { name?: string }).name ??
+      "Anonymous"
+    );
+  }
+  return String(t);
+}
+
+function serialize(node: ReactNode): SerializedNode {
+  if (node === null || node === undefined || node === false || node === true) {
+    return null;
+  }
+  if (typeof node === "string" || typeof node === "number") {
+    return { text: String(node) };
+  }
+  if (Array.isArray(node)) {
+    return {
+      type: "ArrayFragment",
+      props: {},
+      children: node
+        .map((c) => serialize(c))
+        .filter((c): c is SerializedNode => c !== null),
+    };
+  }
+  if (isReactElement(node)) {
+    if (typeof node.type === "function") {
+      const fn = node.type as (p: unknown) => ReactNode;
+      try {
+        return serialize(fn(node.props));
+      } catch {
+        return { type: typeName(node.type), props: {}, children: [] };
+      }
+    }
+    const props = { ...(node.props as Record<string, unknown>) };
+    const rawChildren = props.children as ReactNode | undefined;
+    delete props.children;
+    const children: SerializedNode[] = [];
+    if (rawChildren !== undefined) {
+      const list = Array.isArray(rawChildren) ? rawChildren : [rawChildren];
+      for (const c of list) {
+        const s = serialize(c);
+        if (s !== null) children.push(s);
+      }
+    }
+    return { type: typeName(node.type), props, children };
+  }
+  return null;
+}
+
+function flatten(n: SerializedNode): SerializedNode[] {
+  if (n === null) return [];
+  if ("text" in n) return [n];
+  return [n, ...n.children.flatMap(flatten)];
+}
+
+function allText(n: SerializedNode): string {
+  return flatten(n)
+    .map((x) => (x && "text" in x ? x.text : null))
+    .filter((x): x is string => x !== null)
+    .join(" ");
+}
+
+function allClasses(n: SerializedNode): string {
+  return flatten(n)
+    .map((x) => {
+      if (x === null || "text" in x) return null;
+      const cls = x.props["className"];
+      return typeof cls === "string" ? cls : null;
+    })
+    .filter((c): c is string => c !== null)
+    .join(" ");
+}
+
+// ---------------------------------------------------------------------------
+// Test fixtures — categories returned by `api.lib.menu.categories.list`.
+// The backend already returns them sorted by `order` (see the categories
+// store via `listTenantCategories`); we still test the view's INDEPENDENT
+// resort so a backend regression that ships them out of order doesn't break
+// the visible list (defensive — but cheap).
+// ---------------------------------------------------------------------------
+type Category = Doc<"menuCategories">;
+
+function makeCategory(
+  partial: Partial<Category> & { name: string; order: number },
+): Category {
+  return {
+    _id: `cat_${partial.name}` as Category["_id"],
+    _creationTime: 0,
+    tenantId: "tenant_test" as Category["tenantId"],
+    name: partial.name,
+    order: partial.order,
+    createdAt: 0,
+  };
+}
+
+const UNORDERED_CATEGORIES: Category[] = [
+  makeCategory({ name: "Desserts", order: 2 }),
+  makeCategory({ name: "Entrées", order: 0 }),
+  makeCategory({ name: "Plats", order: 1 }),
+];
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+describe("MenuView — F-MENU-01 (#187)", () => {
+  it("AC4 — surfaces the page title « Menu » on every branch", () => {
+    for (const props of [
+      { categories: undefined as Category[] | undefined },
+      { categories: [] },
+      { categories: UNORDERED_CATEGORIES },
+    ]) {
+      const text = allText(serialize(MenuView(props)));
+      expect(text).toMatch(/\bMenu\b/);
+    }
+  });
+
+  it("AC4 — header surfaces the three placeholder labels « Aperçu » / « Publier » / « modifications non publiées »", () => {
+    const text = allText(
+      serialize(MenuView({ categories: UNORDERED_CATEGORIES })),
+    );
+    expect(text).toMatch(/Aperçu/);
+    expect(text).toMatch(/Publier/);
+    expect(text).toMatch(/modifications non publi[ée]es/i);
+  });
+
+  it("AC4 — « Aperçu » and « Publier » buttons are DISABLED (F-MENU-10 will activate them, #254)", () => {
+    // The buttons are placeholders for slice 10 of the epic. If a future
+    // refactor enables them by accident, a manager could trigger a publish
+    // before `publishMenu` is even wired through `useTenantMutation` —
+    // we'd rather fail loudly here than ship a misleading affordance.
+    const tree = serialize(MenuView({ categories: UNORDERED_CATEGORIES }));
+    const buttons = flatten(tree).filter(
+      (n) => n !== null && "type" in n && n.type === "button",
+    );
+    expect(buttons.length).toBeGreaterThanOrEqual(2);
+    for (const b of buttons) {
+      if (b === null || "text" in b) continue;
+      expect(b.props["disabled"]).toBe(true);
+    }
+  });
+
+  it("AC3 — flat list (no nested categories, no sub-cats V1)", () => {
+    // ADR 0010 / PRD 10 §5: V1 menu has NO hierarchy. The rendered structure
+    // MUST be a single flat list — assert there's at most one <ul>/<ol> in
+    // the body branch, and that none of its descendants are themselves a
+    // list (would betray a sub-cat).
+    const tree = serialize(MenuView({ categories: UNORDERED_CATEGORIES }));
+    const types = flatten(tree)
+      .map((n) => (n && "type" in n ? n.type.toLowerCase() : null))
+      .filter((t): t is string => t !== null);
+    const listsCount = types.filter((t) => t === "ul" || t === "ol").length;
+    // 0 (uses divs) or 1 (one flat list) are both acceptable; 2+ means
+    // we accidentally rendered a sub-list.
+    expect(listsCount).toBeLessThanOrEqual(1);
+  });
+
+  it("AC3 — renders the categories sorted by `order` (independent of input array order)", () => {
+    // Input is Desserts(2), Entrées(0), Plats(1) — expected visible order:
+    // Entrées, Plats, Desserts.
+    const text = allText(
+      serialize(MenuView({ categories: UNORDERED_CATEGORIES })),
+    );
+    const entreesIdx = text.indexOf("Entrées");
+    const platsIdx = text.indexOf("Plats");
+    const dessertsIdx = text.indexOf("Desserts");
+    expect(entreesIdx).toBeGreaterThanOrEqual(0);
+    expect(platsIdx).toBeGreaterThan(entreesIdx);
+    expect(dessertsIdx).toBeGreaterThan(platsIdx);
+  });
+
+  it("AC2 — loading branch (categories === undefined) renders skeletons, NOT the empty state, NOT a crash", () => {
+    const tree = serialize(MenuView({ categories: undefined }));
+    expect(tree).not.toBeNull();
+    const text = allText(tree);
+    // Empty state copy must NOT show during loading.
+    expect(text).not.toMatch(/aucune cat[ée]gorie/i);
+    // The skeleton primitive (`Skeleton` from shadcn) renders with the
+    // `animate-pulse` className — pinned via that marker.
+    const classes = allClasses(tree);
+    expect(classes).toMatch(/animate-pulse/);
+  });
+
+  it("AC2 — loading branch keeps the page title and the header buttons mounted (no blank flash)", () => {
+    const text = allText(serialize(MenuView({ categories: undefined })));
+    expect(text).toMatch(/\bMenu\b/);
+    expect(text).toMatch(/Aperçu/);
+    expect(text).toMatch(/Publier/);
+  });
+
+  it("AC2 — empty branch (categories === []) renders an explicit empty state, NOT skeletons", () => {
+    const tree = serialize(MenuView({ categories: [] }));
+    const text = allText(tree);
+    // Empty state copy (load-bearing words; exact polish stays free).
+    expect(text).toMatch(/aucune cat[ée]gorie/i);
+    // Skeletons MUST NOT show on the empty branch (would betray a stuck
+    // loading state).
+    const classes = allClasses(tree);
+    expect(classes).not.toMatch(/animate-pulse/);
+  });
+
+  it("AC4 — empty branch keeps the page title + header buttons (the empty state replaces only the body)", () => {
+    const text = allText(serialize(MenuView({ categories: [] })));
+    expect(text).toMatch(/\bMenu\b/);
+    expect(text).toMatch(/Aperçu/);
+    expect(text).toMatch(/Publier/);
+  });
+
+  it("AC3 — renders one category per row (count matches input length)", () => {
+    // Pin the row count, so a future refactor that flattens children into
+    // a single string (or duplicates them) fails. The rows are pinned by
+    // a `data-slot="menu-category-row"` marker on each row (load-bearing).
+    const tree = serialize(MenuView({ categories: UNORDERED_CATEGORIES }));
+    const rowSlots = flatten(tree)
+      .map((n) => {
+        if (n === null || "text" in n) return null;
+        const ds = n.props["data-slot"];
+        return typeof ds === "string" ? ds : null;
+      })
+      .filter((s): s is string => s !== null)
+      .filter((s) => s === "menu-category-row");
+    expect(rowSlots).toHaveLength(UNORDERED_CATEGORIES.length);
+  });
+});
