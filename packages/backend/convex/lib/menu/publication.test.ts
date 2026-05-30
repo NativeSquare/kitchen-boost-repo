@@ -215,6 +215,7 @@ describe("B-MENU-PUBLICATION slice 2 — publishMenu (ADR 0015 + 0010)", () => {
       description: "renamed",
       basePrice: 600,
       allergens: ["gluten"],
+      available: true,
     });
     // Re-publish — overwrites the prior snapshot.
     await asManager.mutation(api.lib.menu.publication.publishMenu, {

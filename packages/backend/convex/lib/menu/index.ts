@@ -65,6 +65,17 @@
  *    toggled off before the day's opening comes back the SAME day. Tested in
  *    isolation. The reactivation helpers are plain functions (NOT registered
  *    Convex functions) — re-exported here for the cron.
+ *
+ * B-MENU-PUBLICATION slice 2 — atomic snapshot build for the [[Instantané publié]]
+ * (ADR 0015 « édition brouillon → publication globale atomique »):
+ *  - `publication.publishMenu` — `tenantMutation({ allow: ["kb_manager"] })`
+ *    (kb_admin via root override) that walks the draft via the sanctioned
+ *    `menuStore` seam, projects it to `PublishedMenuPayload` (categories ordered,
+ *    items minus `available`, modifier groups resolved with min/max + options),
+ *    and calls `writePublishedMenu` once — the seam atomic-replaces the previous
+ *    snapshot in the same Convex tx. Republication = écrasement atomique (no
+ *    versioning V1, ADR 0015). `available` stays a LIVE overlay, NOT snapshotted
+ *    (the rupture 1-tap from the KDS never triggers a republication).
  */
 export * as availability from "./availability";
 export * as catalog from "./catalog";
@@ -72,4 +83,5 @@ export * as categories from "./categories";
 export * as items from "./items";
 export * as modifiers from "./modifiers";
 export * as photos from "./photos";
+export * as publication from "./publication";
 export * as serviceHours from "./serviceHours";
