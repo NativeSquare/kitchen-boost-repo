@@ -167,8 +167,18 @@ describe("useTenantQuery — auto-inject tenantId", () => {
 describe("useTenantQuery — type contract", () => {
   it("hides `tenantId` from the public args signature", () => {
     // The hook accepts the query's args MINUS `tenantId` (or `"skip"`).
+    // The `args` tuple slot is REQUIRED when the public args have any keys
+    // (mirrors Convex's `OptionalRestArgs` ergonomics) — pin the exact shape.
     expectTypeOf(useTenantQuery<typeof fakeQuery>).parameters.toEqualTypeOf<
-      [typeof fakeQuery, ({ foo: number } | "skip")?]
+      [typeof fakeQuery, { foo: number } | "skip"]
+    >();
+  });
+
+  it("zero-arg query: the args slot is optional", () => {
+    expectTypeOf(
+      useTenantQuery<typeof fakeZeroArgQuery>,
+    ).parameters.toEqualTypeOf<
+      [typeof fakeZeroArgQuery, ({} | "skip")?] // eslint-disable-line @typescript-eslint/no-empty-object-type
     >();
   });
 

@@ -4,11 +4,11 @@
  * `/t/[tenantId]/...` surface gets its `tenantId` injected from the
  * `TenantContext`, so screens cannot "forget" it.
  *
- * Crucial difference with `useTenantQuery`: the merge happens at CALL TIME,
- * not at hook-instantiation time. The user receives a function `(args) =>
- * Promise<R>` and each call re-reads the current tenantId out of context.
- * That's what lets the same hook keep working across tenant switches without
- * stale-closure bugs.
+ * Difference with `useTenantQuery`: the hook returns a callable `(args) =>
+ * Promise<R>`. The `tenantId` is read once per render (React rules of hooks
+ * force `useContext` at the top); a tenant switch is reflected because
+ * `<TenantProvider/>` re-renders and the hook re-instantiates with the new
+ * value, so the returned trigger always closes over the latest `tenantId`.
  *
  * Why this test mocks `convex/react` and `tenant-context`:
  *   - Node-env vitest, no jsdom — same setup as `use-tenant-query.test.ts`.
@@ -129,12 +129,20 @@ describe("useTenantMutation — auto-inject tenantId at call time", () => {
     expect(mutationCalls[0].args).toEqual({ tenantId: TENANT_FROM_CTX });
   });
 
-  it("each invocation re-reads tenantId from context (no stale-closure across tenant switches)", async () => {
-    const trigger = useTenantMutation(fakeMutation);
-    await trigger({ name: "first" });
+  it("re-instantiating the hook on a new render picks up the new tenantId (no stale closure on tenant switch)", async () => {
+    // React's rules of hooks force the context read at the top of the hook,
+    // so the per-call re-read happens via React re-rendering with the new
+    // TenantContext value (TenantSwitcher → router.replace → TenantProvider
+    // updates → useTenantMutation re-runs → new trigger). We simulate that by
+    // calling the hook a second time with the new context value.
+    const trigger1 = useTenantMutation(fakeMutation);
+    await trigger1({ name: "first" });
+
     const OTHER_TENANT = "tenants_other" as unknown as Id<"tenants">;
     nextTenantIdOverride = OTHER_TENANT;
-    await trigger({ name: "second" });
+    const trigger2 = useTenantMutation(fakeMutation);
+    await trigger2({ name: "second" });
+
     expect(mutationCalls).toHaveLength(2);
     expect(mutationCalls[0].args).toMatchObject({ tenantId: TENANT_FROM_CTX });
     expect(mutationCalls[1].args).toMatchObject({ tenantId: OTHER_TENANT });
@@ -151,16 +159,15 @@ describe("useTenantMutation — auto-inject tenantId at call time", () => {
     await expect(trigger({ name: "x" })).resolves.toEqual(fakeReturn);
   });
 
-  it("throws the explicit /t/[tenantId] message when called outside <TenantProvider/>", async () => {
-    // The throw happens lazily on the trigger() call (the hook itself just
-    // returns a callable; the lookup is on each invocation). This matches the
-    // useTenantQuery contract (read-on-use) and avoids a render-time crash
-    // that would prevent the surface from ever mounting an error boundary.
-    const trigger = useTenantMutation(fakeMutation);
+  it("throws the explicit /t/[tenantId] message when instantiated outside <TenantProvider/>", () => {
+    // The throw is raised by `useCurrentTenantId()` at the top of the hook
+    // (rules of hooks: useContext must run at render time). The error matches
+    // the message established by F-SHELL-04 (#175) — a developer who renders
+    // a tenant surface without the layout sees the same string everywhere.
     throwOnUseCurrentTenantId = new Error(
       "useCurrentTenantId() called outside a /t/[tenantId]/... layout.",
     );
-    await expect(trigger({ name: "x" })).rejects.toThrowError(
+    expect(() => useTenantMutation(fakeMutation)).toThrowError(
       /\/t\/\[tenantId\]/,
     );
   });
