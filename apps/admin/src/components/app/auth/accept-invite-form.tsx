@@ -10,6 +10,12 @@ import {
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
+import {
+  InputOTP,
+  InputOTPGroup,
+  InputOTPSeparator,
+  InputOTPSlot,
+} from "@/components/ui/input-otp";
 import { PasswordInput } from "@/components/custom/password-input";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -22,7 +28,26 @@ import * as React from "react";
 import { getConvexErrorMessage } from "@/utils/getConvexErrorMessage";
 import { Spinner } from "@/components/ui/spinner";
 
-const formSchema = z
+/**
+ * Accept-invite flow for the `apps/admin` shell.
+ *
+ * Two-step UX because Convex Auth's Password provider in this project is
+ * configured with `verify: ResendOTP` ([packages/backend/convex/auth.ts]):
+ *
+ *   1. `flow: "signUp"` creates the user + authAccount + emits an OTP via
+ *      Resend (logged to the Convex terminal when `IS_DEV=true`). The user is
+ *      NOT yet authenticated at this point.
+ *   2. The user enters the 6-digit OTP. `flow: "email-verification"` verifies
+ *      it AND authenticates the session. Only THEN can we call `acceptInvite`
+ *      (it requires an authenticated caller — see
+ *      `packages/backend/convex/table/admin.ts:354`).
+ *
+ * The original scaffold called `acceptInvite` immediately after `signUp` and
+ * crashed with "Not authenticated. Please sign up first." This component fixes
+ * that by walking the user through the OTP step before invoking acceptInvite.
+ */
+
+const passwordSchema = z
   .object({
     password: z.string().min(8, "Password must be at least 8 characters"),
     confirmPassword: z.string().min(1, "Please confirm your password"),
@@ -31,6 +56,8 @@ const formSchema = z
     message: "Passwords don't match",
     path: ["confirmPassword"],
   });
+
+type Phase = "password" | "otp" | "finalising";
 
 export function AcceptInviteForm({
   className,
@@ -48,36 +75,38 @@ export function AcceptInviteForm({
     token ? { token } : "skip",
   );
 
+  const [phase, setPhase] = React.useState<Phase>("password");
+  const [otp, setOtp] = React.useState("");
   const [formError, setFormError] = React.useState<string | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
 
-  const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
+  const form = useForm<z.infer<typeof passwordSchema>>({
+    resolver: zodResolver(passwordSchema),
     defaultValues: {
       password: "",
       confirmPassword: "",
     },
   });
 
-  async function onSubmit(data: z.infer<typeof formSchema>) {
+  // -------------------------------------------------------------------------
+  // Step 1: submit password → signUp → OTP emitted to email
+  // -------------------------------------------------------------------------
+  async function onPasswordSubmit(data: z.infer<typeof passwordSchema>) {
     if (!invite?.invite) return;
 
     setIsLoading(true);
     setFormError(null);
 
     try {
-      // Sign up with the email from the invite
       await signIn("password", {
         email: invite.invite.email,
         password: data.password,
         flow: "signUp",
       });
-
-      // Accept the invite (sets role to admin)
-      await acceptInvite({ token });
-
-      // Redirect to the app home (which routes by role).
-      router.replace("/");
+      // signUp succeeded: account + verification code created. The session
+      // is NOT yet authenticated — we must verify the OTP first. Move to
+      // step 2.
+      setPhase("otp");
     } catch (error) {
       setFormError(getConvexErrorMessage(error));
     } finally {
@@ -85,7 +114,59 @@ export function AcceptInviteForm({
     }
   }
 
-  // Show loading while fetching invite
+  // -------------------------------------------------------------------------
+  // Step 2: submit OTP → email-verification → acceptInvite → redirect
+  // -------------------------------------------------------------------------
+  async function onOtpSubmit(submittedCode?: string) {
+    if (!invite?.invite) return;
+    const value = submittedCode ?? otp;
+    setFormError(null);
+
+    if (value.length !== 6) {
+      setFormError("Please enter the complete 6-digit code");
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      // Verify the OTP. On success, Convex Auth marks the email verified AND
+      // authenticates the session.
+      await signIn("password", {
+        email: invite.invite.email,
+        code: value,
+        flow: "email-verification",
+      });
+
+      // Now we're authenticated, the role-setting mutation can run.
+      setPhase("finalising");
+      await acceptInvite({ token });
+
+      // Redirect to the app home (which routes by role via app/page.tsx).
+      router.replace("/");
+    } catch (error) {
+      setFormError(getConvexErrorMessage(error));
+      setIsLoading(false);
+      // Stay on phase "otp" so the user can retry the code; "finalising" only
+      // happens past the verify, so a setPhase(otp) revert isn't needed.
+    }
+  }
+
+  function handleOtpChange(value: string) {
+    setOtp(value);
+    // Auto-submit when all 6 digits are entered, mirroring OTPForm UX.
+    if (value.length === 6) {
+      onOtpSubmit(value);
+    }
+  }
+
+  function handleOtpFormSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    onOtpSubmit();
+  }
+
+  // -------------------------------------------------------------------------
+  // Loading / invalid invite branches
+  // -------------------------------------------------------------------------
   if (invite === undefined) {
     return (
       <div className="flex h-64 items-center justify-center">
@@ -94,7 +175,6 @@ export function AcceptInviteForm({
     );
   }
 
-  // Show error if invite is invalid
   if (!invite) {
     return (
       <div className={cn("flex flex-col gap-6", className)} {...props}>
@@ -118,92 +198,183 @@ export function AcceptInviteForm({
     );
   }
 
+  // -------------------------------------------------------------------------
+  // Step 1 UI: password
+  // -------------------------------------------------------------------------
+  if (phase === "password") {
+    return (
+      <div className={cn("flex flex-col gap-6", className)} {...props}>
+        <Card className="overflow-hidden p-0">
+          <CardContent className="p-6 md:p-8">
+            <form
+              id="form-accept-invite-password"
+              onSubmit={form.handleSubmit(onPasswordSubmit)}
+            >
+              <FieldGroup>
+                <div className="flex flex-col items-center gap-2 text-center">
+                  <h1 className="text-2xl font-bold">
+                    Welcome, {invite.invite.name}!
+                  </h1>
+                  <p className="text-muted-foreground text-balance">
+                    You&apos;ve been invited to join the admin team
+                    {invite.inviterName && ` by ${invite.inviterName}`}.
+                  </p>
+                </div>
+
+                {formError && (
+                  <div className="text-destructive self-center text-sm">
+                    {formError}
+                  </div>
+                )}
+
+                <Field>
+                  <FieldLabel>Email</FieldLabel>
+                  <div className="text-muted-foreground text-sm">
+                    {invite.invite.email}
+                  </div>
+                </Field>
+
+                <Controller
+                  name="password"
+                  control={form.control}
+                  render={({ field, fieldState }) => (
+                    <Field data-invalid={fieldState.invalid}>
+                      <FieldLabel htmlFor="password">Password</FieldLabel>
+                      <PasswordInput
+                        {...field}
+                        id="password"
+                        aria-invalid={fieldState.invalid}
+                        placeholder="Create a password"
+                        required
+                      />
+                      {fieldState.invalid && (
+                        <FieldError errors={[fieldState.error]} />
+                      )}
+                    </Field>
+                  )}
+                />
+
+                <Controller
+                  name="confirmPassword"
+                  control={form.control}
+                  render={({ field, fieldState }) => (
+                    <Field data-invalid={fieldState.invalid}>
+                      <FieldLabel htmlFor="confirmPassword">
+                        Confirm Password
+                      </FieldLabel>
+                      <PasswordInput
+                        {...field}
+                        id="confirmPassword"
+                        aria-invalid={fieldState.invalid}
+                        placeholder="Confirm your password"
+                        required
+                      />
+                      {fieldState.invalid && (
+                        <FieldError errors={[fieldState.error]} />
+                      )}
+                    </Field>
+                  )}
+                />
+
+                <Field>
+                  <Button
+                    type="submit"
+                    form="form-accept-invite-password"
+                    disabled={isLoading}
+                  >
+                    {isLoading ? <Spinner /> : "Continue"}
+                  </Button>
+                </Field>
+
+                <FieldDescription className="text-center">
+                  By creating an account, you agree to our{" "}
+                  <a href="#">Terms of Service</a> and{" "}
+                  <a href="#">Privacy Policy</a>.
+                </FieldDescription>
+              </FieldGroup>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // Step 2 UI: OTP (and "finalising" message while acceptInvite runs)
+  // -------------------------------------------------------------------------
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
       <Card className="overflow-hidden p-0">
         <CardContent className="p-6 md:p-8">
-          <form id="form-accept-invite" onSubmit={form.handleSubmit(onSubmit)}>
+          <form
+            id="form-accept-invite-otp"
+            onSubmit={handleOtpFormSubmit}
+            className="flex flex-col items-center"
+          >
             <FieldGroup>
-              <div className="flex flex-col items-center gap-2 text-center">
-                <h1 className="text-2xl font-bold">
-                  Welcome, {invite.invite.name}!
-                </h1>
-                <p className="text-muted-foreground text-balance">
-                  You&apos;ve been invited to join the admin team
-                  {invite.inviterName && ` by ${invite.inviterName}`}.
+              <Field className="items-center text-center">
+                <h1 className="text-2xl font-bold">Enter verification code</h1>
+                <p className="text-muted-foreground text-sm text-balance">
+                  We sent a 6-digit code to {invite.invite.email}
                 </p>
-              </div>
+              </Field>
 
               {formError && (
-                <div className="text-destructive self-center text-sm">
+                <div className="text-destructive self-center text-center text-sm">
                   {formError}
                 </div>
               )}
 
-              <Field>
-                <FieldLabel>Email</FieldLabel>
-                <div className="text-muted-foreground text-sm">
-                  {invite.invite.email}
-                </div>
-              </Field>
+              {phase === "finalising" ? (
+                <Field className="items-center text-center">
+                  <Spinner className="h-8 w-8" />
+                  <p className="text-muted-foreground text-sm">
+                    Finalising your account…
+                  </p>
+                </Field>
+              ) : (
+                <Field>
+                  <FieldLabel htmlFor="otp" className="sr-only">
+                    Verification code
+                  </FieldLabel>
+                  <InputOTP
+                    maxLength={6}
+                    id="otp"
+                    value={otp}
+                    onChange={handleOtpChange}
+                    required
+                    containerClassName="gap-4"
+                    disabled={isLoading}
+                  >
+                    <InputOTPGroup>
+                      <InputOTPSlot index={0} />
+                      <InputOTPSlot index={1} />
+                      <InputOTPSlot index={2} />
+                    </InputOTPGroup>
+                    <InputOTPSeparator />
+                    <InputOTPGroup>
+                      <InputOTPSlot index={3} />
+                      <InputOTPSlot index={4} />
+                      <InputOTPSlot index={5} />
+                    </InputOTPGroup>
+                  </InputOTP>
+                  <FieldDescription className="text-center">
+                    Enter the 6-digit code sent to your email.
+                  </FieldDescription>
+                </Field>
+              )}
 
-              <Controller
-                name="password"
-                control={form.control}
-                render={({ field, fieldState }) => (
-                  <Field data-invalid={fieldState.invalid}>
-                    <FieldLabel htmlFor="password">Password</FieldLabel>
-                    <PasswordInput
-                      {...field}
-                      id="password"
-                      aria-invalid={fieldState.invalid}
-                      placeholder="Create a password"
-                      required
-                    />
-                    {fieldState.invalid && (
-                      <FieldError errors={[fieldState.error]} />
-                    )}
-                  </Field>
-                )}
-              />
-
-              <Controller
-                name="confirmPassword"
-                control={form.control}
-                render={({ field, fieldState }) => (
-                  <Field data-invalid={fieldState.invalid}>
-                    <FieldLabel htmlFor="confirmPassword">
-                      Confirm Password
-                    </FieldLabel>
-                    <PasswordInput
-                      {...field}
-                      id="confirmPassword"
-                      aria-invalid={fieldState.invalid}
-                      placeholder="Confirm your password"
-                      required
-                    />
-                    {fieldState.invalid && (
-                      <FieldError errors={[fieldState.error]} />
-                    )}
-                  </Field>
-                )}
-              />
-
-              <Field>
-                <Button
-                  type="submit"
-                  form="form-accept-invite"
-                  disabled={isLoading}
-                >
-                  {isLoading ? <Spinner /> : "Create Account"}
-                </Button>
-              </Field>
-
-              <FieldDescription className="text-center">
-                By creating an account, you agree to our{" "}
-                <a href="#">Terms of Service</a> and{" "}
-                <a href="#">Privacy Policy</a>.
-              </FieldDescription>
+              {phase !== "finalising" && (
+                <Field className="gap-2">
+                  <Button
+                    type="submit"
+                    form="form-accept-invite-otp"
+                    disabled={isLoading}
+                  >
+                    {isLoading ? <Spinner /> : "Verify & accept invite"}
+                  </Button>
+                </Field>
+              )}
             </FieldGroup>
           </form>
         </CardContent>

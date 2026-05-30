@@ -494,18 +494,69 @@ export const inspectE2EState = internalQuery({
 // -----------------------------------------------------------------------------
 
 /**
- * Reset E2E state. Cleans up everything that `bootstrapE2EInvites` +
- * `seedE2EAuthAccounts` created:
- *   - roles dropped to "customer" on the 3 emails
- *   - userTenants links of the 3 emails removed
- *   - test tenants (`test-t1`, `test-t2`) deleted (+ any lingering links to them)
- *   - adminInvites rows for the 3 emails deleted
- *   - the system seed user (`__e2e_seed_system__@kb.test`) deleted
+ * Fully wipe one user from all Convex Auth tables. Mirrors the public
+ * `deleteAccount` mutation in `convex/table/users.ts` but covers ALL the
+ * tables defined by Convex Auth (sessions, refresh tokens, verification codes,
+ * accounts) so a half-completed signUp doesn't leave a fantom `authAccount`
+ * blocking a retry with "Account already exists".
  *
- * The 3 main user rows + their authAccounts are LEFT ALONE — Convex Auth manages
- * those and removing them safely requires its own flow. To re-test from
- * scratch, change the email addresses or manually delete via the Convex
- * dashboard.
+ * Order matters: refresh tokens reference sessions, verification codes
+ * reference accounts. Sessions and accounts then reference the user row.
+ *
+ * Tables: cf. `node_modules/@convex-dev/auth/src/server/implementation/types.ts`.
+ */
+async function wipeUserCompletely(
+  ctx: MutationCtx,
+  userId: Id<"users">,
+): Promise<void> {
+  // 1. authSessions for this user, and the authRefreshTokens that point to
+  //    each session (indexed by sessionId).
+  const sessions = await ctx.db
+    .query("authSessions")
+    .withIndex("userId", (q) => q.eq("userId", userId))
+    .collect();
+  for (const session of sessions) {
+    const refreshTokens = await ctx.db
+      .query("authRefreshTokens")
+      .withIndex("sessionId", (q) => q.eq("sessionId", session._id))
+      .collect();
+    for (const rt of refreshTokens) await ctx.db.delete(rt._id);
+    await ctx.db.delete(session._id);
+  }
+
+  // 2. authAccounts for this user, and the authVerificationCodes pointing to
+  //    each account (indexed by accountId).
+  const accounts = await ctx.db
+    .query("authAccounts")
+    .withIndex("userIdAndProvider", (q) => q.eq("userId", userId))
+    .collect();
+  for (const account of accounts) {
+    const codes = await ctx.db
+      .query("authVerificationCodes")
+      .withIndex("accountId", (q) => q.eq("accountId", account._id))
+      .collect();
+    for (const c of codes) await ctx.db.delete(c._id);
+    await ctx.db.delete(account._id);
+  }
+
+  // 3. Finally the user row itself.
+  await ctx.db.delete(userId);
+}
+
+/**
+ * Full reset of E2E state. Cleans up everything bootstrap + seed touch, AND
+ * the underlying Convex Auth rows (sessions / refresh tokens / verification
+ * codes / accounts) for the 3 emails so you can retry a fresh signUp without
+ * tripping on "Account already exists" from a half-completed previous run.
+ *
+ * What gets wiped:
+ *   - 3 main user rows + all their authSessions / authRefreshTokens /
+ *     authVerificationCodes / authAccounts (full Convex Auth wipe)
+ *   - test tenants (`test-t1`, `test-t2`) + any lingering userTenants links to them
+ *   - adminInvites rows for the 3 emails
+ *   - the system seed user (`__e2e_seed_system__@kb.test`)
+ *
+ * Idempotent: re-running on already-clean state is a no-op (zero counters).
  */
 export const wipeE2EAuthAccounts = internalMutation({
   args: {
@@ -514,13 +565,15 @@ export const wipeE2EAuthAccounts = internalMutation({
     customerEmail: v.string(),
   },
   returns: v.object({
-    wipedAttachments: v.number(),
+    fullyWipedUsers: v.number(),
     deletedTestTenants: v.number(),
     deletedInvites: v.number(),
     deletedSeedUsers: v.number(),
   }),
   handler: async (ctx, args) => {
-    let wipedAttachments = 0;
+    // 1. Full Convex Auth wipe of the 3 main users (sessions, refresh
+    //    tokens, verification codes, accounts, then the user row).
+    let fullyWipedUsers = 0;
     for (const email of [
       args.adminEmail,
       args.managerEmail,
@@ -531,10 +584,14 @@ export const wipeE2EAuthAccounts = internalMutation({
         .withIndex("email", (q) => q.eq("email", email))
         .first();
       if (user === null) continue;
-      await ctx.db.patch(user._id, { role: "customer" });
-      wipedAttachments += await wipeUserAttachments(ctx, user._id);
+      // Clean userTenants attachments before deleting the user (FK hygiene).
+      await wipeUserAttachments(ctx, user._id);
+      await wipeUserCompletely(ctx, user._id);
+      fullyWipedUsers += 1;
     }
 
+    // 2. Test tenants + any lingering userTenants links to them (in case a
+    //    link survived a partial earlier wipe).
     let deletedTestTenants = 0;
     for (const slug of ["test-t1", "test-t2"]) {
       const tenant = await ctx.db
@@ -542,7 +599,6 @@ export const wipeE2EAuthAccounts = internalMutation({
         .withIndex("by_slug", (q) => q.eq("slug", slug))
         .unique();
       if (tenant === null) continue;
-      // Safety: also clean any lingering userTenants links to this tenant.
       const links = await ctx.db
         .query("userTenants")
         .withIndex("by_tenant", (q) => q.eq("tenantId", tenant._id))
@@ -552,6 +608,7 @@ export const wipeE2EAuthAccounts = internalMutation({
       deletedTestTenants += 1;
     }
 
+    // 3. adminInvites rows for these emails.
     let deletedInvites = 0;
     for (const email of [
       args.adminEmail,
@@ -568,6 +625,8 @@ export const wipeE2EAuthAccounts = internalMutation({
       }
     }
 
+    // 4. The system seed user — purely a referent for `invitedBy`, no auth
+    //    rows to clean.
     let deletedSeedUsers = 0;
     const seedUser = await ctx.db
       .query("users")
@@ -579,7 +638,7 @@ export const wipeE2EAuthAccounts = internalMutation({
     }
 
     return {
-      wipedAttachments,
+      fullyWipedUsers,
       deletedTestTenants,
       deletedInvites,
       deletedSeedUsers,
