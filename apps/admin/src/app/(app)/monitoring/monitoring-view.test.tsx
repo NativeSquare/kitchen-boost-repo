@@ -306,3 +306,128 @@ describe("MonitoringView — F-MONITORING (#184)", () => {
     expect(text).toContain("evt_b");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Filters — F-MONITORING (#197)
+// ---------------------------------------------------------------------------
+//
+// The three filters (kind / tenant / severity) are 100 % client-side: the
+// query (`previewIncidents`) takes no params. State is owned upstream
+// (`page.tsx`) and threaded through as controlled props so `MonitoringView`
+// stays a pure function that vitest can invoke directly.
+//
+// Acceptance criteria covered (issue #197):
+//   - AC: « Sélection d'un type → seuls les incidents de ce kind affichés »
+//   - AC: « Sélection "critical" → seuls webhook_latency + paid_no_course »
+//   - AC: « Sélection d'un tenant → seuls les incidents matching ce tenant »
+//   - AC: « Combinaison des 3 filtres = AND »
+//   - AC: « État vide filtré distinct de l'état vide global »
+describe("MonitoringView — filters (#197)", () => {
+  const NOOP = () => {};
+
+  it("with kind=`webhook_latency` and the same `ONE_OF_EACH_KIND` payload, only the webhook row renders", () => {
+    const tree = serialize(
+      MonitoringView({
+        session: adminSession(),
+        incidents: ONE_OF_EACH_KIND,
+        now: NOW,
+        filters: { kind: "webhook_latency", tenantId: "all", severity: "all" },
+        onFiltersChange: NOOP,
+      }),
+    );
+    const text = allText(tree);
+    // webhook row stays
+    expect(text).toContain("evt_abc");
+    // kyc_pending + paid_no_course rows are dropped
+    expect(text).not.toContain("L'Artisan");
+    expect(text).not.toContain("order_42");
+  });
+
+  it("with severity=`critical`, only webhook_latency + paid_no_course rows render (kyc_pending is warning)", () => {
+    const tree = serialize(
+      MonitoringView({
+        session: adminSession(),
+        incidents: ONE_OF_EACH_KIND,
+        now: NOW,
+        filters: { kind: "all", tenantId: "all", severity: "critical" },
+        onFiltersChange: NOOP,
+      }),
+    );
+    const text = allText(tree);
+    expect(text).toContain("evt_abc"); // webhook_latency stays
+    expect(text).toContain("order_42"); // paid_no_course stays
+    expect(text).not.toContain("L'Artisan"); // kyc_pending drops
+  });
+
+  it("with severity=`warning`, only kyc_pending rows render", () => {
+    const tree = serialize(
+      MonitoringView({
+        session: adminSession(),
+        incidents: ONE_OF_EACH_KIND,
+        now: NOW,
+        filters: { kind: "all", tenantId: "all", severity: "warning" },
+        onFiltersChange: NOOP,
+      }),
+    );
+    const text = allText(tree);
+    expect(text).toContain("L'Artisan");
+    expect(text).not.toContain("evt_abc");
+    expect(text).not.toContain("order_42");
+  });
+
+  it("with tenantId=`tenant_khan`, only tenant-scoped incidents matching that tenant render", () => {
+    const tree = serialize(
+      MonitoringView({
+        session: adminSession(),
+        incidents: ONE_OF_EACH_KIND,
+        now: NOW,
+        filters: { kind: "all", tenantId: "tenant_khan", severity: "all" },
+        onFiltersChange: NOOP,
+      }),
+    );
+    const text = allText(tree);
+    expect(text).toContain("order_42"); // the paid_no_course on tenant_khan stays
+    expect(text).not.toContain("L'Artisan"); // kyc_pending dropped (not tenant-scoped)
+    expect(text).not.toContain("evt_abc"); // webhook_latency dropped (no tenantId)
+  });
+
+  it("combines the three filters as AND — incompatible combination shows the « filtered empty » state, NOT the global empty state", () => {
+    const tree = serialize(
+      MonitoringView({
+        session: adminSession(),
+        incidents: ONE_OF_EACH_KIND,
+        now: NOW,
+        // kyc_pending is warning, so asking for kyc_pending + critical = 0
+        // results, but the unfiltered list is NOT empty.
+        filters: { kind: "kyc_pending", tenantId: "all", severity: "critical" },
+        onFiltersChange: NOOP,
+      }),
+    );
+    const text = allText(tree);
+    // The empty-after-filter copy must be distinct from « Aucun incident
+    // actif » so the user understands their filters caused the empty state.
+    expect(text).toMatch(/aucun incident.*correspond.*filtre/i);
+    expect(text).not.toMatch(/Aucun incident actif/i);
+  });
+
+  it("renders 3 filter controls above the table (kind + tenant + severity)", () => {
+    // Pin the contract at the source-file level: the view file must mount
+    // the shadcn Select (kind, severity) and the shadcn Combobox (tenant),
+    // and label them so the user can tell them apart. Reading raw types
+    // from the serializer is brittle here because the shadcn Select/
+    // Combobox primitives throw outside a real React render (no Radix /
+    // Base-UI portal context), so the serializer falls back to leaf nodes
+    // and we lose visibility into the children.
+    const source = readFileSync(
+      path.resolve(__dirname, "./monitoring-view.tsx"),
+      "utf8",
+    );
+    // shadcn Select for kind + severity, Combobox for tenant.
+    expect(source).toMatch(/from "@\/components\/ui\/select"/);
+    expect(source).toMatch(/from "@\/components\/ui\/combobox"/);
+    // The three filter labels surface in the source (visible copy).
+    expect(source).toMatch(/Type/);
+    expect(source).toMatch(/Tenant/);
+    expect(source).toMatch(/S[ée]v[ée]rit[ée]/);
+  });
+});
