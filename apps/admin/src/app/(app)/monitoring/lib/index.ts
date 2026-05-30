@@ -19,3 +19,5 @@ export type { IncidentFilters } from "./filterIncidents";
 export { formatPendingSince } from "./formatPendingSince";
 export { toIncidentRow } from "./incidentRow";
 export type { IncidentRow } from "./incidentRow";
+export { toIncidentDetail } from "./incidentDetail";
+export type { IncidentDetail, IncidentDetailField } from "./incidentDetail";

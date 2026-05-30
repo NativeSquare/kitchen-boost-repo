@@ -8,21 +8,30 @@
  *
  * Same React-tree-serializer pattern as `monitoring-view.test.tsx` so the
  * test stays in the lean `node` env (no jsdom, no Radix portal context).
- * The shadcn `Sheet` is a Radix Dialog under the hood and throws outside a
- * real React render — for those branches we pin the contract at the
- * source-file level (composition + href construction), which is more
- * honest than chasing a Radix runtime in vitest.
+ *
+ * Strategy: the shadcn `Sheet` primitives (Radix `DialogRoot`) require a
+ * live React render context and throw outside one — the serializer would
+ * truncate the body to a leaf and we'd lose visibility into the rendered
+ * fields. We work around it by exporting the panel body as a separate,
+ * portal-free sub-component (`IncidentDetailSheetBody`) that vitest can
+ * invoke directly to assert per-kind field rendering + the contextual
+ * link, while the outer Sheet composition is pinned at the source-file
+ * level (shadcn imports + single mount).
  *
  * Acceptance criteria covered (#207):
  *   - « Tous les champs de l'`Incident` discriminé rendus (test composant
- *     pour les 3 kinds) » — for each kind, every raw field surfaces as
- *     visible text inside the panel tree.
+ *     pour les 3 kinds) » — Body suite below.
  *   - « Incident `kyc_pending` → bouton/lien vers `/pipeline/[prospectId]`
- *     présent ».
+ *     présent » — Body suite below.
  *   - « Incident `paid_no_course` avec `tenantId` → bouton/lien vers
- *     `/t/[tenantId]/commandes` présent ».
- *   - « Incident `paid_no_course` sans `tenantId` → pas de bouton lien ».
- *   - « Incident `webhook_latency` → pas de bouton lien ».
+ *     `/t/[tenantId]/commandes` présent » — Body suite below.
+ *   - « Incident `paid_no_course` sans `tenantId` → pas de bouton lien » —
+ *     Body suite below.
+ *   - « Incident `webhook_latency` → pas de bouton lien » — Body suite.
+ *   - « Click sur une ligne ouvre un Sheet shadcn avec le détail » +
+ *     « Fermeture du Sheet remet la table en état normal » — Composition
+ *     suite below, plus the row-click wiring covered in
+ *     `monitoring-view.test.tsx`.
  */
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
@@ -31,7 +40,10 @@ import type { ReactElement, ReactNode } from "react";
 
 import type { Incident } from "@packages/backend/convex/lib/admin/monitoring";
 
-import { IncidentDetailSheet } from "./incident-detail-sheet";
+import {
+  IncidentDetailSheet,
+  IncidentDetailSheetBody,
+} from "./incident-detail-sheet";
 
 // ---------------------------------------------------------------------------
 // Tiny React-tree serializer (same shape as monitoring-view.test.tsx)
@@ -117,11 +129,10 @@ function allText(n: SerializedNode): string {
 }
 
 // ---------------------------------------------------------------------------
-// Tests
+// Body — per-kind rendering (the load-bearing portion the user sees inside
+// the Sheet). Invoked directly so the Sheet/Radix portal never executes.
 // ---------------------------------------------------------------------------
-const NOOP = () => {};
-
-describe("IncidentDetailSheet — F-MONITORING (#207)", () => {
+describe("IncidentDetailSheetBody — F-MONITORING (#207)", () => {
   it("renders every raw field of a `webhook_latency` incident, no contextual link", () => {
     const incident: Incident = {
       kind: "webhook_latency",
@@ -129,15 +140,8 @@ describe("IncidentDetailSheet — F-MONITORING (#207)", () => {
       externalId: "evt_abc",
       latencyMs: 45_000,
     };
-    const tree = serialize(
-      IncidentDetailSheet({
-        incident,
-        open: true,
-        onOpenChange: NOOP,
-      }),
-    );
+    const tree = serialize(IncidentDetailSheetBody({ incident }));
     const text = allText(tree);
-    // Every raw field surfaces as visible text.
     expect(text).toContain("provider");
     expect(text).toContain("stripe");
     expect(text).toContain("externalId");
@@ -146,6 +150,8 @@ describe("IncidentDetailSheet — F-MONITORING (#207)", () => {
     expect(text).toContain("45000");
     // No contextual link for webhook_latency (V1).
     expect(text).not.toMatch(/Ouvrir/);
+    expect(JSON.stringify(tree)).not.toContain("/pipeline/");
+    expect(JSON.stringify(tree)).not.toContain("/commandes");
   });
 
   it("renders every raw field of a `kyc_pending` incident + a link to /pipeline/[prospectId]", () => {
@@ -156,13 +162,7 @@ describe("IncidentDetailSheet — F-MONITORING (#207)", () => {
       prospectName: "L'Artisan",
       pendingSinceMs: 1_700_000_000_000,
     };
-    const tree = serialize(
-      IncidentDetailSheet({
-        incident,
-        open: true,
-        onOpenChange: NOOP,
-      }),
-    );
+    const tree = serialize(IncidentDetailSheetBody({ incident }));
     const text = allText(tree);
     expect(text).toContain("provider");
     expect(text).toContain("stripe");
@@ -171,18 +171,23 @@ describe("IncidentDetailSheet — F-MONITORING (#207)", () => {
     expect(text).toContain("prospectName");
     expect(text).toContain("L'Artisan");
     expect(text).toContain("pendingSinceMs");
-    // The contextual link is pinned at the source-file level too: assert the
-    // expected href string appears among the serialized props (it surfaces as
-    // a Link's `href` prop, NOT visible text).
-    const source = readFileSync(
-      path.resolve(__dirname, "./incident-detail-sheet.tsx"),
-      "utf8",
-    );
-    // The component renders `<Link href={detail.href}>` only when detail.href
-    // is defined — assert the source files the Link primitive AND that
-    // toIncidentDetail's href for kyc_pending lands in the tree as `href=...`.
-    expect(source).toMatch(/from "next\/link"/);
+    // Contextual link href surfaces in the serialized tree.
     expect(JSON.stringify(tree)).toContain("/pipeline/prospect_123");
+  });
+
+  it("omits the `prospectName` field row when undefined (kyc_pending)", () => {
+    const incident: Incident = {
+      kind: "kyc_pending",
+      provider: "uber_direct",
+      prospectId: "prospect_456",
+      pendingSinceMs: 1_700_000_000_000,
+    };
+    const tree = serialize(IncidentDetailSheetBody({ incident }));
+    const text = allText(tree);
+    expect(text).not.toContain("prospectName");
+    // The required fields still surface so the panel stays useful.
+    expect(text).toContain("prospectId");
+    expect(text).toContain("provider");
   });
 
   it("renders every raw field of a `paid_no_course` incident WITH tenantId + a link to /t/[tenantId]/commandes", () => {
@@ -191,42 +196,35 @@ describe("IncidentDetailSheet — F-MONITORING (#207)", () => {
       orderId: "order_42",
       tenantId: "tenant_khan",
     };
-    const tree = serialize(
-      IncidentDetailSheet({
-        incident,
-        open: true,
-        onOpenChange: NOOP,
-      }),
-    );
+    const tree = serialize(IncidentDetailSheetBody({ incident }));
     const text = allText(tree);
     expect(text).toContain("orderId");
     expect(text).toContain("order_42");
     expect(text).toContain("tenantId");
     expect(text).toContain("tenant_khan");
-    // The contextual link href surfaces in the serialized tree.
     expect(JSON.stringify(tree)).toContain("/t/tenant_khan/commandes");
   });
 
-  it("renders a `paid_no_course` incident WITHOUT tenantId — no contextual link surfaces in the tree", () => {
+  it("renders a `paid_no_course` incident WITHOUT tenantId — no contextual link, the tenantId row is omitted", () => {
     const incident: Incident = {
       kind: "paid_no_course",
       orderId: "order_42",
     };
-    const tree = serialize(
-      IncidentDetailSheet({
-        incident,
-        open: true,
-        onOpenChange: NOOP,
-      }),
-    );
+    const tree = serialize(IncidentDetailSheetBody({ incident }));
     const text = allText(tree);
     expect(text).toContain("orderId");
     expect(text).toContain("order_42");
-    // The tenantId field row must be absent (the incident doesn't carry it).
     expect(text).not.toContain("tenantId");
-    // No /t/.../commandes href anywhere in the tree (no link at all).
     expect(JSON.stringify(tree)).not.toContain("/commandes");
   });
+});
+
+// ---------------------------------------------------------------------------
+// Composition — the outer Sheet wrapper (shadcn primitives, single mount,
+// controlled open flag, body short-circuit when no incident).
+// ---------------------------------------------------------------------------
+describe("IncidentDetailSheet — composition (#207)", () => {
+  const NOOP = () => {};
 
   it("renders nothing visible when `incident` is null (the controlled open flag still toggles, but the body short-circuits)", () => {
     const tree = serialize(
@@ -252,5 +250,7 @@ describe("IncidentDetailSheet — F-MONITORING (#207)", () => {
     expect(source).toMatch(/from "@\/components\/ui\/sheet"/);
     expect(source).toMatch(/SheetContent/);
     expect(source).toMatch(/SheetTitle/);
+    // next/link is imported so the contextual links render as <Link>.
+    expect(source).toMatch(/from "next\/link"/);
   });
 });

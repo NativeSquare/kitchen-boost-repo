@@ -72,6 +72,7 @@ import {
   type IncidentFilters,
   type IncidentRow,
 } from "./lib";
+import { IncidentDetailSheet } from "./incident-detail-sheet";
 
 export type MonitoringViewProps = {
   /** The resolved session (decided by the `(app)` SessionGuard upstream). */
@@ -92,6 +93,14 @@ export type MonitoringViewProps = {
   filters?: IncidentFilters;
   /** Controlled-state setter for the 3 filter dropdowns. */
   onFiltersChange?: (filters: IncidentFilters) => void;
+  /**
+   * Controlled drill-down selection (issue #207). Optional so vitest can
+   * omit it and keep `MonitoringView` pure-callable. The real `page.tsx`
+   * owns the `useState` and threads it down.
+   */
+  selectedIncident?: Incident | null;
+  /** Setter for the drill-down panel — `null` clears the selection. */
+  onSelectedIncidentChange?: (incident: Incident | null) => void;
 };
 
 export function MonitoringView({
@@ -100,6 +109,8 @@ export function MonitoringView({
   now,
   filters = ALL_PASS_FILTERS,
   onFiltersChange,
+  selectedIncident = null,
+  onSelectedIncidentChange,
 }: MonitoringViewProps) {
   // ── Access guard (UX layer; real isolation is backend `kbAdminQuery`) ──
   if (session.status !== "ready" || !session.session.isAdmin) {
@@ -135,6 +146,8 @@ export function MonitoringView({
           now={now}
           filters={filters}
           onFiltersChange={onFiltersChange}
+          selectedIncident={selectedIncident}
+          onSelectedIncidentChange={onSelectedIncidentChange}
         />
       </div>
     </div>
@@ -146,11 +159,15 @@ function MonitoringBody({
   now,
   filters,
   onFiltersChange,
+  selectedIncident,
+  onSelectedIncidentChange,
 }: {
   incidents: Incident[] | undefined;
   now: number;
   filters: IncidentFilters;
   onFiltersChange?: (filters: IncidentFilters) => void;
+  selectedIncident: Incident | null;
+  onSelectedIncidentChange?: (incident: Incident | null) => void;
 }) {
   if (incidents === undefined) {
     return (
@@ -172,6 +189,13 @@ function MonitoringBody({
 
   const tenantOptions = collectTenantOptions(incidents);
   const filtered = filterIncidents(incidents, filters);
+  // Build the rows alongside the incident reference so the row click can
+  // hand the original `Incident` back to the drill-down panel (the row
+  // shape loses the per-kind raw fields the panel renders).
+  const pairs = filtered.map((incident) => ({
+    incident,
+    row: toIncidentRow(incident, now),
+  }));
   return (
     <div className="flex flex-col gap-4">
       <FiltersBar
@@ -179,15 +203,25 @@ function MonitoringBody({
         tenantOptions={tenantOptions}
         onFiltersChange={onFiltersChange}
       />
-      {filtered.length === 0 ? (
+      {pairs.length === 0 ? (
         <div className="rounded-lg border border-dashed p-8 text-center">
           <p className="text-muted-foreground text-sm">
             Aucun incident ne correspond aux filtres.
           </p>
         </div>
       ) : (
-        <IncidentsTable rows={filtered.map((i) => toIncidentRow(i, now))} />
+        <IncidentsTable
+          pairs={pairs}
+          onRowSelect={(incident) => onSelectedIncidentChange?.(incident)}
+        />
       )}
+      <IncidentDetailSheet
+        incident={selectedIncident}
+        open={selectedIncident !== null}
+        onOpenChange={(open) => {
+          if (!open) onSelectedIncidentChange?.(null);
+        }}
+      />
     </div>
   );
 }
@@ -286,7 +320,13 @@ function FiltersBar({
   );
 }
 
-function IncidentsTable({ rows }: { rows: IncidentRow[] }) {
+function IncidentsTable({
+  pairs,
+  onRowSelect,
+}: {
+  pairs: { incident: Incident; row: IncidentRow }[];
+  onRowSelect: (incident: Incident) => void;
+}) {
   return (
     <div className="overflow-hidden rounded-lg border">
       <Table>
@@ -301,8 +341,12 @@ function IncidentsTable({ rows }: { rows: IncidentRow[] }) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {rows.map((row) => (
-            <TableRow key={row.key}>
+          {pairs.map(({ incident, row }) => (
+            <TableRow
+              key={row.key}
+              onClick={() => onRowSelect(incident)}
+              className="hover:bg-muted/50 cursor-pointer"
+            >
               <TableCell className="font-medium">{row.typeLabel}</TableCell>
               <TableCell>{row.targetLabel}</TableCell>
               <TableCell>
@@ -318,8 +362,12 @@ function IncidentsTable({ rows }: { rows: IncidentRow[] }) {
                 {row.href === undefined ? (
                   <span className="text-muted-foreground">—</span>
                 ) : (
+                  // Stop propagation so clicking the per-row link navigates
+                  // instead of opening the drill-down panel (the row's
+                  // onClick would otherwise fire too).
                   <Link
                     href={row.href}
+                    onClick={(e) => e.stopPropagation()}
                     className="text-blue-600 hover:underline"
                   >
                     Ouvrir
