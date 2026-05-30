@@ -193,10 +193,12 @@ export {
   type ModifierGroupBody,
   attachTenantGroupToItem,
   clearTenantItemPhoto,
+  deletePublishedMenu,
   deleteTenantCategory,
   deleteTenantItem,
   deleteTenantModifierGroup,
   detachTenantGroupFromItem,
+  getPublishedMenu,
   getTenantCategory,
   getTenantItem,
   getTenantModifierGroup,
@@ -220,6 +222,7 @@ export {
   requireTenantModifierGroup,
   setTenantItemAvailability,
   setTenantItemPhoto,
+  writePublishedMenu,
 } from "./menuStore";
 export {
   type NewOrder,

@@ -3,11 +3,17 @@ import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../../_generated/server";
 import type { Allergen } from "../../table/menuItems";
 import type { ModifierOption } from "../../table/modifierGroups";
+import type { PublishedMenuPayload } from "../../table/publishedMenus";
 
 /**
  * 2.2-B — the SANCTIONED tenant-scoped data-access seam for the FIVE menu tables
  * (`menuCategories`, `menuItems`, `modifierGroups`, `menuItemModifierGroups`),
  * the isolation discipline of ADR 0010.
+ *
+ * B-MENU-PUBLICATION slice 1 (ADR 0015) extends this seam with the THREE
+ * `publishedMenus` helpers (`getPublishedMenu` / `writePublishedMenu` /
+ * `deletePublishedMenu`) — same tenant-scoping discipline, the snapshot table is
+ * « one doc per tenant » and the writer is atomic-replace inside a single tx.
  *
  * All carry `tenantId`, so business code must reach them ONLY through the tenancy
  * wrappers — never raw `ctx.db.query("menuItems")` (the `no-untenanted-query`
@@ -593,4 +599,82 @@ export async function listTenantModifierGroupItems(
     if (item !== null) items.push(item);
   }
   return items;
+}
+
+// ---------------------------------------------------------------------------
+// publishedMenus — B-MENU-PUBLICATION slice 1 (ADR 0015 + ADR 0010)
+// ---------------------------------------------------------------------------
+//
+// The [[Instantané publié]] table is one-doc-per-tenant: the structured payload
+// the PWA mangeur reads from once the publication pipeline is wired (slices
+// 2–6). The « one doc per tenant » uniqueness is a STRUCTURAL invariant of
+// these helpers — `writePublishedMenu` always deletes any existing row before
+// inserting the new one in the same Convex tx (atomic replace, no leftover).
+// The snapshot does NOT carry `available` (ADR 0015 pivot, enforced at the
+// schema level + a type-level assertion in `menuStore.test.ts`).
+
+/**
+ * Read the current [[Instantané publié]] of `tenantId`, or `null` if the tenant
+ * has never been published. Keyed on `by_tenant`, `unique()` since the helpers
+ * keep at most one row per tenant (structural invariant of `writePublishedMenu`).
+ */
+export async function getPublishedMenu(
+  ctx: QueryCtx | MutationCtx,
+  tenantId: Id<"tenants">,
+): Promise<Doc<"publishedMenus"> | null> {
+  return ctx.db
+    .query("publishedMenus")
+    .withIndex("by_tenant", (q) => q.eq("tenantId", tenantId))
+    .unique();
+}
+
+/**
+ * Atomically REPLACE the [[Instantané publié]] of `tenantId` with `payload`,
+ * stamping `publishedAt = nowMs`. Inside ONE Convex mutation tx: delete any
+ * existing snapshot row of this tenant, then insert the new one — so a second
+ * call to the same tenant fully replaces the previous snapshot (no leftover old
+ * rows, ADR 0015 atomicity contract). `nowMs` is injected so the timestamp is
+ * deterministic in tests (mirror of `setTenantItemAvailability`).
+ *
+ * The caller has already validated the `payload` shape (the schema validator on
+ * `publishedMenus.payload` would reject anything else at write time anyway).
+ */
+export async function writePublishedMenu(
+  ctx: MutationCtx,
+  tenantId: Id<"tenants">,
+  payload: PublishedMenuPayload,
+  nowMs: number,
+): Promise<void> {
+  const existing = await ctx.db
+    .query("publishedMenus")
+    .withIndex("by_tenant", (q) => q.eq("tenantId", tenantId))
+    .collect();
+  for (const row of existing) {
+    await ctx.db.delete(row._id);
+  }
+  await ctx.db.insert("publishedMenus", {
+    tenantId,
+    publishedAt: nowMs,
+    payload,
+  });
+}
+
+/**
+ * Wipe the [[Instantané publié]] of `tenantId` (idempotent — a no-op if the
+ * tenant has never been published). Used by the slice 8 tenant-lifecycle cleanup
+ * paths (a tenant suspended / off-boarded must not keep a published menu
+ * indexed). Tenant-scoped via the `by_tenant` index — never reaches another
+ * tenant's row.
+ */
+export async function deletePublishedMenu(
+  ctx: MutationCtx,
+  tenantId: Id<"tenants">,
+): Promise<void> {
+  const existing = await ctx.db
+    .query("publishedMenus")
+    .withIndex("by_tenant", (q) => q.eq("tenantId", tenantId))
+    .collect();
+  for (const row of existing) {
+    await ctx.db.delete(row._id);
+  }
 }
