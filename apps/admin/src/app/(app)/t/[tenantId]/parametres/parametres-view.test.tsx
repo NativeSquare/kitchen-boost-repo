@@ -192,13 +192,43 @@ describe("ParametresView — F-PARAMETRES-01 (#193)", () => {
     expect(slots).toContain("parametres-uber-direct-readonly");
   });
 
-  it('AC5 — uses shadcn `Card` primitives (the canonical `data-slot="card"` markers surface)', () => {
-    const slots = dataSlots(serialize(ParametresView(EMPTY)));
-    // 4 sections + 1 Uber Direct block = at least 5 cards. Pinning >= 4 so a
-    // refactor that uses the Card for the Uber block but inlines a section
-    // header without it still passes — we care about the section cards.
-    const cardCount = slots.filter((s) => s === "card").length;
-    expect(cardCount).toBeGreaterThanOrEqual(4);
+  it("AC5 — uses shadcn `Card` primitives (the canonical `bg-card` className from `components/ui/card.tsx` surfaces on every section)", () => {
+    // The shadcn `Card` primitive's root div carries `bg-card text-card-
+    // foreground …` (see `components/ui/card.tsx`). Each of the 5 cards in
+    // this view (4 sections + 1 Uber Direct block) MUST surface that
+    // className when serialized — pinning the count >= 4 so a refactor that
+    // inlines one Card without the primitive still passes for the others.
+    //
+    // We can't pin via `data-slot="card"` here: each Card overrides the
+    // primitive's default data-slot with a section-specific marker (same
+    // pattern as `menu-view.tsx`'s `data-slot="menu-category-row"`), which
+    // is itself pinned by the per-section slot tests above.
+    const tree = serialize(ParametresView(EMPTY));
+    const classes = flatten(tree)
+      .map((n) => {
+        if (n === null || "text" in n) return null;
+        const cls = n.props["className"];
+        return typeof cls === "string" ? cls : null;
+      })
+      .filter((c): c is string => c !== null);
+    const cardClassCount = classes.filter((c) => c.includes("bg-card")).length;
+    expect(cardClassCount).toBeGreaterThanOrEqual(4);
+  });
+
+  it("AC5 — uses the shadcn `Separator` primitive (radix `data-orientation` marker surfaces in the tree)", () => {
+    // `Separator` from `components/ui/separator.tsx` wraps
+    // `SeparatorPrimitive.Root` from `@radix-ui/react-separator`, which
+    // serializes with a `data-orientation` attribute (the Radix contract).
+    // We pin the presence of that attribute as the canonical signal that
+    // the Separator primitive is in the tree — same approach as the
+    // `animate-pulse` marker for the Skeleton primitive in
+    // `menu-view.test.tsx`.
+    const tree = serialize(ParametresView(EMPTY));
+    const hasOrientation = flatten(tree).some((n) => {
+      if (n === null || "text" in n) return false;
+      return "data-orientation" in n.props || "orientation" in n.props;
+    });
+    expect(hasOrientation).toBe(true);
   });
 
   it("AC2 — every section card carries a stable data-slot marker (one per canonical section)", () => {
