@@ -58,4 +58,46 @@ describe("page.tsx — F-MENU-01 (#187) wiring contract", () => {
     // live in `MenuView` and are pinned by `menu-view.test.tsx`.
     expect(PAGE_SOURCE).toMatch(/MenuView/);
   });
+
+  // ---------------------------------------------------------------------------
+  // F-MENU-02 (#200) — CRUD wiring contract
+  // ---------------------------------------------------------------------------
+
+  it("F-MENU-02 — wires `categories.create` / `categories.rename` / `categories.remove` through `useTenantMutation`", () => {
+    // Slice 2 binds the three category mutations through `useTenantMutation`
+    // (ADR 0014 §4 / #183), never raw `useMutation` (which would bypass the
+    // tenantId injection — same risk as raw `useQuery` for the list, ADR 0010).
+    const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
+    expect(PAGE_SOURCE).toMatch(/useTenantMutation/);
+    expect(collapsed).toMatch(
+      /useTenantMutation\([^)]*api\.lib\.menu\.categories\.create[^)]*\)/,
+    );
+    expect(collapsed).toMatch(
+      /useTenantMutation\([^)]*api\.lib\.menu\.categories\.rename[^)]*\)/,
+    );
+    expect(collapsed).toMatch(
+      /useTenantMutation\([^)]*api\.lib\.menu\.categories\.remove[^)]*\)/,
+    );
+  });
+
+  it("F-MENU-02 — does NOT use a raw `useMutation` (bypasses tenantId injection — ADR 0014 §4)", () => {
+    // Same discipline as for `useQuery` on the read path: a raw `useMutation`
+    // would fail at runtime (Forbidden / missing tenantId) or — worse —
+    // would only happen to work because Convex would refuse the call.
+    const code = PAGE_SOURCE.replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "")
+      .replace(/`[^`]*`/g, "");
+    expect(code).not.toMatch(/\buseMutation\b/);
+  });
+
+  it("F-MENU-02 — surfaces errors via `toast.error` + `getConvexErrorMessage` (no raw alert / console.error)", () => {
+    // The CRUD handlers wrap each mutation call in try/catch and toast the
+    // ConvexError's message (slice acceptance criterion « toast sur erreur »
+    // + « messages d'erreur dérivés des ConvexError backend »).
+    expect(PAGE_SOURCE).toMatch(/from\s+["']sonner["']/);
+    expect(PAGE_SOURCE).toMatch(/toast/);
+    expect(PAGE_SOURCE).toMatch(/getConvexErrorMessage/);
+    // No raw alert in production code path (bad UX + bypasses our error sink).
+    expect(PAGE_SOURCE).not.toMatch(/\balert\s*\(/);
+  });
 });

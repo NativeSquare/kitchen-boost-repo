@@ -1,7 +1,8 @@
 /**
- * F-MENU-01 (#187) — `MenuView`, pure presentational shell of the menu page
- * (read-only categories list, first tracer-bullet of EPIC F-MENU #149,
- * ADR 0015 « brouillon → publication globale atomique »).
+ * F-MENU-01 (#187) + F-MENU-02 (#200) — `MenuView`, the presentational
+ * shell of the menu page (read OR edit), first tracer-bullet of EPIC
+ * F-MENU #149 (Édition menu, ADR 0015 « brouillon → publication globale
+ * atomique »).
  *
  * Three branches:
  *   - `categories === undefined` → loading skeletons (no blank flash, the
@@ -16,21 +17,33 @@
  * `disabled` here so a manager can't accidentally trigger a publish before
  * the mutation is bound (ADR 0015 forbids partial publication).
  *
- * Split out of `page.tsx` (which owns `useTenantQuery`) so vitest can pin
- * every branch under `environment: "node"` — same React-tree-serializer
- * pattern as `mes-clients/mes-clients-view.tsx`. The page hands `categories`
- * in as a prop; the view is a pure function of its props.
+ * F-MENU-02 (#200) layering: the view stays a pure function of its props,
+ * but accepts THREE optional callbacks (`onCreateCategory` / `onRenameCategory`
+ * / `onDeleteCategory`). When ALL three are provided, the populated branch
+ * renders the interactive `CategoryListEditor` (« + Catégorie », inline
+ * rename w/ debounce, delete w/ confirmation); when they're not, the
+ * slice-1 read-only `CategoryList` is rendered (preserves the slice-1
+ * contract — `MenuView({ categories })` keeps working). The empty branch
+ * surfaces a « + Catégorie » CTA too when callbacks are wired, else the
+ * gérant has no path to bootstrap an empty menu.
  *
- * Scope discipline (#187 hard constraint): this file (and its siblings under
- * `apps/admin/src/app/(app)/t/[tenantId]/menu/`) is the ONLY surface touched
- * by this story. Zero touch to `apps/web`, `apps/native`, or
- * `packages/backend/convex/`.
+ * Split out of `page.tsx` (which owns `useTenantQuery` / `useTenantMutation`)
+ * so vitest can pin every branch under `environment: "node"` — same
+ * React-tree-serializer pattern as `mes-clients/mes-clients-view.tsx`.
+ *
+ * Scope discipline (#187 / #200 hard constraint): this file (and its
+ * siblings under `apps/admin/src/app/(app)/t/[tenantId]/menu/`) is the ONLY
+ * surface touched by these stories. Zero touch to `apps/web`, `apps/native`,
+ * or `packages/backend/convex/`.
  */
-import type { Doc } from "@packages/backend/convex/_generated/dataModel";
+import type { Doc, Id } from "@packages/backend/convex/_generated/dataModel";
+import { IconPlus } from "@tabler/icons-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+
+import { CategoryListEditor } from "./category-list-editor";
 
 export type MenuViewProps = {
   /**
@@ -40,14 +53,35 @@ export type MenuViewProps = {
    *   - else        → list to render (sorted by `order`)
    */
   categories: Doc<"menuCategories">[] | undefined;
+  /** F-MENU-02 (#200) — append a fresh empty category at the end. */
+  onCreateCategory?: () => void;
+  /** F-MENU-02 (#200) — commit an inline rename (debounced). */
+  onRenameCategory?: (categoryId: Id<"menuCategories">, name: string) => void;
+  /** F-MENU-02 (#200) — drop a category (the editor gates this behind a confirmation dialog). */
+  onDeleteCategory?: (categoryId: Id<"menuCategories">) => void;
 };
 
-export function MenuView({ categories }: MenuViewProps) {
+export function MenuView({
+  categories,
+  onCreateCategory,
+  onRenameCategory,
+  onDeleteCategory,
+}: MenuViewProps) {
+  const hasCrud =
+    onCreateCategory !== undefined &&
+    onRenameCategory !== undefined &&
+    onDeleteCategory !== undefined;
   return (
     <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
       <MenuHeader />
       <div className="px-4 lg:px-6">
-        <MenuBody categories={categories} />
+        <MenuBody
+          categories={categories}
+          hasCrud={hasCrud}
+          onCreateCategory={onCreateCategory}
+          onRenameCategory={onRenameCategory}
+          onDeleteCategory={onDeleteCategory}
+        />
       </div>
     </div>
   );
@@ -87,12 +121,39 @@ function MenuHeader() {
   );
 }
 
-function MenuBody({ categories }: MenuViewProps) {
+type MenuBodyProps = MenuViewProps & { hasCrud: boolean };
+
+function MenuBody({
+  categories,
+  hasCrud,
+  onCreateCategory,
+  onRenameCategory,
+  onDeleteCategory,
+}: MenuBodyProps) {
   if (categories === undefined) {
     return <CategoryListSkeleton />;
   }
   if (categories.length === 0) {
-    return <CategoryListEmptyState />;
+    return (
+      <CategoryListEmptyState
+        onCreateCategory={hasCrud ? onCreateCategory : undefined}
+      />
+    );
+  }
+  if (
+    hasCrud &&
+    onCreateCategory !== undefined &&
+    onRenameCategory !== undefined &&
+    onDeleteCategory !== undefined
+  ) {
+    return (
+      <CategoryListEditor
+        categories={categories}
+        onCreate={onCreateCategory}
+        onRename={onRenameCategory}
+        onDelete={onDeleteCategory}
+      />
+    );
   }
   return <CategoryList categories={categories} />;
 }
@@ -118,13 +179,27 @@ function CategoryList({ categories }: { categories: Doc<"menuCategories">[] }) {
   );
 }
 
-function CategoryListEmptyState() {
+function CategoryListEmptyState({
+  onCreateCategory,
+}: {
+  onCreateCategory?: () => void;
+}) {
   return (
-    <div className="rounded-lg border border-dashed p-8 text-center">
+    <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed p-8 text-center">
       <p className="text-muted-foreground text-sm">
-        Aucune catégorie pour le moment. La gestion CRUD arrivera dans une
-        prochaine itération (F-MENU-02).
+        Aucune catégorie pour le moment.
       </p>
+      {onCreateCategory !== undefined ? (
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onCreateCategory}
+          data-slot="menu-category-add"
+        >
+          <IconPlus className="mr-2 size-4" aria-hidden="true" />
+          Ajouter une catégorie
+        </Button>
+      ) : null}
     </div>
   );
 }
