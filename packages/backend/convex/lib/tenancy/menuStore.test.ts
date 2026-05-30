@@ -249,9 +249,18 @@ describe("B-MENU-PUBLICATION slice 1 — publishedMenus seam (ADR 0015 + 0010)",
   });
 
   it("deletePublishedMenu on a never-published tenant is a no-op (idempotent)", async () => {
-    await expect(
-      t.run((ctx) => deletePublishedMenu(ctx, seed.tenantA.tenantId)),
-    ).resolves.toBeUndefined();
+    // Should not throw — and the snapshot still reads null afterwards.
+    await t.run((ctx) => deletePublishedMenu(ctx, seed.tenantA.tenantId));
+    const got = await t.run((ctx) =>
+      getPublishedMenu(ctx, seed.tenantA.tenantId),
+    );
+    expect(got).toBeNull();
+    // Also calling delete twice in a row stays a no-op.
+    await t.run((ctx) => deletePublishedMenu(ctx, seed.tenantA.tenantId));
+    const got2 = await t.run((ctx) =>
+      getPublishedMenu(ctx, seed.tenantA.tenantId),
+    );
+    expect(got2).toBeNull();
   });
 
   // ---------------------------------------------------------------------------

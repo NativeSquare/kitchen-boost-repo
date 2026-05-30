@@ -158,6 +158,7 @@ import type * as table_payments from "../table/payments.js";
 import type * as table_pricingRules from "../table/pricingRules.js";
 import type * as table_processedWebhookEvents from "../table/processedWebhookEvents.js";
 import type * as table_prospects from "../table/prospects.js";
+import type * as table_publishedMenus from "../table/publishedMenus.js";
 import type * as table_serviceHours from "../table/serviceHours.js";
 import type * as table_tenantCredentials from "../table/tenantCredentials.js";
 import type * as table_tenants from "../table/tenants.js";
@@ -326,6 +327,7 @@ declare const fullApi: ApiFromModules<{
   "table/pricingRules": typeof table_pricingRules;
   "table/processedWebhookEvents": typeof table_processedWebhookEvents;
   "table/prospects": typeof table_prospects;
+  "table/publishedMenus": typeof table_publishedMenus;
   "table/serviceHours": typeof table_serviceHours;
   "table/tenantCredentials": typeof table_tenantCredentials;
   "table/tenants": typeof table_tenants;

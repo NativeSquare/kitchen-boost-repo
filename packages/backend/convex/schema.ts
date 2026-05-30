@@ -23,6 +23,7 @@ import { payments } from "./table/payments";
 import { pricingRules } from "./table/pricingRules";
 import { processedWebhookEvents } from "./table/processedWebhookEvents";
 import { prospects } from "./table/prospects";
+import { publishedMenus } from "./table/publishedMenus";
 import { tenantCredentials } from "./table/tenantCredentials";
 import { tenants } from "./table/tenants";
 import { userTenants } from "./table/userTenants";
@@ -102,6 +103,15 @@ export default defineSchema({
   modifierGroups,
   menuItemModifierGroups,
   serviceHours,
+  // B-MENU-PUBLICATION slice 1 — `publishedMenus` (ADR 0015 + ADR 0010). One doc
+  // per tenant carrying the structured snapshot the PWA mangeur reads from once
+  // the publication pipeline is wired (slices 2–6). Rebuilt entirely at every
+  // publish, atomically inside ONE Convex tx. PIVOT: the snapshot does NOT carry
+  // `available` — the rupture stays a live overlay read from `menuItems` (ADR
+  // 0015 « la rupture ne doit pas exiger une republication globale »). Tenant-
+  // scoped (carries tenantId), reached ONLY through the sanctioned seam
+  // `lib/tenancy/menuStore`. Indexed by_tenant — the only access path.
+  publishedMenus,
   // 2.9-A — KB Admin backend (PRD 70, kb-admin CONTEXT). Both tables are
   // KB-ADMIN-GLOBAL (NO tenantId scoping key, like `customers`/`cgvVersions`,
   // ADR 0010): they hold KB's OWN onboarding pipeline, owned by the `kb_admin`
