@@ -90,6 +90,31 @@ describe("page.tsx — F-MENU-01 (#187) wiring contract", () => {
     expect(code).not.toMatch(/\buseMutation\b/);
   });
 
+  // ---------------------------------------------------------------------------
+  // F-MENU-03 (#206) — drag&drop reorder wiring contract
+  // ---------------------------------------------------------------------------
+
+  it("F-MENU-03 — wires `categories.reorder` through `useTenantMutation` (not raw useMutation, sends FULL ordered ids list)", () => {
+    // The page binds the reorder mutation through `useTenantMutation` (same
+    // discipline as create/rename/remove — ADR 0014 §4) and forwards a
+    // handler that sends the COMPLETE ordered ids list (the backend rejects
+    // a partial payload — `reorderTenantCategories` invariant pinned by
+    // `packages/backend/convex/lib/menu/categories.test.ts`).
+    const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
+    expect(collapsed).toMatch(
+      /useTenantMutation\([^)]*api\.lib\.menu\.categories\.reorder[^)]*\)/,
+    );
+    // The handler signature mentions `orderedIds` so the page passes the
+    // full list to the mutation, not a diff.
+    expect(PAGE_SOURCE).toMatch(/orderedIds/);
+  });
+
+  it("F-MENU-03 — passes `onReorderCategories` down to MenuView", () => {
+    // Wiring contract: the page exposes the drag&drop handler via the
+    // dedicated prop the view forwards to `CategoryListEditor`.
+    expect(PAGE_SOURCE).toMatch(/onReorderCategories/);
+  });
+
   it("F-MENU-02 — surfaces errors via `toast.error` + `getConvexErrorMessage` (no raw alert / console.error)", () => {
     // The CRUD handlers wrap each mutation call in try/catch and toast the
     // ConvexError's message (slice acceptance criterion « toast sur erreur »

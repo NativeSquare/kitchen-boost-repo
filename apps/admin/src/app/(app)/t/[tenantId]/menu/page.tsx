@@ -21,8 +21,16 @@
  * `data-autofocus-pending` marker — actual focus is a future enhancement,
  * not pinnable from node-env tests).
  *
- * Naming F-MENU-03 (#206) will add drag&drop on top — strictly out of
- * scope here (« pas de drag&drop dans cette story », issue AC). Slice 10
+ * Slice 3 (#206) layers drag&drop reorder on top: the page binds
+ * `categories.reorder` through `useTenantMutation` and threads the resulting
+ * handler as `onReorderCategories` into `MenuView` → `CategoryListEditor`,
+ * which wraps the rows in a dnd-kit `SortableContext`. On drag-end, the
+ * editor builds the COMPLETE ordered ids list (backend rejects partial
+ * payloads — invariant pinned by
+ * `packages/backend/convex/lib/menu/categories.test.ts`) and the page-level
+ * try/catch surfaces failures as `toast.error(...)`. Optimistic UI lives in
+ * the editor (`displayedIds` local state); Convex's natural reactivity
+ * resyncs on success, the rejected payload snaps back on error. Slice 10
  * (#254) will activate the « Aperçu » / « Publier » buttons.
  *
  * Scope discipline (#200 hard constraint): this file (and its siblings under
@@ -54,6 +62,7 @@ export default function MenuPage() {
   const createCategory = useTenantMutation(api.lib.menu.categories.create);
   const renameCategory = useTenantMutation(api.lib.menu.categories.rename);
   const removeCategory = useTenantMutation(api.lib.menu.categories.remove);
+  const reorderCategories = useTenantMutation(api.lib.menu.categories.reorder);
 
   const handleCreate = async () => {
     try {
@@ -88,12 +97,23 @@ export default function MenuPage() {
     }
   };
 
+  const handleReorder = async (orderedIds: Id<"menuCategories">[]) => {
+    try {
+      await reorderCategories({ orderedIds });
+    } catch (error) {
+      toast.error("Impossible de réordonner les catégories", {
+        description: getConvexErrorMessage(error),
+      });
+    }
+  };
+
   return (
     <MenuView
       categories={categories}
       onCreateCategory={handleCreate}
       onRenameCategory={handleRename}
       onDeleteCategory={handleDelete}
+      onReorderCategories={handleReorder}
     />
   );
 }
