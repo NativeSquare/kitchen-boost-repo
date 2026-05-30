@@ -221,3 +221,62 @@ export async function readNotificationTemplate(
 ): Promise<Doc<"notificationTemplates"> | null> {
   return ctx.db.get(templateId);
 }
+
+/**
+ * The pre-validated CAMPAIGN TEMPLATES a given tenant is allowed to PICK FROM in
+ * its campaign UI (issue #153 + parent #137). Parity with `readNotificationTemplate`:
+ * a sanctioned tenancy seam — the public `tenantQuery` projection in
+ * `lib/notifications/campaigns` is a thin decal on top of this.
+ *
+ * Applies the SAME filter `sendTenantCampaign` enforces at acceptance time (no
+ * drift, ADR 0006):
+ *  - `scope === "tenant"` (a `cross_tenant` template is NEVER exposed to a resto
+ *    — KB-only MOAT, PRD 90 §3 / ADR 0010)
+ *  - `active === true`
+ *  - `tenantId === <argTenantId>` OR `tenantId === undefined` (the KB-central
+ *    library is shared cross-tenant; a resto-scoped row must match the caller's
+ *    tenant — same rule as the runtime check at `campaigns.ts` ≈ line 218)
+ *
+ * Two-pass read (V1 volume — library ≈ 5-10 entries, ADR 0006 considered
+ * consequences):
+ *  (a) resto-scoped of this tenant via index `by_tenant`
+ *  (b) KB-central entries (no `tenantId`) collected and filtered in-memory —
+ *      acceptable V1; a dedicated `by_scope_active` index = V2 if the library
+ *      explodes.
+ *
+ * NO ordering is imposed (the front sorts by label); NO pagination V1.
+ *
+ * Isolation note: the seam itself takes a `tenantId` argument and returns the
+ * filtered set for THAT tenant — it does NOT authenticate the caller. The
+ * `tenantQuery({ allow: ["kb_manager"] })` wrapper in the upstream public
+ * function is what verifies the caller is entitled to read `tenantId`'s
+ * templates (ADR 0010 / 0011). Same shape as every other tenancy-store seam.
+ */
+export async function listTenantCampaignTemplates(
+  ctx: QueryCtx | MutationCtx,
+  tenantId: Id<"tenants">,
+): Promise<Doc<"notificationTemplates">[]> {
+  // (a) resto-scoped of THIS tenant — keyed on `by_tenant`. The index admits
+  // an explicit equality on `tenantId`, so a foreign tenant's row is never even
+  // read here. Filter to scope/active to mirror the runtime acceptance check.
+  const restoRows = await ctx.db
+    .query("notificationTemplates")
+    .withIndex("by_tenant", (q) => q.eq("tenantId", tenantId))
+    .collect();
+  const restoFiltered = restoRows.filter(
+    (r) => r.scope === "tenant" && r.active === true,
+  );
+
+  // (b) KB-central entries — `tenantId` absent. The `by_tenant` index can be
+  // queried with `.eq("tenantId", undefined)` to pull only the central rows
+  // (no full scan). Filter to scope/active in memory, as above.
+  const centralRows = await ctx.db
+    .query("notificationTemplates")
+    .withIndex("by_tenant", (q) => q.eq("tenantId", undefined))
+    .collect();
+  const centralFiltered = centralRows.filter(
+    (r) => r.scope === "tenant" && r.active === true,
+  );
+
+  return [...restoFiltered, ...centralFiltered];
+}
