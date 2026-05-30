@@ -40,6 +40,17 @@ import type { SessionState } from "@/lib/session";
 
 const TENANT_A = "tenants_aaa" as unknown as Id<"tenants">;
 const TENANT_B = "tenants_bbb" as unknown as Id<"tenants">;
+const FIXTURE_USER_ID = "users_xxx" as unknown as Id<"users">;
+
+// `decideSidebarNav` only inspects `isAdmin` + `tenants`; the `user` field
+// landed when getSession absorbed the NavUser footer payload, but the routing
+// decision doesn't read it. Kept here as a fixture so the SessionData shape
+// stays compilable.
+const FIXTURE_USER = {
+  userId: FIXTURE_USER_ID,
+  name: "Fixture",
+  email: "fixture@kb.test",
+};
 
 function adminSession(
   tenants: Array<{ id: Id<"tenants">; slug: string; name: string }> = [],
@@ -54,6 +65,7 @@ function adminSession(
         name: t.name,
         role: "kb_manager",
       })),
+      user: FIXTURE_USER,
     },
   };
 }
@@ -71,6 +83,7 @@ function managerSession(
         name: t.name,
         role: "kb_manager",
       })),
+      user: FIXTURE_USER,
     },
   };
 }
@@ -90,7 +103,7 @@ describe("decideSidebarNav", () => {
     const input: SidebarNavInput = {
       session: {
         status: "ready",
-        session: { isAdmin: false, tenants: [] },
+        session: { isAdmin: false, tenants: [], user: FIXTURE_USER },
       },
       pathname: "/",
     };

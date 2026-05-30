@@ -24,10 +24,24 @@ export type SessionTenant = {
   role: "kb_manager" | "staff";
 };
 
+/** Minimal user projection used by the shell's NavUser footer (replaces the
+ * old `api.table.admin.currentAdmin` which was scoped to `role === "kb_admin"`
+ * only — a manager would receive `null` and the footer would render blank).
+ * Every field bar `userId` is optional because the Convex Auth `users` row
+ * baseline doesn't guarantee any of them (a freshly signed-up account may
+ * carry only `email`). */
+export type SessionUser = {
+  userId: Id<"users">;
+  name?: string;
+  email?: string;
+  image?: string;
+};
+
 /** Raw data shape returned by the future `api.auth.getSession` query. */
 export type SessionData = {
   isAdmin: boolean;
   tenants: SessionTenant[];
+  user: SessionUser;
 };
 
 /** Tri-state machine of the session as observed by the front. */

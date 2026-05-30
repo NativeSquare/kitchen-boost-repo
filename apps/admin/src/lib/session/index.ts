@@ -14,4 +14,5 @@ export type {
   SessionState,
   SessionStatus,
   SessionTenant,
+  SessionUser,
 } from "./types";

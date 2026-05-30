@@ -53,7 +53,13 @@ describe("B-AUTH-1 getSession — three skeleton branches", () => {
     const session = await t
       .withIdentity({ subject: userId })
       .query(api.lib.auth.getSession.getSession, {});
-    expect(session).toEqual({ isAdmin: true, tenants: [] });
+    expect(session).toEqual({
+      isAdmin: true,
+      tenants: [],
+      // `user` projection is asserted in its own describe block below — here we
+      // only pin the shell-routing contract (isAdmin + tenants).
+      user: { userId, name: undefined, email: "root@kb.fr", image: undefined },
+    });
   });
 
   it("returns { isAdmin: false, tenants: [] } for an authenticated caller with no kb_admin and no userTenants row", async () => {
@@ -64,7 +70,11 @@ describe("B-AUTH-1 getSession — three skeleton branches", () => {
     const session = await t
       .withIdentity({ subject: userId })
       .query(api.lib.auth.getSession.getSession, {});
-    expect(session).toEqual({ isAdmin: false, tenants: [] });
+    expect(session).toEqual({
+      isAdmin: false,
+      tenants: [],
+      user: { userId, name: undefined, email: "orphan@x.fr", image: undefined },
+    });
   });
 
   it("treats a user with no role field as a non-admin orphan (defaults to customer)", async () => {
@@ -78,7 +88,16 @@ describe("B-AUTH-1 getSession — three skeleton branches", () => {
     const session = await t
       .withIdentity({ subject: userId })
       .query(api.lib.auth.getSession.getSession, {});
-    expect(session).toEqual({ isAdmin: false, tenants: [] });
+    expect(session).toEqual({
+      isAdmin: false,
+      tenants: [],
+      user: {
+        userId,
+        name: undefined,
+        email: "noroles@x.fr",
+        image: undefined,
+      },
+    });
   });
 
   // NOTE — the historical "userTenants row but still returns []" placeholder
@@ -136,6 +155,7 @@ describe("B-AUTH-2 getSession — hydrate tenants for managers/staff", () => {
     expect(session).toEqual({
       isAdmin: false,
       tenants: [{ tenantId, slug: "khan", name: "Khan", role: "kb_manager" }],
+      user: { userId, name: undefined, email: "khan@x.fr", image: undefined },
     });
   });
 
@@ -318,6 +338,12 @@ describe("B-AUTH-2 getSession — hydrate tenants for managers/staff", () => {
           role: "kb_manager",
         },
       ],
+      user: {
+        userId,
+        name: undefined,
+        email: "orphan-link@x.fr",
+        image: undefined,
+      },
     });
   });
 
@@ -398,7 +424,55 @@ describe("B-AUTH-2 getSession — hydrate tenants for managers/staff", () => {
     const session = await t
       .withIdentity({ subject: userId })
       .query(api.lib.auth.getSession.getSession, {});
-    expect(session).toEqual({ isAdmin: true, tenants: [] });
+    expect(session).toEqual({
+      isAdmin: true,
+      tenants: [],
+      user: { userId, name: undefined, email: "root@kb.fr", image: undefined },
+    });
+  });
+});
+
+describe("getSession — user projection (NavUser footer payload)", () => {
+  it("surfaces name + email + image when the users row carries them", async () => {
+    const t = convexTest(schema, modules);
+    const userId = await t.run(async (ctx) =>
+      ctx.db.insert("users", {
+        email: "complete@kb.fr",
+        role: "kb_admin",
+        name: "Alex Pelloux",
+        image: "https://cdn.example/avatar.png",
+      }),
+    );
+    const session = await t
+      .withIdentity({ subject: userId })
+      .query(api.lib.auth.getSession.getSession, {});
+    expect(session.user).toEqual({
+      userId,
+      name: "Alex Pelloux",
+      email: "complete@kb.fr",
+      image: "https://cdn.example/avatar.png",
+    });
+  });
+
+  it("returns undefined for missing display fields rather than throwing (NavUser falls back to initials)", async () => {
+    const t = convexTest(schema, modules);
+    // Minimum viable users row — only the implicit auth fields. The shell's
+    // NavUser renders initials from email or a generic fallback when name is
+    // absent (cf. app-sidebar.tsx); the backend must not synthesise values.
+    // `role` is left absent — getCurrentActor defaults it to "customer". The
+    // user has no userTenants attachment → falls into `{ isAdmin: false,
+    // tenants: [] }`, but the `user` projection still surfaces with all
+    // optional fields undefined.
+    const userId = await t.run(async (ctx) => ctx.db.insert("users", {}));
+    const session = await t
+      .withIdentity({ subject: userId })
+      .query(api.lib.auth.getSession.getSession, {});
+    expect(session.user).toEqual({
+      userId,
+      name: undefined,
+      email: undefined,
+      image: undefined,
+    });
   });
 });
 

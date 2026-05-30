@@ -21,6 +21,10 @@ import { decideSidebarNav } from "@/components/app-sidebar";
 import type { SessionState } from "@/lib/session";
 
 const TENANT_X = "tenants_xyz" as unknown as Id<"tenants">;
+const FIXTURE_USER = {
+  userId: "users_xxx" as unknown as Id<"users">,
+  email: "fixture@kb.test",
+};
 
 function managerSession(tenantId: Id<"tenants">): SessionState {
   return {
@@ -35,6 +39,7 @@ function managerSession(tenantId: Id<"tenants">): SessionState {
           role: "kb_manager",
         },
       ],
+      user: FIXTURE_USER,
     },
   };
 }
@@ -59,7 +64,7 @@ describe("F-MES-CLIENTS [4/4] (#202) — sidebar entry « Mes clients »", () =>
     // sidebar. The « Mes clients » entry must remain reachable.
     const adminSession: SessionState = {
       status: "ready",
-      session: { isAdmin: true, tenants: [] },
+      session: { isAdmin: true, tenants: [], user: FIXTURE_USER },
     };
     const decision = decideSidebarNav({
       session: adminSession,

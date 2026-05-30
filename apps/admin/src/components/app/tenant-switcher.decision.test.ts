@@ -52,6 +52,10 @@ import type { SessionState } from "@/lib/session";
 const TENANT_A = "tenants_aaa" as unknown as Id<"tenants">;
 const TENANT_B = "tenants_bbb" as unknown as Id<"tenants">;
 const TENANT_C = "tenants_ccc" as unknown as Id<"tenants">;
+const FIXTURE_USER = {
+  userId: "users_xxx" as unknown as Id<"users">,
+  email: "fixture@kb.test",
+};
 
 function adminSession(
   ownTenants: Array<{ id: Id<"tenants">; slug: string; name: string }> = [],
@@ -66,6 +70,7 @@ function adminSession(
         name: t.name,
         role: "kb_manager",
       })),
+      user: FIXTURE_USER,
     },
   };
 }
@@ -83,6 +88,7 @@ function managerSession(
         name: t.name,
         role: "kb_manager",
       })),
+      user: FIXTURE_USER,
     },
   };
 }
@@ -103,7 +109,10 @@ describe("decideTenantSwitcher — F-SHELL-07 (#208)", () => {
 
   it("ready but isAdmin=false + tenants=[] → `hidden` (NoTenantEmptyState owns this case)", () => {
     const input: TenantSwitcherInput = {
-      session: { status: "ready", session: { isAdmin: false, tenants: [] } },
+      session: {
+        status: "ready",
+        session: { isAdmin: false, tenants: [], user: FIXTURE_USER },
+      },
       pathname: "/",
       allTenants: ADMIN_LOOKUP_IDLE,
     };

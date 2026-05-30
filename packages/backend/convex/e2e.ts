@@ -20,21 +20,36 @@
  * Convex Auth's `signIn("password", { flow: "signUp" })` — the only sanctioned
  * way to create users + `authAccounts` rows in this template.
  *
- * Workflow (orchestrator session 3, E2E-A1 → A5):
- *   1. `npx convex run e2e:bootstrapE2EInvites '{adminEmail, managerEmail, customerEmail}'`
- *      → returns 3 URLs `/accept-invite?token=...`.
- *   2. Open each URL in the browser, create a password (same for all 3 is fine).
- *      The existing `acceptInvite` mutation stamps `role: "kb_admin"` on all 3
- *      (its current default behaviour, B-AUTH-3 extension is not wired yet).
- *      Log out between each (avatar menu).
- *   3. `npx convex run e2e:seedE2EAuthAccounts '{adminEmail, managerEmail, customerEmail}'`
- *      → corrects the roles (admin stays kb_admin, manager+customer drop to
- *      customer) + creates 2 tenants + attaches manager to tenant1.
+ * Two-account model (A1 → A5):
+ *   - `adminEmail`   → kb_admin, no tenant link.
+ *   - `managerEmail` → customer (global), 1 active userTenants link to tenant1
+ *     as `kb_manager` (the per-tenant role lives on the link, not on `users`).
+ *
+ * `customerEmail` is OPTIONAL — kept as an opt-in for the « customer logs in
+ * to the admin shell » negative-path test (NoTenantEmptyState, A6) but NOT
+ * required for A1 → A5. A customer has nothing to do in the admin app: the
+ * shell is invitation-only, a customer ends up on the NoTenantEmptyState
+ * screen (« Pas de resto rattaché ») with only Logout + Support CTAs — which
+ * is the correct behaviour (SessionGuard, ADR 0014 §3). Don't pass it unless
+ * you specifically want to test that empty-state.
+ *
+ * Workflow (E2E-A1 → A5):
+ *   1. `npx convex run e2e:bootstrapE2EInvites '{adminEmail, managerEmail}'`
+ *      → returns 2 URLs `/accept-invite?token=...` (+ a 3rd if customerEmail
+ *      is also passed).
+ *   2. Open each URL in the browser, create a password (same for all is fine).
+ *      The existing `acceptInvite` mutation stamps `role: "kb_admin"` on
+ *      every account (its current default behaviour). Log out between each
+ *      (avatar menu) — or use a private window.
+ *   3. `npx convex run e2e:seedE2EAuthAccounts '{adminEmail, managerEmail}'`
+ *      → corrects the roles (admin stays kb_admin, manager drops to customer
+ *      because the per-tenant role lives on the link) + creates 2 tenants
+ *      + attaches manager to tenant1.
  *   4. Run the E2E-A1 → A5 checks in the browser using the right account.
  *   5. Optional reset:
- *      `npx convex run e2e:wipeE2EAuthAccounts '{adminEmail, managerEmail, customerEmail}'`
- *      → drops roles to `customer`, removes the test tenants/links, removes the
- *      seed invites + the system seed user.
+ *      `npx convex run e2e:wipeE2EAuthAccounts '{adminEmail, managerEmail}'`
+ *      → drops roles to `customer`, removes the test tenants/links, removes
+ *      the seed invites + the system seed user.
  *
  * Idempotent: re-running each command wipes prior state before re-creating it.
  */
@@ -154,7 +169,9 @@ export const bootstrapE2EInvites = internalMutation({
   args: {
     adminEmail: v.string(),
     managerEmail: v.string(),
-    customerEmail: v.string(),
+    // Opt-in: only pass it if you specifically want to test the
+    // NoTenantEmptyState negative path (A6). Not needed for A1 → A5.
+    customerEmail: v.optional(v.string()),
     baseUrl: v.optional(v.string()),
     expiresInDays: v.optional(v.number()),
   },
@@ -162,20 +179,22 @@ export const bootstrapE2EInvites = internalMutation({
     systemSeedUserId: v.id("users"),
     adminAcceptUrl: v.string(),
     managerAcceptUrl: v.string(),
-    customerAcceptUrl: v.string(),
+    // `null` when `customerEmail` wasn't supplied. The shape stays stable
+    // across both modes (no missing keys to special-case downstream).
+    customerAcceptUrl: v.union(v.string(), v.null()),
     adminInviteId: v.id("adminInvites"),
     managerInviteId: v.id("adminInvites"),
-    customerInviteId: v.id("adminInvites"),
+    customerInviteId: v.union(v.id("adminInvites"), v.null()),
   }),
   handler: async (ctx, args) => {
     const systemSeedUserId = await getOrCreateSystemSeedUser(ctx);
 
-    // Wipe any existing invite for each email (idempotence).
-    for (const email of [
-      args.adminEmail,
-      args.managerEmail,
-      args.customerEmail,
-    ]) {
+    // Wipe any existing invite for each email (idempotence). `customerEmail`
+    // is treated optionally — absent means "do not seed the negative-path
+    // account at all" (cf. file-header doc).
+    const emailsToWipe = [args.adminEmail, args.managerEmail];
+    if (args.customerEmail !== undefined) emailsToWipe.push(args.customerEmail);
+    for (const email of emailsToWipe) {
       const existing = await ctx.db
         .query("adminInvites")
         .withIndex("by_email", (q) => q.eq("email", email))
@@ -191,7 +210,6 @@ export const bootstrapE2EInvites = internalMutation({
     const ts = Date.now().toString(36);
     const adminToken = `e2e-admin-${ts}`;
     const managerToken = `e2e-manager-${ts}`;
-    const customerToken = `e2e-customer-${ts}`;
 
     const adminInviteId = await ctx.db.insert("adminInvites", {
       email: args.adminEmail,
@@ -207,15 +225,22 @@ export const bootstrapE2EInvites = internalMutation({
       invitedBy: systemSeedUserId,
       expiresAt,
     });
-    const customerInviteId = await ctx.db.insert("adminInvites", {
-      email: args.customerEmail,
-      name: "E2E Customer",
-      token: customerToken,
-      invitedBy: systemSeedUserId,
-      expiresAt,
-    });
 
+    let customerInviteId: Id<"adminInvites"> | null = null;
+    let customerAcceptUrl: string | null = null;
     const baseUrl = args.baseUrl ?? "http://localhost:3000";
+    if (args.customerEmail !== undefined) {
+      const customerToken = `e2e-customer-${ts}`;
+      customerInviteId = await ctx.db.insert("adminInvites", {
+        email: args.customerEmail,
+        name: "E2E Customer",
+        token: customerToken,
+        invitedBy: systemSeedUserId,
+        expiresAt,
+      });
+      customerAcceptUrl = `${baseUrl}/accept-invite?token=${customerToken}`;
+    }
+
     return {
       systemSeedUserId,
       adminInviteId,
@@ -223,7 +248,7 @@ export const bootstrapE2EInvites = internalMutation({
       customerInviteId,
       adminAcceptUrl: `${baseUrl}/accept-invite?token=${adminToken}`,
       managerAcceptUrl: `${baseUrl}/accept-invite?token=${managerToken}`,
-      customerAcceptUrl: `${baseUrl}/accept-invite?token=${customerToken}`,
+      customerAcceptUrl,
     };
   },
 });
@@ -233,15 +258,21 @@ export const bootstrapE2EInvites = internalMutation({
 // -----------------------------------------------------------------------------
 
 /**
- * Configure 3 existing user rows + 2 tenants + 1 userTenants link for the
- * E2E-A1 → A5 manual test checklist. The 3 emails MUST already exist as `users`
- * rows (sign in once via magic-link to create them).
+ * Configure 2 (or 3) existing user rows + 2 tenants + 1 userTenants link for
+ * the E2E-A1 → A5 manual test checklist. The emails MUST already exist as
+ * `users` rows (sign up once via the accept-invite flow to create them).
  *
  * After running:
- *   - adminEmail  → role: "kb_admin", no userTenants row
- *   - managerEmail → role: "customer", 1 active userTenants link to tenant1 (kb_manager)
- *   - customerEmail → role: "customer", no userTenants row
- *   - tenant1 (slug `test-t1`) and tenant2 (slug `test-t2`) exist with status `active`
+ *   - adminEmail   → role: "kb_admin", no userTenants row
+ *   - managerEmail → role: "customer", 1 active userTenants link to tenant1
+ *                    (per-tenant role: `kb_manager` — global role stays
+ *                    `customer` because per-tenant roles live on the link,
+ *                    not on `users`)
+ *   - customerEmail (optional) → role: "customer", no userTenants row
+ *                                (NoTenantEmptyState negative-path account,
+ *                                only needed for A6)
+ *   - tenant1 (slug `test-t1`) and tenant2 (slug `test-t2`) exist with status
+ *     `active`
  *
  * tenant2 is NOT linked to anyone — it's used by E2E-A4 to test the cross-tenant
  * redirect (KB Manager attaché à T1 tape `/t/<T2>/...` → redirect vers T1).
@@ -250,7 +281,9 @@ export const seedE2EAuthAccounts = internalMutation({
   args: {
     adminEmail: v.string(),
     managerEmail: v.string(),
-    customerEmail: v.string(),
+    // Opt-in, mirrors `bootstrapE2EInvites` — only pass it if you also seeded
+    // an invite for it and want to drive the A6 NoTenantEmptyState test.
+    customerEmail: v.optional(v.string()),
     tenantSlug1: v.optional(v.string()),
     tenantName1: v.optional(v.string()),
     tenantSlug2: v.optional(v.string()),
@@ -259,7 +292,7 @@ export const seedE2EAuthAccounts = internalMutation({
   returns: v.object({
     adminUserId: v.id("users"),
     managerUserId: v.id("users"),
-    customerUserId: v.id("users"),
+    customerUserId: v.union(v.id("users"), v.null()),
     tenant1Id: v.id("tenants"),
     tenant2Id: v.id("tenants"),
     managerLinkId: v.id("userTenants"),
@@ -273,16 +306,17 @@ export const seedE2EAuthAccounts = internalMutation({
       args.managerEmail,
       "manager",
     );
-    const customer = await findUserByEmailOrThrow(
-      ctx,
-      args.customerEmail,
-      "customer",
-    );
+    const customer =
+      args.customerEmail !== undefined
+        ? await findUserByEmailOrThrow(ctx, args.customerEmail, "customer")
+        : null;
 
     // 1. Roles
     await ctx.db.patch(admin._id, { role: "kb_admin" });
     await ctx.db.patch(manager._id, { role: "customer" });
-    await ctx.db.patch(customer._id, { role: "customer" });
+    if (customer !== null) {
+      await ctx.db.patch(customer._id, { role: "customer" });
+    }
 
     // 2. Tenants (idempotent upsert by slug)
     const tenant1Id = await upsertActiveTenantBySlug(ctx, {
@@ -296,15 +330,14 @@ export const seedE2EAuthAccounts = internalMutation({
       siret: "00000000000002",
     });
 
-    // 3. Wipe pre-existing attachments on manager + customer to guarantee a
-    // clean slate (idempotence on re-run).
+    // 3. Wipe pre-existing attachments on manager (+ customer when present)
+    //    to guarantee a clean slate (idempotence on re-run). 0 when the user
+    //    wasn't seeded.
     const wipedAttachmentsManager = await wipeUserAttachments(ctx, manager._id);
-    const wipedAttachmentsCustomer = await wipeUserAttachments(
-      ctx,
-      customer._id,
-    );
+    const wipedAttachmentsCustomer =
+      customer !== null ? await wipeUserAttachments(ctx, customer._id) : 0;
 
-    // 4. Manager → tenant1 as kb_manager. Customer stays un-attached.
+    // 4. Manager → tenant1 as kb_manager. Customer (if any) stays un-attached.
     const managerLinkId = await ctx.db.insert("userTenants", {
       userId: manager._id,
       tenantId: tenant1Id,
@@ -316,7 +349,7 @@ export const seedE2EAuthAccounts = internalMutation({
     return {
       adminUserId: admin._id,
       managerUserId: manager._id,
-      customerUserId: customer._id,
+      customerUserId: customer?._id ?? null,
       tenant1Id,
       tenant2Id,
       managerLinkId,
@@ -338,7 +371,9 @@ export const inspectE2EState = internalQuery({
   args: {
     adminEmail: v.string(),
     managerEmail: v.string(),
-    customerEmail: v.string(),
+    // Mirrors the rest of the API — opt-in. Absent → `customer: null` in the
+    // result (the field stays present for shape stability).
+    customerEmail: v.optional(v.string()),
   },
   returns: v.object({
     admin: v.union(
@@ -405,7 +440,10 @@ export const inspectE2EState = internalQuery({
 
     const adminUser = await loadUser(args.adminEmail);
     const managerUser = await loadUser(args.managerEmail);
-    const customerUser = await loadUser(args.customerEmail);
+    const customerUser =
+      args.customerEmail !== undefined
+        ? await loadUser(args.customerEmail)
+        : null;
 
     const admin =
       adminUser === null
@@ -562,7 +600,9 @@ export const wipeE2EAuthAccounts = internalMutation({
   args: {
     adminEmail: v.string(),
     managerEmail: v.string(),
-    customerEmail: v.string(),
+    // Mirrors the rest of the API — opt-in. Absent → the customer account is
+    // simply not part of the wipe (no-op if no such row exists).
+    customerEmail: v.optional(v.string()),
   },
   returns: v.object({
     fullyWipedUsers: v.number(),
@@ -571,14 +611,13 @@ export const wipeE2EAuthAccounts = internalMutation({
     deletedSeedUsers: v.number(),
   }),
   handler: async (ctx, args) => {
-    // 1. Full Convex Auth wipe of the 3 main users (sessions, refresh
-    //    tokens, verification codes, accounts, then the user row).
+    const targetEmails = [args.adminEmail, args.managerEmail];
+    if (args.customerEmail !== undefined) targetEmails.push(args.customerEmail);
+
+    // 1. Full Convex Auth wipe of the target users (sessions, refresh tokens,
+    //    verification codes, accounts, then the user row).
     let fullyWipedUsers = 0;
-    for (const email of [
-      args.adminEmail,
-      args.managerEmail,
-      args.customerEmail,
-    ]) {
+    for (const email of targetEmails) {
       const user = await ctx.db
         .query("users")
         .withIndex("email", (q) => q.eq("email", email))
@@ -610,11 +649,7 @@ export const wipeE2EAuthAccounts = internalMutation({
 
     // 3. adminInvites rows for these emails.
     let deletedInvites = 0;
-    for (const email of [
-      args.adminEmail,
-      args.managerEmail,
-      args.customerEmail,
-    ]) {
+    for (const email of targetEmails) {
       const invites = await ctx.db
         .query("adminInvites")
         .withIndex("by_email", (q) => q.eq("email", email))

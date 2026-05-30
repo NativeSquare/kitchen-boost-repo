@@ -49,8 +49,6 @@ import {
   IconUsersGroup,
   IconBuildingStore,
 } from "@tabler/icons-react";
-import { useQuery } from "convex/react";
-import { api } from "@packages/backend/convex/_generated/api";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
 
 import { NavUser } from "@/components/nav-user";
@@ -241,17 +239,23 @@ const NavRow = ({
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname();
   const session = useSession();
-  const currentAdmin = useQuery(api.table.admin.currentAdmin);
 
   const decision = decideSidebarNav({ session, pathname });
 
-  const user = currentAdmin
-    ? {
-        name: currentAdmin.name || "Admin",
-        email: currentAdmin.email || "",
-        avatar: currentAdmin.image || "",
-      }
-    : null;
+  // NavUser footer identity is sourced from `session.user` (D1 — the same
+  // bootstrap query that drives the routing), which is available to BOTH
+  // KB Admin AND KB Manager — unlike the old `api.table.admin.currentAdmin`
+  // (root-only, returned `null` for a manager → blank footer). Skeleton
+  // until the session resolves, then a stable {name,email,avatar} triple
+  // with defensive fallbacks for the optional fields.
+  const user =
+    session.status === "ready"
+      ? {
+          name: session.session.user.name || "Admin",
+          email: session.session.user.email || "",
+          avatar: session.session.user.image || "",
+        }
+      : null;
 
   // The header CTA points home for the supervision space and to the first
   // operational route for managers — either way, the nav under it is the

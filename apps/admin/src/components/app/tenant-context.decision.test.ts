@@ -35,6 +35,10 @@ const TENANT_A = "tenants_aaa" as unknown as Id<"tenants">;
 const TENANT_B = "tenants_bbb" as unknown as Id<"tenants">;
 const TENANT_C = "tenants_ccc" as unknown as Id<"tenants">;
 const TENANT_GHOST = "tenants_ghost" as unknown as Id<"tenants">;
+const FIXTURE_USER = {
+  userId: "users_xxx" as unknown as Id<"users">,
+  email: "fixture@kb.test",
+};
 
 function managerSession(
   tenants: Array<{ id: Id<"tenants">; slug: string; name: string }>,
@@ -49,6 +53,7 @@ function managerSession(
         name: t.name,
         role: "kb_manager",
       })),
+      user: FIXTURE_USER,
     },
   };
 }
@@ -56,7 +61,7 @@ function managerSession(
 function adminSession(): SessionState {
   return {
     status: "ready",
-    session: { isAdmin: true, tenants: [] },
+    session: { isAdmin: true, tenants: [], user: FIXTURE_USER },
   };
 }
 

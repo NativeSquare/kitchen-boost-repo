@@ -21,6 +21,10 @@ import { decideSessionGate } from "./session-guard";
 import type { SessionState } from "@/lib/session";
 
 const TENANT_ID = "tenants_id_xxx" as unknown as Id<"tenants">;
+const FIXTURE_USER = {
+  userId: "users_xxx" as unknown as Id<"users">,
+  email: "fixture@kb.test",
+};
 
 describe("decideSessionGate", () => {
   it("status=loading → `wait` (no redirect, no children)", () => {
@@ -36,7 +40,7 @@ describe("decideSessionGate", () => {
   it("status=ready, isAdmin=false + tenants=[] → `no-tenant` (acceptance #164: « Pas de resto rattaché »)", () => {
     const state: SessionState = {
       status: "ready",
-      session: { isAdmin: false, tenants: [] },
+      session: { isAdmin: false, tenants: [], user: FIXTURE_USER },
     };
     expect(decideSessionGate(state)).toEqual({ kind: "no-tenant" });
   });
@@ -44,7 +48,7 @@ describe("decideSessionGate", () => {
   it("status=ready, isAdmin=true + tenants=[] → `allow` (acceptance #164: KB Admin root case)", () => {
     const state: SessionState = {
       status: "ready",
-      session: { isAdmin: true, tenants: [] },
+      session: { isAdmin: true, tenants: [], user: FIXTURE_USER },
     };
     expect(decideSessionGate(state)).toEqual({ kind: "allow" });
   });
@@ -62,6 +66,7 @@ describe("decideSessionGate", () => {
             role: "kb_manager",
           },
         ],
+        user: FIXTURE_USER,
       },
     };
     expect(decideSessionGate(state)).toEqual({ kind: "allow" });
@@ -80,6 +85,7 @@ describe("decideSessionGate", () => {
             role: "kb_manager",
           },
         ],
+        user: FIXTURE_USER,
       },
     };
     expect(decideSessionGate(state)).toEqual({ kind: "allow" });

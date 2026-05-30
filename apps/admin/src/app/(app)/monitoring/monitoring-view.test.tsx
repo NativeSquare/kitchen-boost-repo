@@ -138,10 +138,15 @@ function allTypes(n: SerializedNode): string[] {
 const NOW = 1_700_000_000_000;
 const HOUR = 60 * 60 * 1000;
 
+const FIXTURE_USER = {
+  userId: "users_xxx" as unknown as Id<"users">,
+  email: "fixture@kb.test",
+};
+
 function adminSession(): SessionState {
   return {
     status: "ready",
-    session: { isAdmin: true, tenants: [] },
+    session: { isAdmin: true, tenants: [], user: FIXTURE_USER },
   };
 }
 
@@ -158,6 +163,7 @@ function managerSession(): SessionState {
           role: "kb_manager",
         },
       ],
+      user: FIXTURE_USER,
     },
   };
 }

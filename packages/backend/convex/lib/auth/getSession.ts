@@ -41,6 +41,14 @@ import { getCurrentActor } from "./getCurrentActor";
  * `tenants` porte, pour chaque tenant accessible par le caller, les coordonnées
  * minimales dont le front a besoin pour naviguer (`/t/[tenantId]/...`) et
  * étiqueter chaque option du switcher (ADR 0014 §3).
+ *
+ * `user` (ajouté lors du cleanup scaffold root-only) porte le minimum dont le
+ * shell a besoin pour le NavUser footer (nom/email/avatar), commun KB Admin ET
+ * KB Manager. Remplace l'ancien `api.table.admin.currentAdmin` qui filtrait
+ * sur `role === "kb_admin"` (un manager ressortait `null` → NavUser vide).
+ * Chaque champ est `optional` parce que le baseline `users` de Convex Auth
+ * peut ne pas les avoir tous (un compte fraîchement signUp peut n'avoir que
+ * `email`, l'`image` n'est posée que pour les providers OAuth, etc.).
  */
 const sessionTenantValidator = v.object({
   tenantId: v.id("tenants"),
@@ -49,9 +57,17 @@ const sessionTenantValidator = v.object({
   role: v.union(v.literal("kb_manager"), v.literal("staff")),
 });
 
+const sessionUserValidator = v.object({
+  userId: v.id("users"),
+  name: v.optional(v.string()),
+  email: v.optional(v.string()),
+  image: v.optional(v.string()),
+});
+
 const sessionValidator = v.object({
   isAdmin: v.boolean(),
   tenants: v.array(sessionTenantValidator),
+  user: sessionUserValidator,
 });
 
 export const getSession = query({
@@ -64,11 +80,24 @@ export const getSession = query({
       throw new ConvexError({ message: "Not authenticated" });
     }
 
+    // Le NavUser du shell consomme `user` quel que soit le rôle. On lit le row
+    // `users` UNE fois ici (la même Doc que `getCurrentActor` a déjà chargée
+    // pour résoudre le rôle) et on projette le strict minimum d'affichage.
+    const userRow = await ctx.db.get(actor.userId);
+    // userRow ne peut pas être null à ce stade (getCurrentActor l'a déjà lu),
+    // mais on le narrow côté types par sécurité.
+    const userProjection = {
+      userId: actor.userId,
+      name: userRow?.name,
+      email: userRow?.email,
+      image: userRow?.image,
+    };
+
     // Root override : convention « pas de ligne userTenants » + switcher root
     // hydraté ailleurs. On ne LIT MÊME PAS userTenants pour un kb_admin — toute
     // ligne parasite resterait invisible côté shell.
     if (actor.role === "kb_admin") {
-      return { isAdmin: true, tenants: [] };
+      return { isAdmin: true, tenants: [], user: userProjection };
     }
 
     // Gérant / staff : on agrège les rattachements ACTIFS uniquement.
@@ -102,6 +131,6 @@ export const getSession = query({
       });
     }
 
-    return { isAdmin: false, tenants };
+    return { isAdmin: false, tenants, user: userProjection };
   },
 });

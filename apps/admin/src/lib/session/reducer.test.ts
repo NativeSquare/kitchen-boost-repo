@@ -42,6 +42,10 @@ describe("toSessionState", () => {
           role: "kb_manager",
         },
       ],
+      user: {
+        userId: "users_xxx" as unknown as Id<"users">,
+        email: "manager@kb.test",
+      },
     };
     expect(toSessionState(session)).toEqual({
       status: "ready",
@@ -50,7 +54,14 @@ describe("toSessionState", () => {
   });
 
   it("preserves `isAdmin: true` + empty tenants (KB Admin root case)", () => {
-    const session: SessionData = { isAdmin: true, tenants: [] };
+    const session: SessionData = {
+      isAdmin: true,
+      tenants: [],
+      user: {
+        userId: "users_xxx" as unknown as Id<"users">,
+        email: "admin@kb.test",
+      },
+    };
     const state = toSessionState(session);
     expect(state.status).toBe("ready");
     if (state.status === "ready") {
