@@ -185,47 +185,17 @@ describe("B-AUTH-3 adminInvites schema extension — targetRole + tenantId optio
     });
   });
 
-  it("adminInviteValidator reflects the two new optional fields", () => {
-    // The validator is consumed by `getInvite` to type the returned `invite`
-    // object; if a future mutation reads back `targetRole`/`tenantId` it MUST
-    // be allowed by the validator. We assert that legacy + manager + explicit-
-    // admin shapes all parse — the schema validation is the contract.
-    const inviterIdRaw = "users:fake" as unknown as never;
-    const tenantIdRaw = "tenants:fake" as unknown as never;
-    const inviteIdRaw = "adminInvites:fake" as unknown as never;
-
-    const legacy = {
-      _id: inviteIdRaw,
-      _creationTime: 0,
-      email: "legacy@kb.fr",
-      name: "Legacy",
-      token: "t",
-      invitedBy: inviterIdRaw,
-      expiresAt: 1,
-    };
-    const manager = {
-      ...legacy,
-      targetRole: "kb_manager" as const,
-      tenantId: tenantIdRaw,
-    };
-    const explicitAdmin = { ...legacy, targetRole: "kb_admin" as const };
-
-    // Round-trips via the validator's runtime check — `v.parse` is not exposed
-    // publicly; instead we sanity-check the validator's `kind` is object and
-    // its `fields` carry both new keys as optionals.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const fields = (adminInviteValidator as any).fields;
+  it("adminInviteValidator exposes the two new optional fields in its object shape", () => {
+    // The validator types the `invite` payload returned by `getInvite`. If a
+    // future mutation reads back `targetRole` / `tenantId`, it MUST be allowed
+    // by the validator — otherwise the function-return validation throws.
+    // Convex `v.object(...)` exposes its members under `.fields`; each optional
+    // wrapper carries `isOptional: "optional"`.
+    const fields = adminInviteValidator.fields;
     expect(fields).toBeDefined();
     expect(fields.targetRole).toBeDefined();
     expect(fields.tenantId).toBeDefined();
-    // Both are wrapped optionals — `isOptional` is true on Convex optional v's.
     expect(fields.targetRole.isOptional).toBe("optional");
     expect(fields.tenantId.isOptional).toBe("optional");
-
-    // Silence unused — these are typed shapes that document the validator's
-    // expected payloads (compile-time docs).
-    void legacy;
-    void manager;
-    void explicitAdmin;
   });
 });
