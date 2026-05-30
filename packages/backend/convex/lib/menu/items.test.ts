@@ -378,6 +378,7 @@ describe("2.2-B cross-tenant fuzz — menuItems CRUD, 0 leak (ADR 0010)", () => 
         api.lib.menu.items.listByCategory,
         api.lib.menu.items.create,
         api.lib.menu.items.update,
+        api.lib.menu.items.reorder,
         api.lib.menu.items.remove,
       ],
       isQuery: (fn) =>
@@ -393,9 +394,246 @@ describe("2.2-B cross-tenant fuzz — menuItems CRUD, 0 leak (ADR 0010)", () => 
         basePrice: 100,
         allergens: [],
         available: true,
+        orderedIds: [itemAId],
       },
     });
-    expect(pairs).toBe(30); // 5 functions × 6 actors
+    expect(pairs).toBe(36); // 6 functions × 6 actors
     expect(leaks).toEqual([]);
+  });
+});
+
+/**
+ * B-MENU-PUBLICATION slice 7 (D3, #209) — `items.reorder` is the strict mirror
+ * of `categories.reorder` (cf. `categories.test.ts`): it rewrites the `order`
+ * field of every item of ONE category in a single atomic mutation tx, and
+ * refuses anything other than a permutation of EXACTLY that category's items
+ * (no silent partial, no duplicate, no foreign id). ADR 0010 cross-tenant
+ * isolation, ADR 0015 « éditeur brouillon » (the reorder writes the draft, not
+ * the snapshot — republication is a separate user action).
+ */
+describe("B-MENU-PUBLICATION slice 7 — items.reorder strictness", () => {
+  let t: ReturnType<typeof convexTest>;
+  let seed: Seed;
+  let catA: string;
+  let cat2: string;
+  let i1: string;
+  let i2: string;
+  let i3: string;
+  beforeEach(async () => {
+    t = convexTest(schema, modules);
+    seed = await seedTwoTenantsAllRoles(t);
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    catA = await makeCategory(t, seed);
+    cat2 = await asManager.mutation(api.lib.menu.categories.create, {
+      tenantId: seed.tenantA.tenantId,
+      name: "Sides",
+    });
+    i1 = await asManager.mutation(api.lib.menu.items.create, {
+      tenantId: seed.tenantA.tenantId,
+      categoryId: catA,
+      name: "Burger 1",
+      description: "",
+      basePrice: 1000,
+      allergens: [],
+    });
+    i2 = await asManager.mutation(api.lib.menu.items.create, {
+      tenantId: seed.tenantA.tenantId,
+      categoryId: catA,
+      name: "Burger 2",
+      description: "",
+      basePrice: 1100,
+      allergens: [],
+    });
+    i3 = await asManager.mutation(api.lib.menu.items.create, {
+      tenantId: seed.tenantA.tenantId,
+      categoryId: catA,
+      name: "Burger 3",
+      description: "",
+      basePrice: 1200,
+      allergens: [],
+    });
+  });
+
+  it("rewrites the display order of the category's items to match orderedIds", async () => {
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    // New order: i3, i1, i2
+    await asManager.mutation(api.lib.menu.items.reorder, {
+      tenantId: seed.tenantA.tenantId,
+      categoryId: catA,
+      orderedIds: [i3, i1, i2],
+    });
+    const items = await asManager.query(api.lib.menu.items.listByCategory, {
+      tenantId: seed.tenantA.tenantId,
+      categoryId: catA,
+    });
+    expect(items.map((i) => i._id)).toEqual([i3, i1, i2]);
+    expect(items.map((i) => i.order)).toEqual([0, 1, 2]);
+  });
+
+  it("throws on a partial orderedIds (missing one item of the category)", async () => {
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    await expect(
+      asManager.mutation(api.lib.menu.items.reorder, {
+        tenantId: seed.tenantA.tenantId,
+        categoryId: catA,
+        orderedIds: [i1, i2], // i3 missing
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("throws on a duplicate in orderedIds", async () => {
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    await expect(
+      asManager.mutation(api.lib.menu.items.reorder, {
+        tenantId: seed.tenantA.tenantId,
+        categoryId: catA,
+        orderedIds: [i1, i2, i1], // i1 twice, i3 absent
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("throws on an itemId from ANOTHER category of the same tenant", async () => {
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    const otherCatItem = await asManager.mutation(api.lib.menu.items.create, {
+      tenantId: seed.tenantA.tenantId,
+      categoryId: cat2,
+      name: "Frites",
+      description: "",
+      basePrice: 390,
+      allergens: [],
+    });
+    // Wrong-category item: same length (3) as catA's items, but one of them
+    // does NOT belong to catA — must throw INVALID_REORDER.
+    await expect(
+      asManager.mutation(api.lib.menu.items.reorder, {
+        tenantId: seed.tenantA.tenantId,
+        categoryId: catA,
+        orderedIds: [i1, i2, otherCatItem],
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("throws NOT_FOUND for a foreign categoryId (owned by another tenant)", async () => {
+    const bMgr = t.withIdentity({ subject: seed.tenantB.managerId });
+    const bCat = await bMgr.mutation(api.lib.menu.categories.create, {
+      tenantId: seed.tenantB.tenantId,
+      name: "B-cat",
+    });
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    await expect(
+      asManager.mutation(api.lib.menu.items.reorder, {
+        tenantId: seed.tenantA.tenantId,
+        categoryId: bCat,
+        orderedIds: [],
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("throws NOT_FOUND when orderedIds contains an item from another tenant", async () => {
+    const bMgr = t.withIdentity({ subject: seed.tenantB.managerId });
+    const bCat = await bMgr.mutation(api.lib.menu.categories.create, {
+      tenantId: seed.tenantB.tenantId,
+      name: "B-cat",
+    });
+    const bItem = await bMgr.mutation(api.lib.menu.items.create, {
+      tenantId: seed.tenantB.tenantId,
+      categoryId: bCat,
+      name: "B-item",
+      description: "",
+      basePrice: 1000,
+      allergens: [],
+    });
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    // catA has 3 items; we replace one with a foreign-tenant item id. The
+    // helper must reject — `bItem` is not even reachable from tenant A.
+    await expect(
+      asManager.mutation(api.lib.menu.items.reorder, {
+        tenantId: seed.tenantA.tenantId,
+        categoryId: catA,
+        orderedIds: [i1, i2, bItem],
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("does not affect another tenant's items (cross-tenant isolation)", async () => {
+    const bMgr = t.withIdentity({ subject: seed.tenantB.managerId });
+    const bCat = await bMgr.mutation(api.lib.menu.categories.create, {
+      tenantId: seed.tenantB.tenantId,
+      name: "B-cat",
+    });
+    const b1 = await bMgr.mutation(api.lib.menu.items.create, {
+      tenantId: seed.tenantB.tenantId,
+      categoryId: bCat,
+      name: "B-1",
+      description: "",
+      basePrice: 100,
+      allergens: [],
+    });
+    const b2 = await bMgr.mutation(api.lib.menu.items.create, {
+      tenantId: seed.tenantB.tenantId,
+      categoryId: bCat,
+      name: "B-2",
+      description: "",
+      basePrice: 200,
+      allergens: [],
+    });
+    // Reorder tenant A's catA.
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    await asManager.mutation(api.lib.menu.items.reorder, {
+      tenantId: seed.tenantA.tenantId,
+      categoryId: catA,
+      orderedIds: [i3, i2, i1],
+    });
+    // Tenant B's items are untouched.
+    const bItems = await bMgr.query(api.lib.menu.items.listByCategory, {
+      tenantId: seed.tenantB.tenantId,
+      categoryId: bCat,
+    });
+    expect(bItems.map((i) => i._id)).toEqual([b1, b2]);
+    expect(bItems.map((i) => i.order)).toEqual([0, 1]);
+  });
+
+  it("kb_admin (root) can reorder any tenant's items", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    await asAdmin.mutation(api.lib.menu.items.reorder, {
+      tenantId: seed.tenantA.tenantId,
+      categoryId: catA,
+      orderedIds: [i2, i3, i1],
+    });
+    const items = await asAdmin.query(api.lib.menu.items.listByCategory, {
+      tenantId: seed.tenantA.tenantId,
+      categoryId: catA,
+    });
+    expect(items.map((i) => i._id)).toEqual([i2, i3, i1]);
+  });
+
+  it("staff (not in allow-list) cannot reorder", async () => {
+    const asStaff = t.withIdentity({ subject: seed.tenantA.staffId });
+    await expect(
+      asStaff.mutation(api.lib.menu.items.reorder, {
+        tenantId: seed.tenantA.tenantId,
+        categoryId: catA,
+        orderedIds: [i1, i2, i3],
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("atomicity: a failing reorder leaves the previous order intact", async () => {
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    // Initial order [i1, i2, i3], orders 0/1/2. Attempt an invalid reorder
+    // (duplicate). Convex mutation tx must roll back any partial patch.
+    await expect(
+      asManager.mutation(api.lib.menu.items.reorder, {
+        tenantId: seed.tenantA.tenantId,
+        categoryId: catA,
+        orderedIds: [i2, i2, i1], // invalid: i2 twice, i3 missing
+      }),
+    ).rejects.toThrow();
+    const items = await asManager.query(api.lib.menu.items.listByCategory, {
+      tenantId: seed.tenantA.tenantId,
+      categoryId: catA,
+    });
+    expect(items.map((i) => i._id)).toEqual([i1, i2, i3]);
+    expect(items.map((i) => i.order)).toEqual([0, 1, 2]);
   });
 });
