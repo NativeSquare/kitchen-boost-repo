@@ -115,6 +115,8 @@ export {
  */
 export {
   type CampaignResult,
+  type TenantTemplateSummary,
+  listTenantTemplates,
   sendCrossTenantCampaign,
   sendTenantCampaign,
 } from "./campaigns";
