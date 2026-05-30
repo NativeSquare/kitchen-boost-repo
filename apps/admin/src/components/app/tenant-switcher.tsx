@@ -329,22 +329,44 @@ function DisplayOnly({
   );
 }
 
-/** Shared trigger button used by both the multi-manager dropdown and the
- *  admin combobox — same visual contract, same accessible label shape. */
+/**
+ * Shared trigger button used by both the multi-manager dropdown and the
+ * admin combobox — same visual contract, same accessible label shape.
+ *
+ * IMPORTANT — this component is mounted UNDER `<DropdownMenuTrigger asChild>`
+ * (Radix). Radix's `asChild` clones the child element through `Slot` and
+ * INJECTS into its props the open/close click handler (`onClick`,
+ * `onPointerDown`, ...) AND a ref pointing at the underlying focusable
+ * element. A function-component child that destructures only its own props
+ * (`{current, className}`) and drops everything else SWALLOWS those Radix-
+ * injected props — the dropdown trigger silently never opens. That was A2
+ * of the manual E2E checklist (« le dropdown se trigger pas »). The
+ * `...triggerProps` spread + the `ref` prop below are the fix; they MUST
+ * stay or the dropdown breaks again.
+ *
+ * React 19.2 makes `ref` a regular prop on function components — no
+ * `React.forwardRef` needed. The annotation matches `React.ComponentProps<"button">`
+ * (everything Radix may inject + everything the parent may pass through).
+ */
 function TriggerButton({
   current,
   className,
+  ref,
+  ...triggerProps
 }: {
   current: TenantSwitcherCurrent;
   className?: string;
-}) {
+  ref?: React.Ref<HTMLButtonElement>;
+} & Omit<React.ComponentProps<"button">, "ref" | "className">) {
   return (
     <Button
+      ref={ref}
       variant="outline"
       size="sm"
       className={cn("h-9 min-w-40 justify-between gap-2", className)}
       data-slot="tenant-switcher-trigger"
       aria-label={`Tenant courant : ${currentLabel(current)}. Cliquer pour changer.`}
+      {...triggerProps}
     >
       <span className="flex items-center gap-2 truncate">
         <CurrentIcon current={current} />

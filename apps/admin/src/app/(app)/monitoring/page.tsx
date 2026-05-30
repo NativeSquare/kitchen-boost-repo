@@ -50,11 +50,19 @@ function useNow(): number {
 
 export default function MonitoringPage() {
   const session = useSession();
-  // We still subscribe to the query for KB Admin sessions; for non-admin
-  // sessions the View short-circuits to « Accès refusé » before reading
-  // `incidents`. Calling the hook unconditionally keeps the React hook order
-  // stable across re-renders.
-  const incidents = useQuery(api.lib.admin.monitoring.previewIncidents);
+  // `previewIncidents` is exposed via `kbAdminQuery` — Convex throws
+  // `FORBIDDEN: kb_admin role required` for any non-root caller. If we fired
+  // the query unconditionally, a manager landing on `/monitoring` would
+  // surface a raw Convex error boundary INSTEAD of the View's UnauthorizedCard
+  // (A4 of the manual E2E checklist — the access refusal must be the explicit
+  // shared card, not a stack trace). Skip the query unless the caller is a
+  // resolved root admin; the View still renders for every session, just
+  // without firing the network round-trip first.
+  const isAdmin = session.status === "ready" && session.session.isAdmin;
+  const incidents = useQuery(
+    api.lib.admin.monitoring.previewIncidents,
+    isAdmin ? {} : "skip",
+  );
   const now = useNow();
   const [filters, setFilters] = useState<IncidentFilters>(ALL_PASS_FILTERS);
   // Drill-down panel selection (issue #207). Owned here so `MonitoringView`
