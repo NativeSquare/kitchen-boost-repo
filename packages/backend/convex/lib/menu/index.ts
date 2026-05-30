@@ -94,6 +94,19 @@
  *    contract as `getPublicMenu`, so the front renders it through the exact
  *    same component. Lets the gérant verify unpublished changes before clicking
  *    « Publier ».
+ *
+ * B-MENU-PUBLICATION slice 5 (#176) — editor « modifications non publiées »
+ * indicator (ADR 0015 « Un indicateur "modifications non publiées" »):
+ *  - `publication.hasUnpublishedChanges` — `tenantQuery({ allow: ["kb_manager"] })`
+ *    (kb_admin via root override, staff REJECTED). Returns
+ *    `{ hasChanges, lastPublishedAt, changedSince }`. Computes `hasChanges` by
+ *    projecting the live draft via the SHARED `buildSnapshotPayload` and
+ *    deep-equating with the published payload — so renames/edits/attach/detach
+ *    flip the flag even though Convex doesn't refresh `_creationTime` on
+ *    patches. The `available` toggle is NOT considered an unpublished change
+ *    (live overlay, not in payload — ADR 0015 pivot). `changedSince` is a
+ *    best-effort lower bound (earliest draft `_creationTime` strictly newer
+ *    than `lastPublishedAt`), `null` when undeterminable from `_creationTime`.
  */
 export * as availability from "./availability";
 export * as catalog from "./catalog";
