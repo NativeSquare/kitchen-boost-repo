@@ -168,7 +168,7 @@ describe("QrGeneratorControls — F-QR.3 (#182)", () => {
     const tree = render({ format: "a6-card" });
     const selects = findAllByType(tree, "select");
     expect(selects).toHaveLength(1);
-    const sel = selects[0]!;
+    const [sel] = selects;
     expect((sel as { props: Record<string, unknown> }).props.value).toBe(
       "a6-card",
     );
