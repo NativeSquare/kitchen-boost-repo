@@ -20,7 +20,7 @@ import { PasswordInput } from "@/components/custom/password-input";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Controller, useForm } from "react-hook-form";
-import { useMutation, useQuery } from "convex/react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import * as z from "zod";
 import { api } from "@packages/backend/convex/_generated/api";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -42,9 +42,18 @@ import { Spinner } from "@/components/ui/spinner";
  *      (it requires an authenticated caller — see
  *      `packages/backend/convex/table/admin.ts:354`).
  *
+ * Subtlety: even though `signIn(... "email-verification")` returns successfully
+ * from the server's point of view, the React-side Convex auth context needs a
+ * tick to propagate the new auth state. Calling `acceptInvite` synchronously
+ * on the next line would race and crash with "Not authenticated" — the
+ * mutation would still be sent with the previous unauthenticated context.
+ * We therefore split the trigger from the action: the OTP submit flips the
+ * phase to "waiting-auth", and a `useEffect` watches `useConvexAuth()
+ * .isAuthenticated`; once it's true we run `acceptInvite` + redirect.
+ *
  * The original scaffold called `acceptInvite` immediately after `signUp` and
  * crashed with "Not authenticated. Please sign up first." This component fixes
- * that by walking the user through the OTP step before invoking acceptInvite.
+ * BOTH problems (no OTP step, race condition) by walking the proper flow.
  */
 
 const passwordSchema = z
@@ -57,7 +66,7 @@ const passwordSchema = z
     path: ["confirmPassword"],
   });
 
-type Phase = "password" | "otp" | "finalising";
+type Phase = "password" | "otp" | "waiting-auth" | "finalising";
 
 export function AcceptInviteForm({
   className,
@@ -69,6 +78,10 @@ export function AcceptInviteForm({
 
   const { signIn } = useAuthActions();
   const acceptInvite = useMutation(api.table.admin.acceptInvite);
+  // We must observe this to break the race condition between `signIn` flipping
+  // the auth cookies and the next mutation call seeing the new context. The
+  // `useEffect` below uses it to gate the `acceptInvite` call.
+  const { isAuthenticated } = useConvexAuth();
 
   const invite = useQuery(
     api.table.admin.getInvite,
@@ -115,7 +128,8 @@ export function AcceptInviteForm({
   }
 
   // -------------------------------------------------------------------------
-  // Step 2: submit OTP → email-verification → acceptInvite → redirect
+  // Step 2: submit OTP → email-verification → flip to "waiting-auth"
+  //         (acceptInvite is fired by the useEffect once isAuthenticated flips)
   // -------------------------------------------------------------------------
   async function onOtpSubmit(submittedCode?: string) {
     if (!invite?.invite) return;
@@ -130,26 +144,44 @@ export function AcceptInviteForm({
     setIsLoading(true);
     try {
       // Verify the OTP. On success, Convex Auth marks the email verified AND
-      // authenticates the session.
+      // authenticates the session — but the React context hasn't propagated
+      // yet, so do NOT chain acceptInvite here.
       await signIn("password", {
         email: invite.invite.email,
         code: value,
         flow: "email-verification",
       });
-
-      // Now we're authenticated, the role-setting mutation can run.
-      setPhase("finalising");
-      await acceptInvite({ token });
-
-      // Redirect to the app home (which routes by role via app/page.tsx).
-      router.replace("/");
+      // Hand off to the useEffect below.
+      setPhase("waiting-auth");
     } catch (error) {
       setFormError(getConvexErrorMessage(error));
       setIsLoading(false);
-      // Stay on phase "otp" so the user can retry the code; "finalising" only
-      // happens past the verify, so a setPhase(otp) revert isn't needed.
     }
   }
+
+  // -------------------------------------------------------------------------
+  // Step 3: once auth context has propagated, accept the invite + redirect.
+  // -------------------------------------------------------------------------
+  React.useEffect(() => {
+    if (phase !== "waiting-auth" || !isAuthenticated) return;
+    // Flip phase synchronously to guard against a re-fire if isAuthenticated
+    // flickers; React's effect won't re-run mid-handler.
+    setPhase("finalising");
+    (async () => {
+      try {
+        await acceptInvite({ token });
+        router.replace("/");
+      } catch (error) {
+        setFormError(getConvexErrorMessage(error));
+        setIsLoading(false);
+        // Revert so the user can see the error and retry (e.g. invite expired
+        // while they typed the OTP). They're authenticated at this point but
+        // not yet kb_admin — re-entering the OTP would no-op, so kick them
+        // back to the OTP step where the error message displays.
+        setPhase("otp");
+      }
+    })();
+  }, [phase, isAuthenticated, acceptInvite, token, router]);
 
   function handleOtpChange(value: string) {
     setOtp(value);
@@ -325,7 +357,7 @@ export function AcceptInviteForm({
                 </div>
               )}
 
-              {phase === "finalising" ? (
+              {phase === "waiting-auth" || phase === "finalising" ? (
                 <Field className="items-center text-center">
                   <Spinner className="h-8 w-8" />
                   <p className="text-muted-foreground text-sm">
@@ -364,7 +396,7 @@ export function AcceptInviteForm({
                 </Field>
               )}
 
-              {phase !== "finalising" && (
+              {phase !== "waiting-auth" && phase !== "finalising" && (
                 <Field className="gap-2">
                   <Button
                     type="submit"
