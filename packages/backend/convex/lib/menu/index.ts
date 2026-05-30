@@ -81,6 +81,19 @@
  *    snapshot in the same Convex tx. Republication = écrasement atomique (no
  *    versioning V1, ADR 0015). `available` stays a LIVE overlay, NOT snapshotted
  *    (the rupture 1-tap from the KDS never triggers a republication).
+ *
+ * B-MENU-PUBLICATION slice 4 (#166) — admin « Aperçu » reads the live draft as
+ * the PWA would render the published snapshot (ADR 0015 « Aperçu admin lit le
+ * brouillon »):
+ *  - `publication.previewMenu` — `tenantQuery({ allow: ["kb_manager"] })`
+ *    (kb_admin via root override, staff REJECTED) that walks the draft via the
+ *    SAME shared `buildSnapshotPayload` helper used by `publishMenu` (DRY
+ *    enforced — the two surfaces can never drift), then applies the same
+ *    READ-time overlays as `getPublicMenu` (`photoUrl` via `ctx.storage.getUrl`,
+ *    live `available` from `menuItems`). Returns the same `PublicMenu` wire
+ *    contract as `getPublicMenu`, so the front renders it through the exact
+ *    same component. Lets the gérant verify unpublished changes before clicking
+ *    « Publier ».
  */
 export * as availability from "./availability";
 export * as catalog from "./catalog";
