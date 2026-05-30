@@ -1,7 +1,10 @@
 import { ConvexError, v } from "convex/values";
 import type { Id } from "../../_generated/dataModel";
 import type { MutationCtx } from "../../_generated/server";
-import type { TemplateScope } from "../../table/notifications";
+import type {
+  TemplateDeepLinkTarget,
+  TemplateScope,
+} from "../../table/notifications";
 import { marketingEligible } from "../customer";
 import {
   type CustomerCampaignFields,
@@ -11,11 +14,13 @@ import {
   listCrossTenantCustomerIds,
   listCustomerCampaignSendTimestamps,
   listTenantCampaignLaunches,
+  listTenantCampaignTemplates,
   listTenantCustomerIds,
   logAudit,
   readCustomerCampaignFields,
   readNotificationTemplate,
   tenantMutation,
+  tenantQuery,
 } from "../tenancy";
 import { findCampaignAnomaly } from "./antiAnomaly";
 import { inDoNotTrackWindow, nextSendableTime } from "./dnt";
@@ -25,7 +30,12 @@ import {
   pickMarketingChannel,
 } from "./marketingCascade";
 import { withinRateLimit } from "./marketingRateLimit";
-import { findRenderedViolation, renderTemplate } from "./templateBounds";
+import {
+  TEMPLATE_LANGUAGE,
+  type TemplateVariable,
+  findRenderedViolation,
+  renderTemplate,
+} from "./templateBounds";
 
 /**
  * 2.7-D — `sendCampaign`, the MARKETING branch of the Notifications moteur and the
@@ -323,5 +333,55 @@ export const sendCrossTenantCampaign = kbAdminMutation({
     });
 
     return result;
+  },
+});
+
+/**
+ * B-CAMPAIGN-TEMPLATES-02 — the PUBLIC read-only view of pre-validated campaign
+ * templates a `kb_manager` is allowed to pick from in the campaign UI (parent
+ * #137 — F-CAMPAGNES). MINCE DÉCALQUE on the slice-01 tenancy seam
+ * `listTenantCampaignTemplates`: the seam owns the filter (scope === "tenant",
+ * active === true, owned by THIS tenant OR KB-central), this public query owns
+ *  - the strict allowlist (`kb_manager` only — MOAT, no `staff` UI),
+ *  - the projection to a stable `TenantTemplateSummary` shape that strips the
+ *    internal fields the front does not need:
+ *      - `tenantId` (front already knows current tenant),
+ *      - `createdAt` (V1 front-irrelevant),
+ *      - `active` (constant `true` post-filter),
+ *      - `scope` (constant `"tenant"` post-filter),
+ *      - the Convex internal `_id` / `_creationTime`.
+ *
+ * No new wrapper, no schema change, no mutation. The seam already ships the
+ * cross-tenant fuzz at slice 01; this public query inherits the isolation
+ * guarantee from `tenantQuery({ allow: ["kb_manager"] })` and is itself fuzzed
+ * in `listTenantTemplates.test.ts`.
+ */
+export type TenantTemplateSummary = {
+  id: Id<"notificationTemplates">;
+  key: string;
+  label: string;
+  body: string;
+  variables: TemplateVariable[];
+  deepLinkTarget: TemplateDeepLinkTarget;
+  language: typeof TEMPLATE_LANGUAGE;
+  maxDiscountPercent: number;
+  containsAlcohol: boolean;
+};
+
+export const listTenantTemplates = tenantQuery({ allow: ["kb_manager"] })({
+  args: {},
+  handler: async (ctx): Promise<TenantTemplateSummary[]> => {
+    const rows = await listTenantCampaignTemplates(ctx, ctx.tenantId);
+    return rows.map((r) => ({
+      id: r._id,
+      key: r.key,
+      label: r.label,
+      body: r.body,
+      variables: r.variables,
+      deepLinkTarget: r.deepLinkTarget,
+      language: r.language,
+      maxDiscountPercent: r.maxDiscountPercent,
+      containsAlcohol: r.containsAlcohol,
+    }));
   },
 });
