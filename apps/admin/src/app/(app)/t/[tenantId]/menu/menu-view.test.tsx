@@ -155,6 +155,7 @@ function makeCategory(
     tenantId: "tenant_test" as Category["tenantId"],
     name: partial.name,
     order: partial.order,
+    createdAt: 0,
   };
 }
 
