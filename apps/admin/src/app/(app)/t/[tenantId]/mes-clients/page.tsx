@@ -1,53 +1,69 @@
 "use client";
 
 /**
- * F-MES-CLIENTS [1/4] (#181) — Route `/t/[tenantId]/mes-clients/`.
+ * F-MES-CLIENTS [2/4] (#186) — Route `/t/[tenantId]/mes-clients/`.
  *
- * First tracer-bullet of F-MES-CLIENTS (the resto KPI-only view, MOAT, PRD 70
- * §4.4 / Q90-Q2). This Slice 1/4 = page skeleton + audit-on-open + empty
- * state. The KPI tiles + reachability + return-rate tiles land in Slices 2-4
- * once `api.lib.customer.kpi.aggregateCustomerKPIs` is branched.
+ * Second tracer-bullet of F-MES-CLIENTS (the resto KPI-only view, MOAT, PRD
+ * 70 §4.4 / Q90-Q2 / ADR 0010). Slice 1 (#181) landed the page skeleton +
+ * audit-on-open + empty state; this slice branches
+ * `api.lib.customer.kpi.aggregateCustomerKPIs` via `useTenantQuery` (ADR
+ * 0014 §4) and renders the 3 segment cards (Actifs / Inactifs / VIP).
  *
- * Responsibilities (issue #181):
- *   1. Mount a static empty-state surface (no loading skeleton — there's
- *      nothing to load yet, the issue explicitly forbids a loading infini).
- *   2. Call `api.lib.customer.kpi.logKpiConsultation` exactly ONCE on entry
- *      to the view (PRD 70 §4.4 + PRD 90 §4 — 1 row per visite). Re-fires on
- *      tenant switch, suppresses StrictMode double-mount (see
- *      `audit-on-open.ts`).
+ * Responsibilities (issue #186):
+ *   1. Mount the audit-on-open wiring from slice 1 — one `logKpiConsultation`
+ *      row per visite (PRD 70 §4.4 + PRD 90 §4). Untouched here, see
+ *      `audit-on-open.ts`.
+ *   2. Bind `aggregateCustomerKPIs` through `useTenantQuery` so the tenantId
+ *      from `<TenantProvider/>` is injected automatically (front-side
+ *      `withTenant` discipline, ADR 0014 §4) — never a raw `useQuery`.
+ *   3. Catch the query's error path (incl. Forbidden / « accès refusé »)
+ *      with a route-segment Error Boundary (`./error.tsx`, Next.js App
+ *      Router convention) so the React tree never crashes the shell. The
+ *      view's `null` branch is reserved for the recoverable error path that
+ *      doesn't unmount the route segment.
+ *   4. Delegate rendering to the pure `MesClientsView` — keeps the page
+ *      thin and the view testable under `environment: "node"` (same split
+ *      as `monitoring-view.tsx`).
  *
- * tenantId source: `useCurrentTenantId()` from `<TenantProvider/>` (F-SHELL-04
- * landed via #175 — `t/[tenantId]/layout.tsx`). The issue allows a fallback to
- * `useParams()` if F-SHELL hadn't landed — it has, so we use the sanctioned
- * hook (single source of truth, branded `Id<"tenants">`).
- *
- * Scope discipline (issue #181 hard constraint): this file (and its siblings
- * `audit-on-open.ts` / `empty-state.tsx`) live under
- * `apps/admin/src/app/(app)/t/[tenantId]/mes-clients/` ONLY. Zero touch to
- * `apps/web`, `apps/native`, or `packages/backend/convex/`.
+ * Scope discipline (#186 hard constraint, mirrors #181): this file (and its
+ * siblings under `apps/admin/src/app/(app)/t/[tenantId]/mes-clients/`) is
+ * the ONLY surface touched by this story. Zero touch to `apps/web`,
+ * `apps/native`, or `packages/backend/convex/`.
  */
 
 import { useMutation } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
+
 import { useCurrentTenantId } from "@/components/app/tenant-context";
+import { useTenantQuery } from "@/hooks";
+
 import { useAuditOnOpen } from "./audit-on-open";
-import { MesClientsEmptyState } from "./empty-state";
+import { MesClientsView } from "./mes-clients-view";
 
 export default function MesClientsPage() {
   const tenantId = useCurrentTenantId();
+
+  // Audit-on-open (slice 1 #181). The decision logic + StrictMode double-
+  // mount suppression live in `useAuditOnOpen` / `shouldFireAudit` — pinned
+  // by `audit-on-open.test.ts`. We pass a void-returning wrapper so the
+  // hook never sees the mutation's Promise.
   const logKpiConsultation = useMutation(
     api.lib.customer.kpi.logKpiConsultation,
   );
-
-  // One audit row per visite (mount + every tenant switch); the StrictMode
-  // double-mount is absorbed by the ref inside `useAuditOnOpen`. We pass a
-  // void-returning wrapper so the hook never sees the mutation's Promise (and
-  // so React doesn't get confused by an effect "returning" a thenable).
   useAuditOnOpen(tenantId, (id) => {
     void logKpiConsultation({ tenantId: id });
   });
 
-  // Slice 1/4 = empty state only. Slices 2-4 will replace this with KPI tiles
-  // wired to `aggregateCustomerKPIs` once that query is consumed here.
-  return <MesClientsEmptyState />;
+  // Bind aggregateCustomerKPIs through `useTenantQuery` — the hook reads
+  // `tenantId` from `<TenantProvider/>` and injects it into args (ADR 0014
+  // §4 / #183). Loading is the `undefined` sentinel; a thrown error
+  // (Forbidden, network, etc.) propagates up to `./error.tsx` (Next route-
+  // segment Error Boundary), so the view's `null` branch is the explicit
+  // "we got back nothing usable" fallback when the wrapper page chooses to
+  // render the recoverable error inline. Today, `undefined` (loading) and
+  // resolved aggregates are the only states the page produces directly —
+  // hard errors are taken by the Error Boundary.
+  const kpis = useTenantQuery(api.lib.customer.kpi.aggregateCustomerKPIs);
+
+  return <MesClientsView kpis={kpis} />;
 }
