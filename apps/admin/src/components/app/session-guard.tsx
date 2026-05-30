@@ -12,7 +12,7 @@
  *                         don't redirect — query still in flight).
  *   - `unauthenticated`→ push `/login?next=<currentPath>`.
  *   - `ready` + `isAdmin === false && tenants.length === 0` →
- *                         render `<NoTenantAttached />`.
+ *                         render `<NoTenantEmptyState />` (F-SHELL-03 / #169).
  *   - `ready` otherwise → render children (KB Admin root, gérant avec au
  *                         moins un tenant, gérant + admin mixte).
  *
@@ -31,7 +31,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { Spinner } from "@/components/ui/spinner";
-import { NoTenantAttached } from "./no-tenant-attached";
+import { NoTenantEmptyState } from "./no-tenant-empty-state";
 import { useSession } from "@/lib/session";
 import type { SessionState } from "@/lib/session";
 
@@ -90,7 +90,7 @@ export function SessionGuard({ children }: { children: React.ReactNode }) {
   }
 
   if (decision.kind === "no-tenant") {
-    return <NoTenantAttached />;
+    return <NoTenantEmptyState />;
   }
 
   return <>{children}</>;
