@@ -189,19 +189,30 @@ describe("MenuView — F-MENU-01 (#187)", () => {
     expect(text).toMatch(/modifications non publi[ée]es/i);
   });
 
-  it("AC4 — « Aperçu » and « Publier » buttons are DISABLED (F-MENU-10 will activate them, #254)", () => {
+  it("AC4 — « Aperçu » and « Publier » HEADER buttons are DISABLED (F-MENU-10 will activate them, #254)", () => {
     // The buttons are placeholders for slice 10 of the epic. If a future
     // refactor enables them by accident, a manager could trigger a publish
     // before `publishMenu` is even wired through `useTenantMutation` —
     // we'd rather fail loudly here than ship a misleading affordance.
+    //
+    // Pinned via data-slot to stay narrow: slice 2 (#200) introduces an
+    // ENABLED "+ Catégorie" button when CRUD callbacks are wired, and the
+    // delete-row buttons are also enabled — the disabled contract is on the
+    // publish/preview header pair only.
     const tree = serialize(MenuView({ categories: UNORDERED_CATEGORIES }));
-    const buttons = flatten(tree).filter(
-      (n) => n !== null && "type" in n && n.type === "button",
-    );
-    expect(buttons.length).toBeGreaterThanOrEqual(2);
-    for (const b of buttons) {
-      if (b === null || "text" in b) continue;
-      expect(b.props["disabled"]).toBe(true);
+    const headerSlots = ["menu-preview-button", "menu-publish-button"] as const;
+    for (const slot of headerSlots) {
+      const matches = flatten(tree).filter((n) => {
+        if (n === null || "text" in n) return false;
+        return n.props["data-slot"] === slot;
+      });
+      expect(matches.length).toBe(1);
+      const node = matches[0] as {
+        type: string;
+        props: Record<string, unknown>;
+        children: SerializedNode[];
+      };
+      expect(node.props["disabled"]).toBe(true);
     }
   });
 
@@ -269,6 +280,56 @@ describe("MenuView — F-MENU-01 (#187)", () => {
     expect(text).toMatch(/\bMenu\b/);
     expect(text).toMatch(/Aperçu/);
     expect(text).toMatch(/Publier/);
+  });
+
+  // -------------------------------------------------------------------------
+  // F-MENU-02 (#200) — CRUD wiring forwarded through MenuView
+  // -------------------------------------------------------------------------
+  // When `MenuView` receives the slice-2 callbacks (`onCreateCategory`,
+  // `onRenameCategory`, `onDeleteCategory`), it must render the editable
+  // `CategoryListEditor` instead of the read-only `CategoryList`. The view
+  // itself stays a pure function of its props — the wiring lives in
+  // `page.tsx` (pinned by `page.test.ts`).
+
+  it("F-MENU-02 — without CRUD callbacks, header carries NO « + Catégorie » action (read-only mode preserved)", () => {
+    const tree = serialize(MenuView({ categories: UNORDERED_CATEGORIES }));
+    const addButtons = flatten(tree).filter((n) => {
+      if (n === null || "text" in n) return false;
+      return n.props["data-slot"] === "menu-category-add";
+    });
+    expect(addButtons).toHaveLength(0);
+  });
+
+  it("F-MENU-02 — with CRUD callbacks, surfaces the « + Catégorie » affordance (data-slot=menu-category-add)", () => {
+    const tree = serialize(
+      MenuView({
+        categories: UNORDERED_CATEGORIES,
+        onCreateCategory: () => {},
+        onRenameCategory: () => {},
+        onDeleteCategory: () => {},
+      }),
+    );
+    const addButtons = flatten(tree).filter((n) => {
+      if (n === null || "text" in n) return false;
+      return n.props["data-slot"] === "menu-category-add";
+    });
+    expect(addButtons.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("F-MENU-02 — with CRUD callbacks, empty branch ALSO surfaces the « + Catégorie » CTA (else the gérant cannot bootstrap)", () => {
+    const tree = serialize(
+      MenuView({
+        categories: [],
+        onCreateCategory: () => {},
+        onRenameCategory: () => {},
+        onDeleteCategory: () => {},
+      }),
+    );
+    const addButtons = flatten(tree).filter((n) => {
+      if (n === null || "text" in n) return false;
+      return n.props["data-slot"] === "menu-category-add";
+    });
+    expect(addButtons.length).toBeGreaterThanOrEqual(1);
   });
 
   it("AC3 — renders one category per row (count matches input length)", () => {
