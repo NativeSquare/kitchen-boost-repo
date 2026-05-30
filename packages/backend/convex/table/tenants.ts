@@ -49,6 +49,20 @@ export const tenants = defineTable({
       primaryColor: v.optional(v.string()),
     }),
   ),
+  // B-TENANT-LIFECYCLE [1/4] — optional contact + accepted-modes fields the
+  // Wizard step 4 (branding élargi, PRD 70 §3.6) and the Paramètres tenant
+  // form (PRD 70 §4.8) populate via the upcoming `tenant.updateSettings` (D5
+  // élargi). All optional — a fresh tenant created at step 1 has none of
+  // these set; they are filled progressively across the wizard / paramètres
+  // page. No new index: these fields are never lookup keys.
+  address: v.optional(v.string()),
+  phone: v.optional(v.string()),
+  acceptedModes: v.optional(
+    v.object({
+      delivery: v.boolean(),
+      clickAndCollect: v.boolean(),
+    }),
+  ),
   customDomain: v.optional(v.string()),
   // 2.6-A — the tenant's Uber Direct sub-account id (`customer_id`, research
   // §1.1 / §3.1). One Uber Direct account per tenant — always (one pickup address

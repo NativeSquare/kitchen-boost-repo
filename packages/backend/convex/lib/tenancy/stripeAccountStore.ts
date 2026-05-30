@@ -64,15 +64,7 @@ export async function getTenantByStripeAccount(
     .unique();
 }
 
-/**
- * Read one tenant by id (or `null`). The sanctioned `ctx.db.get` for the
- * `tenants` core table from the root Stripe onboarding surface — the CALLER (a
- * `kbAdminQuery` handler, root-gated) has already proven access, so this is not a
- * tenancy bypass (same exempt-path discipline as the rest of this seam).
- */
-export async function getTenantById(
-  ctx: QueryCtx | MutationCtx,
-  tenantId: Id<"tenants">,
-): Promise<Doc<"tenants"> | null> {
-  return ctx.db.get(tenantId);
-}
+// `getTenantById` was relocated to `tenantsStore.ts` in B-TENANT-LIFECYCLE
+// [1/4] so the single sanctioned `ctx.db.get` site for the `tenants` table
+// lives next to the rest of that table's seam. Import it via the module
+// barrel (`./index.ts`) — the public re-export is unchanged.

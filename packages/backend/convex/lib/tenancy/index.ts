@@ -70,7 +70,6 @@ export {
 export { logAudit, type AuditEntry } from "./audit";
 export {
   type StripeAccountStatus,
-  getTenantById,
   getTenantByStripeAccount,
   setTenantStripeAccount,
   setTenantStripeStatus,
@@ -144,7 +143,15 @@ export {
   setProspectPhase,
   setProspectTenant,
 } from "./prospectsStore";
-export { type NewTenant, getTenantBySlug, insertTenant } from "./tenantsStore";
+export {
+  type NewTenant,
+  type TenantSettingsPatch,
+  activateTenant,
+  getTenantById,
+  getTenantBySlug,
+  insertTenant,
+  updateTenantSettings,
+} from "./tenantsStore";
 export {
   type NewManagerUser,
   getUserByEmail,
