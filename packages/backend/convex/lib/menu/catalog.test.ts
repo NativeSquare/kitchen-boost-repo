@@ -453,7 +453,7 @@ describe("B-MENU-PUBLICATION slice 3 — getPublicMenu reads the snapshot (#160,
       name: "Smash Double v2 (DRAFT)",
       description: "draft only",
       basePrice: 9999,
-      allergens: ["arachide"],
+      allergens: ["arachides"],
       available: true,
     });
     // 3) The PWA still sees the PUBLISHED snapshot, not the draft mutations.

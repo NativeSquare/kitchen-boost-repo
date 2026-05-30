@@ -1,14 +1,15 @@
-import type { Doc } from "../../_generated/dataModel";
+import type { Doc, Id } from "../../_generated/dataModel";
+import type { ModifierOption } from "../../table/modifierGroups";
 import {
-  listTenantCategories,
-  listTenantItemModifierGroups,
-  listTenantItemsByCategory,
+  getPublishedMenu,
   publicTenantQuery,
+  readTenantItemsAvailability,
 } from "../tenancy";
 
 /**
  * 2.2-C — PUBLIC read of a tenant's menu for the PWA eater (PRD 10 §5/§6,
- * client-ordering CONTEXT, ADR 0010).
+ * client-ordering CONTEXT, ADR 0010). Source pivoted to the [[Instantané publié]]
+ * by B-MENU-PUBLICATION slice 3 (#160, ADR 0015) — see below.
  *
  * `getPublicMenu` is the UNIQUE eater-facing surface of the menu. It is an
  * UNAUTHENTICATED, read-only query exposed via the foundation `publicTenantQuery`
@@ -17,19 +18,46 @@ import {
  * else the wrapper throws `Forbidden`. There is deliberately NO public mutation
  * twin: the eater never writes the menu.
  *
+ * SOURCE OF TRUTH (ADR 0015, slice 3 / #160): reads from the [[Instantané
+ * publié]] (`publishedMenus`) of the tenant, NOT from the live draft tables. The
+ * KB Manager edits the live `menuCategories` / `menuItems` / `modifierGroups`
+ * tables as their brouillon; the eater only sees what was last published via
+ * `publishMenu` (slice 2). A tenant that has NEVER published returns
+ * `{ categories: [] }` — no throw — and the front PWA renders its "menu en cours
+ * de préparation" state (ADR 0015 § Conséquences, EPIC #132 § User Stories #10).
+ *
+ * Two overlays are resolved at READ time on top of the snapshot payload:
+ *  1. `photoUrl` — resolved via `ctx.storage.getUrl(item.photoStorageId)` so the
+ *     snapshot stays immutable while the URL can rotate (storage-controlled).
+ *  2. `available` — read LIVE from `menuItems` via the tenant-scoped seam
+ *     `readTenantItemsAvailability`. The snapshot does NOT carry `available`
+ *     (ADR 0015 pivot « la rupture ne doit pas exiger une republication
+ *     globale »), so the staff's 1-tap [[Item out of stock]] is reflected on the
+ *     PWA without a republication. An item whose live row has been deleted (or
+ *     belongs to another tenant — structurally impossible since the snapshot is
+ *     tenant-scoped) defaults to `available: false` (safe: the eater never sees
+ *     a phantom item as orderable).
+ *
+ * The wire contract `PublicMenu` (categories ORDERED → items with name /
+ * description / basePrice / allergens / available / photoUrl, modifierGroups
+ * with min / max / options) is BYTE-EQUIVALENT to the pre-slice contract — front
+ * PWA stays rétro-compatible (ADR 0015 « `getPublicMenu` migration »).
+ *
  * It NEVER touches raw `ctx.db` — it composes the sanctioned, tenant-scoped
- * `lib/tenancy/menuStore` read seam, always passing `ctx.tenantId` (resolved by
- * the public wrapper). So a single tenant's menu is returned and nothing else is
- * reachable: the cross-tenant isolation (ADR 0010) is STRUCTURAL, and the
- * `getPublicMenu(A)` ≠ B suite pins it.
+ * `lib/tenancy` seams (`getPublishedMenu`, `readTenantItemsAvailability`),
+ * always passing `ctx.tenantId` (resolved by the public wrapper). So a single
+ * tenant's menu is returned and nothing else is reachable: the cross-tenant
+ * isolation (ADR 0010) is STRUCTURAL, and the `getPublicMenu(A)` ≠ B suite
+ * pins it.
  *
  * Shape (PRD §5/§6): categories ORDERED → items → their reusable modifier groups
- * resolved via the N-N link table. Items are returned even when UNAVAILABLE
- * ([[Item out of stock]]): the front greys them out from the `available` flag —
- * it does NOT hide them (PRD §5). Each item carries name / description /
- * `basePrice` (centimes) / 14-allergen subset / `available` / resolved photo URL;
- * each modifier group carries `name` / `minSelect` / `maxSelect` / `options`
- * (`label` + `priceDelta`). No search / no draft-publish split in V1.
+ * (already resolved at publication time). Items are returned even when
+ * UNAVAILABLE ([[Item out of stock]]): the front greys them out from the
+ * `available` flag — it does NOT hide them (PRD §5). Each item carries name /
+ * description / `basePrice` (centimes) / 14-allergen subset / `available` /
+ * resolved photo URL; each modifier group carries `name` / `minSelect` /
+ * `maxSelect` / `options` (`label` + `priceDelta`). No search / no allergen
+ * filter in V1.
  */
 
 /** One reusable modifier group as the PWA consumes it (front renders min/max). */
@@ -38,7 +66,7 @@ export type PublicModifierGroup = {
   name: string;
   minSelect: number;
   maxSelect: number;
-  options: Doc<"modifierGroups">["options"];
+  options: ModifierOption[];
 };
 
 /** One menu item with its resolved photo URL + attached modifier groups. */
@@ -66,46 +94,41 @@ export type PublicMenu = {
   categories: PublicMenuCategory[];
 };
 
-/** Project a stored modifier group to its public (eater-facing) shape. */
-function toPublicModifierGroup(
-  group: Doc<"modifierGroups">,
-): PublicModifierGroup {
-  return {
-    _id: group._id,
-    name: group.name,
-    minSelect: group.minSelect,
-    maxSelect: group.maxSelect,
-    options: group.options,
-  };
-}
-
 /**
- * Public, unauthenticated, read-only menu of the tenant resolved from `tenantId`.
- * Tenant-scoped by construction (every read keyed on `ctx.tenantId` through the
- * sanctioned store seam), so it can NEVER surface another tenant's data.
+ * Public, unauthenticated, read-only menu of the tenant resolved from `tenantId`,
+ * sourced from the [[Instantané publié]] (`publishedMenus`, ADR 0015) with the
+ * live `available` overlay applied per item. Tenant-scoped by construction
+ * (snapshot read + availability read both keyed on `ctx.tenantId` through the
+ * sanctioned `lib/tenancy` seam), so it can NEVER surface another tenant's data.
  */
 export const getPublicMenu = publicTenantQuery({
   args: {},
   handler: async (ctx): Promise<PublicMenu> => {
-    const categories = await listTenantCategories(ctx, ctx.tenantId);
+    const snapshot = await getPublishedMenu(ctx, ctx.tenantId);
+    // Tenant never published → empty menu, no throw (ADR 0015 edge, EPIC #132
+    // User Story #10). The front PWA renders its "menu en cours de préparation".
+    if (snapshot === null) return { categories: [] };
+
+    // Collect every snapshotted item id so we can bulk-read the live `available`
+    // overlay in a single tenant-scoped seam call (ADR 0015 pivot — `available`
+    // is NOT in the snapshot, it's read live so the 1-tap rupture is reflected
+    // without republication). Missing from the map ⇒ default `false` (safe).
+    const allItemIds: Id<"menuItems">[] = [];
+    for (const category of snapshot.payload.categories) {
+      for (const item of category.items) {
+        allItemIds.push(item._id);
+      }
+    }
+    const availability = await readTenantItemsAvailability(
+      ctx,
+      ctx.tenantId,
+      allItemIds,
+    );
+
     const publicCategories: PublicMenuCategory[] = [];
-
-    for (const category of categories) {
-      // Items of this category (ordered), incl. unavailable ones — the front
-      // greys them out from `available`, it does not hide them (PRD §5).
-      const items = await listTenantItemsByCategory(
-        ctx,
-        ctx.tenantId,
-        category._id,
-      );
+    for (const category of snapshot.payload.categories) {
       const publicItems: PublicMenuItem[] = [];
-
-      for (const item of items) {
-        const groups = await listTenantItemModifierGroups(
-          ctx,
-          ctx.tenantId,
-          item._id,
-        );
+      for (const item of category.items) {
         const photoUrl =
           item.photoStorageId === undefined
             ? null
@@ -116,12 +139,21 @@ export const getPublicMenu = publicTenantQuery({
           description: item.description,
           basePrice: item.basePrice,
           allergens: item.allergens,
-          available: item.available,
+          // Live overlay (ADR 0015 pivot). Default `false` when the live row is
+          // missing (deleted from the draft post-publish, or — structurally
+          // impossible — foreign tenant id): the eater never sees a phantom
+          // item as orderable.
+          available: availability.get(item._id) ?? false,
           photoUrl,
-          modifierGroups: groups.map(toPublicModifierGroup),
+          modifierGroups: item.modifierGroups.map((g) => ({
+            _id: g._id,
+            name: g.name,
+            minSelect: g.minSelect,
+            maxSelect: g.maxSelect,
+            options: g.options,
+          })),
         });
       }
-
       publicCategories.push({
         _id: category._id,
         name: category.name,

@@ -404,6 +404,8 @@ describe("B-MENU-PUBLICATION slice 1 — publishedMenus seam (ADR 0015 + 0010)",
     // The publication snapshot strips `available` (ADR 0015 pivot) — slice 3's
     // `getPublicMenu` reads it LIVE from `menuItems` per item id. This seam is
     // the sanctioned bulk-read helper for that overlay.
+    // (Convex serialisation does not allow Maps across the t.run boundary, so we
+    // project to a plain record inside the closure and assert on that.)
     const itemA2 = await t.run(async (ctx) => {
       const id = await ctx.db.insert("menuItems", {
         tenantId: seed.tenantA.tenantId,
@@ -418,38 +420,53 @@ describe("B-MENU-PUBLICATION slice 1 — publishedMenus seam (ADR 0015 + 0010)",
       });
       return id;
     });
-    const map = await t.run((ctx) =>
-      readTenantItemsAvailability(ctx, seed.tenantA.tenantId, [itemA1, itemA2]),
-    );
-    expect(map.get(itemA1)).toBe(true);
-    expect(map.get(itemA2)).toBe(false);
+    const result = await t.run(async (ctx) => {
+      const map = await readTenantItemsAvailability(
+        ctx,
+        seed.tenantA.tenantId,
+        [itemA1, itemA2],
+      );
+      return Object.fromEntries(map);
+    });
+    expect(result[itemA1]).toBe(true);
+    expect(result[itemA2]).toBe(false);
   });
 
   it("readTenantItemsAvailability omits ids that don't belong to the tenant (live overlay cannot leak across tenants)", async () => {
-    const map = await t.run((ctx) =>
-      readTenantItemsAvailability(ctx, seed.tenantA.tenantId, [
-        itemA1,
-        itemB1, // foreign id — must be silently omitted (snapshot row remains, overlay treats it as unknown)
-      ]),
-    );
-    expect(map.get(itemA1)).toBe(true);
-    expect(map.has(itemB1)).toBe(false);
+    const result = await t.run(async (ctx) => {
+      const map = await readTenantItemsAvailability(
+        ctx,
+        seed.tenantA.tenantId,
+        [itemA1, itemB1],
+      );
+      return Object.fromEntries(map);
+    });
+    expect(result[itemA1]).toBe(true);
+    expect(itemB1 in result).toBe(false);
   });
 
   it("readTenantItemsAvailability omits ids whose live row was deleted (caller treats missing as `false`)", async () => {
-    await t.run(async (ctx) => {
+    const result = await t.run(async (ctx) => {
       await ctx.db.delete(itemA1);
+      const map = await readTenantItemsAvailability(
+        ctx,
+        seed.tenantA.tenantId,
+        [itemA1],
+      );
+      return Object.fromEntries(map);
     });
-    const map = await t.run((ctx) =>
-      readTenantItemsAvailability(ctx, seed.tenantA.tenantId, [itemA1]),
-    );
-    expect(map.has(itemA1)).toBe(false);
+    expect(itemA1 in result).toBe(false);
   });
 
   it("readTenantItemsAvailability returns an empty map for an empty input list (no-op)", async () => {
-    const map = await t.run((ctx) =>
-      readTenantItemsAvailability(ctx, seed.tenantA.tenantId, []),
-    );
-    expect(map.size).toBe(0);
+    const result = await t.run(async (ctx) => {
+      const map = await readTenantItemsAvailability(
+        ctx,
+        seed.tenantA.tenantId,
+        [],
+      );
+      return Object.fromEntries(map);
+    });
+    expect(Object.keys(result)).toHaveLength(0);
   });
 });
