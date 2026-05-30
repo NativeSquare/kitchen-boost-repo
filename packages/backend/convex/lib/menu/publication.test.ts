@@ -749,3 +749,353 @@ describe("B-MENU-PUBLICATION slice 4 — previewMenu cross-tenant fuzz (#166, AD
     expect(leaks).toEqual([]);
   });
 });
+
+/**
+ * B-MENU-PUBLICATION slice 5 (#176) — `hasUnpublishedChanges` indicator (ADR
+ * 0015 « Un indicateur "modifications non publiées" est affiché dans l'éditeur »
+ * + ADR 0010), written BEFORE the implementation (TDD red).
+ *
+ * The editor displays this indicator continuously (« X modifications non
+ * publiées »); it must flip back to `false` after `publishMenu` and to `true`
+ * after ANY draft mutation (rename category, edit item, attach modifier group,
+ * etc.). Implementation note: a literal `_creationTime`-only comparison would
+ * miss in-place updates (patches don't refresh `_creationTime` in Convex), so
+ * the seam projects the live draft via the SAME `buildSnapshotPayload` used by
+ * `publishMenu` / `previewMenu` and deep-equates it with `snapshot.payload`.
+ * That keeps the three surfaces consistent (DRY): if the draft projects to the
+ * same payload bytes as the last snapshot, there is nothing to publish.
+ *
+ * Return shape:
+ *   { hasChanges: boolean; lastPublishedAt: number | null; changedSince: number | null }
+ * - `lastPublishedAt` — `publishedMenus.publishedAt` of the tenant snapshot, or
+ *   `null` if the tenant has never published.
+ * - `changedSince` — best-effort LOWER bound on when changes first appeared. We
+ *   return the earliest `_creationTime` strictly greater than `lastPublishedAt`
+ *   among draft rows of the tenant (or `null` if no such row / no changes).
+ *   Pure edits don't refresh `_creationTime`, so this stays `null` for pure
+ *   renames/edits — that's an accepted V1 approximation (the boolean is the
+ *   load-bearing field; the timestamp is informational).
+ */
+describe("B-MENU-PUBLICATION slice 5 — hasUnpublishedChanges (#176, ADR 0015)", () => {
+  let t: ReturnType<typeof convexTest>;
+  let seed: Seed;
+  beforeEach(async () => {
+    t = convexTest(schema, modules);
+    seed = await seedTwoTenantsAllRoles(t);
+  });
+
+  it("never-published tenant + non-empty draft ⇒ hasChanges = true, lastPublishedAt = null", async () => {
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    await asManager.mutation(api.lib.menu.categories.create, {
+      tenantId: seed.tenantA.tenantId,
+      name: "Cat",
+    });
+    const res = await asManager.query(
+      api.lib.menu.publication.hasUnpublishedChanges,
+      { tenantId: seed.tenantA.tenantId },
+    );
+    expect(res.hasChanges).toBe(true);
+    expect(res.lastPublishedAt).toBeNull();
+    expect(res.changedSince).not.toBeNull();
+  });
+
+  it("never-published tenant + EMPTY draft ⇒ hasChanges = false, lastPublishedAt = null", async () => {
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    const res = await asManager.query(
+      api.lib.menu.publication.hasUnpublishedChanges,
+      { tenantId: seed.tenantA.tenantId },
+    );
+    expect(res.hasChanges).toBe(false);
+    expect(res.lastPublishedAt).toBeNull();
+    expect(res.changedSince).toBeNull();
+  });
+
+  it("after publishMenu ⇒ hasChanges = false, lastPublishedAt set", async () => {
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    const cat = await asManager.mutation(api.lib.menu.categories.create, {
+      tenantId: seed.tenantA.tenantId,
+      name: "Cat",
+    });
+    await asManager.mutation(api.lib.menu.items.create, {
+      tenantId: seed.tenantA.tenantId,
+      categoryId: cat,
+      name: "I",
+      description: "d",
+      basePrice: 500,
+      allergens: [],
+    });
+    await asManager.mutation(api.lib.menu.publication.publishMenu, {
+      tenantId: seed.tenantA.tenantId,
+    });
+    const res = await asManager.query(
+      api.lib.menu.publication.hasUnpublishedChanges,
+      { tenantId: seed.tenantA.tenantId },
+    );
+    expect(res.hasChanges).toBe(false);
+    expect(res.lastPublishedAt).not.toBeNull();
+    expect(typeof res.lastPublishedAt).toBe("number");
+    expect(res.changedSince).toBeNull();
+  });
+
+  it("after a draft RENAME category ⇒ hasChanges = true", async () => {
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    const cat = await asManager.mutation(api.lib.menu.categories.create, {
+      tenantId: seed.tenantA.tenantId,
+      name: "Cat",
+    });
+    await asManager.mutation(api.lib.menu.publication.publishMenu, {
+      tenantId: seed.tenantA.tenantId,
+    });
+    await asManager.mutation(api.lib.menu.categories.rename, {
+      tenantId: seed.tenantA.tenantId,
+      categoryId: cat,
+      name: "Cat v2",
+    });
+    const res = await asManager.query(
+      api.lib.menu.publication.hasUnpublishedChanges,
+      { tenantId: seed.tenantA.tenantId },
+    );
+    expect(res.hasChanges).toBe(true);
+  });
+
+  it("after a draft ITEM EDIT ⇒ hasChanges = true", async () => {
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    const cat = await asManager.mutation(api.lib.menu.categories.create, {
+      tenantId: seed.tenantA.tenantId,
+      name: "Cat",
+    });
+    const itemId = await asManager.mutation(api.lib.menu.items.create, {
+      tenantId: seed.tenantA.tenantId,
+      categoryId: cat,
+      name: "I",
+      description: "d",
+      basePrice: 500,
+      allergens: [],
+    });
+    await asManager.mutation(api.lib.menu.publication.publishMenu, {
+      tenantId: seed.tenantA.tenantId,
+    });
+    await asManager.mutation(api.lib.menu.items.update, {
+      tenantId: seed.tenantA.tenantId,
+      itemId,
+      categoryId: cat,
+      name: "I v2",
+      description: "d2",
+      basePrice: 700,
+      allergens: ["gluten"],
+      available: true,
+    });
+    const res = await asManager.query(
+      api.lib.menu.publication.hasUnpublishedChanges,
+      { tenantId: seed.tenantA.tenantId },
+    );
+    expect(res.hasChanges).toBe(true);
+  });
+
+  it("after ATTACH modifier group ⇒ hasChanges = true", async () => {
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    const cat = await asManager.mutation(api.lib.menu.categories.create, {
+      tenantId: seed.tenantA.tenantId,
+      name: "Cat",
+    });
+    const itemId = await asManager.mutation(api.lib.menu.items.create, {
+      tenantId: seed.tenantA.tenantId,
+      categoryId: cat,
+      name: "I",
+      description: "d",
+      basePrice: 500,
+      allergens: [],
+    });
+    const groupId = await asManager.mutation(
+      api.lib.menu.modifiers.createGroup,
+      {
+        tenantId: seed.tenantA.tenantId,
+        name: "G",
+        minSelect: 0,
+        maxSelect: 1,
+        options: [{ label: "o", priceDelta: 0 }],
+      },
+    );
+    await asManager.mutation(api.lib.menu.publication.publishMenu, {
+      tenantId: seed.tenantA.tenantId,
+    });
+    await asManager.mutation(api.lib.menu.modifiers.attachGroupToItem, {
+      tenantId: seed.tenantA.tenantId,
+      itemId,
+      modifierGroupId: groupId,
+    });
+    const res = await asManager.query(
+      api.lib.menu.publication.hasUnpublishedChanges,
+      { tenantId: seed.tenantA.tenantId },
+    );
+    expect(res.hasChanges).toBe(true);
+  });
+
+  it("after RE-PUBLISH ⇒ hasChanges = false again, lastPublishedAt updates", async () => {
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    const cat = await asManager.mutation(api.lib.menu.categories.create, {
+      tenantId: seed.tenantA.tenantId,
+      name: "Cat",
+    });
+    await asManager.mutation(api.lib.menu.publication.publishMenu, {
+      tenantId: seed.tenantA.tenantId,
+    });
+    const firstRes = await asManager.query(
+      api.lib.menu.publication.hasUnpublishedChanges,
+      { tenantId: seed.tenantA.tenantId },
+    );
+    const firstAt = firstRes.lastPublishedAt as number;
+    await asManager.mutation(api.lib.menu.categories.rename, {
+      tenantId: seed.tenantA.tenantId,
+      categoryId: cat,
+      name: "Cat v2",
+    });
+    expect(
+      (
+        await asManager.query(
+          api.lib.menu.publication.hasUnpublishedChanges,
+          { tenantId: seed.tenantA.tenantId },
+        )
+      ).hasChanges,
+    ).toBe(true);
+    // wait 1ms so the new publishedAt is strictly newer
+    await new Promise((r) => setTimeout(r, 2));
+    await asManager.mutation(api.lib.menu.publication.publishMenu, {
+      tenantId: seed.tenantA.tenantId,
+    });
+    const secondRes = await asManager.query(
+      api.lib.menu.publication.hasUnpublishedChanges,
+      { tenantId: seed.tenantA.tenantId },
+    );
+    expect(secondRes.hasChanges).toBe(false);
+    expect(secondRes.lastPublishedAt).not.toBeNull();
+    expect((secondRes.lastPublishedAt as number) >= firstAt).toBe(true);
+  });
+
+  it("toggling `available` (out-of-stock) does NOT flip hasChanges (ADR 0015 pivot: rupture is live overlay, not a draft change)", async () => {
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    const cat = await asManager.mutation(api.lib.menu.categories.create, {
+      tenantId: seed.tenantA.tenantId,
+      name: "Cat",
+    });
+    const itemId = await asManager.mutation(api.lib.menu.items.create, {
+      tenantId: seed.tenantA.tenantId,
+      categoryId: cat,
+      name: "I",
+      description: "d",
+      basePrice: 500,
+      allergens: [],
+    });
+    await asManager.mutation(api.lib.menu.publication.publishMenu, {
+      tenantId: seed.tenantA.tenantId,
+    });
+    // out-of-stock toggle — payload `available` is NOT in the snapshot.
+    await asManager.mutation(api.lib.menu.availability.setItemAvailability, {
+      tenantId: seed.tenantA.tenantId,
+      itemId,
+      available: false,
+    });
+    const res = await asManager.query(
+      api.lib.menu.publication.hasUnpublishedChanges,
+      { tenantId: seed.tenantA.tenantId },
+    );
+    expect(res.hasChanges).toBe(false);
+  });
+
+  it("cross-tenant fuzz: indicator of tenant A is unaffected by draft mutations on tenant B", async () => {
+    const aMgr = t.withIdentity({ subject: seed.tenantA.managerId });
+    const bMgr = t.withIdentity({ subject: seed.tenantB.managerId });
+    // seed both, publish both → both should be hasChanges=false
+    await aMgr.mutation(api.lib.menu.categories.create, {
+      tenantId: seed.tenantA.tenantId,
+      name: "A-cat",
+    });
+    await bMgr.mutation(api.lib.menu.categories.create, {
+      tenantId: seed.tenantB.tenantId,
+      name: "B-cat",
+    });
+    await aMgr.mutation(api.lib.menu.publication.publishMenu, {
+      tenantId: seed.tenantA.tenantId,
+    });
+    await bMgr.mutation(api.lib.menu.publication.publishMenu, {
+      tenantId: seed.tenantB.tenantId,
+    });
+    const aBefore = await aMgr.query(
+      api.lib.menu.publication.hasUnpublishedChanges,
+      { tenantId: seed.tenantA.tenantId },
+    );
+    expect(aBefore.hasChanges).toBe(false);
+    // B mutates its draft.
+    await bMgr.mutation(api.lib.menu.categories.create, {
+      tenantId: seed.tenantB.tenantId,
+      name: "B-cat-2",
+    });
+    // A must still be false; B must now be true.
+    const aAfter = await aMgr.query(
+      api.lib.menu.publication.hasUnpublishedChanges,
+      { tenantId: seed.tenantA.tenantId },
+    );
+    expect(aAfter.hasChanges).toBe(false);
+    const bAfter = await bMgr.query(
+      api.lib.menu.publication.hasUnpublishedChanges,
+      { tenantId: seed.tenantB.tenantId },
+    );
+    expect(bAfter.hasChanges).toBe(true);
+  });
+
+  it("kb_admin (root override) can read the indicator of any tenant", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    const res = await asAdmin.query(
+      api.lib.menu.publication.hasUnpublishedChanges,
+      { tenantId: seed.tenantB.tenantId },
+    );
+    expect(typeof res.hasChanges).toBe("boolean");
+    expect(res.lastPublishedAt).toBeNull();
+  });
+
+  it("staff is REJECTED (publication indicator is editor-only)", async () => {
+    const asStaff = t.withIdentity({ subject: seed.tenantA.staffId });
+    await expect(
+      asStaff.query(api.lib.menu.publication.hasUnpublishedChanges, {
+        tenantId: seed.tenantA.tenantId,
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("kb_manager of a foreign tenant is REJECTED on tenantA's indicator", async () => {
+    const bMgr = t.withIdentity({ subject: seed.tenantB.managerId });
+    await expect(
+      bMgr.query(api.lib.menu.publication.hasUnpublishedChanges, {
+        tenantId: seed.tenantA.tenantId,
+      }),
+    ).rejects.toThrow();
+  });
+});
+
+describe("B-MENU-PUBLICATION slice 5 — hasUnpublishedChanges cross-tenant fuzz (#176, ADR 0010)", () => {
+  let t: ReturnType<typeof convexTest>;
+  let seed: Seed;
+  beforeEach(async () => {
+    t = convexTest(schema, modules);
+    seed = await seedTwoTenantsAllRoles(t);
+  });
+
+  it("every unauthorized actor is rejected on tenant A's hasUnpublishedChanges", async () => {
+    const actors: FuzzActor[] = [
+      { label: "B-manager", subject: seed.tenantB.managerId },
+      { label: "B-staff", subject: seed.tenantB.staffId },
+      { label: "A-staff", subject: seed.tenantA.staffId }, // staff not allowed
+      { label: "detached", subject: seed.detachedUserId },
+      { label: "customer", subject: seed.customerId },
+      { label: "anonymous", subject: null },
+    ];
+    const { leaks, pairs } = await runCrossTenantFuzz(t, {
+      functions: [api.lib.menu.publication.hasUnpublishedChanges],
+      isQuery: () => true,
+      tenantId: seed.tenantA.tenantId,
+      actors,
+    });
+    expect(pairs).toBe(6);
+    expect(leaks).toEqual([]);
+  });
+});
