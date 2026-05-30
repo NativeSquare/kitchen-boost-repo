@@ -2,50 +2,59 @@
 
 /**
  * `useSessionSource` — thin bridge between Convex's `useQuery` and the
- * session reducer. Owns the ONE place that knows about `api.auth.getSession`.
+ * session reducer. Owns the ONE place that knows about
+ * `api.lib.auth.getSession.getSession`.
  *
- * STUB STATE (this PR — F-SHELL-01, issue #159):
- * The backend query `api.auth.getSession` (story #162, D1 of PRD 70) is not
- * merged yet. Per the F-SHELL-01 issue: "Si `getSession` n'est pas encore
- * mergée backend, mocker la query côté front avec un stub typé — l'objectif
- * est que le contexte/hook soient câblés et testables."
+ * History:
+ *   - F-SHELL-01 (issue #159) landed this file as a STUB returning `undefined`
+ *     while authenticated, because the backend query wasn't merged yet. The
+ *     stub had a "SWAP-IN PLAN (when #162 merges)" embedded in its comment.
+ *   - #162 (B-AUTH-1 getSession skeleton) and #171 (B-AUTH-2 getSession join
+ *     userTenants + tenants) both merged later in the same loop — but no
+ *     story explicitly wired the front to consume them, so the stub stayed.
+ *     Result: every `useSession()` call across the shell returned `loading`
+ *     forever once authenticated, and every page under `(app)` hung at the
+ *     SessionLoader spinner. Discovered manually during E2E-A1 validation.
  *
- * The stub keys off Convex Auth's `useConvexAuth()` (already wired in the
- * shell): unauth → `unauthenticated` source (typed Error); auth → `loading`
- * until backend D1 ships. This is intentionally conservative: nothing
- * downstream falsely sees a fake `ready` session with fabricated tenant
- * data, so no shell surface accidentally renders against a lie.
+ * This file now performs the swap: it calls `api.lib.auth.getSession.getSession`
+ * gated on `useConvexAuth().isAuthenticated`, and lets the reducer map the
+ * three observable shapes (`undefined` / `Error` / `SessionData`) to the
+ * three session states.
  *
- * SWAP-IN PLAN (when #162 merges):
- *   const data = useQuery(
- *     api.auth.getSession,
- *     isAuthenticated ? {} : "skip",
- *   );
- *   if (!isAuthenticated) return new Error("not_authenticated");
- *   return data; // undefined | SessionData; thrown errors caught by boundary
- *
- * The reducer + provider + hook + (app) layout wiring all keep working
- * unchanged — that's the point of isolating this bridge.
+ * Backend contract (PRD 70 D1, ADR 0014 §3): the query throws
+ * `Not authenticated` for unauth callers — we never let it reach that branch
+ * because we pass `"skip"` when `isAuthenticated === false`. For an
+ * authenticated KB Admin it returns `{ isAdmin: true, tenants: [] }`; for an
+ * authenticated KB Manager / staff it returns `{ isAdmin: false, tenants:
+ * [...] }` with one entry per active `userTenants` row joined with the
+ * tenant's display fields.
  */
-import { useConvexAuth } from "convex/react";
+import { useConvexAuth, useQuery } from "convex/react";
+import { api } from "@packages/backend/convex/_generated/api";
 import type { SessionSource } from "./reducer";
 
 export function useSessionSource(): SessionSource {
   const { isAuthenticated, isLoading } = useConvexAuth();
 
+  // Always call the hook (rules of hooks). `"skip"` short-circuits the
+  // network request when the caller isn't authenticated, so the backend's
+  // `Not authenticated` throw never fires for legitimately-anonymous visitors.
+  const data = useQuery(
+    api.lib.auth.getSession.getSession,
+    isAuthenticated ? {} : "skip",
+  );
+
   // Convex Auth still verifying the session cookie → still loading.
   if (isLoading) return undefined;
 
-  // No session at all → the future `getSession` would also throw
-  // `not_authenticated`. Surface that uniformly via an Error instance so the
-  // reducer maps to `unauthenticated`.
+  // No session at all → surface a typed Error so the reducer maps to
+  // `unauthenticated`. The shell SessionGuard then drives the redirect.
   if (!isAuthenticated) {
     return new Error("not_authenticated");
   }
 
-  // Authenticated but backend D1 not yet shipped: report `loading` rather
-  // than fabricating a `ready` session. The shell's later garde tracer-
-  // bullets will read this and render their loading skeleton — never a
-  // ghost dashboard with empty `tenants`.
-  return undefined;
+  // Authenticated. Query may still be in flight (`undefined`) or resolved
+  // (`SessionData`). The reducer maps `undefined` → `loading` and the
+  // payload → `ready`.
+  return data;
 }
