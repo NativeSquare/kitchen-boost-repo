@@ -25,10 +25,23 @@
  * (no jsdom, no RTL — `apps/admin/vitest.config.ts` runs in `environment:
  * "node"`).
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ReactElement, ReactNode } from "react";
 
 import type { CustomerKPIs } from "@packages/backend/convex/lib/customer/kpi";
+
+// `error.tsx` uses `useEffect` for ops tracing. In our pure node serializer
+// (no real React renderer), we stub useEffect to a no-op so calling the
+// component as a function returns its tree synchronously without throwing
+// "Invalid hook call". This is the same trick used by static-render tests
+// throughout the apps/admin suite. Must run BEFORE the component import.
+vi.mock("react", async () => {
+  const actual = await vi.importActual<typeof import("react")>("react");
+  return {
+    ...actual,
+    useEffect: () => undefined,
+  };
+});
 
 import { MesClientsView } from "./mes-clients-view";
 import { MesClientsEmptyState } from "./empty-state";
