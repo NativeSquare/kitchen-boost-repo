@@ -43,7 +43,10 @@ export function AcceptInviteForm({
   const { signIn } = useAuthActions();
   const acceptInvite = useMutation(api.table.admin.acceptInvite);
 
-  const invite = useQuery(api.table.admin.getInvite, token ? { token } : "skip");
+  const invite = useQuery(
+    api.table.admin.getInvite,
+    token ? { token } : "skip",
+  );
 
   const [formError, setFormError] = React.useState<string | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
@@ -73,8 +76,8 @@ export function AcceptInviteForm({
       // Accept the invite (sets role to admin)
       await acceptInvite({ token });
 
-      // Redirect to dashboard
-      router.replace("/dashboard");
+      // Redirect to the app home (which routes by role).
+      router.replace("/");
     } catch (error) {
       setFormError(getConvexErrorMessage(error));
     } finally {
@@ -122,7 +125,9 @@ export function AcceptInviteForm({
           <form id="form-accept-invite" onSubmit={form.handleSubmit(onSubmit)}>
             <FieldGroup>
               <div className="flex flex-col items-center gap-2 text-center">
-                <h1 className="text-2xl font-bold">Welcome, {invite.invite.name}!</h1>
+                <h1 className="text-2xl font-bold">
+                  Welcome, {invite.invite.name}!
+                </h1>
                 <p className="text-muted-foreground text-balance">
                   You&apos;ve been invited to join the admin team
                   {invite.inviterName && ` by ${invite.inviterName}`}.

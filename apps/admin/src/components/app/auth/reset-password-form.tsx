@@ -1,30 +1,30 @@
-"use client"
+"use client";
 
-import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Field,
   FieldDescription,
   FieldError,
   FieldGroup,
   FieldLabel,
-} from "@/components/ui/field"
-import { PasswordInput } from "@/components/custom/password-input"
+} from "@/components/ui/field";
+import { PasswordInput } from "@/components/custom/password-input";
 import {
   InputOTP,
   InputOTPGroup,
   InputOTPSeparator,
   InputOTPSlot,
-} from "@/components/ui/input-otp"
-import { useAuthActions } from "@convex-dev/auth/react"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { Controller, useForm } from "react-hook-form"
-import { useRouter } from "next/navigation"
-import * as React from "react"
-import { getConvexErrorMessage } from "@/utils/getConvexErrorMessage"
-import { Spinner } from "@/components/ui/spinner"
-import * as z from "zod"
+} from "@/components/ui/input-otp";
+import { useAuthActions } from "@convex-dev/auth/react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Controller, useForm } from "react-hook-form";
+import { useRouter } from "next/navigation";
+import * as React from "react";
+import { getConvexErrorMessage } from "@/utils/getConvexErrorMessage";
+import { Spinner } from "@/components/ui/spinner";
+import * as z from "zod";
 
 const formSchema = z.object({
   newPassword: z
@@ -32,10 +32,10 @@ const formSchema = z.object({
     .min(1, "New password is required")
     .min(8, "New password must be at least 8 characters long"),
   code: z.string().length(6, "Code must be 6 digits"),
-})
+});
 
 interface ResetPasswordFormProps extends React.ComponentProps<"div"> {
-  email: string
+  email: string;
 }
 
 export function ResetPasswordForm({
@@ -43,41 +43,42 @@ export function ResetPasswordForm({
   email,
   ...props
 }: ResetPasswordFormProps) {
-  const router = useRouter()
-  const { signIn } = useAuthActions()
-  const [formError, setFormError] = React.useState<string | null>(null)
-  const [isLoading, setIsLoading] = React.useState(false)
+  const router = useRouter();
+  const { signIn } = useAuthActions();
+  const [formError, setFormError] = React.useState<string | null>(null);
+  const [isLoading, setIsLoading] = React.useState(false);
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       newPassword: "",
       code: "",
     },
-  })
+  });
 
   async function onSubmit(data: z.infer<typeof formSchema>) {
-    setFormError(null)
-    setIsLoading(true)
+    setFormError(null);
+    setIsLoading(true);
     try {
       await signIn("password", {
         code: data.code,
         newPassword: data.newPassword,
         email,
         flow: "reset-verification",
-      })
-      // Password reset successful - user is now signed in, redirect to dashboard
-      router.replace("/dashboard")
+      });
+      // Password reset successful - user is now signed in, redirect to the
+      // app home (which routes by role).
+      router.replace("/");
     } catch (error) {
-      setFormError(getConvexErrorMessage(error))
-      setIsLoading(false)
+      setFormError(getConvexErrorMessage(error));
+      setIsLoading(false);
     }
   }
 
   function handleCodeChange(value: string) {
-    form.setValue("code", value)
+    form.setValue("code", value);
     // Auto-submit when all 6 digits are entered
     if (value.length === 6) {
-      form.handleSubmit(onSubmit)()
+      form.handleSubmit(onSubmit)();
     }
   }
 
@@ -199,5 +200,5 @@ export function ResetPasswordForm({
         and <a href="#">Privacy Policy</a>.
       </FieldDescription>
     </div>
-  )
+  );
 }

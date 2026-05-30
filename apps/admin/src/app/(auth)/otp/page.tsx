@@ -1,14 +1,14 @@
-"use client"
+"use client";
 
-import { OTPForm } from "@/components/app/auth/otp-form"
-import { useSearchParams, redirect } from "next/navigation"
+import { OTPForm } from "@/components/app/auth/otp-form";
+import { useSearchParams, redirect } from "next/navigation";
 
 export default function OTPPage() {
-  const searchParams = useSearchParams()
-  const email = searchParams.get("email")
+  const searchParams = useSearchParams();
+  const email = searchParams.get("email");
 
   if (!email) {
-    redirect("/signup")
+    redirect("/login");
   }
 
   return (
@@ -17,5 +17,5 @@ export default function OTPPage() {
         <OTPForm email={email} />
       </div>
     </div>
-  )
+  );
 }

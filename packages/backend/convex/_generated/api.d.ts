@@ -10,6 +10,7 @@
 
 import type * as auth from "../auth.js";
 import type * as crons from "../crons.js";
+import type * as e2e from "../e2e.js";
 import type * as emails from "../emails.js";
 import type * as http from "../http.js";
 import type * as lib_admin_contractTemplate from "../lib/admin/contractTemplate.js";
@@ -186,6 +187,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   crons: typeof crons;
+  e2e: typeof e2e;
   emails: typeof emails;
   http: typeof http;
   "lib/admin/contractTemplate": typeof lib_admin_contractTemplate;
