@@ -93,21 +93,48 @@ export const getInvite = query({
 });
 
 /**
- * Consume the invite and promote the calling user to `kb_admin`.
+ * Consume the invite and apply the role grant that matches its `targetRole`.
  *
- * Preconditions enforced by the handler:
- *   - the caller IS authenticated (the accept-invite-form guarantees this by
- *     awaiting the OTP verification + the auth-context propagation before
- *     calling — see `apps/admin/src/components/app/auth/accept-invite-form.tsx`
- *     for the full race-condition handling);
+ * Two acceptance shapes, discriminated on `invite.targetRole`
+ * (B-AUTH-3 schema extension, branched by this slice):
+ *
+ *   1. **KB Admin invite** — `targetRole === "kb_admin"` OR ABSENT (legacy
+ *      rows from before B-AUTH-3 carry neither `targetRole` nor `tenantId`;
+ *      they're implicitly admin invites — rétrocompat 100 %).
+ *      Effect: patches `users.role = "kb_admin"` + `users.name = invite.name`.
+ *      No `userTenants` row (the root has no per-tenant attachment).
+ *
+ *   2. **KB Manager invite** — `targetRole === "kb_manager"` + `tenantId` set
+ *      (issued by `lib/admin/managerInvites.ts:inviteManager`, B-AUTH-4).
+ *      Effect: patches `users.role = "customer"` (the GLOBAL role of a
+ *      manager is `customer` — per-tenant roles live on `userTenants`, ADR
+ *      0011) + creates an active `userTenants(userId, tenantId,
+ *      role: "kb_manager", attachedBy: invite.invitedBy)` row. If a soft-
+ *      detached attachment already exists on that (user, tenant), it is
+ *      RE-ACTIVATED (`detachedAt → undefined`, fresh `attachedAt`); if an
+ *      active attachment already exists, the insert is a no-op
+ *      (idempotence). Throws if the linked tenant has been deleted between
+ *      invite creation and acceptance, or if the manager invite is missing
+ *      its `tenantId` (incoherent row — shouldn't happen given the
+ *      `inviteManager` validator, but the guard is cheap and surfaces a
+ *      clearer error than a Convex null-deref).
+ *
+ * Preconditions enforced before the role branch:
+ *   - caller IS authenticated (the accept-invite form awaits OTP verif +
+ *     auth-context propagation before calling — see
+ *     `apps/admin/src/components/app/auth/accept-invite-form.tsx`);
  *   - the token matches an existing, non-expired, non-consumed invite;
- *   - the authenticated user's email matches the invite's email (defence
- *     against an attacker forwarding the link to themselves and signing up
- *     with their own address).
+ *   - the authenticated user's email matches `invite.email` exactly
+ *     (defence: an attacker reusing someone else's magic link must not be
+ *     able to claim the role under their own signed-up address).
  *
- * On success: patches `users.role = "kb_admin"` + `users.name = invite.name`,
- * stamps `adminInvites.acceptedAt = now`. Idempotent enough — replays of an
- * already-accepted token hit the « already used » branch.
+ * Stamps `adminInvites.acceptedAt = now` in BOTH branches. Replays of an
+ * already-consumed token hit the "already used" guard.
+ *
+ * History — before this slice the mutation hard-coded `role: "kb_admin"`
+ * ignoring `targetRole`, which meant ANY manager invite silently promoted
+ * the recipient to root admin. That's the bug this slice closes; the
+ * rétrocompat above keeps the legacy admin flow intact.
  */
 export const acceptInvite = mutation({
   args: {
@@ -154,10 +181,81 @@ export const acceptInvite = mutation({
       });
     }
 
-    await ctx.db.patch(userId, {
-      role: "kb_admin",
-      name: invite.name,
-    });
+    // ----- Role branch (B-AUTH-3 wiring) ------------------------------------
+
+    if (invite.targetRole === "kb_manager") {
+      // Manager invite — REQUIRES a tenantId (validator on `inviteManager`
+      // already guarantees this, but we re-check for defence in depth and to
+      // surface a clean error rather than a null deref on a malformed row).
+      const tenantId = invite.tenantId;
+      if (tenantId === undefined) {
+        throw new ConvexError({
+          message:
+            "Manager invite is missing tenantId — invite row is incoherent.",
+        });
+      }
+
+      // Tenant must still exist. A tenant deletion between invite creation
+      // and acceptance is a rare-but-possible race (admin un-provisions a
+      // resto while the gérant has the magic-link in their inbox); we throw
+      // with a clear message rather than create a dangling userTenants row.
+      const tenant = await ctx.db.get(tenantId);
+      if (tenant === null) {
+        throw new ConvexError({
+          message:
+            "The tenant associated with this invite no longer exists. Ask the admin to re-invite you.",
+        });
+      }
+
+      // Global role: managers are GLOBALLY `customer` — per-tenant roles
+      // live on userTenants (ADR 0011 — the global users.role field only
+      // distinguishes kb_admin vs customer).
+      await ctx.db.patch(userId, {
+        role: "customer",
+        name: invite.name,
+      });
+
+      // userTenants link: idempotent by (userId, tenantId). The
+      // `by_user_tenant` compound index gives us O(1) uniqueness lookup.
+      const existing = await ctx.db
+        .query("userTenants")
+        .withIndex("by_user_tenant", (q) =>
+          q.eq("userId", userId).eq("tenantId", tenantId),
+        )
+        .unique();
+
+      if (existing === null) {
+        // Fresh attachment — common path.
+        await ctx.db.insert("userTenants", {
+          userId,
+          tenantId,
+          role: "kb_manager",
+          attachedAt: Date.now(),
+          attachedBy: invite.invitedBy,
+        });
+      } else if (existing.detachedAt !== undefined) {
+        // Soft-detach re-activation (admin had revoked, now re-invites).
+        // Bumps `attachedAt` so the revocation history is preserved if
+        // needed (surfaced via auditLog) but the row is live again.
+        await ctx.db.patch(existing._id, {
+          detachedAt: undefined,
+          attachedAt: Date.now(),
+          attachedBy: invite.invitedBy,
+          role: "kb_manager",
+        });
+      }
+      // else: active attachment already exists — no-op (idempotence). The
+      // accept-invite form is also gated by `inviteManager`'s
+      // ALREADY_MEMBER check, so this branch shouldn't fire in practice,
+      // but the safety is worth the two lines.
+    } else {
+      // Admin invite — legacy default. Covers `targetRole === "kb_admin"`
+      // AND `targetRole === undefined` (pre-B-AUTH-3 rows).
+      await ctx.db.patch(userId, {
+        role: "kb_admin",
+        name: invite.name,
+      });
+    }
 
     await ctx.db.patch(invite._id, {
       acceptedAt: Date.now(),

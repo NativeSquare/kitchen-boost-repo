@@ -35,21 +35,28 @@
  *
  * Workflow (E2E-A1 → A5):
  *   1. `npx convex run e2e:bootstrapE2EInvites '{adminEmail, managerEmail}'`
- *      → returns 2 URLs `/accept-invite?token=...` (+ a 3rd if customerEmail
- *      is also passed).
- *   2. Open each URL in the browser, create a password (same for all is fine).
- *      The existing `acceptInvite` mutation stamps `role: "kb_admin"` on
- *      every account (its current default behaviour). Log out between each
- *      (avatar menu) — or use a private window.
- *   3. `npx convex run e2e:seedE2EAuthAccounts '{adminEmail, managerEmail}'`
- *      → corrects the roles (admin stays kb_admin, manager drops to customer
- *      because the per-tenant role lives on the link) + creates 2 tenants
- *      + attaches manager to tenant1.
- *   4. Run the E2E-A1 → A5 checks in the browser using the right account.
- *   5. Optional reset:
+ *      → upserts `test-t1` + `test-t2` AND returns 2 URLs
+ *      `/accept-invite?token=...` (+ a 3rd if customerEmail is also passed).
+ *      The admin invite is legacy-shaped (no targetRole); the manager
+ *      invite is stamped `targetRole: "kb_manager"` + `tenantId: test-t1`.
+ *   2. Open each URL in the browser, create a password (same is fine).
+ *      `acceptInvite` (B-AUTH-3 wired) routes to the right branch:
+ *        - admin URL  → role: "kb_admin", no userTenants
+ *        - manager URL → role: "customer" + userTenants(kb_manager, test-t1)
+ *      Log out between each (avatar menu) — or use a private window.
+ *   3. Run the E2E-A1 → A5 checks in the browser using the right account.
+ *      NO `seedE2EAuthAccounts` call needed for the nominal path — accept
+ *      already sets the right role + attachment.
+ *   4. Optional reset:
  *      `npx convex run e2e:wipeE2EAuthAccounts '{adminEmail, managerEmail}'`
- *      → drops roles to `customer`, removes the test tenants/links, removes
- *      the seed invites + the system seed user.
+ *      → fully wipes the test users (sessions, accounts, attachments) +
+ *      the test tenants + the seed invites + the system seed user.
+ *
+ * `seedE2EAuthAccounts` is kept as a "force-correct roles on existing
+ * accounts" utility (useful if you sign up by mistake with a non-bootstrap
+ * flow, or to test the A6 customer-empty-state path by downgrading a
+ * customer that came in via the legacy admin acceptInvite). It is NOT
+ * required by the nominal A1 → A5 workflow above.
  *
  * Idempotent: re-running each command wipes prior state before re-creating it.
  */
@@ -151,19 +158,32 @@ async function getOrCreateSystemSeedUser(
 }
 
 /**
- * Step 1 of the E2E auth bootstrap: insert 3 `adminInvites` rows for the given
- * emails, each with a deterministic token, so Alex can open the 3
- * `/accept-invite?token=...` URLs and complete the signup via Convex Auth's
- * official `signIn("password", { flow: "signUp" })` flow.
+ * Step 1 of the E2E auth bootstrap: insert the test tenants AND the seed
+ * invites in one shot.
+ *
+ * Tenants come FIRST because the manager invite needs to embed `tenantId`
+ * (post-B-AUTH-3, `acceptInvite` discriminates on `targetRole` and a
+ * manager invite without `tenantId` is a hard error — cf.
+ * `convex/table/admin.ts`). Both tenants (`test-t1`, `test-t2`) are
+ * upserted to `status: "active"`; `test-t1` is the one the manager invite
+ * points at, `test-t2` stays orphan (used by E2E-A4 to test the
+ * cross-tenant redirect).
+ *
+ * After the (admin, manager) flows are accepted via the returned URLs the
+ * users are correctly typed END-TO-END (admin → role kb_admin, no
+ * userTenants; manager → role customer + 1 active userTenants link to
+ * `test-t1` as kb_manager). NO follow-up `seedE2EAuthAccounts` call is
+ * required for the nominal path — the role/attachment grants happen at
+ * accept-time, not as a separate seed step.
  *
  * Side effects:
+ *   - Upserts the 2 test tenants (status active) — `test-t1` and `test-t2`.
  *   - Creates the system seed user (`__e2e_seed_system__@kb.test`) if absent.
- *   - Deletes any existing invite for these 3 emails (idempotence).
- *   - Inserts 3 fresh invites with `expiresAt = now + 7d` (or `expiresInDays`).
- *
- * After Alex completes the 3 accept-invite flows, the 3 users will have role
- * `kb_admin` (the current `acceptInvite` behaviour). Run
- * `seedE2EAuthAccounts` next to correct the roles + add tenants.
+ *   - Deletes any existing invite for the seeded emails (idempotence).
+ *   - Inserts 2 (or 3 with `customerEmail`) fresh invites — admin invite
+ *     legacy-shaped (no `targetRole`), manager invite stamped
+ *     `targetRole: "kb_manager"` + `tenantId: test-t1`, optional customer
+ *     invite legacy-shaped (used only for the A6 NoTenantEmptyState test).
  */
 export const bootstrapE2EInvites = internalMutation({
   args: {
@@ -177,6 +197,8 @@ export const bootstrapE2EInvites = internalMutation({
   },
   returns: v.object({
     systemSeedUserId: v.id("users"),
+    tenant1Id: v.id("tenants"),
+    tenant2Id: v.id("tenants"),
     adminAcceptUrl: v.string(),
     managerAcceptUrl: v.string(),
     // `null` when `customerEmail` wasn't supplied. The shape stays stable
@@ -188,6 +210,20 @@ export const bootstrapE2EInvites = internalMutation({
   }),
   handler: async (ctx, args) => {
     const systemSeedUserId = await getOrCreateSystemSeedUser(ctx);
+
+    // Tenants FIRST — the manager invite below needs `tenant1Id` to stamp
+    // its `tenantId` field (post-B-AUTH-3 acceptInvite contract). Tenant2
+    // stays orphan (used by E2E-A4 cross-tenant redirect test).
+    const tenant1Id = await upsertActiveTenantBySlug(ctx, {
+      slug: "test-t1",
+      name: "Test Restaurant 1",
+      siret: "00000000000001",
+    });
+    const tenant2Id = await upsertActiveTenantBySlug(ctx, {
+      slug: "test-t2",
+      name: "Test Restaurant 2",
+      siret: "00000000000002",
+    });
 
     // Wipe any existing invite for each email (idempotence). `customerEmail`
     // is treated optionally — absent means "do not seed the negative-path
@@ -211,6 +247,8 @@ export const bootstrapE2EInvites = internalMutation({
     const adminToken = `e2e-admin-${ts}`;
     const managerToken = `e2e-manager-${ts}`;
 
+    // Admin invite: legacy shape (no `targetRole`) so the acceptInvite
+    // legacy branch fires → role kb_admin.
     const adminInviteId = await ctx.db.insert("adminInvites", {
       email: args.adminEmail,
       name: "E2E Admin",
@@ -218,18 +256,26 @@ export const bootstrapE2EInvites = internalMutation({
       invitedBy: systemSeedUserId,
       expiresAt,
     });
+    // Manager invite: NEW shape (targetRole + tenantId) so the acceptInvite
+    // manager branch fires → role customer + userTenants(kb_manager, test-t1).
     const managerInviteId = await ctx.db.insert("adminInvites", {
       email: args.managerEmail,
       name: "E2E Manager",
       token: managerToken,
       invitedBy: systemSeedUserId,
       expiresAt,
+      targetRole: "kb_manager",
+      tenantId: tenant1Id,
     });
 
     let customerInviteId: Id<"adminInvites"> | null = null;
     let customerAcceptUrl: string | null = null;
     const baseUrl = args.baseUrl ?? "http://localhost:3000";
     if (args.customerEmail !== undefined) {
+      // Customer invite: also legacy shape (no targetRole) for the
+      // historical A6 negative-path test. Becomes kb_admin if accepted —
+      // the test runner has to call `seedE2EAuthAccounts` to downgrade
+      // it to `customer` for the NoTenantEmptyState assertion to fire.
       const customerToken = `e2e-customer-${ts}`;
       customerInviteId = await ctx.db.insert("adminInvites", {
         email: args.customerEmail,
@@ -243,6 +289,8 @@ export const bootstrapE2EInvites = internalMutation({
 
     return {
       systemSeedUserId,
+      tenant1Id,
+      tenant2Id,
       adminInviteId,
       managerInviteId,
       customerInviteId,
