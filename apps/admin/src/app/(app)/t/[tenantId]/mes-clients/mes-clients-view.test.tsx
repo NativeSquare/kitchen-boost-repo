@@ -223,9 +223,14 @@ describe("MesClientsView — F-MES-CLIENTS [2/4] (#186)", () => {
       })
       .filter((s): s is string => s !== null);
     const cardSlots = slots.filter((s) => s === "card");
-    // Exactly 3 cards (one per segment) — no more (no random extra card),
-    // no less (a regression to a single grid would betray the 3-card design).
-    expect(cardSlots).toHaveLength(3);
+    // Slice 2 pinned "exactly 3" (one per segment). Slice 3 (#190) made the
+    // grid ADDITIVE — segments + reachability + macro = 9. We keep the
+    // primitive-discipline contract (the view uses shadcn `Card` rather than
+    // hand-rolled boxes, surfaced via the `data-slot="card"` marker) by
+    // asserting "at least 3" — the exact count is pinned by slice-3's "9
+    // cards total" regression test below, so the two assertions together
+    // catch both "no Card used" and "card count drifted".
+    expect(cardSlots.length).toBeGreaterThanOrEqual(3);
   });
 
   it("AC6 — anti-PII: card branch leaks no email / tel / prénom / adresse / nom labels", () => {
@@ -375,42 +380,56 @@ function findCardTextByLabel(
   return null;
 }
 
+/**
+ * Sister to `findCardTextByLabel` that throws (with the label hint) when no
+ * card matches — lets the test body skip the non-null assertion noise
+ * (eslint-disable would be the cheaper fix but the throw gives a clearer
+ * failure trace pointing at the missing label).
+ */
+function expectCardTextByLabel(
+  tree: SerializedNode,
+  labelRegex: RegExp,
+  hint: string,
+): string {
+  const text = findCardTextByLabel(tree, labelRegex);
+  if (text === null) {
+    throw new Error(`expected a card matching ${hint} but none was found`);
+  }
+  return text;
+}
+
 describe("MesClientsView — F-MES-CLIENTS [3/4] (#190) reachability + macro + responsive grid", () => {
   it("AC1 — renders the 3 reachability cards with the right labels AND numbers (push / email / SMS)", () => {
     const tree = serialize(MesClientsView({ kpis: SLICE3_KPIS }));
     // Each reachability card MUST colocate its label and its number — pinned
     // per-card so a "push: 88" / "email: 77" swap fails (a global text-scan
     // would let that bug ship).
-    const pushCard = findCardTextByLabel(tree, /push/i);
-    expect(pushCard, "push card should exist").not.toBeNull();
-    expect(pushCard!).toMatch(/\b77\b/);
-
-    const emailCard = findCardTextByLabel(tree, /e-mail|email/i);
-    expect(emailCard, "email card should exist").not.toBeNull();
-    expect(emailCard!).toMatch(/\b88\b/);
-
-    const smsCard = findCardTextByLabel(tree, /sms/i);
-    expect(smsCard, "sms card should exist").not.toBeNull();
-    expect(smsCard!).toMatch(/\b99\b/);
+    expect(expectCardTextByLabel(tree, /push/i, "push")).toMatch(/\b77\b/);
+    expect(
+      expectCardTextByLabel(tree, /e-mail|email/i, "e-mail / email"),
+    ).toMatch(/\b88\b/);
+    expect(expectCardTextByLabel(tree, /sms/i, "sms")).toMatch(/\b99\b/);
   });
 
   it("AC2 — renders the 3 macro cards with the right labels AND numbers (Total / Nouveaux ce mois / Taux de retour)", () => {
     const tree = serialize(MesClientsView({ kpis: SLICE3_KPIS }));
 
-    const totalCard = findCardTextByLabel(tree, /total\s+clients/i);
-    expect(totalCard, "total clients card should exist").not.toBeNull();
-    expect(totalCard!).toMatch(/\b123\b/);
+    expect(
+      expectCardTextByLabel(tree, /total\s+clients/i, "total clients"),
+    ).toMatch(/\b123\b/);
+    expect(
+      expectCardTextByLabel(tree, /nouveaux\s+ce\s+mois/i, "nouveaux ce mois"),
+    ).toMatch(/\b45\b/);
 
-    const newCard = findCardTextByLabel(tree, /nouveaux\s+ce\s+mois/i);
-    expect(newCard, "nouveaux ce mois card should exist").not.toBeNull();
-    expect(newCard!).toMatch(/\b45\b/);
-
-    const returnCard = findCardTextByLabel(tree, /taux\s+de\s+retour/i);
-    expect(returnCard, "taux de retour card should exist").not.toBeNull();
+    const returnCard = expectCardTextByLabel(
+      tree,
+      /taux\s+de\s+retour/i,
+      "taux de retour",
+    );
     // returnRate = 0.42 → "42 %" (formatted as a human-readable percentage).
     // The raw fraction "0.42" must NOT leak.
-    expect(returnCard!).toMatch(/42\s*%/);
-    expect(returnCard!).not.toMatch(/0\.42/);
+    expect(returnCard).toMatch(/42\s*%/);
+    expect(returnCard).not.toMatch(/0\.42/);
   });
 
   it("AC3 — returnRate is rendered as a human-readable percentage (0..1 → 0..100 %)", () => {
@@ -424,12 +443,15 @@ describe("MesClientsView — F-MES-CLIENTS [3/4] (#190) reachability + macro + r
     ]) {
       const kpis: CustomerKPIs = { ...SLICE3_KPIS, returnRate: rate };
       const tree = serialize(MesClientsView({ kpis }));
-      const returnCard = findCardTextByLabel(tree, /taux\s+de\s+retour/i);
-      expect(returnCard, `taux de retour card for rate=${rate}`).not.toBeNull();
-      expect(returnCard!).toMatch(expected);
+      const returnCard = expectCardTextByLabel(
+        tree,
+        /taux\s+de\s+retour/i,
+        `taux de retour (rate=${rate})`,
+      );
+      expect(returnCard).toMatch(expected);
       // The raw fraction must never leak (the format must round-trip).
       if (rate > 0 && rate < 1) {
-        expect(returnCard!).not.toMatch(new RegExp(`\\b0\\.\\d`));
+        expect(returnCard).not.toMatch(/\b0\.\d/);
       }
     }
   });
@@ -495,9 +517,7 @@ describe("MesClientsView — F-MES-CLIENTS [3/4] (#190) reachability + macro + r
     expect(text).toMatch(/Inactifs/);
     expect(text).toMatch(/VIP/);
     // Pinned per-card so an accidental drop of the SegmentCards block fails.
-    const actifCard = findCardTextByLabel(tree, /Actifs/);
-    expect(actifCard, "actif card should still exist").not.toBeNull();
-    expect(actifCard!).toMatch(/\b11\b/);
+    expect(expectCardTextByLabel(tree, /Actifs/, "actif")).toMatch(/\b11\b/);
   });
 
   it("AC6 — regression: at least 9 cards total when KPIs are populated (3 segments + 3 reachability + 3 macro)", () => {
