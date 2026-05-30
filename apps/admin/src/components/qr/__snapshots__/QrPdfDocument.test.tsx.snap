@@ -1,0 +1,1246 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`QrPdfDocument — a4-poster > matches snapshot with logoUrl 1`] = `
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [],
+              "props": {
+                "src": "https://cdn.example.com/lartisan/logo.png",
+                "style": {
+                  "height": 56,
+                  "marginBottom": 16,
+                },
+              },
+              "type": "Image",
+            },
+          ],
+          "props": {
+            "style": [
+              {
+                "alignItems": "center",
+                "display": "flex",
+                "height": 80,
+                "justifyContent": "center",
+                "marginBottom": 24,
+                "width": "100%",
+              },
+              {
+                "backgroundColor": "#1B7A3D",
+              },
+            ],
+          },
+          "type": "View",
+        },
+        {
+          "children": [
+            {
+              "text": "Scannez pour commander direct chez L'Artisan",
+            },
+          ],
+          "props": {
+            "style": [
+              {
+                "fontSize": 24,
+                "fontWeight": 700,
+                "marginBottom": 24,
+                "textAlign": "center",
+              },
+              {
+                "color": "#1B7A3D",
+              },
+            ],
+          },
+          "type": "Text",
+        },
+        {
+          "children": [],
+          "props": {
+            "src": "data:image/png;base64,QR_PLACEHOLDER",
+            "style": {
+              "height": 360,
+              "marginBottom": 24,
+              "width": 360,
+            },
+          },
+          "type": "Image",
+        },
+        {
+          "children": [
+            {
+              "text": "https://lartisan.kitchen-boost.fr",
+            },
+          ],
+          "props": {
+            "style": {
+              "fontSize": 14,
+              "textAlign": "center",
+            },
+          },
+          "type": "Text",
+        },
+      ],
+      "props": {
+        "orientation": "portrait",
+        "size": "A4",
+        "style": {
+          "alignItems": "center",
+          "backgroundColor": "#FFFFFF",
+          "display": "flex",
+          "flexDirection": "column",
+          "paddingBottom": 56.7,
+          "paddingLeft": 56.7,
+          "paddingRight": 56.7,
+          "paddingTop": 0,
+        },
+      },
+      "type": "Page",
+    },
+  ],
+  "props": {
+    "author": "KitchenBoost",
+    "creator": "KitchenBoost Admin",
+    "producer": "KitchenBoost Admin",
+    "title": "QR L'Artisan (a4-poster)",
+  },
+  "type": "Document",
+}
+`;
+
+exports[`QrPdfDocument — a4-poster > matches snapshot without logoUrl 1`] = `
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [],
+          "props": {
+            "style": [
+              {
+                "alignItems": "center",
+                "display": "flex",
+                "height": 80,
+                "justifyContent": "center",
+                "marginBottom": 24,
+                "width": "100%",
+              },
+              {
+                "backgroundColor": "#1B7A3D",
+              },
+            ],
+          },
+          "type": "View",
+        },
+        {
+          "children": [
+            {
+              "text": "Scannez pour commander direct chez L'Artisan",
+            },
+          ],
+          "props": {
+            "style": [
+              {
+                "fontSize": 24,
+                "fontWeight": 700,
+                "marginBottom": 24,
+                "textAlign": "center",
+              },
+              {
+                "color": "#1B7A3D",
+              },
+            ],
+          },
+          "type": "Text",
+        },
+        {
+          "children": [],
+          "props": {
+            "src": "data:image/png;base64,QR_PLACEHOLDER",
+            "style": {
+              "height": 360,
+              "marginBottom": 24,
+              "width": 360,
+            },
+          },
+          "type": "Image",
+        },
+        {
+          "children": [
+            {
+              "text": "https://lartisan.kitchen-boost.fr",
+            },
+          ],
+          "props": {
+            "style": {
+              "fontSize": 14,
+              "textAlign": "center",
+            },
+          },
+          "type": "Text",
+        },
+      ],
+      "props": {
+        "orientation": "portrait",
+        "size": "A4",
+        "style": {
+          "alignItems": "center",
+          "backgroundColor": "#FFFFFF",
+          "display": "flex",
+          "flexDirection": "column",
+          "paddingBottom": 56.7,
+          "paddingLeft": 56.7,
+          "paddingRight": 56.7,
+          "paddingTop": 0,
+        },
+      },
+      "type": "Page",
+    },
+  ],
+  "props": {
+    "author": "KitchenBoost",
+    "creator": "KitchenBoost Admin",
+    "producer": "KitchenBoost Admin",
+    "title": "QR L'Artisan (a4-poster)",
+  },
+  "type": "Document",
+}
+`;
+
+exports[`QrPdfDocument — a6-card > matches snapshot with logoUrl 1`] = `
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [],
+          "props": {
+            "style": [
+              {
+                "height": 4,
+                "marginBottom": 12,
+                "width": "100%",
+              },
+              {
+                "backgroundColor": "#1B7A3D",
+              },
+            ],
+          },
+          "type": "View",
+        },
+        {
+          "children": [],
+          "props": {
+            "src": "https://cdn.example.com/lartisan/logo.png",
+            "style": {
+              "height": 36,
+              "marginBottom": 8,
+            },
+          },
+          "type": "Image",
+        },
+        {
+          "children": [
+            {
+              "text": "Scannez pour commander direct chez L'Artisan",
+            },
+          ],
+          "props": {
+            "style": [
+              {
+                "fontSize": 12,
+                "fontWeight": 700,
+                "marginBottom": 12,
+                "textAlign": "center",
+              },
+              {
+                "color": "#1B7A3D",
+              },
+            ],
+          },
+          "type": "Text",
+        },
+        {
+          "children": [],
+          "props": {
+            "src": "data:image/png;base64,QR_PLACEHOLDER",
+            "style": {
+              "height": 180,
+              "marginBottom": 12,
+              "width": 180,
+            },
+          },
+          "type": "Image",
+        },
+        {
+          "children": [
+            {
+              "text": "https://lartisan.kitchen-boost.fr",
+            },
+          ],
+          "props": {
+            "style": {
+              "fontSize": 9,
+              "textAlign": "center",
+            },
+          },
+          "type": "Text",
+        },
+      ],
+      "props": {
+        "orientation": "portrait",
+        "size": "A6",
+        "style": {
+          "alignItems": "center",
+          "backgroundColor": "#FFFFFF",
+          "display": "flex",
+          "flexDirection": "column",
+          "paddingBottom": 28.35,
+          "paddingLeft": 28.35,
+          "paddingRight": 28.35,
+          "paddingTop": 28.35,
+        },
+      },
+      "type": "Page",
+    },
+  ],
+  "props": {
+    "author": "KitchenBoost",
+    "creator": "KitchenBoost Admin",
+    "producer": "KitchenBoost Admin",
+    "title": "QR L'Artisan (a6-card)",
+  },
+  "type": "Document",
+}
+`;
+
+exports[`QrPdfDocument — a6-card > matches snapshot without logoUrl 1`] = `
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [],
+          "props": {
+            "style": [
+              {
+                "height": 4,
+                "marginBottom": 12,
+                "width": "100%",
+              },
+              {
+                "backgroundColor": "#1B7A3D",
+              },
+            ],
+          },
+          "type": "View",
+        },
+        {
+          "children": [
+            {
+              "text": "Scannez pour commander direct chez L'Artisan",
+            },
+          ],
+          "props": {
+            "style": [
+              {
+                "fontSize": 12,
+                "fontWeight": 700,
+                "marginBottom": 12,
+                "textAlign": "center",
+              },
+              {
+                "color": "#1B7A3D",
+              },
+            ],
+          },
+          "type": "Text",
+        },
+        {
+          "children": [],
+          "props": {
+            "src": "data:image/png;base64,QR_PLACEHOLDER",
+            "style": {
+              "height": 180,
+              "marginBottom": 12,
+              "width": 180,
+            },
+          },
+          "type": "Image",
+        },
+        {
+          "children": [
+            {
+              "text": "https://lartisan.kitchen-boost.fr",
+            },
+          ],
+          "props": {
+            "style": {
+              "fontSize": 9,
+              "textAlign": "center",
+            },
+          },
+          "type": "Text",
+        },
+      ],
+      "props": {
+        "orientation": "portrait",
+        "size": "A6",
+        "style": {
+          "alignItems": "center",
+          "backgroundColor": "#FFFFFF",
+          "display": "flex",
+          "flexDirection": "column",
+          "paddingBottom": 28.35,
+          "paddingLeft": 28.35,
+          "paddingRight": 28.35,
+          "paddingTop": 28.35,
+        },
+      },
+      "type": "Page",
+    },
+  ],
+  "props": {
+    "author": "KitchenBoost",
+    "creator": "KitchenBoost Admin",
+    "producer": "KitchenBoost Admin",
+    "title": "QR L'Artisan (a6-card)",
+  },
+  "type": "Document",
+}
+`;
+
+exports[`QrPdfDocument — sticker-50mm > matches snapshot with logoUrl (sticker ignores logo by design — too small) 1`] = `
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [],
+                  "props": {
+                    "src": "data:image/png;base64,QR_PLACEHOLDER",
+                    "style": {
+                      "height": 117.72999999999999,
+                      "width": 117.72999999999999,
+                    },
+                  },
+                  "type": "Image",
+                },
+              ],
+              "props": {
+                "style": {
+                  "alignItems": "center",
+                  "borderColor": "#CCCCCC",
+                  "borderRadius": 70.865,
+                  "borderStyle": "dashed",
+                  "borderWidth": 0.5,
+                  "display": "flex",
+                  "height": 141.73,
+                  "justifyContent": "center",
+                  "marginBottom": 14,
+                  "padding": 8,
+                  "width": 141.73,
+                },
+              },
+              "type": "View",
+            },
+            {
+              "children": [
+                {
+                  "children": [],
+                  "props": {
+                    "src": "data:image/png;base64,QR_PLACEHOLDER",
+                    "style": {
+                      "height": 117.72999999999999,
+                      "width": 117.72999999999999,
+                    },
+                  },
+                  "type": "Image",
+                },
+              ],
+              "props": {
+                "style": {
+                  "alignItems": "center",
+                  "borderColor": "#CCCCCC",
+                  "borderRadius": 70.865,
+                  "borderStyle": "dashed",
+                  "borderWidth": 0.5,
+                  "display": "flex",
+                  "height": 141.73,
+                  "justifyContent": "center",
+                  "marginBottom": 14,
+                  "padding": 8,
+                  "width": 141.73,
+                },
+              },
+              "type": "View",
+            },
+            {
+              "children": [
+                {
+                  "children": [],
+                  "props": {
+                    "src": "data:image/png;base64,QR_PLACEHOLDER",
+                    "style": {
+                      "height": 117.72999999999999,
+                      "width": 117.72999999999999,
+                    },
+                  },
+                  "type": "Image",
+                },
+              ],
+              "props": {
+                "style": {
+                  "alignItems": "center",
+                  "borderColor": "#CCCCCC",
+                  "borderRadius": 70.865,
+                  "borderStyle": "dashed",
+                  "borderWidth": 0.5,
+                  "display": "flex",
+                  "height": 141.73,
+                  "justifyContent": "center",
+                  "marginBottom": 14,
+                  "padding": 8,
+                  "width": 141.73,
+                },
+              },
+              "type": "View",
+            },
+            {
+              "children": [
+                {
+                  "children": [],
+                  "props": {
+                    "src": "data:image/png;base64,QR_PLACEHOLDER",
+                    "style": {
+                      "height": 117.72999999999999,
+                      "width": 117.72999999999999,
+                    },
+                  },
+                  "type": "Image",
+                },
+              ],
+              "props": {
+                "style": {
+                  "alignItems": "center",
+                  "borderColor": "#CCCCCC",
+                  "borderRadius": 70.865,
+                  "borderStyle": "dashed",
+                  "borderWidth": 0.5,
+                  "display": "flex",
+                  "height": 141.73,
+                  "justifyContent": "center",
+                  "marginBottom": 14,
+                  "padding": 8,
+                  "width": 141.73,
+                },
+              },
+              "type": "View",
+            },
+            {
+              "children": [
+                {
+                  "children": [],
+                  "props": {
+                    "src": "data:image/png;base64,QR_PLACEHOLDER",
+                    "style": {
+                      "height": 117.72999999999999,
+                      "width": 117.72999999999999,
+                    },
+                  },
+                  "type": "Image",
+                },
+              ],
+              "props": {
+                "style": {
+                  "alignItems": "center",
+                  "borderColor": "#CCCCCC",
+                  "borderRadius": 70.865,
+                  "borderStyle": "dashed",
+                  "borderWidth": 0.5,
+                  "display": "flex",
+                  "height": 141.73,
+                  "justifyContent": "center",
+                  "marginBottom": 14,
+                  "padding": 8,
+                  "width": 141.73,
+                },
+              },
+              "type": "View",
+            },
+            {
+              "children": [
+                {
+                  "children": [],
+                  "props": {
+                    "src": "data:image/png;base64,QR_PLACEHOLDER",
+                    "style": {
+                      "height": 117.72999999999999,
+                      "width": 117.72999999999999,
+                    },
+                  },
+                  "type": "Image",
+                },
+              ],
+              "props": {
+                "style": {
+                  "alignItems": "center",
+                  "borderColor": "#CCCCCC",
+                  "borderRadius": 70.865,
+                  "borderStyle": "dashed",
+                  "borderWidth": 0.5,
+                  "display": "flex",
+                  "height": 141.73,
+                  "justifyContent": "center",
+                  "marginBottom": 14,
+                  "padding": 8,
+                  "width": 141.73,
+                },
+              },
+              "type": "View",
+            },
+            {
+              "children": [
+                {
+                  "children": [],
+                  "props": {
+                    "src": "data:image/png;base64,QR_PLACEHOLDER",
+                    "style": {
+                      "height": 117.72999999999999,
+                      "width": 117.72999999999999,
+                    },
+                  },
+                  "type": "Image",
+                },
+              ],
+              "props": {
+                "style": {
+                  "alignItems": "center",
+                  "borderColor": "#CCCCCC",
+                  "borderRadius": 70.865,
+                  "borderStyle": "dashed",
+                  "borderWidth": 0.5,
+                  "display": "flex",
+                  "height": 141.73,
+                  "justifyContent": "center",
+                  "marginBottom": 14,
+                  "padding": 8,
+                  "width": 141.73,
+                },
+              },
+              "type": "View",
+            },
+            {
+              "children": [
+                {
+                  "children": [],
+                  "props": {
+                    "src": "data:image/png;base64,QR_PLACEHOLDER",
+                    "style": {
+                      "height": 117.72999999999999,
+                      "width": 117.72999999999999,
+                    },
+                  },
+                  "type": "Image",
+                },
+              ],
+              "props": {
+                "style": {
+                  "alignItems": "center",
+                  "borderColor": "#CCCCCC",
+                  "borderRadius": 70.865,
+                  "borderStyle": "dashed",
+                  "borderWidth": 0.5,
+                  "display": "flex",
+                  "height": 141.73,
+                  "justifyContent": "center",
+                  "marginBottom": 14,
+                  "padding": 8,
+                  "width": 141.73,
+                },
+              },
+              "type": "View",
+            },
+            {
+              "children": [
+                {
+                  "children": [],
+                  "props": {
+                    "src": "data:image/png;base64,QR_PLACEHOLDER",
+                    "style": {
+                      "height": 117.72999999999999,
+                      "width": 117.72999999999999,
+                    },
+                  },
+                  "type": "Image",
+                },
+              ],
+              "props": {
+                "style": {
+                  "alignItems": "center",
+                  "borderColor": "#CCCCCC",
+                  "borderRadius": 70.865,
+                  "borderStyle": "dashed",
+                  "borderWidth": 0.5,
+                  "display": "flex",
+                  "height": 141.73,
+                  "justifyContent": "center",
+                  "marginBottom": 14,
+                  "padding": 8,
+                  "width": 141.73,
+                },
+              },
+              "type": "View",
+            },
+            {
+              "children": [
+                {
+                  "children": [],
+                  "props": {
+                    "src": "data:image/png;base64,QR_PLACEHOLDER",
+                    "style": {
+                      "height": 117.72999999999999,
+                      "width": 117.72999999999999,
+                    },
+                  },
+                  "type": "Image",
+                },
+              ],
+              "props": {
+                "style": {
+                  "alignItems": "center",
+                  "borderColor": "#CCCCCC",
+                  "borderRadius": 70.865,
+                  "borderStyle": "dashed",
+                  "borderWidth": 0.5,
+                  "display": "flex",
+                  "height": 141.73,
+                  "justifyContent": "center",
+                  "marginBottom": 14,
+                  "padding": 8,
+                  "width": 141.73,
+                },
+              },
+              "type": "View",
+            },
+            {
+              "children": [
+                {
+                  "children": [],
+                  "props": {
+                    "src": "data:image/png;base64,QR_PLACEHOLDER",
+                    "style": {
+                      "height": 117.72999999999999,
+                      "width": 117.72999999999999,
+                    },
+                  },
+                  "type": "Image",
+                },
+              ],
+              "props": {
+                "style": {
+                  "alignItems": "center",
+                  "borderColor": "#CCCCCC",
+                  "borderRadius": 70.865,
+                  "borderStyle": "dashed",
+                  "borderWidth": 0.5,
+                  "display": "flex",
+                  "height": 141.73,
+                  "justifyContent": "center",
+                  "marginBottom": 14,
+                  "padding": 8,
+                  "width": 141.73,
+                },
+              },
+              "type": "View",
+            },
+            {
+              "children": [
+                {
+                  "children": [],
+                  "props": {
+                    "src": "data:image/png;base64,QR_PLACEHOLDER",
+                    "style": {
+                      "height": 117.72999999999999,
+                      "width": 117.72999999999999,
+                    },
+                  },
+                  "type": "Image",
+                },
+              ],
+              "props": {
+                "style": {
+                  "alignItems": "center",
+                  "borderColor": "#CCCCCC",
+                  "borderRadius": 70.865,
+                  "borderStyle": "dashed",
+                  "borderWidth": 0.5,
+                  "display": "flex",
+                  "height": 141.73,
+                  "justifyContent": "center",
+                  "marginBottom": 14,
+                  "padding": 8,
+                  "width": 141.73,
+                },
+              },
+              "type": "View",
+            },
+          ],
+          "props": {
+            "style": {
+              "alignContent": "flex-start",
+              "display": "flex",
+              "flexDirection": "row",
+              "flexWrap": "wrap",
+              "justifyContent": "space-around",
+            },
+          },
+          "type": "View",
+        },
+      ],
+      "props": {
+        "orientation": "portrait",
+        "size": "A4",
+        "style": {
+          "backgroundColor": "#FFFFFF",
+          "paddingBottom": 28.35,
+          "paddingLeft": 28.35,
+          "paddingRight": 28.35,
+          "paddingTop": 28.35,
+        },
+      },
+      "type": "Page",
+    },
+  ],
+  "props": {
+    "author": "KitchenBoost",
+    "creator": "KitchenBoost Admin",
+    "producer": "KitchenBoost Admin",
+    "title": "QR L'Artisan (sticker-50mm)",
+  },
+  "type": "Document",
+}
+`;
+
+exports[`QrPdfDocument — sticker-50mm > matches snapshot without logoUrl 1`] = `
+{
+  "children": [
+    {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [],
+                  "props": {
+                    "src": "data:image/png;base64,QR_PLACEHOLDER",
+                    "style": {
+                      "height": 117.72999999999999,
+                      "width": 117.72999999999999,
+                    },
+                  },
+                  "type": "Image",
+                },
+              ],
+              "props": {
+                "style": {
+                  "alignItems": "center",
+                  "borderColor": "#CCCCCC",
+                  "borderRadius": 70.865,
+                  "borderStyle": "dashed",
+                  "borderWidth": 0.5,
+                  "display": "flex",
+                  "height": 141.73,
+                  "justifyContent": "center",
+                  "marginBottom": 14,
+                  "padding": 8,
+                  "width": 141.73,
+                },
+              },
+              "type": "View",
+            },
+            {
+              "children": [
+                {
+                  "children": [],
+                  "props": {
+                    "src": "data:image/png;base64,QR_PLACEHOLDER",
+                    "style": {
+                      "height": 117.72999999999999,
+                      "width": 117.72999999999999,
+                    },
+                  },
+                  "type": "Image",
+                },
+              ],
+              "props": {
+                "style": {
+                  "alignItems": "center",
+                  "borderColor": "#CCCCCC",
+                  "borderRadius": 70.865,
+                  "borderStyle": "dashed",
+                  "borderWidth": 0.5,
+                  "display": "flex",
+                  "height": 141.73,
+                  "justifyContent": "center",
+                  "marginBottom": 14,
+                  "padding": 8,
+                  "width": 141.73,
+                },
+              },
+              "type": "View",
+            },
+            {
+              "children": [
+                {
+                  "children": [],
+                  "props": {
+                    "src": "data:image/png;base64,QR_PLACEHOLDER",
+                    "style": {
+                      "height": 117.72999999999999,
+                      "width": 117.72999999999999,
+                    },
+                  },
+                  "type": "Image",
+                },
+              ],
+              "props": {
+                "style": {
+                  "alignItems": "center",
+                  "borderColor": "#CCCCCC",
+                  "borderRadius": 70.865,
+                  "borderStyle": "dashed",
+                  "borderWidth": 0.5,
+                  "display": "flex",
+                  "height": 141.73,
+                  "justifyContent": "center",
+                  "marginBottom": 14,
+                  "padding": 8,
+                  "width": 141.73,
+                },
+              },
+              "type": "View",
+            },
+            {
+              "children": [
+                {
+                  "children": [],
+                  "props": {
+                    "src": "data:image/png;base64,QR_PLACEHOLDER",
+                    "style": {
+                      "height": 117.72999999999999,
+                      "width": 117.72999999999999,
+                    },
+                  },
+                  "type": "Image",
+                },
+              ],
+              "props": {
+                "style": {
+                  "alignItems": "center",
+                  "borderColor": "#CCCCCC",
+                  "borderRadius": 70.865,
+                  "borderStyle": "dashed",
+                  "borderWidth": 0.5,
+                  "display": "flex",
+                  "height": 141.73,
+                  "justifyContent": "center",
+                  "marginBottom": 14,
+                  "padding": 8,
+                  "width": 141.73,
+                },
+              },
+              "type": "View",
+            },
+            {
+              "children": [
+                {
+                  "children": [],
+                  "props": {
+                    "src": "data:image/png;base64,QR_PLACEHOLDER",
+                    "style": {
+                      "height": 117.72999999999999,
+                      "width": 117.72999999999999,
+                    },
+                  },
+                  "type": "Image",
+                },
+              ],
+              "props": {
+                "style": {
+                  "alignItems": "center",
+                  "borderColor": "#CCCCCC",
+                  "borderRadius": 70.865,
+                  "borderStyle": "dashed",
+                  "borderWidth": 0.5,
+                  "display": "flex",
+                  "height": 141.73,
+                  "justifyContent": "center",
+                  "marginBottom": 14,
+                  "padding": 8,
+                  "width": 141.73,
+                },
+              },
+              "type": "View",
+            },
+            {
+              "children": [
+                {
+                  "children": [],
+                  "props": {
+                    "src": "data:image/png;base64,QR_PLACEHOLDER",
+                    "style": {
+                      "height": 117.72999999999999,
+                      "width": 117.72999999999999,
+                    },
+                  },
+                  "type": "Image",
+                },
+              ],
+              "props": {
+                "style": {
+                  "alignItems": "center",
+                  "borderColor": "#CCCCCC",
+                  "borderRadius": 70.865,
+                  "borderStyle": "dashed",
+                  "borderWidth": 0.5,
+                  "display": "flex",
+                  "height": 141.73,
+                  "justifyContent": "center",
+                  "marginBottom": 14,
+                  "padding": 8,
+                  "width": 141.73,
+                },
+              },
+              "type": "View",
+            },
+            {
+              "children": [
+                {
+                  "children": [],
+                  "props": {
+                    "src": "data:image/png;base64,QR_PLACEHOLDER",
+                    "style": {
+                      "height": 117.72999999999999,
+                      "width": 117.72999999999999,
+                    },
+                  },
+                  "type": "Image",
+                },
+              ],
+              "props": {
+                "style": {
+                  "alignItems": "center",
+                  "borderColor": "#CCCCCC",
+                  "borderRadius": 70.865,
+                  "borderStyle": "dashed",
+                  "borderWidth": 0.5,
+                  "display": "flex",
+                  "height": 141.73,
+                  "justifyContent": "center",
+                  "marginBottom": 14,
+                  "padding": 8,
+                  "width": 141.73,
+                },
+              },
+              "type": "View",
+            },
+            {
+              "children": [
+                {
+                  "children": [],
+                  "props": {
+                    "src": "data:image/png;base64,QR_PLACEHOLDER",
+                    "style": {
+                      "height": 117.72999999999999,
+                      "width": 117.72999999999999,
+                    },
+                  },
+                  "type": "Image",
+                },
+              ],
+              "props": {
+                "style": {
+                  "alignItems": "center",
+                  "borderColor": "#CCCCCC",
+                  "borderRadius": 70.865,
+                  "borderStyle": "dashed",
+                  "borderWidth": 0.5,
+                  "display": "flex",
+                  "height": 141.73,
+                  "justifyContent": "center",
+                  "marginBottom": 14,
+                  "padding": 8,
+                  "width": 141.73,
+                },
+              },
+              "type": "View",
+            },
+            {
+              "children": [
+                {
+                  "children": [],
+                  "props": {
+                    "src": "data:image/png;base64,QR_PLACEHOLDER",
+                    "style": {
+                      "height": 117.72999999999999,
+                      "width": 117.72999999999999,
+                    },
+                  },
+                  "type": "Image",
+                },
+              ],
+              "props": {
+                "style": {
+                  "alignItems": "center",
+                  "borderColor": "#CCCCCC",
+                  "borderRadius": 70.865,
+                  "borderStyle": "dashed",
+                  "borderWidth": 0.5,
+                  "display": "flex",
+                  "height": 141.73,
+                  "justifyContent": "center",
+                  "marginBottom": 14,
+                  "padding": 8,
+                  "width": 141.73,
+                },
+              },
+              "type": "View",
+            },
+            {
+              "children": [
+                {
+                  "children": [],
+                  "props": {
+                    "src": "data:image/png;base64,QR_PLACEHOLDER",
+                    "style": {
+                      "height": 117.72999999999999,
+                      "width": 117.72999999999999,
+                    },
+                  },
+                  "type": "Image",
+                },
+              ],
+              "props": {
+                "style": {
+                  "alignItems": "center",
+                  "borderColor": "#CCCCCC",
+                  "borderRadius": 70.865,
+                  "borderStyle": "dashed",
+                  "borderWidth": 0.5,
+                  "display": "flex",
+                  "height": 141.73,
+                  "justifyContent": "center",
+                  "marginBottom": 14,
+                  "padding": 8,
+                  "width": 141.73,
+                },
+              },
+              "type": "View",
+            },
+            {
+              "children": [
+                {
+                  "children": [],
+                  "props": {
+                    "src": "data:image/png;base64,QR_PLACEHOLDER",
+                    "style": {
+                      "height": 117.72999999999999,
+                      "width": 117.72999999999999,
+                    },
+                  },
+                  "type": "Image",
+                },
+              ],
+              "props": {
+                "style": {
+                  "alignItems": "center",
+                  "borderColor": "#CCCCCC",
+                  "borderRadius": 70.865,
+                  "borderStyle": "dashed",
+                  "borderWidth": 0.5,
+                  "display": "flex",
+                  "height": 141.73,
+                  "justifyContent": "center",
+                  "marginBottom": 14,
+                  "padding": 8,
+                  "width": 141.73,
+                },
+              },
+              "type": "View",
+            },
+            {
+              "children": [
+                {
+                  "children": [],
+                  "props": {
+                    "src": "data:image/png;base64,QR_PLACEHOLDER",
+                    "style": {
+                      "height": 117.72999999999999,
+                      "width": 117.72999999999999,
+                    },
+                  },
+                  "type": "Image",
+                },
+              ],
+              "props": {
+                "style": {
+                  "alignItems": "center",
+                  "borderColor": "#CCCCCC",
+                  "borderRadius": 70.865,
+                  "borderStyle": "dashed",
+                  "borderWidth": 0.5,
+                  "display": "flex",
+                  "height": 141.73,
+                  "justifyContent": "center",
+                  "marginBottom": 14,
+                  "padding": 8,
+                  "width": 141.73,
+                },
+              },
+              "type": "View",
+            },
+          ],
+          "props": {
+            "style": {
+              "alignContent": "flex-start",
+              "display": "flex",
+              "flexDirection": "row",
+              "flexWrap": "wrap",
+              "justifyContent": "space-around",
+            },
+          },
+          "type": "View",
+        },
+      ],
+      "props": {
+        "orientation": "portrait",
+        "size": "A4",
+        "style": {
+          "backgroundColor": "#FFFFFF",
+          "paddingBottom": 28.35,
+          "paddingLeft": 28.35,
+          "paddingRight": 28.35,
+          "paddingTop": 28.35,
+        },
+      },
+      "type": "Page",
+    },
+  ],
+  "props": {
+    "author": "KitchenBoost",
+    "creator": "KitchenBoost Admin",
+    "producer": "KitchenBoost Admin",
+    "title": "QR L'Artisan (sticker-50mm)",
+  },
+  "type": "Document",
+}
+`;

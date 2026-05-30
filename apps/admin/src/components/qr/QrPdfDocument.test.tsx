@@ -57,8 +57,26 @@ function isReactElement(node: unknown): node is ReactElement {
   );
 }
 
+// `@react-pdf/primitives` exports its component types as plain UPPER-SNAKE
+// strings (`'VIEW'`, `'PAGE'`, `'IMAGE'`, …) — those are what React sees as
+// the element `type`. We canonicalise them to PascalCase aliases so the
+// snapshot reads naturally and the helpers below (`countByType('Page')`,
+// `imageSources`) line up with the names used in PRD prose. If @react-pdf
+// ever renames a primitive, this map fails loudly here (and the snapshot
+// flags it on the next run).
+const RPDF_PRIMITIVE_ALIAS: Record<string, string> = {
+  DOCUMENT: "Document",
+  PAGE: "Page",
+  VIEW: "View",
+  TEXT: "Text",
+  IMAGE: "Image",
+  LINK: "Link",
+};
+
 function typeName(t: unknown): string {
-  if (typeof t === "string") return t;
+  if (typeof t === "string") {
+    return RPDF_PRIMITIVE_ALIAS[t] ?? t;
+  }
   if (typeof t === "function") {
     return (
       (t as { displayName?: string; name?: string }).displayName ??
@@ -92,6 +110,17 @@ function serialize(node: ReactNode): SerializedNode {
     };
   }
   if (isReactElement(node)) {
+    // Function components are inlined: we call them with their props (they're
+    // all pure and hook-free in QrPdfDocument), then serialise their output.
+    // This lets the snapshot see the *intrinsic* primitive tree (`Page`,
+    // `View`, `Text`, `Image`) instead of stopping at the wrapper component
+    // boundary (`<StickerSheet />`, `<A6Card />`, `<A4Poster />`). The wrapper
+    // components are an internal refactoring detail — they shouldn't leak
+    // into the snapshot or the AC assertions.
+    if (typeof node.type === "function") {
+      const fn = node.type as (p: unknown) => ReactNode;
+      return serialize(fn(node.props));
+    }
     const props = { ...(node.props as Record<string, unknown>) };
     const rawChildren = props.children as ReactNode | undefined;
     delete props.children;
