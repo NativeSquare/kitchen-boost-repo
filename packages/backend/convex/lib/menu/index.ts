@@ -16,8 +16,11 @@
  *  - `categories.*` — flat editorial groups: `list` / `create` / `rename` /
  *    `reorder` / `remove` (no hierarchy V1).
  *  - `items.*` — sellable products: `list` / `listByCategory` / `create` /
- *    `update` / `remove` (allergens = subset of the 14 frozen UE 1169/2011;
- *    delete cascades N-N links + stored photo, leaving shared groups intact).
+ *    `update` / `reorder` / `remove` (allergens = subset of the 14 frozen
+ *    UE 1169/2011; delete cascades N-N links + stored photo, leaving shared
+ *    groups intact). `reorder({ categoryId, orderedIds })` (#209) is the
+ *    strict mirror of `categories.reorder`: refuses partial / duplicate /
+ *    foreign id sets.
  *  - `modifiers.*` — REUSABLE modifier groups + the N-N item↔group link:
  *    `listGroups` / `createGroup` / `updateGroup` / `removeGroup` /
  *    `attachGroupToItem` / `detachGroupFromItem` / `listItemGroups` /

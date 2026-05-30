@@ -7,6 +7,7 @@ import {
   listTenantItems,
   listTenantItemsByCategory,
   patchTenantItem,
+  reorderTenantItems,
   requireTenantCategory,
   requireTenantItem,
   tenantMutation,
@@ -109,6 +110,27 @@ export const update = tenantMutation()({
       available: args.available,
     });
   },
+});
+
+/**
+ * Rewrite the display `order` of the items of ONE category of the tenant.
+ * `orderedIds` MUST list every item of that category exactly once (else throws
+ * INVALID_REORDER) — strict mirror of `categories.reorder`, no silent partial.
+ * Refuses a foreign `categoryId` (NOT_FOUND) and a foreign item id (caught by
+ * the same set-equality check + cross-tenant fuzz, ADR 0010). Atomic via the
+ * Convex mutation tx: a failure mid-loop rolls back any partial patch.
+ *
+ * B-MENU-PUBLICATION slice 7 (D3, #209) — wires the front [[Édition menu]] drag
+ * & drop on items. The reorder writes the DRAFT only; the published snapshot
+ * is unchanged until `publication.publishMenu` runs (ADR 0015).
+ */
+export const reorder = tenantMutation()({
+  args: {
+    categoryId: v.id("menuCategories"),
+    orderedIds: v.array(v.id("menuItems")),
+  },
+  handler: async (ctx, args): Promise<void> =>
+    reorderTenantItems(ctx, ctx.tenantId, args.categoryId, args.orderedIds),
 });
 
 /**
