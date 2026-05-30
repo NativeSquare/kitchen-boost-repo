@@ -40,8 +40,10 @@ describe("page.tsx — F-MES-CLIENTS [2/4] (#186) wiring contract", () => {
     expect(PAGE_SOURCE).toMatch(/useTenantQuery/);
     // Calls it on aggregateCustomerKPIs (not via some indirection — pinned
     // verbatim so a refactor that bypasses the hook fails loudly).
-    expect(PAGE_SOURCE).toMatch(
-      /useTenantQuery\([^)]*aggregateCustomerKPIs[^)]*\)/s,
+    // Collapse whitespace so a Prettier line-wrap inside the call still matches.
+    const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
+    expect(collapsed).toMatch(
+      /useTenantQuery\([^)]*aggregateCustomerKPIs[^)]*\)/,
     );
   });
 
@@ -50,7 +52,14 @@ describe("page.tsx — F-MES-CLIENTS [2/4] (#186) wiring contract", () => {
     // tenantQuery would either fail at runtime (Forbidden, missing tenantId)
     // or — worse — work in dev with a stale tenantId and silently leak the
     // wrong tenant's data. Lint will eventually pin this; we pin it now.
-    expect(PAGE_SOURCE).not.toMatch(/\buseQuery\b/);
+    //
+    // Strip comments before the check so a docstring referring to `useQuery`
+    // (e.g. "never a raw useQuery") doesn't false-positive — what matters is
+    // whether the executable code imports/calls it.
+    const code = PAGE_SOURCE.replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "")
+      .replace(/`[^`]*`/g, "");
+    expect(code).not.toMatch(/\buseQuery\b/);
   });
 
   it("AC7 — audit-on-open wiring is preserved (slice 1 regression — #181)", () => {
