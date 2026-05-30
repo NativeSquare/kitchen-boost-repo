@@ -221,3 +221,217 @@ describe("B-CAMPAIGN-TEMPLATES-02 listTenantTemplates — public tenantQuery", (
     ).rejects.toThrow(/Forbidden/);
   });
 });
+
+/**
+ * B-CAMPAIGN-TEMPLATES-03 — MOAT hardening (cross-tenant fuzz + role gating +
+ * kb_admin root override). Aims to lock the behaviour of the public
+ * `listTenantTemplates` query so a leak fails CI loudly. Reuses the
+ * `runCrossTenantFuzz` factory + `seedTwoTenantsAllRoles` fixtures from
+ * `lib/tenancy/fuzz`; no new wrapper, no schema change, no runtime change.
+ */
+describe("B-CAMPAIGN-TEMPLATES-03 listTenantTemplates — MOAT + role + admin", () => {
+  let t: ReturnType<typeof convexTest>;
+  let seed: Seed;
+  beforeEach(async () => {
+    t = convexTest(schema, modules);
+    seed = await seedTwoTenantsAllRoles(t);
+  });
+
+  // 1. Scope filter (MOAT). The seam already filters, but we re-assert the
+  //    contract holds end-to-end so a future seam regression cannot silently
+  //    leak a cross_tenant row through the public query.
+  it("never returns a cross_tenant template, with or without tenantId, even active", async () => {
+    // cross_tenant + no tenantId (KB-central blast — kb_admin-only material).
+    await insertTemplate(t, {
+      key: "kb_blast_no_tid",
+      scope: "cross_tenant",
+      tenantId: undefined,
+      active: true,
+    });
+    // cross_tenant + tenantId set on the calling tenant — still must NOT leak.
+    await insertTemplate(t, {
+      key: "kb_blast_with_tid_a",
+      scope: "cross_tenant",
+      tenantId: seed.tenantA.tenantId,
+      active: true,
+    });
+    // A control row that SHOULD appear so an empty result does not mask a bug.
+    const visibleId = await insertTemplate(t, {
+      key: "ok_central",
+      tenantId: undefined,
+    });
+
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    const got = await asManager.query(
+      api.lib.notifications.campaigns.listTenantTemplates,
+      { tenantId: seed.tenantA.tenantId },
+    );
+    expect(got.map((r) => r.id)).toEqual([visibleId]);
+  });
+
+  // 2. Active filter. Already covered for KB-central; cover the resto-scoped
+  //    arm too so the contract is symmetric.
+  it("never returns a tenant-scoped template that is inactive (owned by the caller)", async () => {
+    await insertTemplate(t, {
+      key: "resto_off",
+      tenantId: seed.tenantA.tenantId,
+      active: false,
+    });
+    const visibleId = await insertTemplate(t, {
+      key: "resto_on",
+      tenantId: seed.tenantA.tenantId,
+      active: true,
+    });
+
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    const got = await asManager.query(
+      api.lib.notifications.campaigns.listTenantTemplates,
+      { tenantId: seed.tenantA.tenantId },
+    );
+    expect(got.map((r) => r.id)).toEqual([visibleId]);
+  });
+
+  // 3. Cross-tenant isolation MOAT (critical). Even with many tenant-B
+  //    templates seeded — active, tenant-scoped, varied keys — A's manager must
+  //    see ONLY its own. The fuzz factory below covers the wrapper denial path;
+  //    this case covers the wrapper PERMIT path with a foreign-data minefield.
+  it("MOAT: an A-manager with tenantId=A NEVER sees any tenant-B template", async () => {
+    const aId = await insertTemplate(t, {
+      key: "owned_by_a",
+      tenantId: seed.tenantA.tenantId,
+    });
+    // Plant a minefield of B-owned, active, tenant-scoped templates.
+    for (const key of ["b_one", "b_two", "b_three"]) {
+      await insertTemplate(t, {
+        key,
+        tenantId: seed.tenantB.tenantId,
+      });
+    }
+    const asManagerA = t.withIdentity({ subject: seed.tenantA.managerId });
+    const got = await asManagerA.query(
+      api.lib.notifications.campaigns.listTenantTemplates,
+      { tenantId: seed.tenantA.tenantId },
+    );
+    expect(got.map((r) => r.id)).toEqual([aId]);
+  });
+
+  // 4. KB-central visible cross-tenant. The same KB-central template id must
+  //    surface for BOTH tenants — that's the whole point of KB-central rows.
+  it("KB-central templates (tenantId: undefined) are visible to every tenant", async () => {
+    const centralId = await insertTemplate(t, {
+      key: "shared_central",
+      tenantId: undefined,
+    });
+
+    const asManagerA = t.withIdentity({ subject: seed.tenantA.managerId });
+    const gotA = await asManagerA.query(
+      api.lib.notifications.campaigns.listTenantTemplates,
+      { tenantId: seed.tenantA.tenantId },
+    );
+    expect(gotA.map((r) => r.id)).toEqual([centralId]);
+
+    const asManagerB = t.withIdentity({ subject: seed.tenantB.managerId });
+    const gotB = await asManagerB.query(
+      api.lib.notifications.campaigns.listTenantTemplates,
+      { tenantId: seed.tenantB.tenantId },
+    );
+    expect(gotB.map((r) => r.id)).toEqual([centralId]);
+  });
+
+  // 5. Resto-scoped visible only at the owning tenant — both directions.
+  it("a tenant-scoped template is visible to its owner ONLY, not the other tenant", async () => {
+    const aId = await insertTemplate(t, {
+      key: "a_promo",
+      tenantId: seed.tenantA.tenantId,
+    });
+    const bId = await insertTemplate(t, {
+      key: "b_promo",
+      tenantId: seed.tenantB.tenantId,
+    });
+
+    const asManagerA = t.withIdentity({ subject: seed.tenantA.managerId });
+    const gotA = await asManagerA.query(
+      api.lib.notifications.campaigns.listTenantTemplates,
+      { tenantId: seed.tenantA.tenantId },
+    );
+    expect(gotA.map((r) => r.id)).toEqual([aId]);
+
+    const asManagerB = t.withIdentity({ subject: seed.tenantB.managerId });
+    const gotB = await asManagerB.query(
+      api.lib.notifications.campaigns.listTenantTemplates,
+      { tenantId: seed.tenantB.tenantId },
+    );
+    expect(gotB.map((r) => r.id)).toEqual([bId]);
+  });
+
+  // 6. Role gating — extended fuzz: every unauthorized actor (across both
+  //    tenants + the role-mismatch staff + plain-customer + anonymous +
+  //    detached) MUST throw. Reuses the campaigns.ts factory + the
+  //    seedTwoTenantsAllRoles fixture (no duplication).
+  it("cross-tenant fuzz: every unauthorized actor throws (no leak)", async () => {
+    // Seed a non-empty result so a leak (returning [] instead of throwing) is
+    // unambiguous: anything other than a throw fails the run.
+    await insertTemplate(t, {
+      key: "leak_canary",
+      tenantId: seed.tenantA.tenantId,
+    });
+    const { leaks, pairs } = await runCrossTenantFuzz(t, {
+      functions: [api.lib.notifications.campaigns.listTenantTemplates],
+      isQuery: () => true,
+      tenantId: seed.tenantA.tenantId,
+      actors: [
+        { label: "B-manager", subject: seed.tenantB.managerId },
+        { label: "B-staff", subject: seed.tenantB.staffId },
+        { label: "A-staff", subject: seed.tenantA.staffId },
+        { label: "detached", subject: seed.detachedUserId },
+        { label: "plain-customer", subject: seed.customerId },
+        { label: "anonymous", subject: null },
+      ],
+    });
+    expect(leaks).toEqual([]);
+    expect(pairs).toBe(6);
+  });
+
+  // 7. kb_admin root override — a KB root operator can call on ANY tenant
+  //    (supervision path, inherited from `tenantQuery`).
+  it("kb_admin (root) can call listTenantTemplates on any tenantId", async () => {
+    const aId = await insertTemplate(t, {
+      key: "a_only",
+      tenantId: seed.tenantA.tenantId,
+    });
+    const bId = await insertTemplate(t, {
+      key: "b_only",
+      tenantId: seed.tenantB.tenantId,
+    });
+
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    const gotA = await asAdmin.query(
+      api.lib.notifications.campaigns.listTenantTemplates,
+      { tenantId: seed.tenantA.tenantId },
+    );
+    expect(gotA.map((r) => r.id)).toEqual([aId]);
+
+    const gotB = await asAdmin.query(
+      api.lib.notifications.campaigns.listTenantTemplates,
+      { tenantId: seed.tenantB.tenantId },
+    );
+    expect(gotB.map((r) => r.id)).toEqual([bId]);
+  });
+
+  // 8. Strict allowlist — `staff` (a real tenant role) is explicitly rejected
+  //    by the wrapper's `allow: ["kb_manager"]` declaration. Covered by the
+  //    sibling describe; re-asserted here as an explicit MOAT pin so a future
+  //    `allow` widening does not silently slip past CI.
+  it("strict allowlist: staff is rejected even on its own tenant (allow=['kb_manager'])", async () => {
+    await insertTemplate(t, {
+      key: "any",
+      tenantId: seed.tenantA.tenantId,
+    });
+    const asStaff = t.withIdentity({ subject: seed.tenantA.staffId });
+    await expect(
+      asStaff.query(api.lib.notifications.campaigns.listTenantTemplates, {
+        tenantId: seed.tenantA.tenantId,
+      }),
+    ).rejects.toThrow(/Forbidden/);
+  });
+});
