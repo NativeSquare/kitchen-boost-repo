@@ -9,6 +9,13 @@ export type {
   IncidentDisplay,
   IncidentSeverity,
 } from "./deriveIncidentDisplay";
+export {
+  ALL_FILTER,
+  ALL_PASS_FILTERS,
+  collectTenantOptions,
+  filterIncidents,
+} from "./filterIncidents";
+export type { IncidentFilters } from "./filterIncidents";
 export { formatPendingSince } from "./formatPendingSince";
 export { toIncidentRow } from "./incidentRow";
 export type { IncidentRow } from "./incidentRow";

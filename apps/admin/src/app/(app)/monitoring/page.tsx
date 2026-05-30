@@ -1,16 +1,19 @@
 "use client";
 
 /**
- * F-MONITORING — `/monitoring` route (issue #184, parent EPIC #147).
+ * F-MONITORING — `/monitoring` route (issue #184 / filters slice #197,
+ * parent EPIC #147).
  *
  * Thin wiring layer: reads the session via `useSession` (F-SHELL, ADR 0014
  * §3) and the incidents via `useQuery(api.lib.admin.monitoring.previewIncidents)`
- * — both reactive — and hands them to the pure `MonitoringView`.
+ * — both reactive — and hands them to the pure `MonitoringView`. Owns the
+ * client-side filter state (kind / tenant / severity, issue #197) so the
+ * view stays pure-callable from vitest.
  *
  * The page lives directly under `(app)/monitoring/` (NOT under
  * `(app)/t/[tenantId]/...`) because monitoring is KB-Admin-global ops, not
  * tenant-scoped (cf. `docs/contexts/kb-admin/CONTEXT.md` « Mode supervision »
- * and issue body's "Implementation Decisions").
+ * and EPIC #147 "Implementation Decisions").
  *
  * The front guard here is UX-only — the real isolation barrier is backend
  * (`previewIncidents` is exposed via `kbAdminQuery`, so any non-root actor
@@ -25,6 +28,7 @@ import { api } from "@packages/backend/convex/_generated/api";
 
 import { useSession } from "@/lib/session";
 
+import { ALL_PASS_FILTERS, type IncidentFilters } from "./lib";
 import { MonitoringView } from "./monitoring-view";
 
 /**
@@ -51,5 +55,14 @@ export default function MonitoringPage() {
   // stable across re-renders.
   const incidents = useQuery(api.lib.admin.monitoring.previewIncidents);
   const now = useNow();
-  return <MonitoringView session={session} incidents={incidents} now={now} />;
+  const [filters, setFilters] = useState<IncidentFilters>(ALL_PASS_FILTERS);
+  return (
+    <MonitoringView
+      session={session}
+      incidents={incidents}
+      now={now}
+      filters={filters}
+      onFiltersChange={setFilters}
+    />
+  );
 }

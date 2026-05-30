@@ -1,15 +1,17 @@
 "use client";
 
 /**
- * F-MONITORING — `MonitoringView` (issue #184, parent EPIC #147).
+ * F-MONITORING — `MonitoringView` (issue #184 / filters slice #197, parent
+ * EPIC #147).
  *
  * Pure presentational shell of the `/monitoring` route: takes the resolved
- * `session` + the `incidents` snapshot as props and decides what to render.
- * Splitting it out of `page.tsx` (which owns `useSession()` /
- * `useQuery(api.lib.admin.monitoring.previewIncidents)`) lets vitest pin
- * every branch — access denied, loading, empty, 3-kind table — under the
- * lean `node` env (no jsdom, no Convex test harness), same React-tree-
- * serializer pattern already used by neighbouring tests.
+ * `session` + the `incidents` snapshot + the controlled `filters` as props
+ * and decides what to render. Splitting it out of `page.tsx` (which owns
+ * `useSession()` / `useQuery(api.lib.admin.monitoring.previewIncidents)`
+ * / filter `useState`) lets vitest pin every branch — access denied,
+ * loading, empty, 3-kind table, filtered-empty — under the lean `node`
+ * env (no jsdom, no Convex test harness), same React-tree-serializer
+ * pattern already used by neighbouring tests.
  *
  * Branches:
  *   - `session.isAdmin === false` → « Accès refusé » + back link to `/`.
@@ -17,11 +19,19 @@
  *     (`kbAdminQuery` rejects, ADR 0014).
  *   - `incidents === undefined` → loading state (the query is still in
  *     flight — must NOT look like the empty state).
- *   - `incidents.length === 0` → « Aucun incident actif » empty state.
- *   - else → shadcn `<Table>` with one row per incident, per-kind inline
- *     fields (provider+externalId+latencyMs for `webhook_latency` ;
- *     prospectName+provider+since for `kyc_pending` ; orderId+tenantId for
- *     `paid_no_course`), and a contextual link cell when buildable.
+ *   - `incidents.length === 0` → « Aucun incident actif » global empty
+ *     state.
+ *   - `filteredIncidents.length === 0` → « Aucun incident ne correspond
+ *     aux filtres » filtered empty state (distinct copy so the user
+ *     understands their filters caused the void, not the system).
+ *   - else → shadcn `<Table>` with one row per filtered incident.
+ *
+ * Filters (issue #197): three AND-combined client-side filters rendered
+ * above the table — kind (shadcn `Select`), tenant (shadcn `Combobox`),
+ * severity (shadcn `Select`). State is owned upstream and threaded as
+ * `filters` + `onFiltersChange` so this component stays pure-callable
+ * for vitest. When the caller omits them, the view falls back to
+ * `ALL_PASS_FILTERS` + a no-op handler (preserves the pre-#197 contract).
  */
 import Link from "next/link";
 
@@ -29,6 +39,21 @@ import type { Incident } from "@packages/backend/convex/lib/admin/monitoring";
 import type { SessionState } from "@/lib/session";
 
 import { Badge } from "@/components/ui/badge";
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+} from "@/components/ui/combobox";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -38,7 +63,15 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-import { toIncidentRow, type IncidentRow } from "./lib";
+import {
+  ALL_FILTER,
+  ALL_PASS_FILTERS,
+  collectTenantOptions,
+  filterIncidents,
+  toIncidentRow,
+  type IncidentFilters,
+  type IncidentRow,
+} from "./lib";
 
 export type MonitoringViewProps = {
   /** The resolved session (decided by the `(app)` SessionGuard upstream). */
@@ -51,12 +84,22 @@ export type MonitoringViewProps = {
    * React Compiler can keep `MonitoringView` pure).
    */
   now: number;
+  /**
+   * Controlled filter state. Optional so callers (and tests) can omit it
+   * and get the pre-#197 unfiltered view. Pure callers (vitest) supply
+   * their own value to pin filter behaviour without mounting React.
+   */
+  filters?: IncidentFilters;
+  /** Controlled-state setter for the 3 filter dropdowns. */
+  onFiltersChange?: (filters: IncidentFilters) => void;
 };
 
 export function MonitoringView({
   session,
   incidents,
   now,
+  filters = ALL_PASS_FILTERS,
+  onFiltersChange,
 }: MonitoringViewProps) {
   // ── Access guard (UX layer; real isolation is backend `kbAdminQuery`) ──
   if (session.status !== "ready" || !session.session.isAdmin) {
@@ -87,7 +130,12 @@ export function MonitoringView({
         </p>
       </div>
       <div className="px-4 lg:px-6">
-        <MonitoringBody incidents={incidents} now={now} />
+        <MonitoringBody
+          incidents={incidents}
+          now={now}
+          filters={filters}
+          onFiltersChange={onFiltersChange}
+        />
       </div>
     </div>
   );
@@ -96,9 +144,13 @@ export function MonitoringView({
 function MonitoringBody({
   incidents,
   now,
+  filters,
+  onFiltersChange,
 }: {
   incidents: Incident[] | undefined;
   now: number;
+  filters: IncidentFilters;
+  onFiltersChange?: (filters: IncidentFilters) => void;
 }) {
   if (incidents === undefined) {
     return (
@@ -107,6 +159,9 @@ function MonitoringBody({
       </div>
     );
   }
+  // The « global empty » state short-circuits BEFORE the filter bar so the
+  // « no data at all » message stays unambiguous (no controls to fiddle
+  // with when there's nothing to filter in the first place).
   if (incidents.length === 0) {
     return (
       <div className="rounded-lg border border-dashed p-8 text-center">
@@ -114,8 +169,121 @@ function MonitoringBody({
       </div>
     );
   }
-  const rows = incidents.map((incident) => toIncidentRow(incident, now));
-  return <IncidentsTable rows={rows} />;
+
+  const tenantOptions = collectTenantOptions(incidents);
+  const filtered = filterIncidents(incidents, filters);
+  return (
+    <div className="flex flex-col gap-4">
+      <FiltersBar
+        filters={filters}
+        tenantOptions={tenantOptions}
+        onFiltersChange={onFiltersChange}
+      />
+      {filtered.length === 0 ? (
+        <div className="rounded-lg border border-dashed p-8 text-center">
+          <p className="text-muted-foreground text-sm">
+            Aucun incident ne correspond aux filtres.
+          </p>
+        </div>
+      ) : (
+        <IncidentsTable rows={filtered.map((i) => toIncidentRow(i, now))} />
+      )}
+    </div>
+  );
+}
+
+function FiltersBar({
+  filters,
+  tenantOptions,
+  onFiltersChange,
+}: {
+  filters: IncidentFilters;
+  tenantOptions: string[];
+  onFiltersChange?: (filters: IncidentFilters) => void;
+}) {
+  const update = (patch: Partial<IncidentFilters>) => {
+    onFiltersChange?.({ ...filters, ...patch });
+  };
+  return (
+    <div className="flex flex-wrap items-end gap-3">
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="monitoring-filter-kind" className="text-xs">
+          Type
+        </Label>
+        <Select
+          value={filters.kind}
+          onValueChange={(value) =>
+            update({ kind: value as IncidentFilters["kind"] })
+          }
+        >
+          <SelectTrigger id="monitoring-filter-kind" className="w-[200px]">
+            <SelectValue placeholder="Type" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL_FILTER}>Tous</SelectItem>
+            <SelectItem value="webhook_latency">webhook_latency</SelectItem>
+            <SelectItem value="kyc_pending">kyc_pending</SelectItem>
+            <SelectItem value="paid_no_course">paid_no_course</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="monitoring-filter-tenant" className="text-xs">
+          Tenant
+        </Label>
+        <Combobox
+          items={[ALL_FILTER, ...tenantOptions]}
+          value={filters.tenantId}
+          onValueChange={(value) =>
+            update({
+              tenantId:
+                typeof value === "string" && value.length > 0
+                  ? value
+                  : ALL_FILTER,
+            })
+          }
+        >
+          <ComboboxInput
+            id="monitoring-filter-tenant"
+            placeholder="Tenant"
+            className="w-[220px]"
+          />
+          <ComboboxContent>
+            <ComboboxList>
+              <ComboboxItem value={ALL_FILTER}>Tous</ComboboxItem>
+              {tenantOptions.map((tenantId) => (
+                <ComboboxItem key={tenantId} value={tenantId}>
+                  {tenantId}
+                </ComboboxItem>
+              ))}
+            </ComboboxList>
+          </ComboboxContent>
+        </Combobox>
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="monitoring-filter-severity" className="text-xs">
+          Sévérité
+        </Label>
+        <Select
+          value={filters.severity}
+          onValueChange={(value) =>
+            update({ severity: value as IncidentFilters["severity"] })
+          }
+        >
+          <SelectTrigger id="monitoring-filter-severity" className="w-[180px]">
+            <SelectValue placeholder="Sévérité" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL_FILTER}>Toutes</SelectItem>
+            <SelectItem value="critical">critical</SelectItem>
+            <SelectItem value="warning">warning</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  );
 }
 
 function IncidentsTable({ rows }: { rows: IncidentRow[] }) {
