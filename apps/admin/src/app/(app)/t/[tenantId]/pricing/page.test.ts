@@ -38,6 +38,45 @@ describe("page.tsx — F-PRICING-1 (#241) wiring contract", () => {
     expect(PAGE_SOURCE).toMatch(/PricingView/);
   });
 
+  it("AC F-PRICING-2 (#245) — binds `api.lib.pricing.rules.create` via `useTenantMutation`", () => {
+    // The page must wire the create mutation through `useTenantMutation` (NOT
+    // raw `useMutation`) so the `tenantId` is auto-injected (ADR 0014 §4 /
+    // #183). Collapsing whitespace lets a Prettier line-wrap inside the call
+    // still match.
+    expect(PAGE_SOURCE).toMatch(/useTenantMutation/);
+    const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
+    expect(collapsed).toMatch(
+      /useTenantMutation\([^)]*api\.lib\.pricing\.rules\.create[^)]*\)/,
+    );
+  });
+
+  it("AC F-PRICING-2 (#245) — does NOT use a raw `useMutation` (bypasses tenantId injection — ADR 0014 §4)", () => {
+    // Strip comments + template strings before the check so a docstring
+    // referring to `useMutation` doesn't false-positive.
+    const code = PAGE_SOURCE.replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "")
+      .replace(/`[^`]*`/g, "");
+    expect(code).not.toMatch(/\buseMutation\b/);
+  });
+
+  it("AC F-PRICING-2 (#245) — mounts the `RuleBuilderModal` (closed-list builder, slice 2)", () => {
+    expect(PAGE_SOURCE).toMatch(/RuleBuilderModal/);
+  });
+
+  it("AC F-PRICING-2 (#245) — surfaces backend `ConvexError.data.message` for `CONTRADICTORY_CONDITIONS` via the modal's inline `submitError` prop (NOT a toast)", () => {
+    // Issue body: « Pas de toast technique. » The page MUST catch the
+    // ConvexError, branch on `data.code === "CONTRADICTORY_CONDITIONS"`,
+    // and surface the server-rédigé message inline via `submitError` on
+    // the modal. We pin BOTH grep substrings (`submitError`,
+    // `CONTRADICTORY_CONDITIONS`) so a future refactor can't drop either
+    // without an explicit test update.
+    expect(PAGE_SOURCE).toMatch(/submitError/);
+    expect(PAGE_SOURCE).toMatch(/CONTRADICTORY_CONDITIONS/);
+    // The branch on ConvexError must exist (so we don't show « Unknown
+    // error occurred » for a typed error the backend already worded).
+    expect(PAGE_SOURCE).toMatch(/ConvexError/);
+  });
+
   it("GUARDRAIL — does NOT import `api.lib.pricing.evaluate` (engine is backend-only, ADR 0013)", () => {
     // Issue body: « Pas d'import vers `api.lib.pricing.evaluate.evaluate` dans
     // tout le module pricing (assertion statique grep). »
