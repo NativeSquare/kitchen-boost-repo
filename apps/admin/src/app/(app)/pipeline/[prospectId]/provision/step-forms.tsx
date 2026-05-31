@@ -62,6 +62,7 @@ import type { CoordonneesPatch } from "@/app/(app)/t/[tenantId]/parametres/coord
 import type { AcceptedModesPatch } from "@/app/(app)/t/[tenantId]/parametres/modes-editor";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { tenantPwaUrl } from "@/lib/tenant-url";
 import { getConvexErrorMessage } from "@/utils/getConvexErrorMessage";
 
 import { bucketItemsByCategory } from "@/app/(app)/t/[tenantId]/menu/item-list";
@@ -73,6 +74,7 @@ import {
 import { Step3StripeKycForm } from "./step3-stripe-kyc-form";
 import { Step4BrandingForm } from "./step4-branding-form";
 import { Step5MenuForm } from "./step5-menu-form";
+import { Step6QrForm } from "./step6-qr-form";
 import { WIZARD_STEPS, type WizardStepNumber } from "./wizard-stepper";
 
 export type StepFormProps = {
@@ -117,7 +119,7 @@ function NavButtons({
   );
 }
 
-function makeStepForm(step: Exclude<WizardStepNumber, 1 | 3 | 4 | 5>) {
+function makeStepForm(step: Exclude<WizardStepNumber, 1 | 3 | 4 | 5 | 6>) {
   function StepForm({ onPrev, onNext }: StepFormProps) {
     return (
       <div className="flex flex-col gap-4 px-4 py-2 lg:px-6">
@@ -885,8 +887,142 @@ function Step5Form({ onPrev, onNext }: StepFormProps): React.JSX.Element {
   );
 }
 
+/**
+ * F-WIZARD [8/10] (#272) — Step6Form: thin Convex-wiring wrapper around the
+ * pure `Step6QrForm` (QR sticker PDF imprimable). Owns:
+ *   - the prospect read (`useQuery(api.lib.onboarding.crm.getProspect)`) for
+ *     the `tenantId` back-link (every downstream resolution needs an explicit
+ *     `tenantId` — the wizard route lives OUTSIDE the `/t/[tenantId]/qr/`
+ *     shell that backs `<TenantProvider/>` + `useCurrentTenantId`);
+ *   - the tenant doc read via `loadTenantForStripe` (`kbAdminQuery` —
+ *     same primitive the standalone `/t/[tenantId]/qr/page.tsx` uses for
+ *     KB Admins; returns the full `Doc<"tenants">` with `slug` +
+ *     `customDomain` + `branding`). The wizard ALWAYS runs as KB Admin
+ *     (chrome-less layout under `/pipeline/...`), so the kbAdminQuery is
+ *     the authorised seed source — NO new endpoint needed (issue spec
+ *     « 100 % front-only, aucune dépendance backend » means NO new backend
+ *     surface; reading the tenant doc via an existing kbAdminQuery is the
+ *     same discipline the standalone QR page uses);
+ *   - the front-side `tenantPwaUrl({ slug, customDomain })` recomposition —
+ *     mirror of the backend `provisionTenant` build (helper #167). The PWA
+ *     URL is rebuilt deterministically from `slug` + `customDomain`, NOT
+ *     read from a persisted `qr.pwaUrl` field (the tenants table has no
+ *     such field — see CONTEXT.md / table/tenants.ts).
+ *
+ * NO MUTATIONS, NO ACTIONS: step 6 is purely a preview + download of a
+ * front-built PDF. Issue acceptance criterion verbatim: « Aucun appel
+ * backend (zéro mutation, zéro action) ». The only « queries » here are
+ * the prospect + tenant SEEDS (READ-only) — same shape as the standalone
+ * QR page.
+ *
+ * Mirror of `Step4Form` / `Step5Form`'s discipline: the lean `node` vitest
+ * env doesn't execute these hooks (the serializer's try/catch swallows the
+ * « invalid hook call » when invoking the wrapper outside a React render);
+ * the wrapper's behaviour is pinned indirectly through the pure form tests
+ * (`step6-qr-form.test.tsx`) and directly through CI runtime + E2E.
+ */
+function Step6Form({ onPrev, onNext }: StepFormProps): React.JSX.Element {
+  const params = useParams<{ prospectId: string }>();
+  const prospectId = params?.prospectId as unknown as
+    | Id<"prospects">
+    | undefined;
+
+  const prospect = useQuery(
+    api.lib.onboarding.crm.getProspect,
+    prospectId !== undefined ? { prospectId } : "skip",
+  );
+
+  const tenantId = prospect?.tenantId;
+  const tenantDoc = useQuery(
+    api.lib.stripe.account.loadTenantForStripe,
+    tenantId !== undefined ? { tenantId } : "skip",
+  );
+
+  // Defensive loading / not-found — outer `decideWizardShell` + the cursor
+  // heuristic normally gate these, but races between the page-level queries
+  // and this child's queries are possible (same defence as Step4 / Step5).
+  if (prospect === undefined) {
+    return (
+      <div
+        className="flex items-center justify-center px-4 py-12 lg:px-6"
+        data-slot="wizard-step6-loading"
+      >
+        <Spinner className="h-6 w-6" />
+      </div>
+    );
+  }
+  if (prospect === null) {
+    return (
+      <div
+        className="px-4 py-6 text-sm text-destructive lg:px-6"
+        data-slot="wizard-step6-not-found"
+      >
+        Prospect introuvable. Impossible de générer le QR sticker.
+      </div>
+    );
+  }
+  if (tenantId === undefined) {
+    // Hard gate: the PWA URL is `https://<slug>.kitchen-boost.fr` — without
+    // a tenant there's no slug. Step 1 must run first. (The wizard's cursor
+    // already prevents this in normal flow; defensive backstop.)
+    return (
+      <div
+        className="px-4 py-6 text-sm text-destructive lg:px-6"
+        data-slot="wizard-step6-no-tenant"
+      >
+        Le tenant doit être créé (Step 1) avant de générer le QR sticker.
+      </div>
+    );
+  }
+  if (tenantDoc === undefined) {
+    // Tenant query in flight — render a spinner rather than building a QR
+    // against partial data (no slug → no URL). The query is fast; this is
+    // the equivalent of the standalone QR page's « return null » loading
+    // sentinel (page.tsx line 117).
+    return (
+      <div
+        className="flex items-center justify-center px-4 py-12 lg:px-6"
+        data-slot="wizard-step6-loading-tenant"
+      >
+        <Spinner className="h-6 w-6" />
+      </div>
+    );
+  }
+  if (tenantDoc === null) {
+    // Defensive: should be unreachable (the prospect carries `tenantId`,
+    // which by construction matches a row in `tenants`). Render a flat
+    // error rather than crashing the wizard.
+    return (
+      <div
+        className="px-4 py-6 text-sm text-destructive lg:px-6"
+        data-slot="wizard-step6-tenant-not-found"
+      >
+        Tenant introuvable. Impossible de générer le QR sticker.
+      </div>
+    );
+  }
+
+  // Recompose the PWA URL front-side — mirror of the backend
+  // `provisionTenant` build (helper #167). Same shape as the standalone
+  // `/t/[tenantId]/qr/page.tsx`.
+  const pwaUrl = tenantPwaUrl({
+    slug: tenantDoc.slug,
+    customDomain: tenantDoc.customDomain,
+  });
+
+  return (
+    <Step6QrForm
+      pwaUrl={pwaUrl}
+      restoName={tenantDoc.name}
+      logoUrl={tenantDoc.branding?.logoUrl}
+      primaryColor={tenantDoc.branding?.primaryColor}
+      onPrev={onPrev}
+      onNext={onNext}
+    />
+  );
+}
+
 export const Step2Form = makeStepForm(2);
-export const Step6Form = makeStepForm(6);
 export const Step7Form = makeStepForm(7);
 export const Step8Form = makeStepForm(8);
 
