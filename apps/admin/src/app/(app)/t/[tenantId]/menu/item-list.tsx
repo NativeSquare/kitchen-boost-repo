@@ -38,7 +38,6 @@
  * `apps/native`, or `packages/backend/convex/`.
  */
 
-import { useMemo } from "react";
 import { useQuery } from "convex/react";
 import { IconAlertCircle, IconPhoto } from "@tabler/icons-react";
 
@@ -208,10 +207,10 @@ function ItemListSkeleton() {
 }
 
 /**
- * Memoised builder used by the page to bucket the flat `items.list` array
- * into a `Record<categoryId, items[]>` for the per-category lists. Exposed
- * here so the page's wiring layer stays thin and the bucketing logic is
- * pinned in one place. Pure function — no React, no Convex.
+ * Pure builder used by the page to bucket the flat `items.list` array into
+ * a `Record<categoryId, items[]>` for the per-category lists. Exposed here
+ * so the page's wiring layer stays thin and the bucketing logic is pinned
+ * in one place. Pure function — no React, no Convex.
  */
 export function bucketItemsByCategory(
   items: Doc<"menuItems">[] | undefined,
@@ -225,7 +224,3 @@ export function bucketItemsByCategory(
   }
   return out;
 }
-
-// Mark `useMemo` as referenced (lint defense — kept exported for future
-// internal use if the bucketing moves on-component).
-void useMemo;
