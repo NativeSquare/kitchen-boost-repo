@@ -174,13 +174,19 @@ function dataSlots(n: SerializedNode): string[] {
 // ---------------------------------------------------------------------------
 // F-PARAMETRES-02 (#229) widens the view's prop contract with `branding` +
 // `onSaveBranding` + `onUploadLogo` — the section 1 editor is now LIVE
-// (BrandingEditor) and consumes them. The other 3 sections still placeholder.
+// (BrandingEditor) and consumes them.
+// F-PARAMETRES-03 (#231) widens it again with `coordonnees` +
+// `onSaveCoordonnees` — section 2 is now LIVE (CoordonneesEditor). Modes /
+// Horaires sections remain placeholders.
 const noopBranding = async () => {};
 const noopUpload = async () => "https://cdn/x.png";
+const noopCoordonnees = async () => {};
 const BASE_BRANDING_PROPS = {
   branding: undefined,
   onSaveBranding: noopBranding,
   onUploadLogo: noopUpload,
+  coordonnees: undefined,
+  onSaveCoordonnees: noopCoordonnees,
 } as const;
 
 const LOADING: ParametresViewProps = {
@@ -225,14 +231,14 @@ describe("ParametresView — F-PARAMETRES-01 (#193)", () => {
     expect(horairesIdx).toBeGreaterThan(modesIdx);
   });
 
-  it("AC2 — the still-unwired sections show « À implémenter » placeholders (F-PARAMETRES-02 wired Identité visuelle; Coordonnées / Modes / Horaires land in F-PARAMETRES-03..05)", () => {
-    // 3 still-unwired sections × 1 placeholder = ≥3 occurrences. Pinning the
+  it("AC2 — the still-unwired sections show « À implémenter » placeholders (F-PARAMETRES-02 wired Identité visuelle, F-PARAMETRES-03 wired Coordonnées; Modes / Horaires land in F-PARAMETRES-04..05)", () => {
+    // 2 still-unwired sections × 1 placeholder = ≥2 occurrences. Pinning the
     // COUNT (not just presence) so a regression that drops one section is
-    // caught. Identité visuelle is now live (BrandingEditor) so it doesn't
-    // count.
+    // caught. Identité visuelle (BrandingEditor) and Coordonnées
+    // (CoordonneesEditor) are now live and don't count.
     const text = allText(serialize(ParametresView(EMPTY)));
     const matches = text.match(/[ÀA] impl[ée]menter/g) ?? [];
-    expect(matches.length).toBeGreaterThanOrEqual(3);
+    expect(matches.length).toBeGreaterThanOrEqual(2);
   });
 
   it("AC3 — surfaces the « Zone livraison Uber Direct » read-only block with the V1 informative copy", () => {
@@ -316,6 +322,19 @@ describe("ParametresView — F-PARAMETRES-01 (#193)", () => {
     expect(dataSlots(tree)).toContain("parametres-branding-save");
     // The section card itself still carries the canonical slot from slice 1.
     expect(dataSlots(tree)).toContain("parametres-section-identite");
+  });
+
+  it("F-PARAMETRES-03 (#231) — section Coordonnées is WIRED (CoordonneesEditor) and no longer a placeholder", () => {
+    // The wired section surfaces the save button + the two inputs slots
+    // exposed by `CoordonneesEditor`. The section card's data-slot from
+    // slice 1 is preserved so downstream consumers don't need to know
+    // whether it's a placeholder or a live editor.
+    const tree = serialize(ParametresView(EMPTY));
+    const slots = dataSlots(tree);
+    expect(slots).toContain("parametres-coordonnees-save");
+    expect(slots).toContain("parametres-coordonnees-address-input");
+    expect(slots).toContain("parametres-coordonnees-phone-input");
+    expect(slots).toContain("parametres-section-coordonnees");
   });
 
   it("AC2 — populated branch (serviceHours with windows) still renders the placeholder body (V1 = read but don't display the editor)", () => {
