@@ -1,6 +1,12 @@
 import { ConvexError, type Infer, v } from "convex/values";
 import {
+  hubriseStatus,
+  stripeConnectStatus,
+  uberDirectStatus,
+} from "../../table/prospects";
+import {
   type BinaryMilestoneKey,
+  appendIntegrationStatus,
   getProspect as getProspectRow,
   kbAdminMutation,
   setMilestoneTimestamp,
@@ -167,6 +173,218 @@ export const setMilestone = kbAdminMutation({
 
     // 4. Chain the composite Closing decision in the same transaction. Returns
     //    the enriched {basculed, phase, closing} we surface verbatim.
+    return maybeAutoBascule(ctx, args.prospectId);
+  },
+});
+
+/**
+ * B-ONBOARDING-MILESTONES slice 4 (#213) — the granular
+ * `recordIntegrationStatus` `kbAdminMutation` that appends ONE transition to a
+ * composite integration milestone (`stripeConnect` / `uberDirect` / `hubrise`)
+ * and chains `maybeAutoBascule` in the SAME transaction (PRD 70 §3.3 Préparation,
+ * kb-admin CONTEXT [[Milestone]] composite).
+ *
+ * Why this is its own mutation (BMAD): the composite integrations OSCILLATE
+ * (`pending_kyc → verified → rejected → pending_kyc → verified`) and carry a
+ * `history[]` — they are write-shape-different from binary milestones (no
+ * timestamp toggle, only `current` + append). Forcing the UI to round-trip the
+ * full `milestones` object would race two concurrent operator clicks. This slice
+ * is the granular write the UI calls.
+ *
+ * Status validator: a DISCRIMINATED `v.union` of `v.object`s, one per
+ * integration. Each `v.object` literally pins `integration` to its own value and
+ * REUSES the per-integration status union from `table/prospects.ts`
+ * (`stripeConnectStatus` / `uberDirectStatus` / `hubriseStatus`) — never a
+ * duplicated string-literal union. The runtime rejects ANY cross-integration
+ * payload (`integration: "stripeConnect"` + `status: "active"` is not a member
+ * of the union); the compile-time narrowing of `IntegrationStatusMap`
+ * additionally refuses it at TypeScript level (slice 1 seam).
+ *
+ * Closing semantics: the 3 integrations are NOT Closing milestones (PRD 70
+ * §3.3 / `evaluateClosing`), so `basculed` is always `false` for THIS slice. We
+ * STILL chain `maybeAutoBascule` after the write (defence in depth + uniform
+ * return shape with `setMilestone`) — its `evaluateClosing` is unaffected by a
+ * write that touches a non-Closing field, so the helper is structurally a
+ * no-op here and just returns the current phase + the up-to-date Closing
+ * verdict.
+ *
+ * Audit (Q70-Q2): the wrapper auto-logs ONE `prospect.integration.recordStatus`
+ * row per call — covers any (integration × status) pair. Append-only history is
+ * already enforced at the store seam (slice 1, `appendIntegrationStatus`).
+ */
+
+/**
+ * Extract the closed set of accepted string literals from a Convex
+ * `v.union(v.literal(...), ...)` validator at module load. Used to derive the
+ * per-integration status sets DIRECTLY from `table/prospects.ts` (the single
+ * source of truth) — the lists are NEVER duplicated here. Each `member` of a
+ * `v.union(...)` of literals exposes its `.value`.
+ */
+function literalSet(union: unknown): ReadonlySet<string> {
+  const members = (union as { members?: Array<{ value?: unknown }> }).members;
+  if (!Array.isArray(members)) {
+    // Defensive — every per-integration `*Status` is built as `v.union(v.literal(...))`,
+    // so this never trips in production. The check keeps the cast honest.
+    throw new Error("literalSet: expected a v.union(v.literal(...)) validator");
+  }
+  return new Set(
+    members.map((m) => {
+      if (typeof m.value !== "string") {
+        throw new Error("literalSet: non-string literal member");
+      }
+      return m.value;
+    }),
+  );
+}
+
+/**
+ * The 3 composite integration milestone keys mapped to their accepted status
+ * literals — derived (NOT duplicated) from `stripeConnectStatus` /
+ * `uberDirectStatus` / `hubriseStatus`. Adding a status to those unions in
+ * `table/prospects.ts` propagates here for free; adding a 4th INTEGRATION
+ * mechanically requires extending this map, the `v.union(...)` arg validator
+ * AND the discriminated dispatch in the handler — the build fails otherwise.
+ */
+const INTEGRATION_STATUS_BY_KEY: Readonly<
+  Record<"stripeConnect" | "uberDirect" | "hubrise", ReadonlySet<string>>
+> = {
+  stripeConnect: literalSet(stripeConnectStatus),
+  uberDirect: literalSet(uberDirectStatus),
+  hubrise: literalSet(hubriseStatus),
+};
+
+/**
+ * Refuse a cross-integration `{integration, status}` payload at the boundary
+ * (e.g. `integration: "stripeConnect"` paired with `status: "active"` — a
+ * legal `uberDirect` status that has no meaning for Stripe). The Convex arg
+ * validator above lets `status` syntactically be a member of the UNION of the
+ * 3 status sets; this check pins it to the SPECIFIC integration's set, keeping
+ * the per-integration `*Status` validators of `table/prospects.ts` as the
+ * single source of truth (no duplicated literal list).
+ *
+ * Throws an `INVALID_ARGUMENT` `ConvexError` — same contract as a missing
+ * required field at the boundary.
+ */
+function assertIntegrationStatusMatches(
+  integration: "stripeConnect" | "uberDirect" | "hubrise",
+  status: string,
+): void {
+  if (!INTEGRATION_STATUS_BY_KEY[integration].has(status)) {
+    throw new ConvexError({
+      code: "INVALID_ARGUMENT",
+      message: `Status "${status}" is not valid for integration "${integration}".`,
+    });
+  }
+}
+
+/**
+ * The enriched outcome of one `recordIntegrationStatus` call — the SAME shape
+ * as `setMilestone`'s return (and `maybeAutoBascule`'s return). `basculed` is
+ * always `false` for this slice by construction (integrations are NOT Closing
+ * milestones); shipped uniformly so a calling UI consumes one return shape
+ * across the two granular mutations.
+ */
+type RecordIntegrationStatusResult = {
+  /**
+   * Always `false` for this slice — integrations are NOT Closing milestones.
+   * Kept in the return shape for uniformity with `setMilestone` (which can
+   * bascule) so a caller does not branch on the mutation it just invoked.
+   */
+  basculed: boolean;
+  /** The prospect's phase AFTER the write (unchanged by this slice). */
+  phase: "acquisition" | "preparation" | "installation" | "operationnel";
+  /** Full Closing verdict (composite of all applicable binary milestones). */
+  closing: ClosingEvaluation;
+};
+
+/**
+ * Append ONE transition (`status` + `at = Date.now()`) to a composite
+ * integration milestone, then re-evaluate the composite Closing in the same
+ * transaction (uniform return). The integration sub-object is created on first
+ * call; subsequent calls append to its `history[]` (append-only) and update
+ * `current`.
+ *
+ * Cross-integration safety: the `{integration, status}` pair goes through the
+ * discriminated `v.union` validator — a `uberDirect` status with
+ * `integration: "stripeConnect"` is rejected at the runtime boundary BEFORE the
+ * handler runs (and at compile time by `IntegrationStatusMap` inside the store
+ * seam). The integration list itself is exhaustive (the 3 composite keys of
+ * `table/prospects.ts → milestones`); adding a 4th would require extending the
+ * `v.union` here AND `IntegrationStatusMap` in the slice-1 seam.
+ *
+ * Throws `NOT_FOUND` `ConvexError` if the prospect vanished between the call
+ * and the read (defensive — the `kbAdminMutation` gate has already passed).
+ */
+export const recordIntegrationStatus = kbAdminMutation({
+  args: {
+    prospectId: v.id("prospects"),
+    integration: v.union(
+      v.literal("stripeConnect"),
+      v.literal("uberDirect"),
+      v.literal("hubrise"),
+    ),
+    // The union of all 3 status sets — the per-integration discrimination is
+    // done in the handler against the very same per-integration unions that
+    // back `IntegrationStatusMap` (slice 1) so a `uberDirect` status with
+    // `integration: "stripeConnect"` is rejected at the boundary BEFORE the
+    // store seam is reached. The boundary validator stays in sync with the
+    // schema because each branch IS the imported `*Status` value.
+    status: v.union(stripeConnectStatus, uberDirectStatus, hubriseStatus),
+  },
+  action: "prospect.integration.recordStatus",
+  handler: async (ctx, args): Promise<RecordIntegrationStatusResult> => {
+    // 1. Surface a typed NOT_FOUND if the prospect vanished — the slice-1 seam
+    //    throws a plain Error; we want the same ConvexError contract as
+    //    setMilestone for the UI to consume uniformly.
+    const prospect = await getProspectRow(ctx, args.prospectId);
+    if (prospect === null) {
+      throw new ConvexError({
+        code: "NOT_FOUND",
+        message: "Prospect not found.",
+      });
+    }
+
+    // 2. Discriminated dispatch — refuse any cross-integration payload (e.g.
+    //    `integration: "stripeConnect", status: "active"`). The arg validator
+    //    above keeps `status` syntactically inside the union of all 3 sets;
+    //    THIS narrowing pins each `status` to its own integration's set via
+    //    `Infer<typeof *Status>` (the single source of truth in
+    //    `table/prospects.ts`). Mis-matched payloads throw `INVALID_ARGUMENT`,
+    //    parallel to a missing required field of the boundary validator. The
+    //    discriminated dispatch is also what gives the slice-1 helper its
+    //    correctly typed status overload.
+    assertIntegrationStatusMatches(args.integration, args.status);
+    if (args.integration === "stripeConnect") {
+      await appendIntegrationStatus(
+        ctx,
+        args.prospectId,
+        "stripeConnect",
+        args.status as Infer<typeof stripeConnectStatus>,
+        Date.now(),
+      );
+    } else if (args.integration === "uberDirect") {
+      await appendIntegrationStatus(
+        ctx,
+        args.prospectId,
+        "uberDirect",
+        args.status as Infer<typeof uberDirectStatus>,
+        Date.now(),
+      );
+    } else {
+      await appendIntegrationStatus(
+        ctx,
+        args.prospectId,
+        "hubrise",
+        args.status as Infer<typeof hubriseStatus>,
+        Date.now(),
+      );
+    }
+
+    // 3. Chain the composite Closing decision in the same transaction. Returns
+    //    the enriched {basculed, phase, closing}. By construction, basculed is
+    //    always false here (integrations are not Closing milestones) — the
+    //    helper is a structural no-op for this slice but we still keep the call
+    //    as a defence-in-depth + uniform return guarantee.
     return maybeAutoBascule(ctx, args.prospectId);
   },
 });
