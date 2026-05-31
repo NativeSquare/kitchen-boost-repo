@@ -25,6 +25,8 @@
  * can pin every branch under `environment: "node"` — same pattern as
  * `menu/menu-view.tsx` and `mes-clients/mes-clients-view.tsx`.
  */
+import { IconPlus } from "@tabler/icons-react";
+
 import type { Doc } from "@packages/backend/convex/_generated/dataModel";
 
 import { Badge } from "@/components/ui/badge";
@@ -51,13 +53,35 @@ export type PricingViewProps = {
    *   - else        → list to render (active + inactive)
    */
   rules: Doc<"pricingRules">[] | undefined;
+  /**
+   * F-PRICING-2 (#245) — fires when the gérant clicks « + Nouvelle règle ».
+   * The page owns the modal state (RuleBuilderModal lives at the page level so
+   * it survives reactive re-renders of the list); a successful create closes
+   * the modal and the list re-renders via Convex reactivity. Optional so the
+   * F-PRICING-1 read-only callers (and isolated component tests) keep working
+   * without supplying a handler — defaults to a no-op.
+   */
+  onNewRule?: () => void;
 };
 
-export function PricingView({ rules }: PricingViewProps) {
+export function PricingView({ rules, onNewRule }: PricingViewProps) {
+  // Default the click handler so the button is always present (issue body:
+  // « Bouton « + Nouvelle règle » sur la page liste »). The page wires the
+  // real opener via the prop; tests that don't care about the click pass
+  // nothing and the button no-ops.
+  const handleNewRule = onNewRule ?? (() => undefined);
   return (
     <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
-      <div className="px-4 lg:px-6">
+      <div className="flex items-center justify-between px-4 lg:px-6">
         <h1 className="text-2xl font-bold">Pricing</h1>
+        <Button
+          type="button"
+          data-slot="pricing-new-rule"
+          onClick={handleNewRule}
+        >
+          <IconPlus className="mr-1.5 size-4" aria-hidden="true" />
+          Nouvelle règle
+        </Button>
       </div>
       <div className="px-4 lg:px-6">
         <AutoPriorityBanner />

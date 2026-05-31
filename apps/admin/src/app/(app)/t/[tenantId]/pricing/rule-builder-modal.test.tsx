@@ -67,6 +67,17 @@ vi.mock("react", async () => {
   };
 });
 
+/**
+ * Reset ONLY the useState call counter without clearing the overrides map.
+ * Call this between two `serialize(RuleBuilderModal(...))` invocations
+ * inside the same test so state[0] in the SECOND render reads from
+ * `mockStateOverrides.get(0)` (not state[N] where N counted from the first
+ * render). Equivalent to a fresh « mount » of the component.
+ */
+function resetCounterOnly() {
+  stateCallCounter = 0;
+}
+
 vi.mock("@/components/ui/dialog", () => {
   const passthrough = ({
     children,
@@ -214,6 +225,7 @@ describe("RuleBuilderModal — F-PRICING-2 (#245)", () => {
       mockStateOverrides.set(0, [
         { kind: "total_panier", operator: "gte", valueCents: 0 },
       ]);
+      resetCounterOnly();
       const treeWithRow = serialize(RuleBuilderModal(defaultProps()));
       const options = findBySlot(
         treeWithRow,

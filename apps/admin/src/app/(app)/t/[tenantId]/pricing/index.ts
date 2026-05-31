@@ -1,6 +1,7 @@
 /**
- * F-PRICING-1 (#241) — public module API of the admin pricing surface
- * (front equivalent of a `convex/lib/<feature>/index.ts` barrel).
+ * F-PRICING-1 (#241) + F-PRICING-2 (#245) — public module API of the admin
+ * pricing surface (front equivalent of a `convex/lib/<feature>/index.ts`
+ * barrel).
  *
  * Slice 1 exposes:
  *   - `PricingView`                       — the pure presentational shell.
@@ -13,6 +14,14 @@
  *     `ACTION_KIND_LABELS`                — the single FR-label source of
  *                                            truth (6 conditions + 3 actions).
  *
+ * Slice 2 (F-PRICING-2 / #245) adds:
+ *   - `RuleBuilderModal`                  — the create modal (closed-list
+ *                                            6 conditions + 3 actions,
+ *                                            CONTRADICTORY_CONDITIONS surface).
+ *   - `RuleBuilderSubmitPayload`          — the typed payload the page
+ *                                            forwards to
+ *                                            `api.lib.pricing.rules.create`.
+ *
  * Page default export (`./page`) is consumed by Next.js routing directly and
  * does not need to be re-exported here.
  */
@@ -22,3 +31,8 @@ export type { PricingViewProps } from "./pricing-view";
 export { formatConditionsSummary, formatActionSummary } from "./format-rule";
 export { ACTION_KIND_LABELS, CONDITION_KIND_LABELS } from "./labels";
 export type { ActionKind, ConditionKind } from "./labels";
+export { RuleBuilderModal } from "./rule-builder-modal";
+export type {
+  RuleBuilderModalProps,
+  RuleBuilderSubmitPayload,
+} from "./rule-builder-modal";
