@@ -280,13 +280,16 @@ const CATEGORIES: Category[] = [
 ];
 
 function makeItem(
-  partial: Partial<Item> & { name: string; categoryId: string },
+  partial: Omit<Partial<Item>, "categoryId"> & {
+    name: string;
+    categoryId: string;
+  },
 ): Item {
   return {
     _id: `item_${partial.name}` as Item["_id"],
     _creationTime: 0,
     tenantId: "tenant_test" as Item["tenantId"],
-    categoryId: partial.categoryId as Item["categoryId"],
+    categoryId: partial.categoryId as unknown as Item["categoryId"],
     name: partial.name,
     description: partial.description ?? "",
     basePrice: partial.basePrice ?? 0,

@@ -88,6 +88,17 @@ export type MenuViewProps = {
     itemId: Id<"menuItems">,
     nextAvailable: boolean,
   ) => void;
+  /**
+   * F-MENU-05 (#219) — fired when the gérant clicks the « + Item » CTA in a
+   * category section. The page opens the `ItemModal` in CREATE mode with the
+   * originating category pre-selected.
+   */
+  onCreateItem?: (categoryId: Id<"menuCategories">) => void;
+  /**
+   * F-MENU-05 (#219) — fired when the gérant clicks an item card. The page
+   * opens the `ItemModal` in EDIT mode pre-filled on the clicked item.
+   */
+  onItemClick?: (itemId: Id<"menuItems">) => void;
 };
 
 export function MenuView({
@@ -98,6 +109,8 @@ export function MenuView({
   onReorderCategories,
   itemsByCategory,
   onToggleItemAvailability,
+  onCreateItem,
+  onItemClick,
 }: MenuViewProps) {
   const hasCrud =
     onCreateCategory !== undefined &&
@@ -116,6 +129,8 @@ export function MenuView({
           onReorderCategories={onReorderCategories}
           itemsByCategory={itemsByCategory}
           onToggleItemAvailability={onToggleItemAvailability}
+          onCreateItem={onCreateItem}
+          onItemClick={onItemClick}
         />
       </div>
     </div>
@@ -167,6 +182,8 @@ function MenuBody({
   onReorderCategories,
   itemsByCategory,
   onToggleItemAvailability,
+  onCreateItem,
+  onItemClick,
 }: MenuBodyProps) {
   if (categories === undefined) {
     return <CategoryListSkeleton />;
@@ -218,6 +235,8 @@ function MenuBody({
             category={category}
             items={itemsByCategory[category._id as unknown as string]}
             onToggleItemAvailability={onToggleItemAvailability}
+            onCreateItem={onCreateItem}
+            onItemClick={onItemClick}
           />
         ))}
       </div>
@@ -231,11 +250,19 @@ function MenuBody({
  * editor above still owns CRUD + drag&drop; THIS block surfaces the items
  * each category contains (with the inline rupture toggle, the load-bearing
  * staff affordance — story body).
+ *
+ * F-MENU-05 (#219) extension — when `onCreateItem` is wired, the section
+ * footer carries a « + Item » CTA whose `onClick` forwards the originating
+ * `categoryId`; when `onItemClick` is wired, each row's body becomes a
+ * clickable « open edit modal » surface (the toggle stays its own click
+ * target — see `item-list.tsx`).
  */
 function CategoryItemsSection({
   category,
   items,
   onToggleItemAvailability,
+  onCreateItem,
+  onItemClick,
 }: {
   category: Doc<"menuCategories">;
   items: Doc<"menuItems">[] | undefined;
@@ -243,6 +270,8 @@ function CategoryItemsSection({
     itemId: Id<"menuItems">,
     nextAvailable: boolean,
   ) => void;
+  onCreateItem?: (categoryId: Id<"menuCategories">) => void;
+  onItemClick?: (itemId: Id<"menuItems">) => void;
 }) {
   return (
     <section
@@ -253,7 +282,26 @@ function CategoryItemsSection({
       <h2 className="text-sm font-semibold tracking-wide uppercase">
         {category.name}
       </h2>
-      <ItemList items={items} onToggleAvailability={onToggleItemAvailability} />
+      <ItemList
+        items={items}
+        onToggleAvailability={onToggleItemAvailability}
+        onItemClick={onItemClick}
+      />
+      {onCreateItem !== undefined ? (
+        <div className="flex">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            data-slot="menu-item-add"
+            data-category-id={category._id as unknown as string}
+            onClick={() => onCreateItem(category._id)}
+          >
+            <IconPlus className="mr-2 size-4" aria-hidden="true" />
+            Ajouter un item
+          </Button>
+        </div>
+      ) : null}
     </section>
   );
 }
