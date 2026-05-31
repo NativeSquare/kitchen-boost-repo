@@ -1,12 +1,15 @@
 import {
+  customAction,
   customMutation,
   customQuery,
 } from "convex-helpers/server/customFunctions";
 import { ConvexError, v } from "convex/values";
+import { internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 import {
   type MutationCtx,
   type QueryCtx,
+  action,
   mutation,
   query,
 } from "../../_generated/server";
@@ -213,6 +216,69 @@ export function tenantMutation(opts: { allow?: TenantRole[] } = {}) {
               });
             }
           : undefined,
+      };
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// tenantAction — resto-scoped ACTION wrapper (B-REFUND-PUBLIC-ACTION #221).
+// Same gate as tenantQuery/tenantMutation, but for actions (Stripe / Uber HTTP
+// calls). Actions have no `ctx.db` and cannot call `getCurrentActor`
+// themselves, so the wrapper RE-RUNS the gate via an internal query
+// (`requireTenantActor` in `tenantActionGuard.ts`) which inherits the action's
+// auth identity. ctx += `{ actor: { userId, role }, tenantId }`.
+//
+// `actor` deliberately exposes ONLY the audit-essentials (userId + the gate-
+// resolved role) so a downstream mutation can write an `actorUserId` /
+// `actorRole` audit row — actions are typically thin Stripe/HTTP shells that
+// delegate DB writes to internal mutations, and that mutation NEEDS the actor
+// fields to audit the manager-driven write (NOT `system`).
+// ---------------------------------------------------------------------------
+
+/**
+ * Resto-scoped ACTION builder. `allow` lists the resto roles permitted (on top
+ * of the implicit `kb_admin` root override); defaults to `["kb_manager"]`.
+ * Same role gate as `tenantQuery` / `tenantMutation` (story 1.x-C) — re-asserted
+ * via the internal `requireTenantActor` guard query, so an inaccessible tenant
+ * throws BEFORE any Stripe / external HTTP call runs.
+ *
+ * Audit is NOT auto-composed (an action commits no Convex transaction — DB
+ * writes live in the internal mutations the action calls). The action handler
+ * forwards `ctx.actor.userId` / `ctx.actor.role` to its mutation, which writes
+ * the `logAudit` row in the same transaction as the side effect.
+ */
+/** The narrowed actor fields exposed on a `tenantAction` handler's `ctx`. */
+export type TenantActionActor = {
+  userId: Id<"users">;
+  /** The role the gate resolved (kb_manager / staff / kb_admin via root). */
+  role: TenantRole | "kb_admin";
+};
+
+export function tenantAction(opts: { allow?: TenantRole[] } = {}) {
+  const allow = opts.allow ?? DEFAULT_ALLOW;
+  return customAction(action, {
+    args: { tenantId: v.id("tenants") },
+    input: async (
+      ctx,
+      { tenantId }: { tenantId: Id<"tenants"> },
+    ): Promise<{
+      ctx: { actor: TenantActionActor; tenantId: Id<"tenants"> };
+      args: Record<string, never>;
+    }> => {
+      // Re-run the same gate as tenantQuery via the internal guard query. The
+      // guard query inherits this action's auth identity (Convex propagates it
+      // across `runQuery`), so the throws here are STRUCTURALLY identical to
+      // tenantQuery's — Forbidden / Unauthenticated wrapped the same way.
+      const actor: TenantActionActor = await ctx
+        .runQuery(internal.lib.tenancy.tenantActionGuard.requireTenantActor, {
+          tenantId,
+          allow,
+        })
+        .then((r) => ({ userId: r.userId, role: r.actorRole }));
+      return {
+        ctx: { actor, tenantId },
+        args: {},
       };
     },
   });

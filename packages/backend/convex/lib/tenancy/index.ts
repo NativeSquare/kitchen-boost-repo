@@ -38,6 +38,7 @@
 export {
   kbAdminMutation,
   kbAdminQuery,
+  tenantAction,
   tenantMutation,
   tenantQuery,
   type TenantRole,
@@ -267,6 +268,7 @@ export {
   listTenantOrders,
   listTenantOrdersByStatus,
   listTenantTerminalOrders,
+  manuallyRefundTenantOrder,
   recordTenantOrderStatus,
   requireTenantOrder,
   setTenantOperationalPause,

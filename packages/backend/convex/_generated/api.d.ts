@@ -118,6 +118,7 @@ import type * as lib_tenancy_pricingRulesStore from "../lib/tenancy/pricingRules
 import type * as lib_tenancy_prospectsStore from "../lib/tenancy/prospectsStore.js";
 import type * as lib_tenancy_serviceHoursStore from "../lib/tenancy/serviceHoursStore.js";
 import type * as lib_tenancy_stripeAccountStore from "../lib/tenancy/stripeAccountStore.js";
+import type * as lib_tenancy_tenantActionGuard from "../lib/tenancy/tenantActionGuard.js";
 import type * as lib_tenancy_tenantsStore from "../lib/tenancy/tenantsStore.js";
 import type * as lib_tenancy_userTenantsStore from "../lib/tenancy/userTenantsStore.js";
 import type * as lib_tenancy_usersStore from "../lib/tenancy/usersStore.js";
@@ -296,6 +297,7 @@ declare const fullApi: ApiFromModules<{
   "lib/tenancy/prospectsStore": typeof lib_tenancy_prospectsStore;
   "lib/tenancy/serviceHoursStore": typeof lib_tenancy_serviceHoursStore;
   "lib/tenancy/stripeAccountStore": typeof lib_tenancy_stripeAccountStore;
+  "lib/tenancy/tenantActionGuard": typeof lib_tenancy_tenantActionGuard;
   "lib/tenancy/tenantsStore": typeof lib_tenancy_tenantsStore;
   "lib/tenancy/userTenantsStore": typeof lib_tenancy_userTenantsStore;
   "lib/tenancy/usersStore": typeof lib_tenancy_usersStore;

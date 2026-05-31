@@ -550,6 +550,49 @@ export async function confirmTenantOrderPayment(
 }
 
 /**
+ * B-REFUND-PUBLIC-ACTION (#221) — MANAGER-DRIVEN refund a posteriori: transition
+ * a paid order to TERMINAL `refusée` from ANY non-`refusée` state (including the
+ * other terminals `livrée` / `collectée`). Distinct from both kitchen seams:
+ *  - `transitionTenantOrder("refusée")` — state-machine guarded, only `nouvelle
+ *    → refusée` (`refuse` mutation, kitchen Refusal from `nouvelle`).
+ *  - `abortTenantOrder` — system-side [[Cmd avortée]] (auto-refund), refuses any
+ *    non-terminal state but a no-op on ALL terminals (incl. `livrée`/`collectée`)
+ *    AND compensates the MOAT stats it had previously incremented.
+ *
+ * THIS seam is the MANAGER-driven refund: the order may already be `livrée` or
+ * `collectée` (a litigation post-delivery), so we cannot bail on terminals — only
+ * `refusée` itself is the no-go (refunding an already-refunded order is the
+ * caller's contract, not this seam's). NO MOAT compensation here, consistent
+ * with the kitchen `refuse` semantics (PRD 20 §6 + payment CONTEXT "Refund"):
+ * the order historically happened from the customer's perspective; the MOAT
+ * activity is preserved.
+ *
+ * Re-checks tenant ownership (NOT_FOUND for a foreign id). Stamps `refusedAt`
+ * and appends a `refusée` `orderEvents` row carrying the actor + free-text
+ * reason. Caller is responsible for refusing the call if `status === "refusée"`
+ * (the public action does so BEFORE the Stripe refund, so a re-trigger never
+ * even reaches the Stripe `POST /refunds`).
+ */
+export async function manuallyRefundTenantOrder(
+  ctx: MutationCtx,
+  tenantId: Id<"tenants">,
+  orderId: Id<"orders">,
+  opts: { reason?: string; actorUserId?: Id<"users"> } = {},
+): Promise<void> {
+  await requireTenantOrder(ctx, tenantId, orderId);
+  const now = Date.now();
+  await ctx.db.patch(orderId, { status: "refusée", refusedAt: now });
+  await ctx.db.insert("orderEvents", {
+    tenantId,
+    orderId,
+    status: "refusée",
+    actorUserId: opts.actorUserId,
+    reason: opts.reason,
+    at: now,
+  });
+}
+
+/**
  * 2.3-fix (#108) — the SYSTEM-SIDE [[Cmd avortée]] abort: pull one of `tenantId`'s
  * orders OUT of KB Orders to the TERMINAL `refusée` from ANY non-terminal state,
  * COMPENSATING the MOAT stats if (and only if) the order had already been counted.
