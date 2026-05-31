@@ -1,11 +1,11 @@
 "use client";
 
 /**
- * F-WIZARD [1/10] (#265) + [3/10] (#267) + [5/10] (#269) — Step{N}Form
- * dispatch map.
+ * F-WIZARD [1/10] (#265) + [3/10] (#267) + [5/10] (#269) + [6/10] (#270) —
+ * Step{N}Form dispatch map.
  *
  * Steps still using a placeholder (« TODO Step N — <title> » + Prev/Next nav
- * buttons): 2, 4, 5, 6, 7, 8. Each follow-up wizard slice swaps its own
+ * buttons): 2, 5, 6, 7, 8. Each follow-up wizard slice swaps its own
  * placeholder for a real form WITHOUT touching the wizard shell. The shell
  * hands `onPrev` / `onNext` to whatever form lives at the slot.
  *
@@ -50,13 +50,16 @@
  * form. The follow-up slice will replace the file's content entirely.
  */
 import { useState } from "react";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useAction, useConvex, useMutation, useQuery } from "convex/react";
 import { useParams } from "next/navigation";
 import { toast } from "sonner";
 
 import { api } from "@packages/backend/convex/_generated/api";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
 
+import type { BrandingPatch } from "@/app/(app)/t/[tenantId]/parametres/branding-editor";
+import type { CoordonneesPatch } from "@/app/(app)/t/[tenantId]/parametres/coordonnees-editor";
+import type { AcceptedModesPatch } from "@/app/(app)/t/[tenantId]/parametres/modes-editor";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { getConvexErrorMessage } from "@/utils/getConvexErrorMessage";
@@ -66,6 +69,7 @@ import {
   type Step1ProvisioningPayload,
 } from "./step1-provisioning-form";
 import { Step3StripeKycForm } from "./step3-stripe-kyc-form";
+import { Step4BrandingForm } from "./step4-branding-form";
 import { WIZARD_STEPS, type WizardStepNumber } from "./wizard-stepper";
 
 export type StepFormProps = {
@@ -110,7 +114,7 @@ function NavButtons({
   );
 }
 
-function makeStepForm(step: Exclude<WizardStepNumber, 1 | 3>) {
+function makeStepForm(step: Exclude<WizardStepNumber, 1 | 3 | 4>) {
   function StepForm({ onPrev, onNext }: StepFormProps) {
     return (
       <div className="flex flex-col gap-4 px-4 py-2 lg:px-6">
@@ -394,8 +398,193 @@ function Step3Form({ onPrev, onNext }: StepFormProps): React.JSX.Element {
   );
 }
 
+/**
+ * F-WIZARD [6/10] (#270) — Step4Form: thin Convex-wiring wrapper around the
+ * pure `Step4BrandingForm`. Owns:
+ *   - the prospect read (`useQuery(api.lib.onboarding.crm.getProspect)`) so
+ *     we have the tenantId back-link (required by the three section saves);
+ *   - the tenant read (`useQuery(api.lib.stripe.account.loadTenantForStripe,
+ *     { tenantId })`) — root-only KB Admin query that returns the full
+ *     `Doc<"tenants">` (cf. qr/page.tsx + parametres/page.tsx, same pattern).
+ *     The wizard runs as KB Admin (chrome-less layout under /pipeline/...),
+ *     so this root query is the authorised seed source for the editors;
+ *   - the three save mutations + the upload mutation, all called directly via
+ *     `useMutation(...)` with an explicit `tenantId` arg — NOT through
+ *     `useTenantMutation`, because the wizard route lives OUTSIDE the
+ *     `/t/[tenantId]/...` shell (no `<TenantProvider/>`, no auto-injection).
+ *     The KB Admin root override on `tenantMutation` (cf. `withTenant.ts`
+ *     « Root: unlimited access to every tenant, bypasses `allow` ») lets a
+ *     KB Admin call the `kb_manager`-allow-listed mutations directly;
+ *   - the two-step upload flow (`generateUploadUrl` → POST → resolve URL
+ *     via `api.storage.getImageUrl` through `useConvex().query(...)`) — same
+ *     shape as Paramètres' `handleUploadLogo`;
+ *   - the success / error toasts at the wrapper level + re-throws so the
+ *     three editors surface inline form errors too (same discipline as
+ *     Paramètres' `handleSaveBranding` / `handleSaveCoordonnees` / etc.).
+ *
+ * Why this wiring lives in `step-forms.tsx` (not in a sibling file): mirror
+ * of `Step1Form` / `Step3Form`. Each Step{N}Form wrapper owns its own data
+ * hooks so the wizard-view's prop set doesn't have to evolve with every
+ * step's needs. The lean `node` vitest env doesn't execute these hooks (the
+ * serializer's try/catch swallows the « invalid hook call » when invoking
+ * the function outside a React render); the wrapper's behaviour is pinned
+ * indirectly through the pure form tests (`step4-branding-form.test.tsx`)
+ * and directly through CI runtime + E2E.
+ */
+function Step4Form({ onPrev, onNext }: StepFormProps): React.JSX.Element {
+  const params = useParams<{ prospectId: string }>();
+  const prospectId = params?.prospectId as unknown as
+    | Id<"prospects">
+    | undefined;
+
+  const prospect = useQuery(
+    api.lib.onboarding.crm.getProspect,
+    prospectId !== undefined ? { prospectId } : "skip",
+  );
+
+  // Tenant seed — only fires once the prospect has been provisioned (i.e.
+  // `prospect.tenantId` is set). Until then we render a defensive « tenant
+  // requis » message; the wizard's cursor heuristic (`computeWizardState`)
+  // already prevents step 4 access without a tenant, this is the backstop.
+  const tenantId = prospect?.tenantId;
+  const tenantDoc = useQuery(
+    api.lib.stripe.account.loadTenantForStripe,
+    tenantId !== undefined ? { tenantId } : "skip",
+  );
+
+  const updateSettings = useMutation(
+    api.lib.admin.tenantSettings.updateSettings,
+  );
+  const generateUploadUrl = useMutation(api.lib.menu.photos.generateUploadUrl);
+  const convex = useConvex();
+
+  // Defensive loading / not-found — outer `decideWizardShell` plus the
+  // wizard cursor normally gate these, but races between the page-level
+  // queries and this child's queries are possible (same defence as Step1
+  // / Step3).
+  if (prospect === undefined) {
+    return (
+      <div
+        className="flex items-center justify-center px-4 py-12 lg:px-6"
+        data-slot="wizard-step4-loading"
+      >
+        <Spinner className="h-6 w-6" />
+      </div>
+    );
+  }
+  if (prospect === null) {
+    return (
+      <div
+        className="px-4 py-6 text-sm text-destructive lg:px-6"
+        data-slot="wizard-step4-not-found"
+      >
+        Prospect introuvable. Impossible de configurer le branding.
+      </div>
+    );
+  }
+  if (tenantId === undefined) {
+    // Hard gate: branding lives on the tenant — step 1 must run first.
+    return (
+      <div
+        className="px-4 py-6 text-sm text-destructive lg:px-6"
+        data-slot="wizard-step4-no-tenant"
+      >
+        Le tenant doit être créé (Step 1) avant de configurer le branding.
+      </div>
+    );
+  }
+
+  const handleSaveBranding = async (patch: BrandingPatch): Promise<void> => {
+    try {
+      await updateSettings({ tenantId, patch });
+      toast.success("Identité visuelle enregistrée.");
+    } catch (error) {
+      toast.error("Impossible d'enregistrer l'identité visuelle", {
+        description: getConvexErrorMessage(error),
+      });
+      throw error;
+    }
+  };
+
+  const handleSaveCoordonnees = async (
+    patch: CoordonneesPatch,
+  ): Promise<void> => {
+    try {
+      await updateSettings({ tenantId, patch });
+      toast.success("Coordonnées enregistrées.");
+    } catch (error) {
+      toast.error("Impossible d'enregistrer les coordonnées", {
+        description: getConvexErrorMessage(error),
+      });
+      throw error;
+    }
+  };
+
+  const handleSaveAcceptedModes = async (
+    patch: AcceptedModesPatch,
+  ): Promise<void> => {
+    try {
+      await updateSettings({ tenantId, patch });
+      toast.success("Modes acceptés enregistrés.");
+    } catch (error) {
+      toast.error("Impossible d'enregistrer les modes acceptés", {
+        description: getConvexErrorMessage(error),
+      });
+      throw error;
+    }
+  };
+
+  const handleUploadLogo = async (file: File): Promise<string> => {
+    const uploadUrl = await generateUploadUrl({ tenantId });
+    const response = await fetch(uploadUrl, {
+      method: "POST",
+      headers: { "Content-Type": file.type },
+      body: file,
+    });
+    if (!response.ok) {
+      throw new Error(`Upload failed (HTTP ${response.status})`);
+    }
+    const { storageId } = (await response.json()) as {
+      storageId: Id<"_storage">;
+    };
+    const publicUrl = await convex.query(api.storage.getImageUrl, {
+      storageId,
+    });
+    if (publicUrl === null) {
+      throw new Error("Le fichier téléversé est introuvable.");
+    }
+    return publicUrl;
+  };
+
+  return (
+    <Step4BrandingForm
+      branding={tenantDoc?.branding}
+      coordonnees={
+        tenantDoc !== undefined && tenantDoc !== null
+          ? { address: tenantDoc.address, phone: tenantDoc.phone }
+          : undefined
+      }
+      acceptedModes={
+        tenantDoc !== undefined &&
+        tenantDoc !== null &&
+        tenantDoc.acceptedModes !== undefined
+          ? {
+              delivery: tenantDoc.acceptedModes.delivery,
+              clickAndCollect: tenantDoc.acceptedModes.clickAndCollect,
+            }
+          : undefined
+      }
+      onSaveBranding={handleSaveBranding}
+      onUploadLogo={handleUploadLogo}
+      onSaveCoordonnees={handleSaveCoordonnees}
+      onSaveAcceptedModes={handleSaveAcceptedModes}
+      onPrev={onPrev}
+      onNext={onNext}
+    />
+  );
+}
+
 export const Step2Form = makeStepForm(2);
-export const Step4Form = makeStepForm(4);
 export const Step5Form = makeStepForm(5);
 export const Step6Form = makeStepForm(6);
 export const Step7Form = makeStepForm(7);
