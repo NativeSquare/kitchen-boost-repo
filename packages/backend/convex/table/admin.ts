@@ -195,7 +195,7 @@ export const acceptInvite = mutation({
       });
     }
 
-    // ----- Role branch (B-AUTH-3 wiring) ------------------------------------
+    // ----- Role branch (B-AUTH-3 schema, B-AUTH-6 #230 final wiring) --------
 
     if (invite.targetRole === "kb_manager") {
       // Manager invite — REQUIRES a tenantId (validator on `inviteManager`
