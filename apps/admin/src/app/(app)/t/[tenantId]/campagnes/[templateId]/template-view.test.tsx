@@ -97,6 +97,12 @@ function serialize(node: ReactNode): SerializedNode {
           if (s !== null) children.push(s);
         }
       }
+      // `next/link`'s `Link` is a forwardRef whose render uses hooks
+      // internally; shim it to its public anchor shape (same trick as
+      // `TemplateCard.test.tsx`) so the test can pin the back link.
+      if ("href" in (node.props as Record<string, unknown>)) {
+        return { type: "a", props, children };
+      }
       return {
         type: typeName(
           (node.type as { displayName?: string; name?: string }).displayName ??
@@ -204,7 +210,7 @@ describe("TemplateView — F-CAMPAGNES [3/7] (#205)", () => {
     expect(anchors.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("loaded branch surfaces the template label + delegates to VariablesForm (declared variables visible)", () => {
+  it("loaded branch surfaces the template label + the raw template body (preview anchor)", () => {
     const text = allText(
       serialize(
         TemplateView({
@@ -214,13 +220,43 @@ describe("TemplateView — F-CAMPAGNES [3/7] (#205)", () => {
         }),
       ),
     );
+    // The label is the load-bearing anchor — pinned at the page level
+    // (the form's per-field labels are pinned in `VariablesForm.test.tsx`,
+    // which renders the pure `VariablesFormView` directly).
     expect(text).toContain(TEMPLATE.label);
-    // The form is rendered → at least one of its FR labels surfaces.
-    expect(text).toMatch(/réduction/i);
-    expect(text).toMatch(/Jour/i);
-    expect(text).toMatch(/Nom (du )?(resto|restaurant)/i);
-    // The « Envoyer maintenant » button (disabled at this slice) surfaces.
-    expect(text).toMatch(/Envoyer maintenant/);
+    // The raw body surfaces as a preview anchor so the gérant sees the
+    // template they're filling — pinned here so a future polish that
+    // hides the body without replacing it stays loud.
+    expect(text).toContain(TEMPLATE.body);
+  });
+
+  it("loaded branch surfaces a delegated `VariablesForm` (the form's shell), and a back link to the picker", () => {
+    const tree = serialize(
+      TemplateView({
+        tenantId: TENANT_ID,
+        templateId: TEMPLATE_ID,
+        template: TEMPLATE,
+      }),
+    );
+    // The stateful `VariablesForm` shell uses `useState` internally so
+    // its inner React tree CANNOT be walked under `environment: "node"`
+    // (the serializer's `try/catch` swallows the hook throw and returns
+    // an opaque node). What we CAN pin is that the view delegates to
+    // the form by type name — if a regression drops the form entirely,
+    // this fails.
+    const formNode = flatten(tree).find((n) => {
+      if (n === null || "text" in n) return false;
+      return n.type === "VariablesForm";
+    });
+    expect(formNode).toBeDefined();
+    // A back link to the picker MUST surface so the gérant can leave.
+    const anchors = flatten(tree).filter(
+      (n) => n !== null && !("text" in n) && n.type.toLowerCase() === "a",
+    );
+    const backHrefs = anchors
+      .map((a) => (a as { props: Record<string, unknown> }).props["href"])
+      .filter((h): h is string => typeof h === "string");
+    expect(backHrefs).toContain(`/t/${TENANT_ID}/campagnes`);
   });
 
   it("FR-only across every branch", () => {

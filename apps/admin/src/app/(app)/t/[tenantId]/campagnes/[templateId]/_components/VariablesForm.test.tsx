@@ -38,7 +38,7 @@ import type { ReactElement, ReactNode } from "react";
 import type { TenantTemplateSummary } from "@packages/backend/convex/lib/notifications/campaigns";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
 
-import { VariablesForm } from "./VariablesForm";
+import { VariablesFormView } from "./VariablesForm";
 
 // ---------------------------------------------------------------------------
 // React-tree serializer (same shape as `TemplateCard.test.tsx` /
@@ -203,13 +203,25 @@ const TEMPLATE_MIXED: TenantTemplateSummary = {
   containsAlcohol: false,
 };
 
+/**
+ * Tiny no-op onChange — the node-env tests do not simulate events; the
+ * tests assert the controlled-prop branch (the view paints from `values`).
+ * Wiring the real shell `useState` is the production path.
+ */
+const NOOP = () => {};
+
 // ---------------------------------------------------------------------------
 // Tests — field generation per template
 // ---------------------------------------------------------------------------
 describe("VariablesForm — AC2 dynamic field generation per template", () => {
   it("text-only template surfaces ONLY the declared text variables (no slider, no time picker)", () => {
     const tree = serialize(
-      <VariablesForm tenantId={TENANT_ID} template={TEMPLATE_TEXT_ONLY} />,
+      <VariablesFormView
+        tenantId={TENANT_ID}
+        template={TEMPLATE_TEXT_ONLY}
+        values={{}}
+        onChange={NOOP}
+      />,
     );
     const text = allText(tree);
 
@@ -242,7 +254,12 @@ describe("VariablesForm — AC2 dynamic field generation per template", () => {
 
   it("mixed template surfaces the discount slider, the time pickers, and the text inputs declared", () => {
     const tree = serialize(
-      <VariablesForm tenantId={TENANT_ID} template={TEMPLATE_MIXED} />,
+      <VariablesFormView
+        tenantId={TENANT_ID}
+        template={TEMPLATE_MIXED}
+        values={{}}
+        onChange={NOOP}
+      />,
     );
     const text = allText(tree);
 
@@ -281,7 +298,12 @@ describe("VariablesForm — AC2 dynamic field generation per template", () => {
 describe("VariablesForm — AC3 discount slider capped at 50 %", () => {
   it("`{discount}` slider declares max=50 (cap hardcoded, ADR 0006)", () => {
     const tree = serialize(
-      <VariablesForm tenantId={TENANT_ID} template={TEMPLATE_MIXED} />,
+      <VariablesFormView
+        tenantId={TENANT_ID}
+        template={TEMPLATE_MIXED}
+        values={{}}
+        onChange={NOOP}
+      />,
     );
     const sliders = findAll(tree, (n) => {
       if (n === null || "text" in n) return false;
@@ -304,7 +326,12 @@ describe("VariablesForm — AC3 discount slider capped at 50 %", () => {
 describe("VariablesForm — AC4 time pickers HH:MM", () => {
   it('`{heure_debut}` and `{heure_fin}` surface as <input type="time">', () => {
     const tree = serialize(
-      <VariablesForm tenantId={TENANT_ID} template={TEMPLATE_MIXED} />,
+      <VariablesFormView
+        tenantId={TENANT_ID}
+        template={TEMPLATE_MIXED}
+        values={{}}
+        onChange={NOOP}
+      />,
     );
     const timeInputs = findAll(tree, (n) => {
       if (n === null || "text" in n) return false;
@@ -320,10 +347,11 @@ describe("VariablesForm — AC4 time pickers HH:MM", () => {
 describe("VariablesForm — AC5 validation errors surface on bad controlled values", () => {
   it("surfaces an alcohol violation message when a text input value contains a forbidden word", () => {
     const tree = serialize(
-      <VariablesForm
+      <VariablesFormView
         tenantId={TENANT_ID}
         template={TEMPLATE_TEXT_ONLY}
-        initialValues={{ prenom_client: "Marie", nom_resto: "Bar du Vin" }}
+        values={{ prenom_client: "Marie", nom_resto: "Bar du Vin" }}
+        onChange={NOOP}
       />,
     );
     const text = allText(tree);
@@ -335,10 +363,11 @@ describe("VariablesForm — AC5 validation errors surface on bad controlled valu
   it("surfaces a length violation message when a text input is too long", () => {
     const tooLong = "x".repeat(1000);
     const tree = serialize(
-      <VariablesForm
+      <VariablesFormView
         tenantId={TENANT_ID}
         template={TEMPLATE_TEXT_ONLY}
-        initialValues={{ prenom_client: tooLong, nom_resto: "Chez Marie" }}
+        values={{ prenom_client: tooLong, nom_resto: "Chez Marie" }}
+        onChange={NOOP}
       />,
     );
     const text = allText(tree);
@@ -347,10 +376,11 @@ describe("VariablesForm — AC5 validation errors surface on bad controlled valu
 
   it("does NOT surface error copy when every value is valid", () => {
     const tree = serialize(
-      <VariablesForm
+      <VariablesFormView
         tenantId={TENANT_ID}
         template={TEMPLATE_TEXT_ONLY}
-        initialValues={{ prenom_client: "Marie", nom_resto: "Chez Marie" }}
+        values={{ prenom_client: "Marie", nom_resto: "Chez Marie" }}
+        onChange={NOOP}
       />,
     );
     const text = allText(tree);
@@ -365,7 +395,12 @@ describe("VariablesForm — AC5 validation errors surface on bad controlled valu
 describe("VariablesForm — AC6 « Envoyer maintenant » button is present but disabled (slice [4/7] activates it)", () => {
   it("surfaces the « Envoyer maintenant » button label", () => {
     const tree = serialize(
-      <VariablesForm tenantId={TENANT_ID} template={TEMPLATE_TEXT_ONLY} />,
+      <VariablesFormView
+        tenantId={TENANT_ID}
+        template={TEMPLATE_TEXT_ONLY}
+        values={{}}
+        onChange={NOOP}
+      />,
     );
     const text = allText(tree);
     expect(text).toMatch(/Envoyer maintenant/);
@@ -373,7 +408,12 @@ describe("VariablesForm — AC6 « Envoyer maintenant » button is present but d
 
   it("the button is rendered as disabled (slice [4/7] flips it once send wiring lands)", () => {
     const tree = serialize(
-      <VariablesForm tenantId={TENANT_ID} template={TEMPLATE_TEXT_ONLY} />,
+      <VariablesFormView
+        tenantId={TENANT_ID}
+        template={TEMPLATE_TEXT_ONLY}
+        values={{}}
+        onChange={NOOP}
+      />,
     );
     // Find the button — `data-slot="button"` is the shadcn marker.
     const buttons = findAll(tree, (n) => {
@@ -395,12 +435,22 @@ describe("VariablesForm — AC8 FR-only", () => {
     const branches = [
       allText(
         serialize(
-          <VariablesForm tenantId={TENANT_ID} template={TEMPLATE_TEXT_ONLY} />,
+          <VariablesFormView
+            tenantId={TENANT_ID}
+            template={TEMPLATE_TEXT_ONLY}
+            values={{}}
+            onChange={NOOP}
+          />,
         ),
       ),
       allText(
         serialize(
-          <VariablesForm tenantId={TENANT_ID} template={TEMPLATE_MIXED} />,
+          <VariablesFormView
+            tenantId={TENANT_ID}
+            template={TEMPLATE_MIXED}
+            values={{}}
+            onChange={NOOP}
+          />,
         ),
       ),
     ];
