@@ -531,6 +531,7 @@ describe("ItemList — F-MENU-04 (#211)", () => {
       ItemList({
         items: ITEMS,
         onToggleAvailability: vi.fn(),
+        categoryId: "cat_test" as Id<"menuCategories">,
         onReorder: vi.fn(),
       }),
     );
@@ -548,6 +549,7 @@ describe("ItemList — F-MENU-04 (#211)", () => {
       ItemList({
         items: ITEMS,
         onToggleAvailability: vi.fn(),
+        categoryId: "cat_test" as Id<"menuCategories">,
         onReorder: vi.fn(),
       }),
     );
@@ -569,6 +571,7 @@ describe("ItemList — F-MENU-04 (#211)", () => {
       ItemList({
         items: ITEMS,
         onToggleAvailability: vi.fn(),
+        categoryId: "cat_test" as Id<"menuCategories">,
         onReorder: vi.fn(),
       }),
     );

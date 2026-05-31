@@ -99,6 +99,18 @@ export type MenuViewProps = {
    * opens the `ItemModal` in EDIT mode pre-filled on the clicked item.
    */
   onItemClick?: (itemId: Id<"menuItems">) => void;
+  /**
+   * F-MENU-07 (#237) — persist a new full ordered ids list for ONE category
+   * after a drag&drop. The backend `items.reorder` rejects partial payloads
+   * (invariant pinned by `packages/backend/convex/lib/menu/items.test.ts`).
+   * The drag NEVER crosses categories — each `ItemList` has its own
+   * `SortableContext`. When omitted, the items stay read-only-ordering
+   * (slice-4 contract preserved).
+   */
+  onReorderItems?: (
+    categoryId: Id<"menuCategories">,
+    orderedIds: Id<"menuItems">[],
+  ) => void;
 };
 
 export function MenuView({
@@ -111,6 +123,7 @@ export function MenuView({
   onToggleItemAvailability,
   onCreateItem,
   onItemClick,
+  onReorderItems,
 }: MenuViewProps) {
   const hasCrud =
     onCreateCategory !== undefined &&
@@ -131,6 +144,7 @@ export function MenuView({
           onToggleItemAvailability={onToggleItemAvailability}
           onCreateItem={onCreateItem}
           onItemClick={onItemClick}
+          onReorderItems={onReorderItems}
         />
       </div>
     </div>
@@ -184,6 +198,7 @@ function MenuBody({
   onToggleItemAvailability,
   onCreateItem,
   onItemClick,
+  onReorderItems,
 }: MenuBodyProps) {
   if (categories === undefined) {
     return <CategoryListSkeleton />;
@@ -237,6 +252,7 @@ function MenuBody({
             onToggleItemAvailability={onToggleItemAvailability}
             onCreateItem={onCreateItem}
             onItemClick={onItemClick}
+            onReorderItems={onReorderItems}
           />
         ))}
       </div>
@@ -263,6 +279,7 @@ function CategoryItemsSection({
   onToggleItemAvailability,
   onCreateItem,
   onItemClick,
+  onReorderItems,
 }: {
   category: Doc<"menuCategories">;
   items: Doc<"menuItems">[] | undefined;
@@ -272,6 +289,10 @@ function CategoryItemsSection({
   ) => void;
   onCreateItem?: (categoryId: Id<"menuCategories">) => void;
   onItemClick?: (itemId: Id<"menuItems">) => void;
+  onReorderItems?: (
+    categoryId: Id<"menuCategories">,
+    orderedIds: Id<"menuItems">[],
+  ) => void;
 }) {
   return (
     <section
@@ -286,6 +307,8 @@ function CategoryItemsSection({
         items={items}
         onToggleAvailability={onToggleItemAvailability}
         onItemClick={onItemClick}
+        categoryId={category._id}
+        onReorder={onReorderItems}
       />
       {onCreateItem !== undefined ? (
         <div className="flex">
