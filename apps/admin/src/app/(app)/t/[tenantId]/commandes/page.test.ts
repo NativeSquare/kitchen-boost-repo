@@ -100,13 +100,37 @@ describe("page.tsx — F-COMMANDES-LIVE-TABLE (#227) wiring contract", () => {
     );
   });
 
-  it("AC1 — does NOT use a raw `useQuery` (bypasses tenantId injection — ADR 0014 §4)", () => {
+  it("AC1 — does NOT use raw `useQuery` for any tenantQuery (would bypass tenantId injection — ADR 0014 §4)", () => {
     // Same discipline as menu/page.test.ts: raw `useQuery` from convex/react
     // auto-injects nothing; using it for a tenantQuery either fails at
     // runtime (Forbidden / missing tenantId) or silently leaks the wrong
     // tenant's data (ADR 0010).
+    //
+    // EXCEPTION (F-COMMANDES-CSV-EXPORT #244, mirrors QR page #198): a raw
+    // `useQuery` IS allowed against the EXISTING root-only kbAdminQuery
+    // `api.lib.stripe.account.loadTenantForStripe` (the same primitive the
+    // F-SHELL-04 layout uses to resolve a tenant slug for KB Admin
+    // impersonation — root-only, takes `tenantId` as an explicit arg, no
+    // tenant-injection needed). Every tenantQuery (`listOrders`,
+    // `getOrder`) MUST still go through `useTenantQuery`.
     const code = stripNonCode(PAGE_SOURCE);
-    expect(code).not.toMatch(/\buseQuery\b/);
+    // Strip the legitimate exception first: the import line + any
+    // `useQuery(api.lib.stripe.account.loadTenantForStripe, ...)` call.
+    // What remains must not contain `useQuery` — proof every OTHER use
+    // would be a regression that bypassed `useTenantQuery`.
+    const stripped = code
+      // Allowed import: `import { useQuery } from "convex/react";` (the
+      // hook is needed for the root-only `loadTenantForStripe` probe).
+      .replace(
+        /import\s*\{[^}]*useQuery[^}]*\}\s*from\s*["']convex\/react["'];?/g,
+        "",
+      )
+      // Allowed call: against the EXISTING kbAdminQuery primitive only.
+      .replace(
+        /useQuery\s*\([^)]*api\.lib\.stripe\.account\.loadTenantForStripe[^)]*\)/g,
+        "",
+      );
+    expect(stripped).not.toMatch(/\buseQuery\b/);
   });
 
   it("AC1 (no N+1) — calls `useTenantQuery` exactly ONCE on `listOrders` (single subscription per page mount)", () => {
@@ -265,6 +289,70 @@ describe("page.tsx — F-COMMANDES-LIVE-TABLE (#227) wiring contract", () => {
     expect(code).toMatch(/\bonRefund\b/);
     expect(code).toMatch(/\bcanRefund\b/);
     expect(code).toMatch(/\brefundAmountCentimes\b/);
+  });
+
+  // -------------------------------------------------------------------------
+  // F-COMMANDES-CSV-EXPORT (#244) — the page now wires the « Exporter CSV »
+  // button: builds the tenant-slug-resolved filename, hands the filtered
+  // orders to `ordersToCsv`, triggers `downloadCsv`. The button is mounted
+  // by the view; the page owns the data + the trigger.
+  //
+  // Decision actée EPIC #141 + issue body: NO backend endpoint — the CSV is
+  // generated FROM THE FILTERED PAYLOAD ALREADY IN MEMORY (front-side),
+  // never via an extra Convex query.
+  // -------------------------------------------------------------------------
+  it("AC #244 — imports `ordersToCsv` + `downloadCsv` from the deep pure module", () => {
+    const code = stripNonCode(PAGE_SOURCE);
+    expect(code).toMatch(/\bordersToCsv\b/);
+    expect(code).toMatch(/\bdownloadCsv\b/);
+  });
+
+  it("AC #244 — wires the export handler against the FILTERED orders payload (not the raw backend list)", () => {
+    // The issue body « Le CSV genere reflete la liste FILTREE (pas la liste
+    // brute backend) — le user attend que son filtre date/statut soit
+    // respecte. » We pin the handler calls `ordersToCsv(<filtered>)` —
+    // i.e. the same variable that's already fed to the view, not a raw
+    // unfiltered `orders` reference.
+    const code = stripNonCode(PAGE_SOURCE);
+    const collapsed = code.replace(/\s+/g, " ");
+    // The handler invokes ordersToCsv on the filtered list (variable name
+    // « filtered » in the page — pinned by the slice-3 wiring above).
+    expect(collapsed).toMatch(/ordersToCsv\s*\(\s*filtered/);
+  });
+
+  it("AC #244 — builds the filename via `buildCsvFilename(tenantSlug, ...)` (canonical, single source of truth)", () => {
+    const code = stripNonCode(PAGE_SOURCE);
+    expect(code).toMatch(/\bbuildCsvFilename\b/);
+  });
+
+  it("AC #244 — does NOT add a Convex query / mutation / action for the CSV (front-side, no backend)", () => {
+    // Issue body « Aucun endpoint backend (decision actee EPIC #141) ». We
+    // pin that the page does NOT introduce a NEW `useTenantQuery` /
+    // `useTenantAction` / `useTenantMutation` call branded with an `export`
+    // / `csv` identifier — the existing two (`listOrders` + `getOrder`) and
+    // the refund action are unchanged.
+    const code = stripNonCode(PAGE_SOURCE);
+    expect(code).not.toMatch(/api\.[\w.]*csv/i);
+    expect(code).not.toMatch(/api\.[\w.]*export/i);
+  });
+
+  it("AC #244 — forwards `onExportCsv` to the view (the view mounts the button + relays the click)", () => {
+    const code = stripNonCode(PAGE_SOURCE);
+    expect(code).toMatch(/\bonExportCsv\b/);
+  });
+
+  it("AC #244 — resolves the tenant slug from the session (KB Manager) OR the kbAdminQuery (KB Admin)", () => {
+    // Filename format « commandes_<tenantSlug>_<YYYYMMDD>.csv ». The slug
+    // is the tenant's slug (provisioning emits `[a-z0-9-]+`). The page
+    // already reads `useSession()` for the refund role gate (#243); we
+    // expose the slug from that same session lookup for the manager path
+    // — KB Admin via the same root-override pattern as the QR page.
+    const code = stripNonCode(PAGE_SOURCE);
+    // We DO NOT pin the exact mechanic (the page can use `session.tenants`
+    // for the manager path + the existing admin query for impersonation),
+    // but we pin the slug literal surfaces somewhere in the executable
+    // code path — proof the filename isn't built on the raw tenantId.
+    expect(code).toMatch(/\bslug\b/);
   });
 
   it("AC scope — never imports from `apps/web`, `apps/native`, or the backend `functions` tree", () => {
