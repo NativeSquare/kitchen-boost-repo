@@ -5,9 +5,9 @@
  * [7/10] (#271) + [9/10] (#273) — Step{N}Form dispatch map.
  *
  * Steps still using a placeholder (« TODO Step N — <title> » + Prev/Next nav
- * buttons): 2, 6, 7, 8. Each follow-up wizard slice swaps its own
- * placeholder for a real form WITHOUT touching the wizard shell. The shell
- * hands `onPrev` / `onNext` to whatever form lives at the slot.
+ * buttons): 2 and 8. Each follow-up wizard slice swaps its own placeholder
+ * for a real form WITHOUT touching the wizard shell. The shell hands
+ * `onPrev` / `onNext` to whatever form lives at the slot.
  *
  * Step 1 (« Compte resto ») is the SLICE CHARNIÈRE: #267 replaces its
  * placeholder with the real provisioning form (`Step1ProvisioningForm`) and a
