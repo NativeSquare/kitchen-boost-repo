@@ -50,6 +50,11 @@ import {
   type BrandingPatch,
   type BrandingValue,
 } from "./branding-editor";
+import {
+  CoordonneesEditor,
+  type CoordonneesPatch,
+  type CoordonneesValue,
+} from "./coordonnees-editor";
 
 export type ParametresViewProps = {
   /**
@@ -83,12 +88,32 @@ export type ParametresViewProps = {
   branding: BrandingValue | undefined;
   onSaveBranding: (patch: BrandingPatch) => Promise<void>;
   onUploadLogo: (file: File) => Promise<string>;
+  /**
+   * F-PARAMETRES-03 (#231) — Coordonnées section.
+   *
+   * `coordonnees`: the current persisted `{ address?, phone? }`.
+   *   - `undefined` is treated as « no coordonnées set yet » (empty
+   *     object). Today the KB Manager branch starts at this sentinel
+   *     because no manager-accessible read query exists for tenant-row
+   *     fields (same degradation as `branding`, see file header). A
+   *     KB Admin gets the real value from `loadTenantForStripe` (already
+   *     loaded for `branding`).
+   *   - The editor handles `{}` gracefully (seeds empty inputs).
+   * `onSaveCoordonnees`: page-wired handler for the section's
+   *   « Enregistrer » button — wired to the same `useTenantMutation`
+   *   binding as branding (one canonical D5 élargi mutation,
+   *   `tenant.updateSettings`, ONE backend brick for all sections).
+   */
+  coordonnees: CoordonneesValue | undefined;
+  onSaveCoordonnees: (patch: CoordonneesPatch) => Promise<void>;
 };
 
 export function ParametresView({
   branding,
   onSaveBranding,
   onUploadLogo,
+  coordonnees,
+  onSaveCoordonnees,
 }: ParametresViewProps): React.ReactElement {
   return (
     <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
@@ -99,7 +124,10 @@ export function ParametresView({
           onSave={onSaveBranding}
           onUploadLogo={onUploadLogo}
         />
-        <SectionCoordonnees />
+        <SectionCoordonnees
+          value={coordonnees ?? {}}
+          onSave={onSaveCoordonnees}
+        />
         <SectionModesAcceptes />
         <SectionHorairesService />
         <Separator className="my-2" />
@@ -186,13 +214,31 @@ function SectionIdentiteVisuelle({
   );
 }
 
-function SectionCoordonnees() {
+/**
+ * F-PARAMETRES-03 (#231) — wired Coordonnées section. Wraps the reusable
+ * `CoordonneesEditor` (signature `{ value, onSave }`) inside the canonical
+ * Section card so the visual rhythm with the still-unwired sections (Modes
+ * / Horaires) stays consistent. The card's `data-slot` is preserved from
+ * slice 1 (#193) so consumers and tests that target the section by slot
+ * don't need to know whether it's a placeholder or a live editor.
+ */
+function SectionCoordonnees({
+  value,
+  onSave,
+}: {
+  value: CoordonneesValue;
+  onSave: (patch: CoordonneesPatch) => Promise<void>;
+}) {
   return (
-    <SectionPlaceholder
-      slot="parametres-section-coordonnees"
-      title="Coordonnées"
-      description="Adresse et téléphone du restaurant."
-    />
+    <Card data-slot="parametres-section-coordonnees">
+      <CardHeader>
+        <CardTitle>Coordonnées</CardTitle>
+        <CardDescription>Adresse et téléphone du restaurant.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <CoordonneesEditor value={value} onSave={onSave} />
+      </CardContent>
+    </Card>
   );
 }
 

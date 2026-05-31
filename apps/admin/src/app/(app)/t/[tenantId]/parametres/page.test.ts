@@ -128,6 +128,24 @@ describe("page.tsx — F-PARAMETRES-01 (#193) wiring contract", () => {
     expect(code).not.toMatch(/\buseMutation\(/);
   });
 
+  it("F-PARAMETRES-03 (#231) — wires `onSaveCoordonnees` via the SAME `tenant.updateSettings` mutation (D5 élargi, ONE backend brick shared across all sections — no new mutation invented)", () => {
+    // The Coordonnées section forwards an `{ address?, phone? }` patch into
+    // the same `useTenantMutation(api.lib.admin.tenantSettings.updateSettings)`
+    // wired for branding (no duplicate hook — re-use the single existing
+    // binding). Pin that the prop name surfaces in the source and the page
+    // passes a save handler down to the view.
+    expect(PAGE_SOURCE).toMatch(/onSaveCoordonnees/);
+    // The mutation hook is the same one as for branding (one canonical
+    // wiring, no second `useTenantMutation(...updateSettings...)` call).
+    const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
+    const updateSettingsBindings = (
+      collapsed.match(
+        /useTenantMutation\([^)]*api\.lib\.admin\.tenantSettings\.updateSettings[^)]*\)/g,
+      ) ?? []
+    ).length;
+    expect(updateSettingsBindings).toBe(1);
+  });
+
   it("AC delegation — delegates rendering to `ParametresView` (keeps the page thin + the view testable in node env)", () => {
     expect(PAGE_SOURCE).toMatch(/ParametresView/);
   });
