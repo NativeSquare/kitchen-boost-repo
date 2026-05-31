@@ -5,27 +5,34 @@ import type { Id } from "../_generated/dataModel";
 import schema from "../schema";
 
 /**
- * B-AUTH-3 wiring — `acceptInvite` role-aware acceptance branch.
+ * B-AUTH-6 (#230) — `acceptInvite` extension: branche kb_manager qui crée
+ * `userTenants`, rétrocompat 100% côté kb_admin.
  *
  * Pins the contract documented in `convex/table/admin.ts:acceptInvite`:
  *
- *   - **Legacy admin invite** (no `targetRole`) → user becomes `kb_admin`,
- *     no `userTenants` row. Pre-B-AUTH-3 rétrocompat — these rows still
- *     exist in any DB that ran the schema before the extension landed.
+ *   - **Legacy admin invite** (no `targetRole`) → user becomes `kb_admin`
+ *     + `name = invite.name`, no `userTenants` row. Pre-B-AUTH-3 rétrocompat
+ *     — these rows still exist in any DB that ran the schema before the
+ *     extension landed.
  *   - **Explicit admin invite** (`targetRole: "kb_admin"`) → identical to
  *     the legacy case; the explicit literal is supported because callers
  *     (incl. test seeds) may set it for clarity.
- *   - **Manager invite** (`targetRole: "kb_manager"` + `tenantId`) → user
- *     becomes GLOBALLY `customer` (ADR 0011 — per-tenant roles live on
- *     `userTenants`, the global `users.role` only carries kb_admin vs
- *     customer), AND a fresh `userTenants(userId, tenantId, role:
- *     "kb_manager")` row is created. `attachedBy` mirrors `invite.invitedBy`.
+ *   - **Manager invite** (`targetRole: "kb_manager"` + `tenantId`) → a fresh
+ *     `userTenants(userId, tenantId, role: "kb_manager")` row is created.
+ *     `attachedBy` mirrors `invite.invitedBy`. **`users.role` is NOT
+ *     patched** (le gérant reste `customer` globalement — c'est sa ligne
+ *     `userTenants` qui le qualifie comme gérant sur ce tenant, cf. issue
+ *     #230). `users.name` is also left untouched (manager branch does not
+ *     mutate the user profile — the display name comes from the signup
+ *     flow / NavUser footer).
  *   - **Manager invite, soft-detached attachment exists** → the existing
  *     row is RE-ACTIVATED (`detachedAt → undefined`, fresh `attachedAt`,
- *     role re-stamped) rather than creating a duplicate.
- *   - **Manager invite, active attachment exists** → no-op on userTenants
- *     (idempotence — duplicates would violate the applicative uniqueness
- *     of `by_user_tenant`).
+ *     role re-stamped) rather than creating a duplicate. Spec
+ *     (B-AUTH-4 `inviteManager`) explicitly allows re-invitation of a
+ *     soft-detached ex-gérant; the acceptance must mirror that.
+ *   - **Manager invite, active attachment exists** → throws « Vous êtes
+ *     déjà rattaché à ce resto » (double-click safety / out-of-flow
+ *     attachment defence-in-depth, cf. issue #230 acceptance criteria).
  *   - **Manager invite missing tenantId** → throws a clean message
  *     (defence-in-depth; `inviteManager` validator already guarantees it).
  *   - **Manager invite, tenant deleted between issue & accept** → throws,
@@ -180,7 +187,7 @@ describe("acceptInvite — admin branch", () => {
 // ---------------------------------------------------------------------------
 
 describe("acceptInvite — manager branch (the B-AUTH-3 wiring)", () => {
-  it("manager invite → user becomes globally 'customer' + userTenants(kb_manager) row created", async () => {
+  it("manager invite → userTenants(kb_manager) row created, users.role and users.name LEFT UNTOUCHED", async () => {
     const t = convexTest(schema, modules);
     const tenantId = await insertActiveTenant(t, "lartisan");
     const { inviteeId, inviterId, token } = await seed(t, {
@@ -194,11 +201,15 @@ describe("acceptInvite — manager branch (the B-AUTH-3 wiring)", () => {
       .mutation(api.table.admin.acceptInvite, { token });
 
     await t.run(async (ctx) => {
-      // Global role: customer (ADR 0011 — managers carry the customer
-      // global role; the manager role lives on the userTenants link).
+      // Issue #230 — manager branch MUST NOT patch users.role. The user row
+      // stays exactly as it was after sign-up (no `role`, no `name`); the
+      // gérant qualification lives entirely on the `userTenants` link.
+      // `getCurrentActor` defaults a missing global role to "customer" — so
+      // the absence of a stamped role is the canonical "customer global"
+      // state, NOT an explicit `role: "customer"` patch.
       const user = await ctx.db.get(inviteeId);
-      expect(user?.role).toBe("customer");
-      expect(user?.name).toBe("Invited Person");
+      expect(user?.role).toBeUndefined();
+      expect(user?.name).toBeUndefined();
 
       // Exactly ONE active userTenants row for this user, on the right
       // tenant, with the right role, and `attachedBy` mirroring the inviter.
@@ -255,10 +266,10 @@ describe("acceptInvite — manager branch (the B-AUTH-3 wiring)", () => {
     });
   });
 
-  it("manager invite is idempotent when an ACTIVE attachment already exists (no double insert)", async () => {
+  it("manager invite THROWS « déjà rattaché » when an ACTIVE attachment already exists (double-click safety)", async () => {
     const t = convexTest(schema, modules);
     const tenantId = await insertActiveTenant(t, "thai");
-    const { inviteeId, inviterId, token } = await seed(t, {
+    const { inviteeId, inviterId, inviteId, token } = await seed(t, {
       inviteeEmail: "alreadyin@kb.test",
       targetRole: "kb_manager",
       tenantId,
@@ -273,20 +284,39 @@ describe("acceptInvite — manager branch (the B-AUTH-3 wiring)", () => {
         attachedBy: inviterId,
       }),
     );
+    const existingAttachmentBefore = await t.run((ctx) =>
+      ctx.db.get(existingAttachmentId),
+    );
 
-    await t
-      .withIdentity({ subject: inviteeId })
-      .mutation(api.table.admin.acceptInvite, { token });
+    // Issue #230 — a double-click on the magic-link, or an out-of-flow
+    // attachment created manually by an admin, must surface a clear French
+    // error rather than silently no-op'ing.
+    await expect(
+      t
+        .withIdentity({ subject: inviteeId })
+        .mutation(api.table.admin.acceptInvite, { token }),
+    ).rejects.toThrow(/déjà rattaché|deja rattache/i);
 
     await t.run(async (ctx) => {
+      // The pre-existing attachment is UNCHANGED — same _id, same
+      // `attachedAt` (the throw rolled the whole mutation back, and even
+      // before the rollback nothing should have touched the row).
       const attachments = await ctx.db
         .query("userTenants")
         .withIndex("by_user", (q) => q.eq("userId", inviteeId))
         .collect();
-      // Still exactly one attachment, untouched (same _id, original
-      // `attachedAt`). The mutation MUST NOT have inserted a duplicate.
       expect(attachments).toHaveLength(1);
       expect(attachments[0]._id).toBe(existingAttachmentId);
+      expect(attachments[0].attachedAt).toBe(
+        existingAttachmentBefore?.attachedAt,
+      );
+
+      // The invite is NOT consumed (the throw rolled back the acceptedAt
+      // stamp) — the magic-link could be replayed once the conflicting
+      // attachment is cleaned up, rather than burning a one-shot token on a
+      // double-click.
+      const inviteRow = await ctx.db.get(inviteId);
+      expect(inviteRow?.acceptedAt).toBeUndefined();
     });
   });
 
