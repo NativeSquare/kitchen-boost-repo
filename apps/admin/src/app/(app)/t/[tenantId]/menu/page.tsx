@@ -2,7 +2,7 @@
 
 /**
  * F-MENU-01 (#187) + F-MENU-02 (#200) + F-MENU-03 (#206) + F-MENU-04 (#211)
- * + F-MENU-05 (#219) — Route `/t/[tenantId]/menu/`.
+ * + F-MENU-05 (#219) + F-MENU-06 (#226) — Route `/t/[tenantId]/menu/`.
  *
  * Slice 1 (#187) wired the read-only categories list via `useTenantQuery`.
  * Slice 2 (#200) layered category CRUD on top via `useTenantMutation`. Slice 3
@@ -24,6 +24,14 @@
  * survives reactive re-renders of the categories/items lists (a successful
  * autosave round-trip refires `items.list`, which would otherwise unmount
  * the modal if it lived inside the row).
+ *
+ * Slice 6 (#226) layers item photo CRUD on top of #219's modal: three
+ * additional tenantMutations (`photos.generateUploadUrl`, `attachPhoto`,
+ * `removePhoto`) and a `handleUploadPhoto` orchestrator that drives the
+ * two-step Convex upload (mint URL → POST file → record storage id). The
+ * page passes `onUploadPhoto` / `onRemovePhoto` down to `ItemModal`; the
+ * card thumbnail (item-list.tsx) auto-updates via Convex reactivity once
+ * `items.list` refires with the new `photoStorageId`.
  *
  * Scope discipline (#219 hard constraint): this file (and its siblings under
  * `apps/admin/src/app/(app)/t/[tenantId]/menu/`) is the ONLY surface touched

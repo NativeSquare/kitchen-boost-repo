@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * F-MENU-05 (#219) — `ItemModal`, the load-bearing CRUD surface for menu items.
+ * F-MENU-05 (#219) + F-MENU-06 (#226) — `ItemModal`, the load-bearing CRUD
+ * surface for menu items.
  *
  * Two modes, ONE component (DRY — same form, same validation, same fields):
  *   - `mode === "create"` — opened by the « + Item » CTA per category. One
@@ -36,7 +37,17 @@
  * dérivé de INVALID_PRICE » (issue body) is wired at the PAGE level via
  * `toast.error(getConvexErrorMessage(error))` should the backend still reject.
  *
- * Scope discipline (#219 hard constraint): this file lives under
+ * Photo CRUD — F-MENU-06 (#226): the edit-mode form layers an opt-in
+ * `ItemPhotoSection` (rendered only when the page passes BOTH
+ * `onUploadPhoto` and `onRemovePhoto`) carrying a thumbnail SLOT, a file
+ * picker, and a « Supprimer la photo » button gated on
+ * `item.photoStorageId !== undefined`. Replacement uses the SAME path as
+ * upload — the backend `setTenantItemPhoto` invariant frees the previous
+ * blob in the same mutation (no orphan, issue body « le backend libère l
+ * ancien blob »); the front never explicitly calls `removePhoto` before
+ * an attach.
+ *
+ * Scope discipline (#219 / #226 hard constraint): this file lives under
  * `apps/admin/src/app/(app)/t/[tenantId]/menu/` — zero touch to `apps/web`,
  * `apps/native`, or `packages/backend/convex/`.
  */
