@@ -280,9 +280,14 @@ describe("page.tsx — F-MENU-01 (#187) wiring contract", () => {
     // categories reorder handler.
     const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
     // The handler references items.reorder (`reorderItems` local) AND has a
-    // toast.error within a handler-sized window.
+    // toast.error within a handler-sized window. The window is wide enough
+    // (3500) to absorb intermediate mutation declarations the page accumulates
+    // as later slices land (#242 added the modifier-group block between the
+    // `items.reorder` mutation and the `reorderItems` handler — pure decl
+    // ordering, the actual `await reorderItems(...) → toast.error` pairing
+    // is intact).
     expect(collapsed).toMatch(
-      /api\.lib\.menu\.items\.reorder[\s\S]{0,1200}toast\.error/,
+      /api\.lib\.menu\.items\.reorder[\s\S]{0,3500}toast\.error/,
     );
   });
 
