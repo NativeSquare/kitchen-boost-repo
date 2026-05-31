@@ -146,10 +146,11 @@ export function CoordonneesEditor({
   });
   const { register, handleSubmit, watch, formState } = form;
 
-  // Live-watched values drive the validation + diff. Read both fields so the
-  // « Enregistrer » disabled state updates on every keystroke (and so the
-  // diff is computed from what the user currently sees).
-  const watchedAddress = watch("address") ?? "";
+  // Live-watched phone drives the validation gate (the disabled-button +
+  // inline-error surface update on every keystroke). The address is NOT
+  // watched here — its diff is read from the submit-time `data` instead,
+  // because no rendering branch depends on its live value (the regex
+  // is phone-only).
   const watchedPhone = watch("phone") ?? "";
 
   // Inline server-side error (AC : « inline form errors incluant erreurs
@@ -279,11 +280,6 @@ export function CoordonneesEditor({
           Enregistrer
         </Button>
       </div>
-
-      {/* Render the seed address even when react-hook-form's register/watch
-          haven't propagated yet (defensive, mostly a no-op in the live UI;
-          harmless under serializer tests). */}
-      <span className="sr-only">{watchedAddress}</span>
     </form>
   );
 }
