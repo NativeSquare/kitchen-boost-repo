@@ -223,6 +223,18 @@ export type IntegrationStatusMap = {
 export type IntegrationKey = keyof IntegrationStatusMap;
 
 /**
+ * The persisted shape of an integration milestone for integration `I`: current
+ * status + append-only chronological history. Mirrors the per-integration
+ * `*Milestone` schema in `table/prospects.ts`; centralised here so both the
+ * read narrowing and the write payload of `appendIntegrationStatus` share ONE
+ * definition.
+ */
+type IntegrationMilestone<I extends IntegrationKey> = {
+  current: IntegrationStatusMap[I];
+  history: { status: IntegrationStatusMap[I]; at: number }[];
+};
+
+/**
  * Set or clear the timestamp of ONE binary milestone (read prospect → patch
  * `milestones` with the single targeted key → bump `updatedAt`). Pass a
  * `number` to record the achievement instant, or `undefined` to clear it
@@ -285,24 +297,13 @@ export async function appendIntegrationStatus<I extends IntegrationKey>(
   }
   const milestones = { ...(prospect.milestones ?? {}) };
   const existing = milestones[integration] as
-    | {
-        current: IntegrationStatusMap[I];
-        history: { status: IntegrationStatusMap[I]; at: number }[];
-      }
+    | IntegrationMilestone<I>
     | undefined;
   const nextHistory = [...(existing?.history ?? []), { status, at }];
   // The cast pins the per-integration discriminated payload — the schema
   // declares `milestones[integration]` as a union of the 3 distinct shapes; this
   // type-level narrowing is what `IntegrationStatusMap[I]` guarantees.
-  (
-    milestones as Record<
-      I,
-      {
-        current: IntegrationStatusMap[I];
-        history: { status: IntegrationStatusMap[I]; at: number }[];
-      }
-    >
-  )[integration] = {
+  (milestones as Record<I, IntegrationMilestone<I>>)[integration] = {
     current: status,
     history: nextHistory,
   };
