@@ -16,9 +16,10 @@ import {
 import type { PublicMenu, PublicMenuCategory, PublicMenuItem } from "./catalog";
 
 /**
- * B-MENU-PUBLICATION slices 2 (#155) + 4 (#166) — publication pipeline of the
- * [[Instantané publié]] (ADR 0015 « édition brouillon → publication globale
- * atomique » + ADR 0010 isolation multi-tenant applicative).
+ * B-MENU-PUBLICATION slices 2 (#155) + 4 (#166) + 5 (#176) + 8 (#224) —
+ * publication pipeline of the [[Instantané publié]] (ADR 0015 « édition
+ * brouillon → publication globale atomique » + ADR 0010 isolation multi-tenant
+ * applicative).
  *
  * Two surfaces share the SAME projection of the live draft (DRY enforced):
  *  - `publishMenu` (slice 2) — the gérant clicks « Publier »: rebuild the
@@ -33,6 +34,26 @@ import type { PublicMenu, PublicMenuCategory, PublicMenuItem } from "./catalog";
  * module, `no-untenanted-query` enforces it) and produces a
  * `PublishedMenuPayload` that is BYTE-IDENTICAL whether it's then written by
  * `publishMenu` or rendered on the fly by `previewMenu`.
+ *
+ * SNAPSHOT ↔ DRAFT EDGE CONTRACT (B-MENU-PUBLICATION slice 8, #224, ADR 0015
+ * « pas de versioning V1 »): the snapshot row in `publishedMenus` is NEVER
+ * touched by draft-side cascades. Concretely, `deleteTenantItem` deletes the
+ * photo blob; `deleteTenantCategory` and `deleteTenantModifierGroup` drop draft
+ * rows and their edges — none of these touch the existing snapshot. The
+ * snapshot is therefore allowed to TRANSIENTLY reference draft ids (items,
+ * categories, modifier groups) that no longer exist in the live tables, and a
+ * `photoStorageId` whose blob has been cascaded. The next `publishMenu` is the
+ * only thing that reconciles the snapshot with the current draft (and, by
+ * dropping the deleted row, makes the reference disappear).
+ *
+ * Consequence on the read side: BOTH `getPublicMenu` (the eater PWA, sourced
+ * on the snapshot) and `previewMenu` (the gérant, sourced on the draft) are
+ * tolerant reads: they ABSORB an orphan `photoStorageId` as `photoUrl: null`
+ * (Convex `storage.getUrl(<missing>)` returns null, NOT a throw), so an admin
+ * who deletes a draft item between two `publishMenu` calls never bricks the
+ * PWA. The « tolerant read » invariant is pinned cross-suite by slice 8's
+ * `items.test.ts` (delete item referenced by snapshot ⇒ `photoUrl: null`,
+ * republish ⇒ row dropped) and the consolidated cross-tenant fuzz here.
  */
 
 /**
@@ -128,10 +149,13 @@ export async function resolvePublicMenuFromPayload(
   for (const category of payload.categories) {
     const publicItems: PublicMenuItem[] = [];
     for (const item of category.items) {
+      // Tolerant read (slice 8, #224): same contract as `getPublicMenu` — an
+      // orphan `photoStorageId` (blob deleted between two `publishMenu` calls)
+      // resolves to `null`, never throws. Pinned cross-suite by `items.test.ts`.
       const photoUrl =
         item.photoStorageId === undefined
           ? null
-          : await ctx.storage.getUrl(item.photoStorageId);
+          : ((await ctx.storage.getUrl(item.photoStorageId)) ?? null);
       publicItems.push({
         _id: item._id,
         name: item.name,

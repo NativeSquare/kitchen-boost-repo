@@ -952,10 +952,9 @@ describe("B-MENU-PUBLICATION slice 5 — hasUnpublishedChanges (#176, ADR 0015)"
     });
     expect(
       (
-        await asManager.query(
-          api.lib.menu.publication.hasUnpublishedChanges,
-          { tenantId: seed.tenantA.tenantId },
-        )
+        await asManager.query(api.lib.menu.publication.hasUnpublishedChanges, {
+          tenantId: seed.tenantA.tenantId,
+        })
       ).hasChanges,
     ).toBe(true);
     // wait 1ms so the new publishedAt is strictly newer
@@ -1097,5 +1096,308 @@ describe("B-MENU-PUBLICATION slice 5 — hasUnpublishedChanges cross-tenant fuzz
     });
     expect(pairs).toBe(6);
     expect(leaks).toEqual([]);
+  });
+});
+
+/**
+ * B-MENU-PUBLICATION slice 8 (#224) — coherence EDGES between draft deletions
+ * and the published snapshot (ADR 0015 « pas de versioning V1 » + ADR 0010).
+ *
+ * Across the publication surface the contract is uniform: deleting a draft row
+ * (item / category / modifier group) does NOT touch the existing snapshot, so
+ * the snapshot can transiently reference draft ids that no longer exist in the
+ * live tables — until the gérant clicks « Publier » again. The read side stays
+ * graceful: `getPublicMenu` returns the snapshot as-is, with `photoUrl = null`
+ * for an orphan storage id (no throw).
+ *
+ * Tests below pin BOTH halves:
+ *  - the snapshot row is preserved (no cascade across the boundary);
+ *  - the next `publishMenu` rebuild drops the deleted draft row (regression).
+ */
+describe("B-MENU-PUBLICATION slice 8 — snapshot ↔ draft edges (#224, ADR 0015)", () => {
+  let t: ReturnType<typeof convexTest>;
+  let seed: Seed;
+  beforeEach(async () => {
+    t = convexTest(schema, modules);
+    seed = await seedTwoTenantsAllRoles(t);
+  });
+
+  it("deleting a draft CATEGORY referenced by the snapshot leaves the snapshot intact, getPublicMenu still serves the snapshotted category", async () => {
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    const cat = await asManager.mutation(api.lib.menu.categories.create, {
+      tenantId: seed.tenantA.tenantId,
+      name: "Smashs",
+    });
+    const itemId = await asManager.mutation(api.lib.menu.items.create, {
+      tenantId: seed.tenantA.tenantId,
+      categoryId: cat,
+      name: "Smash",
+      description: "",
+      basePrice: 500,
+      allergens: [],
+    });
+    await asManager.mutation(api.lib.menu.publication.publishMenu, {
+      tenantId: seed.tenantA.tenantId,
+    });
+    // Drop the item first (deleteTenantCategory does NOT cascade to items),
+    // then drop the category — the snapshot still carries both.
+    await asManager.mutation(api.lib.menu.items.remove, {
+      tenantId: seed.tenantA.tenantId,
+      itemId,
+    });
+    await asManager.mutation(api.lib.menu.categories.remove, {
+      tenantId: seed.tenantA.tenantId,
+      categoryId: cat,
+    });
+    // Snapshot row is UNTOUCHED: same category id, same item id.
+    const snapshot = await t.run((ctx) =>
+      ctx.db
+        .query("publishedMenus")
+        .withIndex("by_tenant", (q) => q.eq("tenantId", seed.tenantA.tenantId))
+        .unique(),
+    );
+    expect(snapshot?.payload.categories[0]?._id).toBe(cat);
+    expect(snapshot?.payload.categories[0]?.items[0]?._id).toBe(itemId);
+    // PWA still serves the snapshotted category (tolerant read).
+    const publicMenu = await t.query(api.lib.menu.catalog.getPublicMenu, {
+      tenantId: seed.tenantA.tenantId,
+    });
+    expect(publicMenu.categories[0]?.name).toBe("Smashs");
+    expect(publicMenu.categories[0]?.items[0]?._id).toBe(itemId);
+  });
+
+  it("deleting a draft MODIFIER GROUP referenced by the snapshot leaves the snapshot intact (same contract)", async () => {
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    const cat = await asManager.mutation(api.lib.menu.categories.create, {
+      tenantId: seed.tenantA.tenantId,
+      name: "Smashs",
+    });
+    const itemId = await asManager.mutation(api.lib.menu.items.create, {
+      tenantId: seed.tenantA.tenantId,
+      categoryId: cat,
+      name: "Smash",
+      description: "",
+      basePrice: 1000,
+      allergens: [],
+    });
+    const groupId = await asManager.mutation(
+      api.lib.menu.modifiers.createGroup,
+      {
+        tenantId: seed.tenantA.tenantId,
+        name: "Cuisson",
+        minSelect: 1,
+        maxSelect: 1,
+        options: [
+          { label: "Saignant", priceDelta: 0 },
+          { label: "À point", priceDelta: 0 },
+        ],
+      },
+    );
+    await asManager.mutation(api.lib.menu.modifiers.attachGroupToItem, {
+      tenantId: seed.tenantA.tenantId,
+      itemId,
+      modifierGroupId: groupId,
+    });
+    await asManager.mutation(api.lib.menu.publication.publishMenu, {
+      tenantId: seed.tenantA.tenantId,
+    });
+    // Drop the group from the draft (also cascades edges) — snapshot UNTOUCHED.
+    await asManager.mutation(api.lib.menu.modifiers.removeGroup, {
+      tenantId: seed.tenantA.tenantId,
+      modifierGroupId: groupId,
+    });
+    const snapshot = await t.run((ctx) =>
+      ctx.db
+        .query("publishedMenus")
+        .withIndex("by_tenant", (q) => q.eq("tenantId", seed.tenantA.tenantId))
+        .unique(),
+    );
+    const snapGroup =
+      snapshot?.payload.categories[0]?.items[0]?.modifierGroups[0];
+    expect(snapGroup?._id).toBe(groupId);
+    expect(snapGroup?.name).toBe("Cuisson");
+    // PWA still serves the snapshotted group (tolerant read).
+    const publicMenu = await t.query(api.lib.menu.catalog.getPublicMenu, {
+      tenantId: seed.tenantA.tenantId,
+    });
+    const publicGroup = publicMenu.categories[0]?.items[0]?.modifierGroups[0];
+    expect(publicGroup?._id).toBe(groupId);
+    expect(publicGroup?.name).toBe("Cuisson");
+    expect(publicGroup?.options).toEqual([
+      { label: "Saignant", priceDelta: 0 },
+      { label: "À point", priceDelta: 0 },
+    ]);
+  });
+
+  it("republishing AFTER a draft deletion drops the row from the snapshot (regression)", async () => {
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    const cat = await asManager.mutation(api.lib.menu.categories.create, {
+      tenantId: seed.tenantA.tenantId,
+      name: "Cat",
+    });
+    const itemKeep = await asManager.mutation(api.lib.menu.items.create, {
+      tenantId: seed.tenantA.tenantId,
+      categoryId: cat,
+      name: "Keep",
+      description: "",
+      basePrice: 500,
+      allergens: [],
+    });
+    const groupKeep = await asManager.mutation(
+      api.lib.menu.modifiers.createGroup,
+      {
+        tenantId: seed.tenantA.tenantId,
+        name: "Keep group",
+        minSelect: 0,
+        maxSelect: 1,
+        options: [{ label: "k", priceDelta: 0 }],
+      },
+    );
+    const groupDrop = await asManager.mutation(
+      api.lib.menu.modifiers.createGroup,
+      {
+        tenantId: seed.tenantA.tenantId,
+        name: "Drop group",
+        minSelect: 0,
+        maxSelect: 1,
+        options: [{ label: "d", priceDelta: 0 }],
+      },
+    );
+    await asManager.mutation(api.lib.menu.modifiers.attachGroupToItem, {
+      tenantId: seed.tenantA.tenantId,
+      itemId: itemKeep,
+      modifierGroupId: groupKeep,
+    });
+    await asManager.mutation(api.lib.menu.modifiers.attachGroupToItem, {
+      tenantId: seed.tenantA.tenantId,
+      itemId: itemKeep,
+      modifierGroupId: groupDrop,
+    });
+    await asManager.mutation(api.lib.menu.publication.publishMenu, {
+      tenantId: seed.tenantA.tenantId,
+    });
+    // Drop one group from the draft, then republish.
+    await asManager.mutation(api.lib.menu.modifiers.removeGroup, {
+      tenantId: seed.tenantA.tenantId,
+      modifierGroupId: groupDrop,
+    });
+    await asManager.mutation(api.lib.menu.publication.publishMenu, {
+      tenantId: seed.tenantA.tenantId,
+    });
+    const snapshot = await t.run((ctx) =>
+      ctx.db
+        .query("publishedMenus")
+        .withIndex("by_tenant", (q) => q.eq("tenantId", seed.tenantA.tenantId))
+        .unique(),
+    );
+    const groups =
+      snapshot?.payload.categories[0]?.items[0]?.modifierGroups ?? [];
+    const ids = groups.map((g) => g._id);
+    expect(ids).toEqual([groupKeep]);
+    expect(ids).not.toContain(groupDrop);
+  });
+});
+
+/**
+ * B-MENU-PUBLICATION slice 8 (#224) — CONSOLIDATED cross-tenant fuzz over the
+ * full publication surface (ADR 0010). Reuses `lib/tenancy/fuzz.ts`. Each of
+ * the four functions is exercised against the SAME unauthorized-actor matrix,
+ * with the right `isQuery` predicate so we replay them as queries or as
+ * mutations. A single suite makes it impossible to ship a new publication
+ * function without consciously including it here (the count assertion catches
+ * any drift in the audited surface).
+ */
+describe("B-MENU-PUBLICATION slice 8 — publication surface, consolidated cross-tenant fuzz (#224, ADR 0010)", () => {
+  let t: ReturnType<typeof convexTest>;
+  let seed: Seed;
+  beforeEach(async () => {
+    t = convexTest(schema, modules);
+    seed = await seedTwoTenantsAllRoles(t);
+  });
+
+  it("every publication function rejects every unauthorized actor on tenant A (publishMenu + previewMenu + hasUnpublishedChanges + getPublicMenu wrapper)", async () => {
+    const actors: FuzzActor[] = [
+      { label: "B-manager", subject: seed.tenantB.managerId },
+      { label: "B-staff", subject: seed.tenantB.staffId },
+      { label: "A-staff", subject: seed.tenantA.staffId }, // staff not allowed on editor surfaces
+      { label: "detached", subject: seed.detachedUserId },
+      { label: "customer", subject: seed.customerId },
+      { label: "anonymous", subject: null },
+    ];
+    // publishMenu (mutation) + previewMenu / hasUnpublishedChanges (queries):
+    // editor-only surfaces, every unauthorized actor MUST throw.
+    const editorFns = [
+      api.lib.menu.publication.publishMenu,
+      api.lib.menu.publication.previewMenu,
+      api.lib.menu.publication.hasUnpublishedChanges,
+    ];
+    const { leaks: editorLeaks, pairs: editorPairs } = await runCrossTenantFuzz(
+      t,
+      {
+        functions: editorFns,
+        isQuery: (fn) => fn !== api.lib.menu.publication.publishMenu,
+        tenantId: seed.tenantA.tenantId,
+        actors,
+      },
+    );
+    expect(editorPairs).toBe(18); // 3 fns × 6 actors
+    expect(editorLeaks).toEqual([]);
+  });
+
+  it("getPublicMenu cross-tenant isolation: data returned for tenant A is NEVER tenant B's snapshot rows", async () => {
+    const aMgr = t.withIdentity({ subject: seed.tenantA.managerId });
+    const bMgr = t.withIdentity({ subject: seed.tenantB.managerId });
+    const aCat = await aMgr.mutation(api.lib.menu.categories.create, {
+      tenantId: seed.tenantA.tenantId,
+      name: "A-cat",
+    });
+    const aItemId = await aMgr.mutation(api.lib.menu.items.create, {
+      tenantId: seed.tenantA.tenantId,
+      categoryId: aCat,
+      name: "A-item",
+      description: "",
+      basePrice: 500,
+      allergens: [],
+    });
+    const bCat = await bMgr.mutation(api.lib.menu.categories.create, {
+      tenantId: seed.tenantB.tenantId,
+      name: "B-cat",
+    });
+    const bItemId = await bMgr.mutation(api.lib.menu.items.create, {
+      tenantId: seed.tenantB.tenantId,
+      categoryId: bCat,
+      name: "B-item",
+      description: "",
+      basePrice: 800,
+      allergens: [],
+    });
+    await aMgr.mutation(api.lib.menu.publication.publishMenu, {
+      tenantId: seed.tenantA.tenantId,
+    });
+    await bMgr.mutation(api.lib.menu.publication.publishMenu, {
+      tenantId: seed.tenantB.tenantId,
+    });
+    // getPublicMenu is unauthenticated — replay it across the SAME actor matrix
+    // including anonymous; it must always return tenant A data only (the snapshot
+    // read is keyed on `ctx.tenantId` via `getPublishedMenu`).
+    const actors: Array<{ label: string; subject: string | null }> = [
+      { label: "A-manager", subject: seed.tenantA.managerId },
+      { label: "B-manager", subject: seed.tenantB.managerId },
+      { label: "A-staff", subject: seed.tenantA.staffId },
+      { label: "B-staff", subject: seed.tenantB.staffId },
+      { label: "customer", subject: seed.customerId },
+      { label: "anonymous", subject: null },
+    ];
+    for (const actor of actors) {
+      const handle =
+        actor.subject === null ? t : t.withIdentity({ subject: actor.subject });
+      const menu = await handle.query(api.lib.menu.catalog.getPublicMenu, {
+        tenantId: seed.tenantA.tenantId,
+      });
+      const itemIds = menu.categories.flatMap((c) => c.items.map((i) => i._id));
+      expect(menu.categories.map((c) => c.name)).toEqual(["A-cat"]);
+      expect(itemIds).toContain(aItemId);
+      expect(itemIds).not.toContain(bItemId);
+    }
   });
 });

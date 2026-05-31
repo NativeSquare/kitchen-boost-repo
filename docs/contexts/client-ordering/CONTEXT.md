@@ -97,6 +97,10 @@ _Avoid_: Switch mode, Tab livraison
 Recommander à l'identique une cmd passée. Visible si client revient via URL directe ou push marketing. **V1 = cross-resto** grâce à [[Anonymous account]] silent + [[Stripe Customer (cross-tenant)]] côté [[Payment]] (carte préchargée + adresse préremplie sur 2ᵉ resto KB, cf. [[Effet réseau]] dans [[Customer Data]]).
 _Avoid_: Repeat order
 
+**Instantané publié** (Snapshot publié) :
+Copie figée du menu qu'un resto a explicitement « Publié » depuis [[KB Admin]] (ADR 0015). Stockée dans la table `publishedMenus` (1 row par tenant). C'est l'UNIQUE source que la PWA mangeur lit via `getPublicMenu` — JAMAIS le brouillon live. L'édition (categories/items/modifierGroups) se fait sur le brouillon ; tant que le gérant ne clique pas « Publier », la PWA continue de servir l'ancien instantané (drift assumé). **Pas de versioning V1** : l'écriture est un remplacement atomique (delete-old + insert-new dans la même tx Convex). **Lecture tolérante** (B-MENU-PUBLICATION slice 8, #224) : la suppression d'un item / catégorie / modifier group côté brouillon ne touche PAS l'instantané — celui-ci peut transitoirement référencer un `photoStorageId` orphelin (blob déjà cascadé par `deleteTenantItem`) ; `ctx.storage.getUrl(<id manquant>)` renvoie `null` côté Convex et `getPublicMenu` surface `photoUrl: null` sans throw. Le prochain « Publier » réconcilie l'instantané avec le brouillon courant. Le champ `available` (cf. [[Item out of stock]]) n'est PAS dans l'instantané : c'est un overlay LIVE lu sur `menuItems` au moment de la lecture, pour que la rupture 1-tap KDS ne déclenche pas une republication globale.
+_Avoid_: Snapshot (anglais OK en code), Menu publié (ambigu — confond contenu et état), Brouillon publié (oxymore)
+
 ## Example dialogue
 
 **Alex (PM)** : Quand un client tape `commander.bunsbao.fr` puis ajoute un Smash Burger au panier, est-ce qu'il est déjà identifié ?

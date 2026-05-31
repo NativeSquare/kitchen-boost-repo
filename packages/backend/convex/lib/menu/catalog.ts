@@ -29,6 +29,13 @@ import {
  * Two overlays are resolved at READ time on top of the snapshot payload:
  *  1. `photoUrl` — resolved via `ctx.storage.getUrl(item.photoStorageId)` so the
  *     snapshot stays immutable while the URL can rotate (storage-controlled).
+ *     **Tolerant read** (B-MENU-PUBLICATION slice 8, #224): the draft cascade
+ *     `deleteTenantItem` DOES delete the photo blob but does NOT touch this
+ *     snapshot — the snapshot can therefore transiently reference an orphan
+ *     `photoStorageId` (until the next `publishMenu` rebuilds it). Convex
+ *     `ctx.storage.getUrl(<missing id>)` returns `null` (not an error), and we
+ *     surface it as `photoUrl: null` so the PWA degrades gracefully without
+ *     the read throwing — pinned by the cross-suite slice 8 tests.
  *  2. `available` — read LIVE from `menuItems` via the tenant-scoped seam
  *     `readTenantItemsAvailability`. The snapshot does NOT carry `available`
  *     (ADR 0015 pivot « la rupture ne doit pas exiger une republication
@@ -129,10 +136,15 @@ export const getPublicMenu = publicTenantQuery({
     for (const category of snapshot.payload.categories) {
       const publicItems: PublicMenuItem[] = [];
       for (const item of category.items) {
+        // Tolerant read (slice 8, #224): the snapshot can reference a
+        // `photoStorageId` whose blob was cascaded by `deleteTenantItem`
+        // before the next `publishMenu` rebuild. Convex `getUrl(<missing>)`
+        // returns null — we surface `photoUrl: null` rather than letting any
+        // edge case (null / throw) bubble up to the eater PWA.
         const photoUrl =
           item.photoStorageId === undefined
             ? null
-            : await ctx.storage.getUrl(item.photoStorageId);
+            : ((await ctx.storage.getUrl(item.photoStorageId)) ?? null);
         publicItems.push({
           _id: item._id,
           name: item.name,
