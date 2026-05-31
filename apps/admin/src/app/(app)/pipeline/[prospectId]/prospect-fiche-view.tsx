@@ -26,14 +26,17 @@
  *   - prospect `null` (no doc with this id)             → not-found state.
  *   - prospect hydrated                                 → header (nom +
  *                                                          phase badge) +
- *                                                          optional « Ouvrir
- *                                                          la vue resto »
- *                                                          CTA + placeholder
- *                                                          body.
+ *                                                          `ProvisionLauncherButton`
+ *                                                          (own visibility
+ *                                                          logic) +
+ *                                                          placeholder body.
  *
- * The CTA renders ONLY when `prospect.tenantId` is set (the prospect has
- * been provisioned). For a still-prospect (no tenant yet), the CTA is
- * absent — there is no operational view to open.
+ * The provisioning CTA lives on `ProvisionLauncherButton`
+ * (`provision-launcher-button.tsx`, F-WIZARD [2/10] #266): it decides
+ * internally whether to render « Lancer le wizard », « Reprendre le
+ * wizard », « Ouvrir la vue resto », or nothing — based on the prospect's
+ * Closing-completion + the tenant's status (cf. `decideProvisionLauncher`).
+ * This file simply hands it the snapshot.
  *
  * Out of scope for this slice (issue #233): the detailed content of the
  * fiche (milestones, intégrations, embed KYC, contrats, monitoring
@@ -48,20 +51,15 @@
  * boundary (A4 de la checklist E2E manuelle — la vocabulary est partagée
  * via `UnauthorizedCard`).
  */
-import { IconArrowRight, IconBuildingStore } from "@tabler/icons-react";
-
 import type { Doc } from "@packages/backend/convex/_generated/dataModel";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { UnauthorizedCard } from "@/components/app/unauthorized-card";
 import type { SessionState } from "@/lib/session";
 
-import {
-  buildTenantOperationalHref,
-  decideProspectFiche,
-} from "./prospect-fiche.decision";
+import { decideProspectFiche } from "./prospect-fiche.decision";
+import { ProvisionLauncherButton } from "./provision-launcher-button";
 
 export type ProspectFicheViewProps = {
   /** The resolved session (decided by the `(app)` SessionGuard upstream). */
@@ -75,6 +73,16 @@ export type ProspectFicheViewProps = {
    * looking at this field, so a stale `undefined` is safe.
    */
   prospect: Doc<"prospects"> | null | undefined;
+  /**
+   * The tenant doc when `prospect.tenantId` is set (Convex tri-state),
+   * plumbed through to `ProvisionLauncherButton` (F-WIZARD [2/10] #266)
+   * which decides whether to show the wizard CTA or the « Ouvrir la vue
+   * resto » CTA based on `tenant.status === "active"`. STUBBED to
+   * `undefined` today (the live `api.tenants.get` for an admin-side lookup
+   * lives in F-PIPELINE-CRM scope); the launcher stays on `launch` /
+   * `resume` until it lands. Optional so existing callers stay compatible.
+   */
+  tenant?: Doc<"tenants"> | null | undefined;
 };
 
 /**
@@ -93,6 +101,7 @@ const PHASE_LABEL: Record<Doc<"prospects">["phase"], string> = {
 export function ProspectFicheView({
   session,
   prospect,
+  tenant,
 }: ProspectFicheViewProps) {
   const decision = decideProspectFiche({ session, prospect });
 
@@ -146,7 +155,6 @@ export function ProspectFicheView({
 
   // decision.kind === "show"
   const p = decision.prospect;
-  const tenantHref = buildTenantOperationalHref(p.tenantId);
   return (
     <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
       <div className="flex flex-col gap-3 px-4 md:flex-row md:items-center md:justify-between lg:px-6">
@@ -157,20 +165,12 @@ export function ProspectFicheView({
             <Badge variant="secondary">{PHASE_LABEL[p.phase]}</Badge>
           </div>
         </div>
-        {tenantHref !== null ? (
-          <Button asChild>
-            {/* Plain <a> (NOT next/link) — same shape as the CTA inside
-             *  `UnauthorizedCard`, kept testable under the lean `node` vitest
-             *  env where next/link's render uses hooks. The shadcn Button +
-             *  asChild Slot still composes the styling; the navigation
-             *  behaviour is identical for in-app links. */}
-            <a href={tenantHref}>
-              <IconBuildingStore />
-              Ouvrir la vue resto
-              <IconArrowRight />
-            </a>
-          </Button>
-        ) : null}
+        {/* F-WIZARD [2/10] #266 — the launcher owns ALL provisioning-side
+         *  CTAs (« Lancer » / « Reprendre » / « Ouvrir la vue resto ») plus
+         *  the « email gérant manquant » warning. Its own visibility logic
+         *  decides whether to render anything at all (Closing-completion
+         *  gate). The fiche just hands it the snapshot. */}
+        <ProvisionLauncherButton prospect={p} tenant={tenant} />
       </div>
       <div className="px-4 lg:px-6">
         <div className="rounded-lg border border-dashed p-8 text-center">
