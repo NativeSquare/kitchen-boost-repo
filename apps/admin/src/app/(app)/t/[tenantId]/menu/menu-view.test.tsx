@@ -246,25 +246,30 @@ describe("MenuView — F-MENU-01 (#187)", () => {
     }
   });
 
-  it("AC4 — header surfaces the three placeholder labels « Aperçu » / « Publier » / « modifications non publiées »", () => {
+  it("AC4 — header surfaces the « Aperçu » + « Publier » labels (badge presence is F-MENU-10's contract)", () => {
+    // The badge « modifications non publiées » is now conditionally rendered
+    // (F-MENU-10 / #254): visible only when the page wires
+    // `hasUnpublishedChanges === true`. Its visibility contract lives in the
+    // F-MENU-10 tests below — this AC4 test stays on the two header buttons.
     const text = allText(
       serialize(MenuView({ categories: UNORDERED_CATEGORIES })),
     );
     expect(text).toMatch(/Aperçu/);
     expect(text).toMatch(/Publier/);
-    expect(text).toMatch(/modifications non publi[ée]es/i);
   });
 
-  it("AC4 — « Aperçu » and « Publier » HEADER buttons are DISABLED (F-MENU-10 will activate them, #254)", () => {
-    // The buttons are placeholders for slice 10 of the epic. If a future
-    // refactor enables them by accident, a manager could trigger a publish
-    // before `publishMenu` is even wired through `useTenantMutation` —
-    // we'd rather fail loudly here than ship a misleading affordance.
+  it("AC4 — « Aperçu » and « Publier » HEADER buttons are DISABLED when no F-MENU-10 callbacks are wired (read-only baseline)", () => {
+    // The buttons stay placeholders until the page wires the publication
+    // callbacks (`onPublish` / `previewHref`). If a future refactor enables
+    // them by accident on the read-only branch, a manager could trigger a
+    // publish before `publishMenu` is even bound through `useTenantMutation`
+    // — we'd rather fail loudly here than ship a misleading affordance.
     //
     // Pinned via data-slot to stay narrow: slice 2 (#200) introduces an
     // ENABLED "+ Catégorie" button when CRUD callbacks are wired, and the
     // delete-row buttons are also enabled — the disabled contract is on the
-    // publish/preview header pair only.
+    // publish/preview header pair only, AND only without the F-MENU-10
+    // callbacks (see the F-MENU-10 tests below for the activated branch).
     const tree = serialize(MenuView({ categories: UNORDERED_CATEGORIES }));
     const headerSlots = ["menu-preview-button", "menu-publish-button"] as const;
     for (const slot of headerSlots) {
@@ -747,5 +752,211 @@ describe("MenuView — F-MENU-01 (#187)", () => {
       .filter((s): s is string => s !== null)
       .filter((s) => s === "menu-category-row");
     expect(rowSlots).toHaveLength(UNORDERED_CATEGORIES.length);
+  });
+
+  // -------------------------------------------------------------------------
+  // F-MENU-10 (#254) — header « Publier » + badge + « Aperçu » activation
+  // -------------------------------------------------------------------------
+  // The header pair (« Aperçu » + « Publier ») and the « modifications non
+  // publiées » badge are placeholders until the page wires three new props:
+  //   - `onPublish` (bound to `useTenantMutation(api.lib.menu.publication.publishMenu)`),
+  //   - `hasUnpublishedChanges` (read from
+  //     `useTenantQuery(api.lib.menu.publication.hasUnpublishedChanges)`),
+  //   - `previewHref` (URL the « Aperçu » button opens — see page.test.ts
+  //     for the wiring contract).
+  // When `onPublish` is wired, the « Publier » button becomes enabled and
+  // fires the callback on click; while `publishLoading` is true, the button
+  // re-disables and surfaces a loading affordance (load-bearing for the AC
+  // « loading state + success/error toasts »). When `previewHref` is wired,
+  // the « Aperçu » button becomes enabled (rendered as a link). When
+  // `hasUnpublishedChanges` is `true`, the badge becomes visible (active
+  // styling); when `false` (or `undefined`), the badge stays hidden — ADR
+  // 0015 « disparaît après publication réussie ».
+
+  it("F-MENU-10 — without `onPublish`, the « Publier » button stays disabled (no half-wired publish path)", () => {
+    const tree = serialize(
+      MenuView({
+        categories: UNORDERED_CATEGORIES,
+        onCreateCategory: () => {},
+        onRenameCategory: () => {},
+        onDeleteCategory: () => {},
+      }),
+    );
+    const matches = flatten(tree).filter((n) => {
+      if (n === null || "text" in n) return false;
+      return n.props["data-slot"] === "menu-publish-button";
+    }) as Array<{
+      type: string;
+      props: Record<string, unknown>;
+      children: SerializedNode[];
+    }>;
+    expect(matches).toHaveLength(1);
+    expect(matches[0].props["disabled"]).toBe(true);
+  });
+
+  it("F-MENU-10 — with `onPublish` wired, the « Publier » button is enabled and fires the callback on click", () => {
+    const onPublish = vi.fn();
+    const tree = serialize(
+      MenuView({
+        categories: UNORDERED_CATEGORIES,
+        onCreateCategory: () => {},
+        onRenameCategory: () => {},
+        onDeleteCategory: () => {},
+        onPublish,
+      }),
+    );
+    const matches = flatten(tree).filter((n) => {
+      if (n === null || "text" in n) return false;
+      return n.props["data-slot"] === "menu-publish-button";
+    }) as Array<{
+      type: string;
+      props: Record<string, unknown>;
+      children: SerializedNode[];
+    }>;
+    expect(matches).toHaveLength(1);
+    const btn = matches[0];
+    expect(btn.props["disabled"]).toBeFalsy();
+    const onClick = btn.props["onClick"] as (() => void) | undefined;
+    expect(typeof onClick).toBe("function");
+    onClick?.();
+    expect(onPublish).toHaveBeenCalledTimes(1);
+  });
+
+  it("F-MENU-10 — `publishLoading` true re-disables the « Publier » button (loading state, ADR 0015 « loading »)", () => {
+    // While the mutation is in flight, the button must NOT be re-clickable —
+    // a second click would fire `publishMenu` again, which is wasteful (the
+    // backend is idempotent at the snapshot level but the round-trip cost is
+    // real) and confusing UX (double toasts). The page tracks the in-flight
+    // state and forwards it as `publishLoading`.
+    const onPublish = vi.fn();
+    const tree = serialize(
+      MenuView({
+        categories: UNORDERED_CATEGORIES,
+        onCreateCategory: () => {},
+        onRenameCategory: () => {},
+        onDeleteCategory: () => {},
+        onPublish,
+        publishLoading: true,
+      }),
+    );
+    const matches = flatten(tree).filter((n) => {
+      if (n === null || "text" in n) return false;
+      return n.props["data-slot"] === "menu-publish-button";
+    }) as Array<{
+      type: string;
+      props: Record<string, unknown>;
+      children: SerializedNode[];
+    }>;
+    expect(matches).toHaveLength(1);
+    expect(matches[0].props["disabled"]).toBe(true);
+  });
+
+  it("F-MENU-10 — without `previewHref`, the « Aperçu » button stays disabled", () => {
+    const tree = serialize(
+      MenuView({
+        categories: UNORDERED_CATEGORIES,
+        onCreateCategory: () => {},
+        onRenameCategory: () => {},
+        onDeleteCategory: () => {},
+        onPublish: () => {},
+      }),
+    );
+    const matches = flatten(tree).filter((n) => {
+      if (n === null || "text" in n) return false;
+      return n.props["data-slot"] === "menu-preview-button";
+    }) as Array<{
+      type: string;
+      props: Record<string, unknown>;
+      children: SerializedNode[];
+    }>;
+    expect(matches).toHaveLength(1);
+    expect(matches[0].props["disabled"]).toBe(true);
+  });
+
+  it("F-MENU-10 — with `previewHref`, the « Aperçu » button surfaces an enabled link to that URL (opens the draft rendering)", () => {
+    const previewHref = "/t/tenant_test/menu/preview";
+    const tree = serialize(
+      MenuView({
+        categories: UNORDERED_CATEGORIES,
+        onCreateCategory: () => {},
+        onRenameCategory: () => {},
+        onDeleteCategory: () => {},
+        onPublish: () => {},
+        previewHref,
+      }),
+    );
+    const matches = flatten(tree).filter((n) => {
+      if (n === null || "text" in n) return false;
+      return n.props["data-slot"] === "menu-preview-button";
+    }) as Array<{
+      type: string;
+      props: Record<string, unknown>;
+      children: SerializedNode[];
+    }>;
+    expect(matches).toHaveLength(1);
+    const node = matches[0];
+    // Either a real <a> with href, or a button-as-link wrapping an <a>; we
+    // pin the URL surfaces somewhere under the preview slot.
+    const subtree = flatten(node);
+    const hasHref = subtree.some((n) => {
+      if (n === null || "text" in n) return false;
+      return n.props["href"] === previewHref;
+    });
+    expect(hasHref).toBe(true);
+    // And the surface is NOT disabled (a disabled link wouldn't navigate).
+    expect(node.props["disabled"]).toBeFalsy();
+  });
+
+  it("F-MENU-10 — `hasUnpublishedChanges` undefined or false → badge hidden (clean slate)", () => {
+    // ADR 0015 « disparaît après publication réussie » : tant qu'il n'y a
+    // rien à publier, le badge ne doit pas s'afficher (sinon il devient du
+    // bruit visuel).
+    for (const props of [
+      { hasUnpublishedChanges: undefined as boolean | undefined },
+      { hasUnpublishedChanges: false },
+    ]) {
+      const tree = serialize(
+        MenuView({
+          categories: UNORDERED_CATEGORIES,
+          onCreateCategory: () => {},
+          onRenameCategory: () => {},
+          onDeleteCategory: () => {},
+          ...props,
+        }),
+      );
+      const badges = flatten(tree).filter((n) => {
+        if (n === null || "text" in n) return false;
+        return n.props["data-slot"] === "menu-unpublished-badge";
+      });
+      expect(badges).toHaveLength(0);
+    }
+  });
+
+  it("F-MENU-10 — `hasUnpublishedChanges` true → badge visible with the « modifications non publiées » copy", () => {
+    const tree = serialize(
+      MenuView({
+        categories: UNORDERED_CATEGORIES,
+        onCreateCategory: () => {},
+        onRenameCategory: () => {},
+        onDeleteCategory: () => {},
+        hasUnpublishedChanges: true,
+      }),
+    );
+    const badges = flatten(tree).filter((n) => {
+      if (n === null || "text" in n) return false;
+      return n.props["data-slot"] === "menu-unpublished-badge";
+    });
+    expect(badges).toHaveLength(1);
+    const text = allText(tree);
+    expect(text).toMatch(/modifications non publi[ée]es/i);
+    // The visible badge MUST NOT carry the read-only `aria-disabled="true"`
+    // marker (that flag was the placeholder semantic from F-MENU-01 — once
+    // wired, it announces an actionable state, not a frozen one).
+    const badge = badges[0] as {
+      type: string;
+      props: Record<string, unknown>;
+      children: SerializedNode[];
+    };
+    expect(badge.props["aria-disabled"]).not.toBe("true");
   });
 });

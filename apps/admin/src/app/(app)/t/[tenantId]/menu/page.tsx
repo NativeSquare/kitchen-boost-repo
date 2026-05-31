@@ -3,7 +3,7 @@
 /**
  * F-MENU-01 (#187) + F-MENU-02 (#200) + F-MENU-03 (#206) + F-MENU-04 (#211)
  * + F-MENU-05 (#219) + F-MENU-06 (#226) + F-MENU-07 (#237) + F-MENU-08 (#242)
- * + F-MENU-09 (#246) — Route `/t/[tenantId]/menu/`.
+ * + F-MENU-09 (#246) + F-MENU-10 (#254) — Route `/t/[tenantId]/menu/`.
  *
  * Slice 1 (#187) wired the read-only categories list via `useTenantQuery`.
  * Slice 2 (#200) layered category CRUD on top via `useTenantMutation`. Slice 3
@@ -18,8 +18,18 @@
  * (ADR 0014 §4 / #183), wraps each call in a try/catch that surfaces backend
  * `ConvexError`s as `toast.error(...)` with the server-provided message
  * (« validation locale + INVALID_PRICE côté backend » — the « message clair »
- * derives from the ConvexError data). Slice 10 (#254) will activate the
- * « Aperçu » / « Publier » header buttons.
+ * derives from the ConvexError data). Slice 10 (#254) wires the header
+ * publication trio: « Publier » fires
+ * `useTenantMutation(api.lib.menu.publication.publishMenu)` (atomic snapshot
+ * rebuild, ADR 0015), the « modifications non publiées » badge reads
+ * `useTenantQuery(api.lib.menu.publication.hasUnpublishedChanges).hasChanges`
+ * (visible iff the live draft diverges from the snapshot), and « Aperçu »
+ * navigates to the admin-side draft renderer `/t/[tenantId]/menu/preview`
+ * (target=_blank) — the issue body's observable « éditer prix sans publier ⇒
+ * Aperçu voit NOUVEAU, getPublicMenu voit ANCIEN ». The publish handler
+ * tracks an in-flight flag (re-disables the button) and surfaces
+ * `toast.success` on resolve + `toast.error` + `getConvexErrorMessage` on
+ * reject (same shape as the rest of the CRUD handlers).
  *
  * Modal state lives at the page level (not inside `MenuView`) so the modal
  * survives reactive re-renders of the categories/items lists (a successful
@@ -46,6 +56,7 @@ import { toast } from "sonner";
 import { api } from "@packages/backend/convex/_generated/api";
 import type { Doc, Id } from "@packages/backend/convex/_generated/dataModel";
 
+import { useCurrentTenantId } from "@/components/app/tenant-context";
 import { useTenantMutation, useTenantQuery } from "@/hooks";
 import { getConvexErrorMessage } from "@/utils/getConvexErrorMessage";
 
@@ -173,7 +184,29 @@ export default function MenuPage() {
     api.lib.menu.modifiers.detachGroupFromItem,
   );
 
+  // F-MENU-10 (#254) — Publication wiring (ADR 0015 « édition brouillon →
+  // publication globale atomique »):
+  //   - `publishMenu`: the global atomic mutation the « Publier » button
+  //     fires. Rebuilds the snapshot from the live draft; the backend
+  //     wrapper enforces the kb_manager/kb_admin gate + tenantId injection.
+  //   - `hasUnpublishedChanges`: the badge indicator. Returns
+  //     `{ hasChanges, lastPublishedAt, changedSince }`; we forward
+  //     `.hasChanges` to the view. The query is reactive (Convex re-fires it
+  //     after any draft mutation OR after a successful `publishMenu`), so
+  //     the badge appears / disappears without manual refetch.
+  // The « Aperçu » button is a plain link (no mutation, no query) pointing
+  // at the admin-side draft renderer `/t/[tenantId]/menu/preview` (see
+  // `preview/page.tsx`). Target=_blank in the view so the editor and the
+  // preview can sit side-by-side.
+  const publishMenu = useTenantMutation(api.lib.menu.publication.publishMenu);
+  const publicationStatus = useTenantQuery(
+    api.lib.menu.publication.hasUnpublishedChanges,
+  );
+  const tenantId = useCurrentTenantId();
+  const previewHref = `/t/${tenantId}/menu/preview`;
+
   const [modalState, setModalState] = useState<ItemModalState>(null);
+  const [publishLoading, setPublishLoading] = useState(false);
   const [modifierGroupModalState, setModifierGroupModalState] =
     useState<ModifierGroupModalState>(null);
 
@@ -462,6 +495,32 @@ export default function MenuPage() {
       });
     }
   };
+  // F-MENU-10 (#254) — Publish handler. Wraps `publishMenu` in try/catch +
+  // toast.success / toast.error + getConvexErrorMessage (same discipline as
+  // the rest of the CRUD). Tracks an `publishLoading` flag so the button
+  // re-disables while in flight (a second click would fire the mutation
+  // twice — double toasts + wasted round-trip; backend is idempotent at the
+  // snapshot level but the cost is real).
+  //
+  // After resolve, `hasUnpublishedChanges` re-fires (Convex reactivity) and
+  // the badge disappears automatically — no manual state needed (ADR 0015
+  // « disparaît après publication réussie »). The success toast surfaces
+  // the explicit confirmation the issue body requires.
+  const handlePublish = async () => {
+    if (publishLoading) return;
+    setPublishLoading(true);
+    try {
+      await publishMenu();
+      toast.success("Menu publié");
+    } catch (error) {
+      toast.error("Impossible de publier le menu", {
+        description: getConvexErrorMessage(error),
+      });
+    } finally {
+      setPublishLoading(false);
+    }
+  };
+
   // F-MENU-09 (#246) — Opens the modifier-group modal STACKED over the item
   // modal, in « inline-from-item » mode. The item modal stays mounted behind
   // it (page-level state — survives the group modal lifecycle); on a
@@ -516,6 +575,10 @@ export default function MenuPage() {
         onCreateItem={handleCreateItem}
         onItemClick={handleItemClick}
         onReorderItems={handleReorderItems}
+        onPublish={handlePublish}
+        publishLoading={publishLoading}
+        previewHref={previewHref}
+        hasUnpublishedChanges={publicationStatus?.hasChanges}
       />
       <div className="px-4 lg:px-6">
         <ModifierGroupsSection

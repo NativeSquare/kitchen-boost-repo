@@ -11,11 +11,22 @@
  *   - else                       → flat vertical list of category rows,
  *     sorted by `order` (no V1 sub-cats, ADR 0010 / PRD 10 §5).
  *
- * Header is ALWAYS rendered with the page title « Menu » and three INACTIVE
- * placeholders — « Aperçu », « Publier », « modifications non publiées » —
- * that F-MENU-10 (#254) will wire to the publication flow. They MUST stay
- * `disabled` here so a manager can't accidentally trigger a publish before
- * the mutation is bound (ADR 0015 forbids partial publication).
+ * Header is ALWAYS rendered with the page title « Menu » and three
+ * publication affordances — « Aperçu », « Publier », « modifications non
+ * publiées ». F-MENU-10 (#254) activated them via four optional props
+ * (`onPublish` / `publishLoading` / `previewHref` / `hasUnpublishedChanges`).
+ * Each surface stays a disabled placeholder when its backing prop isn't
+ * wired (keeps the slice-1 read-only callers and the disabled-baseline test
+ * safe; preserves ADR 0015 « no partial publication before the mutation is
+ * bound »):
+ *   - Badge rendered iff `hasUnpublishedChanges === true` (ADR 0015 « disparaît
+ *     après publication réussie » — Convex reactivity flips it automatically).
+ *   - « Aperçu » renders as an anchor (target=_blank) iff `previewHref` is
+ *     set, else stays a disabled `<Button>`. The link opens the DRAFT
+ *     renderer (see `preview/page.tsx`) — the issue body's load-bearing
+ *     observable « Aperçu montre le NOUVEAU prix avant publish ».
+ *   - « Publier » enabled iff `onPublish` is wired AND `publishLoading` is
+ *     falsy — a second click while in flight would fire the mutation twice.
  *
  * F-MENU-02 (#200) layering: the view stays a pure function of its props,
  * but accepts THREE optional callbacks (`onCreateCategory` / `onRenameCategory`
@@ -42,6 +53,7 @@ import { IconPlus } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 
 import { CategoryListEditor } from "./category-list-editor";
 import { ItemList } from "./item-list";
@@ -111,6 +123,38 @@ export type MenuViewProps = {
     categoryId: Id<"menuCategories">,
     orderedIds: Id<"menuItems">[],
   ) => void;
+  /**
+   * F-MENU-10 (#254) — fires when the gérant clicks « Publier ». The page
+   * wires this to `useTenantMutation(api.lib.menu.publication.publishMenu)`
+   * (ADR 0015 « édition brouillon → publication globale atomique »). When
+   * omitted, the « Publier » button stays disabled (placeholder for slice 10).
+   */
+  onPublish?: () => void;
+  /**
+   * F-MENU-10 (#254) — true while a `publishMenu` round-trip is in flight.
+   * Re-disables the « Publier » button so a second click can't fire the
+   * mutation twice (double toasts + wasted round-trip; the backend is
+   * idempotent at the snapshot level but the cost is real).
+   */
+  publishLoading?: boolean;
+  /**
+   * F-MENU-10 (#254) — destination URL of the « Aperçu » button. Opens the
+   * DRAFT renderer (NOT the published snapshot — the issue body's load-bearing
+   * observable). When omitted, the « Aperçu » button stays disabled
+   * (placeholder for slice 10). Rendered as an anchor with
+   * `target="_blank"` so the eater PWA view can sit side-by-side with the
+   * editor.
+   */
+  previewHref?: string;
+  /**
+   * F-MENU-10 (#254) — drives the « modifications non publiées » badge
+   * visibility. The page wires this to
+   * `useTenantQuery(api.lib.menu.publication.hasUnpublishedChanges).hasChanges`
+   * (ADR 0015 « indicateur "modifications non publiées" »). `true` → badge
+   * visible; `false` or `undefined` → badge hidden. Disparaît après une
+   * publication réussie via la réactivité Convex (la query ré-émet `false`).
+   */
+  hasUnpublishedChanges?: boolean;
 };
 
 export function MenuView({
@@ -124,6 +168,10 @@ export function MenuView({
   onCreateItem,
   onItemClick,
   onReorderItems,
+  onPublish,
+  publishLoading,
+  previewHref,
+  hasUnpublishedChanges,
 }: MenuViewProps) {
   const hasCrud =
     onCreateCategory !== undefined &&
@@ -131,7 +179,12 @@ export function MenuView({
     onDeleteCategory !== undefined;
   return (
     <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
-      <MenuHeader />
+      <MenuHeader
+        onPublish={onPublish}
+        publishLoading={publishLoading}
+        previewHref={previewHref}
+        hasUnpublishedChanges={hasUnpublishedChanges}
+      />
       <div className="px-4 lg:px-6">
         <MenuBody
           categories={categories}
@@ -151,34 +204,77 @@ export function MenuView({
   );
 }
 
-function MenuHeader() {
-  // The three placeholders (« Aperçu » / « Publier » / badge) are pinned
-  // INACTIVE — F-MENU-10 (#254) will activate them. Keeping them visible
-  // (but disabled) lets the gérant see the affordance from day one without
-  // letting them trigger a half-wired flow.
+function MenuHeader({
+  onPublish,
+  publishLoading,
+  previewHref,
+  hasUnpublishedChanges,
+}: {
+  onPublish?: () => void;
+  publishLoading?: boolean;
+  previewHref?: string;
+  hasUnpublishedChanges?: boolean;
+}) {
+  // F-MENU-10 (#254) activated the three placeholders (« Aperçu » / « Publier »
+  // / badge). Each surface stays a placeholder (disabled / hidden) when its
+  // backing prop isn't wired — keeps the slice-1 read-only callers (and the
+  // disabled-baseline test) safe.
+  //
+  //  - Badge: rendered ONLY when `hasUnpublishedChanges === true` (ADR 0015
+  //    « disparaît après publication réussie » — Convex reactivity flips the
+  //    flag automatically once `publishMenu` resolves).
+  //  - « Aperçu »: rendered as an anchor (target=_blank) when `previewHref`
+  //    is set, else as a disabled `<Button>` placeholder. The link opens the
+  //    DRAFT renderer (see preview/page.tsx) — the issue body's load-bearing
+  //    observable « Aperçu montre le NOUVEAU prix avant publish ».
+  //  - « Publier »: enabled when `onPublish` is wired AND `publishLoading`
+  //    is falsy — a second click while in flight would fire the mutation
+  //    twice (double toasts + wasted round-trip).
+  const previewEnabled = previewHref !== undefined;
+  const publishEnabled = onPublish !== undefined && publishLoading !== true;
   return (
     <div className="flex flex-col gap-2 px-4 lg:flex-row lg:items-center lg:justify-between lg:px-6">
       <div className="flex items-center gap-3">
         <h1 className="text-2xl font-bold">Menu</h1>
-        <span
-          className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs font-medium"
-          data-slot="menu-unpublished-badge"
-          aria-disabled="true"
-        >
-          modifications non publiées
-        </span>
+        {hasUnpublishedChanges === true ? (
+          <span
+            className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900"
+            data-slot="menu-unpublished-badge"
+          >
+            modifications non publiées
+          </span>
+        ) : null}
       </div>
       <div className="flex items-center gap-2">
+        {previewEnabled ? (
+          <Button
+            asChild
+            type="button"
+            variant="outline"
+            data-slot="menu-preview-button"
+          >
+            <a href={previewHref} target="_blank" rel="noopener noreferrer">
+              Aperçu
+            </a>
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            variant="outline"
+            disabled
+            data-slot="menu-preview-button"
+          >
+            Aperçu
+          </Button>
+        )}
         <Button
           type="button"
-          variant="outline"
-          disabled
-          data-slot="menu-preview-button"
+          disabled={!publishEnabled}
+          onClick={publishEnabled ? onPublish : undefined}
+          data-slot="menu-publish-button"
+          className={cn(publishLoading === true ? "opacity-70" : undefined)}
         >
-          Aperçu
-        </Button>
-        <Button type="button" disabled data-slot="menu-publish-button">
-          Publier
+          {publishLoading === true ? "Publication…" : "Publier"}
         </Button>
       </div>
     </div>
