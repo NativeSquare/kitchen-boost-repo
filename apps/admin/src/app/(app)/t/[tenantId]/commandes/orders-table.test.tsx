@@ -160,18 +160,22 @@ const TENANT = "tenants_fixture" as unknown as Id<"tenants">;
 const CUSTOMER = "customers_fixture" as unknown as Id<"customers">;
 
 function order(
-  partial: Partial<Doc<"orders">> & { _id: string; createdAt: number },
+  partial: Partial<Omit<Doc<"orders">, "_id">> & {
+    _id: string;
+    createdAt: number;
+  },
 ): Doc<"orders"> {
+  const { _id, createdAt, ...rest } = partial;
   return {
-    _id: partial._id as unknown as Id<"orders">,
-    _creationTime: partial.createdAt,
+    _id: _id as unknown as Id<"orders">,
+    _creationTime: createdAt,
     tenantId: TENANT,
     customerId: CUSTOMER,
     status: "nouvelle",
     mode: "delivery",
     source: "direct",
-    createdAt: partial.createdAt,
-    ...partial,
+    createdAt,
+    ...rest,
   } as Doc<"orders">;
 }
 
