@@ -394,6 +394,58 @@ describe("ItemList — F-MENU-04 (#211)", () => {
     expect(badges).toHaveLength(1);
   });
 
+  // -------------------------------------------------------------------------
+  // F-MENU-05 (#219) — click-on-card opens the edit modal
+  // -------------------------------------------------------------------------
+  // The page wires `onItemClick(itemId)` which opens the edit modal pre-filled
+  // on the clicked item. Each card carries an `onClick` (on a clickable surface
+  // — a button or the card root); clicking it fires the callback. The Switch
+  // toggle's own click must NOT propagate (a staff doing « 1-tap out of stock »
+  // would otherwise also open the modal — bad UX, possibly conflicting writes).
+
+  it("F-MENU-05 — without onItemClick, the card has no clickable surface (read-only mode preserved)", () => {
+    const tree = serialize(
+      ItemList({
+        items: [SMASH_BURGER],
+        onToggleAvailability: vi.fn(),
+      }),
+    );
+    const surfaces = findBySlot(tree, "menu-item-card-clickable");
+    expect(surfaces).toHaveLength(0);
+  });
+
+  it("F-MENU-05 — with onItemClick, surfaces a clickable card surface per item", () => {
+    const tree = serialize(
+      ItemList({
+        items: ITEMS,
+        onToggleAvailability: vi.fn(),
+        onItemClick: vi.fn(),
+      }),
+    );
+    const surfaces = findBySlot(tree, "menu-item-card-clickable");
+    expect(surfaces).toHaveLength(ITEMS.length);
+  });
+
+  it("F-MENU-05 — clicking the card fires `onItemClick(itemId)` with the row's item id", () => {
+    const onItemClick = vi.fn();
+    const tree = serialize(
+      ItemList({
+        items: ITEMS,
+        onToggleAvailability: vi.fn(),
+        onItemClick,
+      }),
+    );
+    const surfaces = findBySlot(tree, "menu-item-card-clickable");
+    expect(surfaces).toHaveLength(ITEMS.length);
+    // The first rendered surface (after defensive resort) is Smash Burger.
+    const first = surfaces[0];
+    const onClick = first.props["onClick"] as (() => void) | undefined;
+    expect(typeof onClick).toBe("function");
+    onClick?.();
+    expect(onItemClick).toHaveBeenCalledTimes(1);
+    expect(onItemClick).toHaveBeenCalledWith(SMASH_BURGER._id);
+  });
+
   // Mark `Id` import as used so the type-only fixture compiles in node env.
   void ({} as Id<"menuItems">);
 });

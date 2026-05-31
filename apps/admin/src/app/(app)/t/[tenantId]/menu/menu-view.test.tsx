@@ -547,6 +547,105 @@ describe("MenuView — F-MENU-01 (#187)", () => {
     expect(toggles).toHaveLength(1);
   });
 
+  // -------------------------------------------------------------------------
+  // F-MENU-05 (#219) — « + Item » per-category CTA + click-on-card edit hook
+  // -------------------------------------------------------------------------
+  // The page wires `onCreateItem(categoryId)` (open the modal in CREATE mode
+  // pre-filled on the clicked category) and `onItemClick(itemId)` (open the
+  // modal in EDIT mode for the clicked item). When BOTH callbacks are wired
+  // alongside the items-section props, each category section surfaces a
+  // « + Item » footer button and each item card becomes clickable. Without
+  // the callbacks, the items list stays read-only (the existing F-MENU-04
+  // contract).
+
+  it("F-MENU-05 — without onCreateItem, no « + Item » CTA surfaces in any category section", () => {
+    type Item = Doc<"menuItems">;
+    const cat0 = UNORDERED_CATEGORIES[0]._id as string;
+    const itemsByCategory: Record<string, Item[]> = { [cat0]: [] };
+    const tree = serialize(
+      MenuView({
+        categories: UNORDERED_CATEGORIES,
+        onCreateCategory: () => {},
+        onRenameCategory: () => {},
+        onDeleteCategory: () => {},
+        itemsByCategory,
+        onToggleItemAvailability: () => {},
+      }),
+    );
+    const adders = flatten(tree).filter((n) => {
+      if (n === null || "text" in n) return false;
+      return n.props["data-slot"] === "menu-item-add";
+    });
+    expect(adders).toHaveLength(0);
+  });
+
+  it("F-MENU-05 — with onCreateItem, surfaces a « + Item » CTA per category section (count = #categories)", () => {
+    type Item = Doc<"menuItems">;
+    const cat0 = UNORDERED_CATEGORIES[0]._id as string;
+    const itemsByCategory: Record<string, Item[]> = { [cat0]: [] };
+    const tree = serialize(
+      MenuView({
+        categories: UNORDERED_CATEGORIES,
+        onCreateCategory: () => {},
+        onRenameCategory: () => {},
+        onDeleteCategory: () => {},
+        itemsByCategory,
+        onToggleItemAvailability: () => {},
+        onCreateItem: () => {},
+        onItemClick: () => {},
+      }),
+    );
+    const adders = flatten(tree).filter((n) => {
+      if (n === null || "text" in n) return false;
+      return n.props["data-slot"] === "menu-item-add";
+    });
+    expect(adders).toHaveLength(UNORDERED_CATEGORIES.length);
+  });
+
+  it("F-MENU-05 — clicking « + Item » fires `onCreateItem(categoryId)` with the originating category", () => {
+    type Item = Doc<"menuItems">;
+    const cat0 = UNORDERED_CATEGORIES[0]._id as string;
+    const itemsByCategory: Record<string, Item[]> = { [cat0]: [] };
+    const onCreateItem = vi.fn();
+    const tree = serialize(
+      MenuView({
+        categories: UNORDERED_CATEGORIES,
+        onCreateCategory: () => {},
+        onRenameCategory: () => {},
+        onDeleteCategory: () => {},
+        itemsByCategory,
+        onToggleItemAvailability: () => {},
+        onCreateItem,
+        onItemClick: () => {},
+      }),
+    );
+    const adders = flatten(tree).filter((n) => {
+      if (n === null || "text" in n) return false;
+      return n.props["data-slot"] === "menu-item-add";
+    }) as Array<{
+      type: string;
+      props: Record<string, unknown>;
+      children: SerializedNode[];
+    }>;
+    expect(adders.length).toBeGreaterThan(0);
+    // Each CTA carries an `onClick` that fires the wired callback with its
+    // originating category id. We simulate one click and assert the id flows
+    // back through.
+    const firstAdder = adders[0];
+    const onClick = firstAdder.props["onClick"] as (() => void) | undefined;
+    expect(typeof onClick).toBe("function");
+    onClick?.();
+    expect(onCreateItem).toHaveBeenCalledTimes(1);
+    // The arg is a string (category id). We don't pin which one (the
+    // first-rendered section is the lowest-order category, Entrées); pin
+    // « it's one of the input categories » so the test stays robust to
+    // ordering refactors.
+    const arg = onCreateItem.mock.calls[0][0] as string;
+    expect(
+      UNORDERED_CATEGORIES.map((c) => c._id as unknown as string),
+    ).toContain(arg);
+  });
+
   it("AC3 — renders one category per row (count matches input length)", () => {
     // Pin the row count, so a future refactor that flattens children into
     // a single string (or duplicates them) fails. The rows are pinned by
