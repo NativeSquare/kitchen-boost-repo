@@ -13,10 +13,21 @@ const rawModules = import.meta.glob([
   "!../../**/*.test.*",
 ]);
 const modules = Object.fromEntries(
-  Object.entries(rawModules).map(([path, loader]) => [
-    path.startsWith("./") ? `../../lib/admin/${path.slice(2)}` : path,
-    loader,
-  ]),
+  Object.entries(rawModules).map(([path, loader]) => {
+    // Normalise every key to be relative to the convex root (../../) — Vite
+    // returns same-dir matches as `./xxx`, sibling-dir matches as
+    // `../auth/xxx` (only ONE level up, NOT two), and deeper matches with
+    // the full glob prefix. convex-test computes its prefix from
+    // `../../_generated/...` so EVERY key must start with `../../`.
+    if (path.startsWith("./")) {
+      return [`../../lib/admin/${path.slice(2)}`, loader];
+    }
+    if (path.startsWith("../") && !path.startsWith("../../")) {
+      // Sibling of lib/admin → one level up → re-rebase to convex root.
+      return [`../../lib/${path.slice(3)}`, loader];
+    }
+    return [path, loader];
+  }),
 );
 
 /**

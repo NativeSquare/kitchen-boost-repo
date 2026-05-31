@@ -40,9 +40,14 @@
  *      The admin invite is legacy-shaped (no targetRole); the manager
  *      invite is stamped `targetRole: "kb_manager"` + `tenantId: test-t1`.
  *   2. Open each URL in the browser, create a password (same is fine).
- *      `acceptInvite` (B-AUTH-3 wired) routes to the right branch:
- *        - admin URL  → role: "kb_admin", no userTenants
- *        - manager URL → role: "customer" + userTenants(kb_manager, test-t1)
+ *      `acceptInvite` (B-AUTH-6 wired) routes to the right branch:
+ *        - admin URL  → users.role = "kb_admin", no userTenants
+ *        - manager URL → users untouched (no role/name patch) +
+ *                        userTenants(kb_manager, test-t1) created.
+ *                        The global role stays absent; getCurrentActor
+ *                        defaults a missing role to "customer", which IS
+ *                        the canonical global state for a manager (ADR
+ *                        0011 — per-tenant roles live on userTenants).
  *      Log out between each (avatar menu) — or use a private window.
  *   3. Run the E2E-A1 → A5 checks in the browser using the right account.
  *      NO `seedE2EAuthAccounts` call needed for the nominal path — accept
