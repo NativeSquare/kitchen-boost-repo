@@ -146,6 +146,21 @@ describe("page.tsx — F-PARAMETRES-01 (#193) wiring contract", () => {
     expect(updateSettingsBindings).toBe(1);
   });
 
+  it("F-PARAMETRES-04 (#234) — wires `onSaveAcceptedModes` via the SAME `tenant.updateSettings` mutation (D5 élargi, ONE backend brick across branding / coordonnées / modes — still a single useTenantMutation binding)", () => {
+    // The Modes acceptés section forwards an `{ acceptedModes }` patch into
+    // the same `useTenantMutation(api.lib.admin.tenantSettings.updateSettings)`
+    // — NO new mutation, NO duplicate hook.
+    expect(PAGE_SOURCE).toMatch(/onSaveAcceptedModes/);
+    const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
+    const updateSettingsBindings = (
+      collapsed.match(
+        /useTenantMutation\([^)]*api\.lib\.admin\.tenantSettings\.updateSettings[^)]*\)/g,
+      ) ?? []
+    ).length;
+    // Still ONE binding — sections 1/2/3 all share it.
+    expect(updateSettingsBindings).toBe(1);
+  });
+
   it("AC delegation — delegates rendering to `ParametresView` (keeps the page thin + the view testable in node env)", () => {
     expect(PAGE_SOURCE).toMatch(/ParametresView/);
   });
