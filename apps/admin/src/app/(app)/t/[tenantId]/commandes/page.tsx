@@ -2,25 +2,29 @@
 
 /**
  * F-COMMANDES-PAGE-SHELL (#222) + F-COMMANDES-LIVE-TABLE (#227) +
- * F-COMMANDES-FILTERS (#238) — Route `/t/[tenantId]/commandes/`.
+ * F-COMMANDES-FILTERS (#238) + F-COMMANDES-DETAIL-MODAL (#239) —
+ * Route `/t/[tenantId]/commandes/`.
  *
  * Slice 1 (#222) shipped a scaffold-only page (no data wired). Slice 2 (#227)
- * wired the live orders table to the canonical Convex read. Slice 3 (#238,
- * THIS file's current contract) holds the filter state on the page (per
- * EPIC #141 « état local `useState` sur la page, pas d'URL query params V1 »)
- * and applies the pure `filterOrders(orders, filter)` to the live payload
- * before passing it to the view:
+ * wired the live orders table. Slice 3 (#238) added the filter state +
+ * pure `filterOrders` pipe. Slice 4 (#239, THIS file's current contract)
+ * layers the read-only `OrderDetailModal` on top:
  *
  *   const orders = useTenantQuery(api.lib.orders.orders.listOrders);
- *   const [filter, setFilter] = useState<OrdersFilter>(DEFAULT_FILTER);
- *   const filtered = orders === undefined ? undefined : filterOrders(orders, filter);
+ *   const [selectedOrderId, setSelectedOrderId] = useState<Id<"orders"> | null>(null);
+ *   const detail = useTenantQuery(
+ *     api.lib.orders.orders.getOrder,
+ *     selectedOrderId === null ? "skip" : { orderId: selectedOrderId },
+ *   );
  *   return (
- *     <CommandesView
- *       orders={filtered}
- *       filter={filter}
- *       onDateRangeChange={…}
- *       onStatusesChange={…}
- *     />
+ *     <>
+ *       <CommandesView orders={filtered} … onOrderClick={setSelectedOrderId} />
+ *       <OrderDetailModal
+ *         open={selectedOrderId !== null}
+ *         onOpenChange={(o) => o || setSelectedOrderId(null)}
+ *         detail={detail}
+ *       />
+ *     </>
  *   );
  *
  * Why this shape:
@@ -30,16 +34,16 @@
  *     hand and does NOT call raw `useQuery` (which would either fail
  *     Forbidden or — worse — silently leak the wrong tenant's data, ADR
  *     0010).
- *   - The query is already `tenantQuery({allow: ["kb_manager", "staff"]})`
- *     server-side, indexed `by_tenant_status`, sort DESC on `createdAt`
- *     (cf. `packages/backend/convex/lib/orders/orders.ts`). The kitchen
- *     workflow + staff visibility are honoured by the wrapper; the page
- *     mounts under the `(app)/t/[tenantId]` layout that gates access.
- *   - One single subscription per page mount (no N+1): we ONLY call
- *     `useTenantQuery` once, on `listOrders`. The filter is a CLIENT-SIDE
- *     concern — no extra backend round-trip when the gérant picks a date
- *     preset or toggles a status pill (AC: « re-render local, pas de
- *     nouveau fetch backend »).
+ *   - Both queries are tenant-scoped on the backend: `listOrders` and
+ *     `getOrder` use `tenantQuery({allow: ["kb_manager", "staff"]})` (cf.
+ *     `packages/backend/convex/lib/orders/orders.ts`). The kitchen workflow
+ *     + staff visibility are honoured by the wrapper; the page mounts under
+ *     the `(app)/t/[tenantId]` layout that gates access.
+ *   - The detail subscription opens ONLY once a row is clicked — `"skip"`
+ *     until then. So « pas de N+1 » remains the invariant: on first mount
+ *     we still hold a single live subscription (`listOrders`). The
+ *     `getOrder` subscription is bounded by the modal's lifetime; closing
+ *     it nulls `selectedOrderId` which re-skips the query and unwatches.
  *   - `filterOrders` is pure and re-runs on every render — a live Convex
  *     push that lands while a filter is active produces a fresh `orders`
  *     payload, the filter re-applies, and the table includes/hides the new
@@ -50,28 +54,30 @@
  * Reactivity (EPIC #141 decision, 2026-05-29): Convex's WebSocket transport
  * pushes a fresh result whenever any backend mutation touches the tenant's
  * orders (Stripe webhook `confirmPayment` flipping `en attente de paiement →
- * nouvelle`, kitchen workflow `recordStatus`, refund). The table updates
- * without manual refresh — no SSE/WebSocket plumbing required.
+ * nouvelle`, kitchen workflow `recordStatus`, refund). Both the table AND
+ * the modal update without manual refresh — no SSE/WebSocket plumbing
+ * required.
  *
  * Access guard: inherited transitively from the parent
  * `(app)/t/[tenantId]/layout.tsx` (F-SHELL-04, #175) — a KB Manager who
  * tries to reach a tenant they don't own is rejected by `decideTenantGate`
  * before this page ever renders; a KB Admin reaching a non-existent
  * `tenantId` gets a clean 404. Cross-tenant fuzz at the backend layer is
- * owned by the `tenantQuery` wrapper of `listOrders` itself (ADR 0010) —
- * the wrapper refuses Forbidden even if a future regression bypassed the
- * layout. We do NOT duplicate those pins here.
+ * owned by the `tenantQuery` wrapper of `listOrders` / `getOrder`
+ * themselves (ADR 0010) — the wrapper refuses Forbidden even if a future
+ * regression bypassed the layout. We do NOT duplicate those pins here.
  *
  * Sidebar entry: the « Commandes » entry was added to the operational
  * sidebar by F-SHELL-06 (#196); its contract is re-pinned from
  * `sidebar-entry.test.ts`.
  *
- * Out of scope this slice (later slices of EPIC #141): modal détail, action
- * remboursement, export CSV. The page therefore does NOT call
- * `useTenantMutation` / `useTenantAction` / a refund entrypoint, and does
- * NOT reference `getOrder` — see `page.test.ts` for the negative pins.
+ * Out of scope this slice (later slice of EPIC #141): refund action
+ * (F-COMMANDES-REFUND) + export CSV. The page therefore does NOT call
+ * `useTenantMutation` / `useTenantAction` / a refund entrypoint, and the
+ * modal renders no refund button — see `page.test.ts` + `order-detail-modal
+ * .test.tsx` for the negative pins.
  *
- * Scope discipline (#238 hard constraint, mirrors menu/page.tsx,
+ * Scope discipline (#239 hard constraint, mirrors menu/page.tsx,
  * mes-clients/page.tsx, parametres/page.tsx, qr/page.tsx): this file (and
  * its siblings under `apps/admin/src/app/(app)/t/[tenantId]/commandes/`) is
  * the ONLY surface touched by this story. Zero touch to `apps/web`,
