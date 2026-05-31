@@ -253,11 +253,12 @@ async function maybeAutoBascule(
   };
 }
 
-// Test-only export of the private helper. The runtime contract is "private to
-// this module"; slice 3/4 mutations live in the SAME module file so they get the
-// helper via direct symbol access. Vitest specs need the symbol via the module
-// surface to assert the enriched shape directly — exporting under a `_internal`
-// alias keeps it OFF the public `lib/onboarding/index.ts` barrel.
+// Module-internal export of the helper. The contract is "private to the
+// onboarding module": slices 3 (setMilestone) and 4 (recordIntegrationStatus)
+// will import it via './pipeline' from inside the SAME module, and pipeline.test
+// asserts the enriched shape via the module surface. It is DELIBERATELY left out
+// of the public `lib/onboarding/index.ts` barrel so no cross-module consumer can
+// grab it — that contract is enforced by the barrel, not by `export` visibility.
 export { maybeAutoBascule };
 
 /**
