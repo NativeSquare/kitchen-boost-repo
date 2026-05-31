@@ -81,10 +81,12 @@
 import { useMemo, useState } from "react";
 
 import { api } from "@packages/backend/convex/_generated/api";
+import type { Id } from "@packages/backend/convex/_generated/dataModel";
 
 import { useTenantQuery } from "@/hooks";
 
 import { CommandesView } from "./commandes-view";
+import { OrderDetailModal } from "./order-detail-modal";
 import {
   filterOrders,
   type DateRangeKey,
@@ -107,11 +109,37 @@ export default function CommandesPage() {
   const orders = useTenantQuery(api.lib.orders.orders.listOrders, {});
   const [filter, setFilter] = useState<OrdersFilter>(DEFAULT_FILTER);
 
+  // F-COMMANDES-DETAIL-MODAL (#239) — page-owned modal state. `null` =
+  // closed, no `getOrder` subscription open. Otherwise the id of the order
+  // whose detail is showing. We use a single piece of state (not separate
+  // `open` + `selectedId`) so a stale id can never linger after close.
+  const [selectedOrderId, setSelectedOrderId] = useState<Id<"orders"> | null>(
+    null,
+  );
+
+  // Bind `getOrder` via useTenantQuery, but pass "skip" until a row is
+  // selected — otherwise Convex would open a subscription on every page
+  // mount even before the gérant clicks a row (« Pas de N+1 » remains the
+  // invariant from F-COMMANDES-LIVE-TABLE; the detail subscription only
+  // opens on demand). Once selected, the query refires on every backend
+  // mutation that touches THIS order — the modal stays live without manual
+  // refresh, mirroring the table's reactivity discipline.
+  const detail = useTenantQuery(
+    api.lib.orders.orders.getOrder,
+    selectedOrderId === null ? "skip" : { orderId: selectedOrderId },
+  );
+
   const handleDateRangeChange = (next: DateRangeKey) => {
     setFilter((prev) => ({ ...prev, dateRange: next }));
   };
   const handleStatusesChange = (next: OrderStatus[]) => {
     setFilter((prev) => ({ ...prev, statuses: next }));
+  };
+  const handleOrderClick = (orderId: Id<"orders">) => {
+    setSelectedOrderId(orderId);
+  };
+  const handleOpenChange = (open: boolean) => {
+    if (!open) setSelectedOrderId(null);
   };
 
   // Apply the pure predicate to the live payload — re-runs on every Convex
@@ -124,11 +152,19 @@ export default function CommandesPage() {
   );
 
   return (
-    <CommandesView
-      orders={filtered}
-      filter={filter}
-      onDateRangeChange={handleDateRangeChange}
-      onStatusesChange={handleStatusesChange}
-    />
+    <>
+      <CommandesView
+        orders={filtered}
+        filter={filter}
+        onDateRangeChange={handleDateRangeChange}
+        onStatusesChange={handleStatusesChange}
+        onOrderClick={handleOrderClick}
+      />
+      <OrderDetailModal
+        open={selectedOrderId !== null}
+        onOpenChange={handleOpenChange}
+        detail={detail}
+      />
+    </>
   );
 }

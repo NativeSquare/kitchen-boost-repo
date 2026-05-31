@@ -44,7 +44,7 @@
  * `packages/backend/convex/`.
  */
 
-import type { Doc } from "@packages/backend/convex/_generated/dataModel";
+import type { Doc, Id } from "@packages/backend/convex/_generated/dataModel";
 
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -68,6 +68,15 @@ export type OrdersTableProps = {
    *   - else        → list to render (backend guarantees DESC by createdAt)
    */
   orders: Doc<"orders">[] | undefined;
+  /**
+   * F-COMMANDES-DETAIL-MODAL (#239) — page-owned row click handler. When
+   * provided, each populated row carries an `onClick` that invokes this
+   * callback with the row's order id (and a cursor-pointer affordance hint
+   * surfaces). When omitted, rows render without a click handler — the
+   * table stays usable in surfaces (export, KDS preview) where rows aren't
+   * the detail modal trigger.
+   */
+  onRowClick?: (orderId: Id<"orders">) => void;
 };
 
 /**
@@ -84,7 +93,7 @@ const MODE_LABEL: Record<Doc<"orders">["mode"], string> = {
 /** Em-dash sentinel for an unavailable total (e.g. « en attente de paiement »). */
 const TOTAL_PLACEHOLDER = "—";
 
-export function OrdersTable({ orders }: OrdersTableProps) {
+export function OrdersTable({ orders, onRowClick }: OrdersTableProps) {
   if (orders === undefined) {
     return <OrdersTableSkeleton />;
   }
@@ -96,7 +105,11 @@ export function OrdersTable({ orders }: OrdersTableProps) {
       <OrdersTableHeader />
       <TableBody>
         {orders.map((order) => (
-          <OrderRow key={String(order._id)} order={order} />
+          <OrderRow
+            key={String(order._id)}
+            order={order}
+            onRowClick={onRowClick}
+          />
         ))}
       </TableBody>
     </Table>
@@ -121,13 +134,29 @@ function OrdersTableHeader() {
   );
 }
 
-function OrderRow({ order }: { order: Doc<"orders"> }) {
+function OrderRow({
+  order,
+  onRowClick,
+}: {
+  order: Doc<"orders">;
+  onRowClick?: (orderId: Id<"orders">) => void;
+}) {
   const total =
     order.pricingSnapshot === undefined
       ? TOTAL_PLACEHOLDER
       : formatPriceCentimes(order.pricingSnapshot.total);
+  // Click is opt-in: present only when the page passes a handler. Surfaces
+  // a cursor-pointer affordance hint so the gérant immediately reads the row
+  // as clickable (F-COMMANDES-DETAIL-MODAL #239 « clic sur ligne ouvre le
+  // modal »).
+  const clickable = onRowClick !== undefined;
   return (
-    <TableRow data-slot="orders-table-row" data-order-id={String(order._id)}>
+    <TableRow
+      data-slot="orders-table-row"
+      data-order-id={String(order._id)}
+      className={clickable ? "cursor-pointer" : undefined}
+      onClick={clickable ? () => onRowClick(order._id) : undefined}
+    >
       <TableCell className="tabular-nums">
         {formatOrderDate(order.createdAt)}
       </TableCell>

@@ -398,12 +398,17 @@ describe("OrdersTable — F-COMMANDES-LIVE-TABLE (#227)", () => {
       }>;
       expect(rows.length).toBe(3);
       // Click the first row → expect the first order id.
-      const firstClick = rows[0]!.props.onClick as (() => void) | undefined;
+      const firstRow = rows[0];
+      const secondRow = rows[1];
+      if (firstRow === undefined || secondRow === undefined) {
+        throw new Error("expected at least two rows in the serialized tree");
+      }
+      const firstClick = firstRow.props.onClick as (() => void) | undefined;
       expect(typeof firstClick).toBe("function");
       firstClick?.();
       expect(calls).toEqual(["orders_a"]);
       // Click the second row → expect the second order id appended.
-      const secondClick = rows[1]!.props.onClick as (() => void) | undefined;
+      const secondClick = secondRow.props.onClick as (() => void) | undefined;
       secondClick?.();
       expect(calls).toEqual(["orders_a", "orders_b"]);
     });

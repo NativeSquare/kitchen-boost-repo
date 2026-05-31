@@ -304,6 +304,7 @@ describe("CommandesView — F-COMMANDES-FILTERS (#238)", () => {
         filter: { dateRange: "7d", statuses: ["nouvelle"] },
         onDateRangeChange: NOOP,
         onStatusesChange: NOOP,
+        onOrderClick: NOOP,
       }),
     );
     // We assert that the 7d date button surfaces data-active="true" — proof
