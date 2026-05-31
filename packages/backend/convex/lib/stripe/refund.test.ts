@@ -813,3 +813,279 @@ describe("2.5-C chargeRefunded webhook — idempotent local reconciliation", () 
     expect(out.applied).toBe(false);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// B-REFUND-PUBLIC-ACTION (#221) — refundOrder: tenantAction({allow:["kb_manager"]})
+// exposed to the KB Admin UI so a manager can refund a paid order from any non-
+// terminal state (NOT a kitchen Refusal — that path is `refuse` from `nouvelle`).
+// Reuses the same Stripe refund mechanism (POST /refunds on the connected
+// account, total only V1, KB commission untouched) but is a MANAGER-DRIVEN
+// action: audited with the actor (not `system`), and transitions the order to
+// `refusée` outside the kitchen state machine (so a `livrée` / `remise` /
+// `collectée` order can be refunded a posteriori).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("B-REFUND-PUBLIC-ACTION refundOrder — public tenantAction (kb_manager only)", () => {
+  let t: ReturnType<typeof convexTest>;
+  let seed: Seed;
+  let customerA: Id<"customers">;
+  let orderId: Id<"orders">;
+  let paymentId: Id<"payments">;
+  let fetchSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(async () => {
+    t = convexTest(schema, modules);
+    seed = await seedTwoTenantsAllRoles(t);
+    await seedReadyStripeAccount(t, seed.tenantA.tenantId, "acct_resto_A");
+    customerA = await seedReachableCustomer(t, "eater-public@x.fr");
+    ({ orderId, paymentId } = await seedPaidOrder(
+      t,
+      seed.tenantA.tenantId,
+      customerA,
+      "pi_public_refund",
+    ));
+  });
+
+  afterEach(() => {
+    fetchSpy?.mockRestore();
+  });
+
+  it("a kb_manager refunds a paid order — Stripe call + payment refunded + order refusée + notif + audit", async () => {
+    fetchSpy = mockStripeRefund({
+      status: 200,
+      body: { id: "re_public", status: "succeeded" },
+    });
+
+    const out = await t
+      .withIdentity({ subject: seed.tenantA.managerId })
+      .action(api.lib.stripe.refund.refundOrder, {
+        tenantId: seed.tenantA.tenantId,
+        orderId,
+      });
+    expect(out.refunded).toBe(true);
+
+    // Exactly one Stripe call — total refund on the resto's connected account.
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain("/refunds");
+    expect((init.headers as Record<string, string>)["Stripe-Account"]).toBe(
+      "acct_resto_A",
+    );
+    const body = String(init.body);
+    expect(body).toContain("payment_intent=pi_public_refund");
+    expect(body).not.toContain("refund_application_fee=true");
+    expect(body).not.toMatch(/(^|&)amount=/);
+
+    // Payment row flipped + refundId stamped.
+    const payment = await readPayment(t, paymentId);
+    expect(payment?.status).toBe("refunded");
+    expect(payment?.refundId).toBe("re_public");
+
+    // Order transitioned to `refusée` outside the kitchen state machine
+    // (this was a `nouvelle` order — but the action must also handle `livrée`
+    // etc. — see the next test). `refusedAt` stamped.
+    const { order, events } = await readOrder(t, orderId);
+    expect(order?.status).toBe("refusée");
+    expect(order?.refusedAt).toBeDefined();
+    expect(events.some((e) => e.status === "refusée")).toBe(true);
+
+    // Client refund_issued notif queued (reuses the planTransactionalSends
+    // chain — same as `refuse` / `refundAbortedOrder`).
+    const notifs = await readNotifs(t, customerA);
+    expect(notifs.length).toBeGreaterThan(0);
+    expect(
+      notifs.every((n) => n.transactionalTrigger === "refund_issued"),
+    ).toBe(true);
+
+    // Audit — MANAGER-driven (not `system`): carries the actor + the verb +
+    // metadata (orderId + refunded amount).
+    const audit = await readAudit(t, seed.tenantA.tenantId);
+    const row = audit.find((a) => a.action === "order.refundOrder");
+    expect(row).toBeDefined();
+    expect(row?.actorUserId).toBe(seed.tenantA.managerId);
+    expect(row?.actorRole).toBe("kb_manager");
+    expect(row?.targetType).toBe("order");
+    expect(row?.targetId).toBe(orderId);
+    expect(
+      (row?.metadata as { amountRefunded?: number } | undefined)
+        ?.amountRefunded,
+    ).toBe(PRICING.total);
+  });
+
+  it("refunds a `livrée` order a posteriori — works outside the kitchen state machine", async () => {
+    // Move the order to `livrée` (terminal — `refuse` would refuse this).
+    await t.run(async (ctx) => {
+      await ctx.db.patch(orderId, {
+        status: "livrée",
+        completedAt: Date.now(),
+      });
+    });
+    fetchSpy = mockStripeRefund({
+      status: 200,
+      body: { id: "re_livree", status: "succeeded" },
+    });
+
+    const out = await t
+      .withIdentity({ subject: seed.tenantA.managerId })
+      .action(api.lib.stripe.refund.refundOrder, {
+        tenantId: seed.tenantA.tenantId,
+        orderId,
+      });
+    expect(out.refunded).toBe(true);
+
+    const { order } = await readOrder(t, orderId);
+    expect(order?.status).toBe("refusée");
+    const payment = await readPayment(t, paymentId);
+    expect(payment?.status).toBe("refunded");
+  });
+
+  it("throws if the order is unpaid (paidAt absent) — no Stripe call, nothing written", async () => {
+    // Strip paidAt to simulate an unpaid order.
+    await t.run(async (ctx) => {
+      await ctx.db.patch(orderId, { paidAt: undefined });
+    });
+    fetchSpy = vi.spyOn(global, "fetch");
+
+    await expect(
+      t
+        .withIdentity({ subject: seed.tenantA.managerId })
+        .action(api.lib.stripe.refund.refundOrder, {
+          tenantId: seed.tenantA.tenantId,
+          orderId,
+        }),
+    ).rejects.toThrow(/not refundable|unpaid|paidAt/i);
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    const { order } = await readOrder(t, orderId);
+    expect(order?.status).toBe("nouvelle"); // untouched
+    const payment = await readPayment(t, paymentId);
+    expect(payment?.status).toBe("succeeded"); // untouched
+  });
+
+  it("throws if the order is already `refusée` — no Stripe call, idempotent shape", async () => {
+    await t.run(async (ctx) => {
+      await ctx.db.patch(orderId, {
+        status: "refusée",
+        refusedAt: Date.now(),
+      });
+    });
+    fetchSpy = vi.spyOn(global, "fetch");
+
+    await expect(
+      t
+        .withIdentity({ subject: seed.tenantA.managerId })
+        .action(api.lib.stripe.refund.refundOrder, {
+          tenantId: seed.tenantA.tenantId,
+          orderId,
+        }),
+    ).rejects.toThrow(/not refundable|already refused|refusée/i);
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("CROSS-TENANT FUZZ — a kb_manager of tenant B cannot refund tenant A's order", async () => {
+    fetchSpy = vi.spyOn(global, "fetch");
+
+    await expect(
+      t
+        .withIdentity({ subject: seed.tenantB.managerId })
+        .action(api.lib.stripe.refund.refundOrder, {
+          tenantId: seed.tenantA.tenantId, // attacking tenant A
+          orderId,
+        }),
+    ).rejects.toThrow(/forbidden|no access/i);
+
+    // No Stripe call, no DB write on A.
+    expect(fetchSpy).not.toHaveBeenCalled();
+    const payment = await readPayment(t, paymentId);
+    expect(payment?.status).toBe("succeeded");
+    const { order } = await readOrder(t, orderId);
+    expect(order?.status).toBe("nouvelle");
+  });
+
+  it("CROSS-TENANT FUZZ — a kb_manager of tenant B cannot refund their OWN tenant via a tenant-A orderId", async () => {
+    // Even if the attacker passes their own tenantId, the order belongs to A so
+    // it must resolve to NOT_FOUND for the tenancy seam (no cross-tenant write).
+    fetchSpy = vi.spyOn(global, "fetch");
+
+    await expect(
+      t
+        .withIdentity({ subject: seed.tenantB.managerId })
+        .action(api.lib.stripe.refund.refundOrder, {
+          tenantId: seed.tenantB.tenantId, // own tenant
+          orderId, // foreign order (belongs to A)
+        }),
+    ).rejects.toThrow(/not found|forbidden/i);
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    const payment = await readPayment(t, paymentId);
+    expect(payment?.status).toBe("succeeded");
+  });
+
+  it("KB Admin (root) can refund any tenant's order via the root override", async () => {
+    fetchSpy = mockStripeRefund({
+      status: 200,
+      body: { id: "re_root", status: "succeeded" },
+    });
+
+    const out = await t
+      .withIdentity({ subject: seed.adminId })
+      .action(api.lib.stripe.refund.refundOrder, {
+        tenantId: seed.tenantA.tenantId,
+        orderId,
+      });
+    expect(out.refunded).toBe(true);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+    // Audit row records the kb_admin actor (root override).
+    const audit = await readAudit(t, seed.tenantA.tenantId);
+    const row = audit.find((a) => a.action === "order.refundOrder");
+    expect(row?.actorUserId).toBe(seed.adminId);
+    expect(row?.actorRole).toBe("kb_admin");
+  });
+
+  it('staff is REFUSED — refundOrder is allow:["kb_manager"] only (root passes)', async () => {
+    fetchSpy = vi.spyOn(global, "fetch");
+
+    await expect(
+      t
+        .withIdentity({ subject: seed.tenantA.staffId })
+        .action(api.lib.stripe.refund.refundOrder, {
+          tenantId: seed.tenantA.tenantId,
+          orderId,
+        }),
+    ).rejects.toThrow(/forbidden|not permitted/i);
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    const payment = await readPayment(t, paymentId);
+    expect(payment?.status).toBe("succeeded");
+  });
+
+  it("an unauthenticated caller is REFUSED — no identity, no Stripe call", async () => {
+    fetchSpy = vi.spyOn(global, "fetch");
+
+    await expect(
+      t.action(api.lib.stripe.refund.refundOrder, {
+        tenantId: seed.tenantA.tenantId,
+        orderId,
+      }),
+    ).rejects.toThrow(/unauthenticated|forbidden/i);
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("a customer (global role) is REFUSED — customers cannot refund anyone's order", async () => {
+    fetchSpy = vi.spyOn(global, "fetch");
+
+    await expect(
+      t
+        .withIdentity({ subject: seed.customerId })
+        .action(api.lib.stripe.refund.refundOrder, {
+          tenantId: seed.tenantA.tenantId,
+          orderId,
+        }),
+    ).rejects.toThrow(/forbidden|no access/i);
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
