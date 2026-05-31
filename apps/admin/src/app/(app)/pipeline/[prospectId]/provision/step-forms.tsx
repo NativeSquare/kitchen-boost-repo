@@ -2,12 +2,13 @@
 
 /**
  * F-WIZARD [1/10] (#265) + [3/10] (#267) + [5/10] (#269) + [6/10] (#270) +
- * [7/10] (#271) + [9/10] (#273) — Step{N}Form dispatch map.
+ * [7/10] (#271) + [9/10] (#273) + [10/10] (#274) — Step{N}Form dispatch map.
  *
- * Steps still using a placeholder (« TODO Step N — <title> » + Prev/Next nav
- * buttons): 2 and 8. Each follow-up wizard slice swaps its own placeholder
+ * Step still using a placeholder (« TODO Step N — <title> » + Prev/Next nav
+ * buttons): step 2 only. Each follow-up wizard slice swaps its own placeholder
  * for a real form WITHOUT touching the wizard shell. The shell hands
- * `onPrev` / `onNext` to whatever form lives at the slot.
+ * `onPrev` / `onNext` (and optionally `onStepChange` for non-adjacent
+ * navigation) to whatever form lives at the slot.
  *
  * Step 1 (« Compte resto ») is the SLICE CHARNIÈRE: #267 replaces its
  * placeholder with the real provisioning form (`Step1ProvisioningForm`) and a
@@ -42,8 +43,9 @@
  * `step3-stripe-kyc-form.test.tsx`) and directly through CI runtime + E2E.
  *
  * Step 1 has no « Précédent » target (it's the entry point); step 8 has no
- * « Suivant » target (it's the activation — the real form lands in its own
- * slice with a 2-step confirmation UX). All other steps render both buttons.
+ * « Suivant » target (it's the terminal activation step — its own form ships
+ * the « Mettre en production » CTA + 2-step confirmation dialog). All other
+ * steps render both buttons.
  *
  * The placeholders are EXPLICITLY un-styled flair-wise: they MUST look
  * obviously-placeholder so an operator never confuses them for a usable
@@ -51,7 +53,7 @@
  */
 import { useState } from "react";
 import { useAction, useConvex, useMutation, useQuery } from "convex/react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import { api } from "@packages/backend/convex/_generated/api";
@@ -79,11 +81,20 @@ import {
   Step7ManagerInviteForm,
   type ExistingManagerInvite,
 } from "./step7-manager-invite-form";
+import { Step8ActivationForm, type Step8Recap } from "./step8-activation-form";
 import { WIZARD_STEPS, type WizardStepNumber } from "./wizard-stepper";
 
 export type StepFormProps = {
   onPrev: () => void;
   onNext: () => void;
+  /**
+   * Jump to an arbitrary step (1..8). Threaded by the wizard view so that
+   * step forms which need non-adjacent navigation (e.g. Step8Form's
+   * « Retour step 5 » CTA when the menu is not published) can do so without
+   * piggy-backing on `onPrev`. Optional so legacy / placeholder forms that
+   * only need Prev/Next don't need to wire it.
+   */
+  onStepChange?: (n: WizardStepNumber) => void;
 };
 
 function placeholderBody(step: WizardStepNumber) {
@@ -123,17 +134,17 @@ function NavButtons({
   );
 }
 
-function makeStepForm(step: Exclude<WizardStepNumber, 1 | 3 | 4 | 5 | 6 | 7>) {
+function makeStepForm(
+  step: Exclude<WizardStepNumber, 1 | 3 | 4 | 5 | 6 | 7 | 8>,
+) {
   function StepForm({ onPrev, onNext }: StepFormProps) {
     return (
       <div className="flex flex-col gap-4 px-4 py-2 lg:px-6">
         {placeholderBody(step)}
-        {/* Step 1 / Step 3 are real forms (#267 / #269) and own their own nav
-            UX; placeholder steps always render Précédent (step 1 is the entry
-            point, so step 2's Précédent navigates back to step 1's real form),
-            and hide Suivant on step 8 (activation — its own slice ships a
-            2-step confirmation UX). */}
-        <NavButtons onPrev={onPrev} onNext={onNext} hideNext={step === 8} />
+        {/* Steps 1, 3, 4, 5, 6, 7, 8 are real forms and own their own nav UX;
+            the only remaining placeholder step is step 2 (« Domaine ») which
+            renders the default Prev/Next nav strip. */}
+        <NavButtons onPrev={onPrev} onNext={onNext} />
       </div>
     );
   }
@@ -1193,7 +1204,237 @@ function Step7Form({ onPrev, onNext }: StepFormProps): React.JSX.Element {
 }
 
 export const Step2Form = makeStepForm(2);
-export const Step8Form = makeStepForm(8);
+
+/**
+ * F-WIZARD [10/10] (#274) — Step8Form: thin Convex-wiring wrapper around the
+ * pure `Step8ActivationForm`. Owns:
+ *   - the prospect read (`useQuery(api.lib.onboarding.crm.getProspect)`) for
+ *     the `tenantId` back-link + the récap's email gérant fallback;
+ *   - the tenant read via `loadTenantForStripe` (root kbAdminQuery, same
+ *     primitive the sibling Step{4,6,7}Form wrappers use) for the récap's
+ *     compte resto / domaine / stripe / branding sections;
+ *   - the publication status read (`hasUnpublishedChanges.lastPublishedAt`)
+ *     — canonical signal for the « menu publié » hard-gate (issue spec:
+ *     « Warning bloquant si menu non publié à ce step »);
+ *   - the menu count reads (`categories.list` + `items.list`) for the
+ *     récap's menu block;
+ *   - the latest manager invite read
+ *     (`getLatestManagerInviteForTenant`) for the récap's invitation block;
+ *   - the `tenant.activate` mutation
+ *     (`api.lib.admin.tenantSettings.activate`) — B-TENANT-LIFECYCLE D6 (#178);
+ *   - the in-flight + error state surfaced inline and via toast;
+ *   - the post-success navigation: `router.push('/t/<tenantId>')` (canonical
+ *     tenant home, redirects to the operational landing `/menu` per
+ *     `apps/admin/src/app/(app)/t/[tenantId]/page.tsx`) + a success toast
+ *     announcing the final PWA URL;
+ *   - the « Retour step 5 » CTA — wired to `onStepChange(5)` (threaded by
+ *     the wizard view, see `StepFormProps.onStepChange`).
+ *
+ * Hard gate: `Step8ActivationForm` exposes a `menuPublished` prop. The
+ * wrapper derives it from `publicationStatus?.lastPublishedAt !== null`;
+ * when false, the « Mettre en production » CTA is disabled by the pure
+ * form (a defensive backstop on top of the wizard's cursor heuristic, which
+ * already gates step 8 behind step 5 completion).
+ *
+ * Mirror of Step{4,5,6,7}Form's discipline: the lean `node` vitest env does
+ * not execute these hooks (the serializer's try/catch swallows the « invalid
+ * hook call » when invoking the wrapper outside a React render); the
+ * wrapper's behaviour is pinned indirectly through the pure form tests
+ * (`step8-activation-form.test.tsx`) and directly through CI runtime + E2E.
+ *
+ * Idempotence reminder: `tenant.activate` is NON-IDEMPOTENT in V1 — calling
+ * it twice on an already-active tenant throws `INVALID_STATE`. The wrapper
+ * surfaces the message inline + as a toast and keeps the dialog open so
+ * the operator can dismiss without re-firing.
+ */
+function Step8Form({ onPrev, onStepChange }: StepFormProps): React.JSX.Element {
+  const params = useParams<{ prospectId: string }>();
+  const prospectId = params?.prospectId as unknown as
+    | Id<"prospects">
+    | undefined;
+  const router = useRouter();
+
+  const prospect = useQuery(
+    api.lib.onboarding.crm.getProspect,
+    prospectId !== undefined ? { prospectId } : "skip",
+  );
+
+  const tenantId = prospect?.tenantId;
+  const tenantDoc = useQuery(
+    api.lib.stripe.account.loadTenantForStripe,
+    tenantId !== undefined ? { tenantId } : "skip",
+  );
+
+  const categories = useQuery(
+    api.lib.menu.categories.list,
+    tenantId !== undefined ? { tenantId } : "skip",
+  );
+  const items = useQuery(
+    api.lib.menu.items.list,
+    tenantId !== undefined ? { tenantId } : "skip",
+  );
+  const publicationStatus = useQuery(
+    api.lib.menu.publication.hasUnpublishedChanges,
+    tenantId !== undefined ? { tenantId } : "skip",
+  );
+  const latestInvite = useQuery(
+    api.lib.admin.managerInvites.getLatestManagerInviteForTenant,
+    tenantId !== undefined ? { tenantId } : "skip",
+  );
+
+  const activateTenant = useMutation(api.lib.admin.tenantSettings.activate);
+
+  const [isActivating, setIsActivating] = useState(false);
+  const [activateError, setActivateError] = useState<string | null>(null);
+
+  // Defensive loading / not-found — outer `decideWizardShell` + the cursor
+  // heuristic normally gate these (same defence as Step{4,5,6,7}Form).
+  if (prospect === undefined) {
+    return (
+      <div
+        className="flex items-center justify-center px-4 py-12 lg:px-6"
+        data-slot="wizard-step8-loading"
+      >
+        <Spinner className="h-6 w-6" />
+      </div>
+    );
+  }
+  if (prospect === null) {
+    return (
+      <div
+        className="px-4 py-6 text-sm text-destructive lg:px-6"
+        data-slot="wizard-step8-not-found"
+      >
+        Prospect introuvable. Impossible de mettre le restaurant en production.
+      </div>
+    );
+  }
+  if (tenantId === undefined) {
+    // Hard gate: activation flips the tenant lifecycle — step 1 must run
+    // first. (The wizard's cursor already prevents this in normal flow;
+    // defensive backstop.)
+    return (
+      <div
+        className="px-4 py-6 text-sm text-destructive lg:px-6"
+        data-slot="wizard-step8-no-tenant"
+      >
+        Le tenant doit être créé (Step 1) avant de pouvoir l&apos;activer.
+      </div>
+    );
+  }
+  if (
+    tenantDoc === undefined ||
+    categories === undefined ||
+    items === undefined ||
+    publicationStatus === undefined ||
+    latestInvite === undefined
+  ) {
+    return (
+      <div
+        className="flex items-center justify-center px-4 py-12 lg:px-6"
+        data-slot="wizard-step8-loading-tenant"
+      >
+        <Spinner className="h-6 w-6" />
+      </div>
+    );
+  }
+  if (tenantDoc === null) {
+    return (
+      <div
+        className="px-4 py-6 text-sm text-destructive lg:px-6"
+        data-slot="wizard-step8-tenant-not-found"
+      >
+        Tenant introuvable. Impossible de mettre le restaurant en production.
+      </div>
+    );
+  }
+
+  // Recompose the final PWA URL — same front helper the QR slice uses.
+  const pwaUrl = tenantPwaUrl({
+    slug: tenantDoc.slug,
+    customDomain: tenantDoc.customDomain,
+  });
+  const bootstrapHost = `${tenantDoc.slug}.kitchen-boost.fr`;
+  const menuPublished = publicationStatus.lastPublishedAt !== null;
+
+  const recap: Step8Recap = {
+    compteResto: {
+      name: tenantDoc.name,
+      slug: tenantDoc.slug,
+      address: tenantDoc.address,
+      phone: tenantDoc.phone,
+      emailManager: latestInvite?.email ?? prospect.email,
+    },
+    domaine: {
+      customDomain: tenantDoc.customDomain,
+      bootstrapHost,
+    },
+    stripe: {
+      // Heuristic: the link has been generated iff Stripe assigned an account
+      // id. Mirror of the wiring in `step3-stripe-kyc-form.tsx`.
+      accountLinkGenerated: tenantDoc.stripeAccountId !== undefined,
+      status: tenantDoc.stripeStatus,
+    },
+    branding: {
+      logoUrl: tenantDoc.branding?.logoUrl,
+      primaryColor: tenantDoc.branding?.primaryColor,
+    },
+    menu: {
+      categoriesCount: categories.length,
+      itemsCount: items.length,
+      lastPublishedAt: publicationStatus.lastPublishedAt,
+    },
+    invitation: {
+      sentAt: latestInvite?._creationTime ?? null,
+      email: latestInvite?.email ?? prospect.email,
+    },
+  };
+
+  const handleActivate = async () => {
+    if (isActivating) return;
+    setIsActivating(true);
+    setActivateError(null);
+    try {
+      await activateTenant({ tenantId });
+      toast.success(`Tenant activé — visible côté client à ${pwaUrl}`);
+      // Canonical landing: the tenant home (`/t/[tenantId]`), which itself
+      // redirects to the operational default (`/menu`). The issue body
+      // proposes `/t/[tenantId]/dashboard` OR the prospect fiche; the
+      // dashboard route doesn't exist yet (no /dashboard segment under /t),
+      // so we land on the tenant home — the operator hits the same surface
+      // the supervision switcher lands on, with the existing
+      // « Ouvrir la vue resto » launcher flip on the prospect fiche
+      // (already wired by F-WIZARD [2/10] #266) for return visits.
+      router.push(`/t/${tenantId as unknown as string}`);
+    } catch (error) {
+      const message = getConvexErrorMessage(error);
+      setActivateError(message);
+      toast.error("Impossible d'activer le tenant", { description: message });
+    } finally {
+      setIsActivating(false);
+    }
+  };
+
+  const handleBackToMenuStep = () => {
+    if (onStepChange !== undefined) {
+      onStepChange(5);
+    }
+  };
+
+  return (
+    <Step8ActivationForm
+      slug={tenantDoc.slug}
+      pwaUrl={pwaUrl}
+      recap={recap}
+      menuPublished={menuPublished}
+      onActivate={handleActivate}
+      isActivating={isActivating}
+      activateError={activateError}
+      onPrev={onPrev}
+      onBackToMenuStep={handleBackToMenuStep}
+    />
+  );
+}
 
 /**
  * Step → component lookup used by `WizardView` to dispatch the current

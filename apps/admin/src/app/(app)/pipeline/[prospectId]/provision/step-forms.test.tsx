@@ -1,20 +1,24 @@
 /**
  * F-WIZARD [1/10] (#265) + [3/10] (#267) + [5/10] (#269) + [6/10] (#270) +
- * [7/10] (#271) + [8/10] (#272) + [9/10] (#273) — Step{N}Form placeholders
- * test matrix.
+ * [7/10] (#271) + [8/10] (#272) + [9/10] (#273) + [10/10] (#274) — Step{N}Form
+ * placeholders test matrix.
  *
- * Each step renders a placeholder « TODO Step N » + Prev/Next nav buttons,
- * EXCEPT Step 1 (real form, #267), Step 3 (real form, #269), Step 4 (real
- * form, #270), Step 5 (real form, #271), Step 6 (real form, #272) and Step 7
- * (real form, #273) which are pinned by their own test files
- * (`step1-provisioning-form.test.tsx` / `step3-stripe-kyc-form.test.tsx` /
- * `step4-branding-form.test.tsx` / `step5-menu-form.test.tsx` /
- * `step6-qr-form.test.tsx` / `step7-manager-invite-form.test.tsx`). The
- * placeholder slots for the remaining steps (2, 8) stay stable so each
- * follow-up wizard slice can replace its own Step{N}Form without touching
- * the wizard shell.
+ * Only Step 2 (« Domaine ») still renders a placeholder « TODO Step N » +
+ * Prev/Next nav buttons; every other step ships its own real form pinned by a
+ * dedicated test file:
+ *   - Step 1 (#267) — `step1-provisioning-form.test.tsx`
+ *   - Step 3 (#269) — `step3-stripe-kyc-form.test.tsx`
+ *   - Step 4 (#270) — `step4-branding-form.test.tsx`
+ *   - Step 5 (#271) — `step5-menu-form.test.tsx`
+ *   - Step 6 (#272) — `step6-qr-form.test.tsx`
+ *   - Step 7 (#273) — `step7-manager-invite-form.test.tsx`
+ *   - Step 8 (#274) — `step8-activation-form.test.tsx`
  *
- * Why Step 1 / Step 3 / Step 4 / Step 5 / Step 6 / Step 7 are excluded from the placeholder iterations:
+ * The placeholder slot for step 2 stays stable so the follow-up F-WIZARD
+ * [11/10+] slice (if/when ordered) can replace its own Step2Form without
+ * touching the wizard shell.
+ *
+ * Why Step 1 / Step 3 / Step 4 / Step 5 / Step 6 / Step 7 / Step 8 are excluded from the placeholder iterations:
  * ---------------------------------------------------------------------------
  * Step 1 (« Compte resto ») is the SLICE CHARNIÈRE — without the provisioned
  * tenant, no subsequent step has an object to operate on. Step 3 (« Stripe
@@ -27,8 +31,9 @@
  * — also unfit for the « TODO Step N » shape. Step 6 (« QR sticker PDF »)
  * reuses the F-QR `QrGeneratorView` (#182) — same shape constraint. Step 7
  * (« Invitation gérant ») wires the `inviteManager` mutation + the
- * `getLatestManagerInviteForTenant` query (envoyée badge + Renvoyer) — its
- * surface doesn't fit the « TODO Step N » shape either. Each form's
+ * `getLatestManagerInviteForTenant` query (envoyée badge + Renvoyer). Step 8
+ * (« Activer ») renders the récap + the 2-step confirmation dialog and wires
+ * `tenant.activate` — also unfit for the « TODO Step N » shape. Each form's
  * contract is pinned in its own test file.
  */
 import { describe, expect, it, vi } from "vitest";
@@ -188,40 +193,36 @@ describe("STEP_FORMS — F-WIZARD [1/10] (#265)", () => {
     ]);
   });
 
-  it("each placeholder form renders a placeholder mentioning its own step number (« Step N » or « Étape N »)", () => {
+  it("the step 2 placeholder form renders a placeholder mentioning its own step number (« Step 2 » or « Étape 2 »)", () => {
     // Step 1 (#267), Step 3 (#269), Step 4 (#270), Step 5 (#271), Step 6
-    // (#272) and Step 7 (#273) are real forms — pinned by their own test
-    // files, not by this placeholder loop.
-    for (const n of [2, 8] as const) {
-      const Form = STEP_FORMS[n];
-      const tree = serialize(Form({ onPrev: () => {}, onNext: () => {} }));
-      const text = allText(tree);
-      // Either « Step N » or « Étape N » is acceptable; pinning either form
-      // keeps the placeholder explicit but lets the FR copy improve later.
-      expect(text).toMatch(new RegExp(`(Step|[ÉE]tape)\\s*${n}`, "i"));
-    }
+    // (#272), Step 7 (#273) and Step 8 (#274) are real forms — pinned by
+    // their own test files, not by this placeholder loop.
+    const Form = STEP_FORMS[2];
+    const tree = serialize(Form({ onPrev: () => {}, onNext: () => {} }));
+    const text = allText(tree);
+    // Either « Step 2 » or « Étape 2 » is acceptable; pinning either form
+    // keeps the placeholder explicit but lets the FR copy improve later.
+    expect(text).toMatch(/(Step|[ÉE]tape)\s*2/i);
   });
 
-  it("each form renders a « Précédent » button that triggers onPrev (Step 1's Précédent is disabled but still wired — issue spec « boutons Précédent / Suivant qui naviguent »)", () => {
-    for (const n of [2, 8] as const) {
-      const Form = STEP_FORMS[n];
-      const onPrev = vi.fn();
-      const tree = serialize(Form({ onPrev, onNext: () => {} }));
-      const prevBtn = findByText(tree, /Pr[ée]c[ée]dent/i);
-      expect(prevBtn).not.toBeNull();
-      const btn = prevBtn as { props: { onClick?: () => void } };
-      btn.props.onClick?.();
-      expect(onPrev).toHaveBeenCalledTimes(1);
-    }
+  it("the step 2 placeholder renders a « Précédent » button that triggers onPrev", () => {
+    const Form = STEP_FORMS[2];
+    const onPrev = vi.fn();
+    const tree = serialize(Form({ onPrev, onNext: () => {} }));
+    const prevBtn = findByText(tree, /Pr[ée]c[ée]dent/i);
+    expect(prevBtn).not.toBeNull();
+    const btn = prevBtn as { props: { onClick?: () => void } };
+    btn.props.onClick?.();
+    expect(onPrev).toHaveBeenCalledTimes(1);
   });
 
   it("step 2 (placeholder) renders a « Suivant » button that triggers onNext", () => {
     // Step 1 (« Créer le tenant » submit), Step 3 (« Continuer »), Step 4
     // (« Suivant » via composite nav strip), Step 5 (« Continuer » with
     // publication gate), Step 6 (« Continuer » non-bloquant after the QR
-    // PDF preview) and Step 7 (« Continuer » non-bloquant after the invite
-    // CTA) own their own next-button UX — pinned in their respective test
-    // files.
+    // PDF preview), Step 7 (« Continuer » non-bloquant after the invite
+    // CTA) and Step 8 (« Mettre en production » + 2-step confirm dialog)
+    // own their own next-button UX — pinned in their respective test files.
     const Form = STEP_FORMS[2];
     const onNext = vi.fn();
     const tree = serialize(Form({ onPrev: () => {}, onNext }));
@@ -230,13 +231,5 @@ describe("STEP_FORMS — F-WIZARD [1/10] (#265)", () => {
     const btn = nextBtn as { props: { onClick?: () => void } };
     btn.props.onClick?.();
     expect(onNext).toHaveBeenCalledTimes(1);
-  });
-
-  it("step 8 (« Activer ») does not render a « Suivant » (it's the terminal step — the real form lands in the activation slice with its own confirmation UX)", () => {
-    const Form8 = STEP_FORMS[8];
-    const tree = serialize(Form8({ onPrev: () => {}, onNext: () => {} }));
-    const text = allText(tree);
-    // No « Suivant » in the terminal step.
-    expect(text).not.toMatch(/Suivant/);
   });
 });
