@@ -152,12 +152,11 @@ export function ModesEditor({
 
   // GUARD predicate — exactly one mode is currently active. In that
   // case, that toggle MUST stay on (turning it off would leave both
-  // off, which the AC forbids).
-  const onlyDeliveryActive = liveDelivery && !liveClickAndCollect;
-  const onlyClickAndCollectActive = !liveDelivery && liveClickAndCollect;
-  const lastActiveModeIsDelivery = onlyDeliveryActive;
-  const lastActiveModeIsClickAndCollect = onlyClickAndCollectActive;
-  const guardEngaged = onlyDeliveryActive || onlyClickAndCollectActive;
+  // off, which the AC forbids). Read as: « ce toggle est le dernier
+  // mode actif » ⇒ verrouille-le.
+  const deliveryIsLastActive = liveDelivery && !liveClickAndCollect;
+  const clickAndCollectIsLastActive = !liveDelivery && liveClickAndCollect;
+  const guardEngaged = deliveryIsLastActive || clickAndCollectIsLastActive;
 
   // Inline server-side error (AC : « inline form errors »). Reset on
   // each submit attempt. Also surfaces the defence-in-depth refusal
@@ -236,7 +235,7 @@ export function ModesEditor({
           id={deliveryToggleId}
           data-slot="parametres-modes-delivery-toggle"
           checked={liveDelivery}
-          disabled={lastActiveModeIsDelivery}
+          disabled={deliveryIsLastActive}
           onCheckedChange={(next) => {
             setValue("delivery", next, { shouldDirty: true });
           }}
@@ -261,7 +260,7 @@ export function ModesEditor({
           id={clickAndCollectToggleId}
           data-slot="parametres-modes-click-and-collect-toggle"
           checked={liveClickAndCollect}
-          disabled={lastActiveModeIsClickAndCollect}
+          disabled={clickAndCollectIsLastActive}
           onCheckedChange={(next) => {
             setValue("clickAndCollect", next, { shouldDirty: true });
           }}
