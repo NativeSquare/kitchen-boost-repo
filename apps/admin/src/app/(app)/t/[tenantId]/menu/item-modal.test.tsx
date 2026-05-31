@@ -602,6 +602,252 @@ describe("ItemModal — F-MENU-05 (#219)", () => {
     });
   });
 
+  // ---------------------------------------------------------------------------
+  // F-MENU-06 (#226) — Photo upload / replace / remove
+  // ---------------------------------------------------------------------------
+  // The modal exposes a photo section (edit mode only — an item must exist
+  // before `attachPhoto` can target it). Three observable affordances:
+  //   - thumbnail SLOT (always rendered when in edit mode, placeholder when
+  //     the item has no `photoStorageId`, mirror of `item-list.tsx` slot
+  //     `menu-item-thumbnail`),
+  //   - file picker (`<input type="file" accept="image/*">`) that, when the
+  //     user picks a file, fires `onUploadPhoto(itemId, file)` exactly once,
+  //   - remove button — rendered ONLY when `item.photoStorageId !== undefined`
+  //     (the gérant cannot « remove » a photo that doesn't exist; back-end is
+  //     idempotent but the affordance must not be misleading). Click fires
+  //     `onRemovePhoto(itemId)` exactly once.
+  // The « replace » flow is the same as « upload » — picking a new file calls
+  // `onUploadPhoto` which the page wires to `attachPhoto` (the BACKEND deletes
+  // the previous blob — `setTenantItemPhoto` invariant, no orphan, the front
+  // doesn't explicitly call `removePhoto` first, see issue body « le backend
+  // libère l ancien blob »).
+  describe("F-MENU-06 (#226) — Photo upload / replace / remove", () => {
+    it("CREATE mode — does NOT surface a photo section (no item id to attach to yet)", () => {
+      // `attachPhoto` requires an `itemId` — pre-create, we have none. The
+      // story body scopes photo CRUD to the item modal AFTER creation; we
+      // never invent a « stash the file, upload after create » flow here.
+      const tree = serialize(
+        ItemModal({
+          mode: "create",
+          open: true,
+          categories: CATEGORIES,
+          categoryId: CATEGORIES[1]._id,
+          onOpenChange: vi.fn(),
+          onCreate: vi.fn(),
+          onUpdate: vi.fn(),
+          onDelete: vi.fn(),
+          onUploadPhoto: vi.fn(),
+          onRemovePhoto: vi.fn(),
+        }),
+      );
+      expect(findBySlot(tree, "menu-item-modal-photo-section")).toHaveLength(0);
+      expect(findBySlot(tree, "menu-item-modal-photo-input")).toHaveLength(0);
+      expect(findBySlot(tree, "menu-item-modal-photo-thumbnail")).toHaveLength(
+        0,
+      );
+    });
+
+    it("EDIT mode — surfaces a photo section with a file picker and a thumbnail SLOT", () => {
+      const tree = serialize(
+        ItemModal({
+          mode: "edit",
+          open: true,
+          categories: CATEGORIES,
+          categoryId: EXISTING_ITEM.categoryId,
+          item: EXISTING_ITEM,
+          onOpenChange: vi.fn(),
+          onCreate: vi.fn(),
+          onUpdate: vi.fn(),
+          onDelete: vi.fn(),
+          onUploadPhoto: vi.fn(),
+          onRemovePhoto: vi.fn(),
+        }),
+      );
+      expect(findBySlot(tree, "menu-item-modal-photo-section")).toHaveLength(1);
+      // The thumbnail SLOT is ALWAYS rendered in edit mode (placeholder when
+      // no photo, real <img> when resolved) — mirror of item-list.tsx.
+      expect(findBySlot(tree, "menu-item-modal-photo-thumbnail")).toHaveLength(
+        1,
+      );
+      const inputs = findBySlot(tree, "menu-item-modal-photo-input");
+      expect(inputs).toHaveLength(1);
+      // File picker, image-only.
+      expect(inputs[0].props["type"]).toBe("file");
+      expect(inputs[0].props["accept"]).toMatch(/image/);
+    });
+
+    it("EDIT mode — file picker `onChange` fires `onUploadPhoto(itemId, file)` exactly once with the picked file", () => {
+      // The picker forwards the FIRST file picked (no multi-upload V1 — one
+      // photo per item, schema field `photoStorageId` is singular). The page
+      // owns the two-step Convex upload (`generateUploadUrl` → POST → `attachPhoto`);
+      // the modal just hands it the File.
+      const onUploadPhoto = vi.fn();
+      const tree = serialize(
+        ItemModal({
+          mode: "edit",
+          open: true,
+          categories: CATEGORIES,
+          categoryId: EXISTING_ITEM.categoryId,
+          item: EXISTING_ITEM,
+          onOpenChange: vi.fn(),
+          onCreate: vi.fn(),
+          onUpdate: vi.fn(),
+          onDelete: vi.fn(),
+          onUploadPhoto,
+          onRemovePhoto: vi.fn(),
+        }),
+      );
+      const input = findBySlot(tree, "menu-item-modal-photo-input")[0];
+      const onChange = input.props["onChange"] as
+        | ((e: { target: { files: FileList | null } }) => void)
+        | undefined;
+      expect(typeof onChange).toBe("function");
+      // Fake File + FileList — vitest under node env doesn't have a DOM, so
+      // we craft a minimal File-shaped object and a FileList-shaped array.
+      const fakeFile = {
+        name: "burger.jpg",
+        type: "image/jpeg",
+      } as unknown as File;
+      const fakeFileList = [fakeFile] as unknown as FileList;
+      Object.defineProperty(fakeFileList, "length", { value: 1 });
+      onChange?.({ target: { files: fakeFileList } });
+      expect(onUploadPhoto).toHaveBeenCalledTimes(1);
+      expect(onUploadPhoto).toHaveBeenCalledWith(EXISTING_ITEM._id, fakeFile);
+    });
+
+    it("EDIT mode — file picker `onChange` with an EMPTY file list does NOT fire `onUploadPhoto` (user cancelled the dialog)", () => {
+      // The native file picker fires `change` with an empty FileList when
+      // the user opens then cancels — we must NOT trigger a no-op mutation.
+      const onUploadPhoto = vi.fn();
+      const tree = serialize(
+        ItemModal({
+          mode: "edit",
+          open: true,
+          categories: CATEGORIES,
+          categoryId: EXISTING_ITEM.categoryId,
+          item: EXISTING_ITEM,
+          onOpenChange: vi.fn(),
+          onCreate: vi.fn(),
+          onUpdate: vi.fn(),
+          onDelete: vi.fn(),
+          onUploadPhoto,
+          onRemovePhoto: vi.fn(),
+        }),
+      );
+      const input = findBySlot(tree, "menu-item-modal-photo-input")[0];
+      const onChange = input.props["onChange"] as
+        | ((e: { target: { files: FileList | null } }) => void)
+        | undefined;
+      onChange?.({ target: { files: null } });
+      const emptyList = [] as unknown as FileList;
+      Object.defineProperty(emptyList, "length", { value: 0 });
+      onChange?.({ target: { files: emptyList } });
+      expect(onUploadPhoto).not.toHaveBeenCalled();
+    });
+
+    it("EDIT mode — surfaces the « remove photo » button ONLY when the item has a photoStorageId", () => {
+      // Without a photo: no remove button (idempotent backend, but the
+      // affordance would be misleading).
+      const noPhotoTree = serialize(
+        ItemModal({
+          mode: "edit",
+          open: true,
+          categories: CATEGORIES,
+          categoryId: EXISTING_ITEM.categoryId,
+          item: EXISTING_ITEM, // no photoStorageId
+          onOpenChange: vi.fn(),
+          onCreate: vi.fn(),
+          onUpdate: vi.fn(),
+          onDelete: vi.fn(),
+          onUploadPhoto: vi.fn(),
+          onRemovePhoto: vi.fn(),
+        }),
+      );
+      expect(
+        findBySlot(noPhotoTree, "menu-item-modal-photo-remove"),
+      ).toHaveLength(0);
+
+      // With a photo: remove button surfaces.
+      const withPhoto = makeItem({
+        name: "Smash Burger",
+        categoryId: EXISTING_ITEM.categoryId as unknown as string,
+        basePrice: 1290,
+      });
+      withPhoto.photoStorageId =
+        "kg2_storage_id" as Doc<"menuItems">["photoStorageId"];
+      const tree = serialize(
+        ItemModal({
+          mode: "edit",
+          open: true,
+          categories: CATEGORIES,
+          categoryId: withPhoto.categoryId,
+          item: withPhoto,
+          onOpenChange: vi.fn(),
+          onCreate: vi.fn(),
+          onUpdate: vi.fn(),
+          onDelete: vi.fn(),
+          onUploadPhoto: vi.fn(),
+          onRemovePhoto: vi.fn(),
+        }),
+      );
+      expect(findBySlot(tree, "menu-item-modal-photo-remove")).toHaveLength(1);
+    });
+
+    it("EDIT mode — clicking « remove photo » fires `onRemovePhoto(itemId)` exactly once", () => {
+      const onRemovePhoto = vi.fn();
+      const withPhoto = makeItem({
+        name: "Smash Burger",
+        categoryId: EXISTING_ITEM.categoryId as unknown as string,
+        basePrice: 1290,
+      });
+      withPhoto.photoStorageId =
+        "kg2_storage_id" as Doc<"menuItems">["photoStorageId"];
+      const tree = serialize(
+        ItemModal({
+          mode: "edit",
+          open: true,
+          categories: CATEGORIES,
+          categoryId: withPhoto.categoryId,
+          item: withPhoto,
+          onOpenChange: vi.fn(),
+          onCreate: vi.fn(),
+          onUpdate: vi.fn(),
+          onDelete: vi.fn(),
+          onUploadPhoto: vi.fn(),
+          onRemovePhoto,
+        }),
+      );
+      const remove = findBySlot(tree, "menu-item-modal-photo-remove")[0];
+      const onClick = remove.props["onClick"] as (() => void) | undefined;
+      expect(typeof onClick).toBe("function");
+      onClick?.();
+      expect(onRemovePhoto).toHaveBeenCalledTimes(1);
+      expect(onRemovePhoto).toHaveBeenCalledWith(withPhoto._id);
+    });
+
+    it("EDIT mode — when `onUploadPhoto` / `onRemovePhoto` are NOT wired, NO photo section renders (preserves the F-MENU-05 contract)", () => {
+      // Slice contract: the photo wiring is OPT-IN. The previous slice's
+      // tests construct the modal without these callbacks; they MUST keep
+      // working (no photo section, no thumbnail surface in edit mode).
+      const tree = serialize(
+        ItemModal({
+          mode: "edit",
+          open: true,
+          categories: CATEGORIES,
+          categoryId: EXISTING_ITEM.categoryId,
+          item: EXISTING_ITEM,
+          onOpenChange: vi.fn(),
+          onCreate: vi.fn(),
+          onUpdate: vi.fn(),
+          onDelete: vi.fn(),
+        }),
+      );
+      expect(findBySlot(tree, "menu-item-modal-photo-section")).toHaveLength(0);
+      expect(findBySlot(tree, "menu-item-modal-photo-input")).toHaveLength(0);
+      expect(findBySlot(tree, "menu-item-modal-photo-remove")).toHaveLength(0);
+    });
+  });
+
   describe("Validation — local price guard (before mutation)", () => {
     it("AC6 — surfaces a visible error message when the price input is negative (parsed from the UI)", () => {
       // The schema requires `basePrice >= 0` (`assertNonNegativePrice`,
