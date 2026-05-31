@@ -58,6 +58,26 @@ import type { ReactElement, ReactNode } from "react";
 import type { Doc, Id } from "@packages/backend/convex/_generated/dataModel";
 import type { OrderWithDetail } from "@packages/backend/convex/lib/tenancy";
 
+// F-COMMANDES-REFUND (#243) — the refund subtree (`RefundAffordance`) owns
+// local `useState` for the reason text + the pending flag. Under
+// `environment: "node"` there's no React renderer, so `useState` throws and
+// the serializer's catch-branch swallows the entire subtree. Shim the hooks
+// (same pattern as `item-modal.test.tsx`) so the first-render tree
+// materialises and the data-slots / handlers surface for assertion.
+vi.mock("react", async () => {
+  const actual = await vi.importActual<typeof import("react")>("react");
+  return {
+    ...actual,
+    useState: <T,>(initial: T | (() => T)) => {
+      const v =
+        typeof initial === "function" ? (initial as () => T)() : initial;
+      return [v, () => {}];
+    },
+    useEffect: () => {},
+    useMemo: <T,>(factory: () => T) => factory(),
+  };
+});
+
 // The component renders inside a `<Dialog>`; radix primitives call hooks
 // internally (`useId`, `useContext`) which throw under `environment: "node"`.
 // Passthrough the primitives so the inner content renders to the tree —

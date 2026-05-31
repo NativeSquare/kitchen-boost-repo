@@ -2,8 +2,8 @@
 
 /**
  * F-COMMANDES-PAGE-SHELL (#222) + F-COMMANDES-LIVE-TABLE (#227) +
- * F-COMMANDES-FILTERS (#238) + F-COMMANDES-DETAIL-MODAL (#239) —
- * Route `/t/[tenantId]/commandes/`.
+ * F-COMMANDES-FILTERS (#238) + F-COMMANDES-DETAIL-MODAL (#239) +
+ * F-COMMANDES-REFUND (#243) — Route `/t/[tenantId]/commandes/`.
  *
  * Slice 1 (#222) shipped a scaffold-only page (no data wired). Slice 2 (#227)
  * wired the live orders table. Slice 3 (#238) added the filter state +
@@ -71,11 +71,26 @@
  * sidebar by F-SHELL-06 (#196); its contract is re-pinned from
  * `sidebar-entry.test.ts`.
  *
- * Out of scope this slice (later slice of EPIC #141): refund action
- * (F-COMMANDES-REFUND) + export CSV. The page therefore does NOT call
- * `useTenantMutation` / `useTenantAction` / a refund entrypoint, and the
- * modal renders no refund button — see `page.test.ts` + `order-detail-modal
- * .test.tsx` for the negative pins.
+ * F-COMMANDES-REFUND (#243) wires the manager-driven refund:
+ *   - `api.lib.stripe.refund.refundOrder` via `useTenantAction` (the action
+ *     twin of `useTenantMutation` — ADR 0014 §4 auto-injects `tenantId`).
+ *   - RBAC: `onRefund` is forwarded to the modal ONLY when the active
+ *     tenant-role is `kb_manager` (the backend allow-list) OR when the
+ *     user is `kb_admin` (root override). `staff` gets `onRefund:
+ *     undefined`, so no button mounts (the modal renders nothing if any of
+ *     `onRefund` / `canRefund` / `refundAmountCentimes` is missing).
+ *   - Refundability gate (mirror of the backend `NOT_REFUNDABLE` guard):
+ *     `paidAt` set + status !== `refusée`. Computed from the live
+ *     `getOrder` payload, so the CTA hides instantly when Convex pushes a
+ *     fresh status (e.g. another tab refunded the same order).
+ *   - On success: `toast.success("Commande remboursée")` + close the
+ *     parent modal (sets `selectedOrderId = null`). The Convex reactivity
+ *     already flips the row to `refusée` in the table — no manual refresh.
+ *   - On error: `toast.error(getConvexErrorMessage(error))` with the wire
+ *     message (same discipline as the menu CRUD page). The modal stays
+ *     open so the gérant keeps the context.
+ *
+ * Out of scope this slice (later slice of EPIC #141): export CSV.
  *
  * Scope discipline (#239 hard constraint, mirrors menu/page.tsx,
  * mes-clients/page.tsx, parametres/page.tsx, qr/page.tsx): this file (and
@@ -85,11 +100,14 @@
  */
 
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import { api } from "@packages/backend/convex/_generated/api";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
 
-import { useTenantQuery } from "@/hooks";
+import { useTenantAction, useTenantQuery } from "@/hooks";
+import { useSession } from "@/lib/session";
+import { getConvexErrorMessage } from "@/utils/getConvexErrorMessage";
 
 import { CommandesView } from "./commandes-view";
 import { OrderDetailModal } from "./order-detail-modal";
@@ -135,6 +153,50 @@ export default function CommandesPage() {
     selectedOrderId === null ? "skip" : { orderId: selectedOrderId },
   );
 
+  // F-COMMANDES-REFUND (#243) — bind the public manager-driven refund
+  // action. ADR 0014 §4: `useTenantAction` auto-injects `tenantId` from the
+  // URL, the page only forwards the `orderId`. Backend RBAC
+  // (`tenantAction({allow:["kb_manager"]})` + root override) is the source
+  // of truth; the front-side gate below mirrors it to hide the affordance
+  // for `staff` (so they never see a button they couldn't click anyway).
+  const triggerRefund = useTenantAction(api.lib.stripe.refund.refundOrder);
+
+  // RBAC mirror — issue body #243: « visible uniquement si role = kb_manager
+  // ; PAS staff ; KB Admin passe via root override backend ». KB Admin is
+  // detected via `session.isAdmin === true`; a tenant-attached kb_manager
+  // is detected via the per-tenant role on `session.tenants`. `staff` falls
+  // through to `false` and the modal does not mount the refund button.
+  const session = useSession();
+  const activeRole: "kb_admin" | "kb_manager" | "staff" | null =
+    session.status === "ready"
+      ? session.session.isAdmin
+        ? "kb_admin"
+        : (session.session.tenants.find(
+            (t) => selectedOrderId !== null && t.tenantId === detail?.tenantId,
+          )?.role ?? null)
+      : null;
+  const canRefundRole =
+    activeRole === "kb_admin" || activeRole === "kb_manager";
+
+  // Refundability mirror — issue body #243: « visible uniquement si
+  // order.paidAt est set ET order.status !== "refusée" ». The backend
+  // `refundOrder` re-checks both BEFORE the Stripe call (issue #221), the
+  // front gate only avoids showing a button that would throw on click.
+  const canRefund =
+    detail !== undefined &&
+    detail !== null &&
+    detail.paidAt !== undefined &&
+    detail.status !== "refusée" &&
+    canRefundRole;
+
+  // Amount surfaced in the CTA + confirm dialog. Falls back to undefined
+  // when the snapshot isn't frozen yet (paidAt would also be absent in
+  // that case, so `canRefund` is false — the modal hides the button).
+  const refundAmountCentimes =
+    detail !== undefined && detail !== null
+      ? detail.pricingSnapshot?.total
+      : undefined;
+
   const handleDateRangeChange = (next: DateRangeKey) => {
     setFilter((prev) => ({ ...prev, dateRange: next }));
   };
@@ -146,6 +208,29 @@ export default function CommandesPage() {
   };
   const handleOpenChange = (open: boolean) => {
     if (!open) setSelectedOrderId(null);
+  };
+
+  // F-COMMANDES-REFUND (#243) — refund handler. The modal owns the local
+  // pending flag during the await (so the « Confirmer » button can disable
+  // itself + spin); the page owns the toast + the parent-modal close on
+  // success. On failure we surface the wire message via
+  // `getConvexErrorMessage` — the backend throws ConvexError with
+  // NOT_REFUNDABLE / NOT_FOUND / STRIPE_ERROR / INVALID_STATE (see #221).
+  const handleRefund = async (
+    _input: { reason?: string } = {},
+  ): Promise<void> => {
+    if (selectedOrderId === null) return;
+    try {
+      await triggerRefund({ orderId: selectedOrderId });
+      toast.success("Commande remboursée");
+      // Close the parent modal on success — the table reactively flips
+      // the row to « refusée » via the Convex push, no manual refresh.
+      setSelectedOrderId(null);
+    } catch (error) {
+      toast.error("Impossible de rembourser la commande", {
+        description: getConvexErrorMessage(error),
+      });
+    }
   };
 
   // Apply the pure predicate to the live payload — re-runs on every Convex
@@ -170,6 +255,9 @@ export default function CommandesPage() {
         open={selectedOrderId !== null}
         onOpenChange={handleOpenChange}
         detail={detail}
+        onRefund={canRefundRole ? handleRefund : undefined}
+        canRefund={canRefund}
+        refundAmountCentimes={refundAmountCentimes}
       />
     </>
   );

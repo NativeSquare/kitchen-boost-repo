@@ -7,9 +7,14 @@
  * current `tenantId` from `TenantContext` (F-SHELL-04, #175) into every
  * `tenantQuery` / `tenantMutation` call. Front equivalent of the backend
  * `no-untenanted-query` discipline.
+ *
+ * F-COMMANDES-REFUND (#243) — `useTenantAction`: same invariant for Convex
+ * actions (e.g. `tenantAction({allow:["kb_manager"]})` like the backend's
+ * public `refundOrder`).
  */
 export { useTenantQuery } from "./use-tenant-query";
 export { useTenantMutation } from "./use-tenant-mutation";
+export { useTenantAction } from "./use-tenant-action";
 export {
   mergeTenantArgs,
   type PublicTenantArgs,

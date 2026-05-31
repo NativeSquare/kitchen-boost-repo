@@ -232,10 +232,11 @@ describe("page.tsx — F-COMMANDES-LIVE-TABLE (#227) wiring contract", () => {
     // with getConvexErrorMessage — collapse whitespace + match within a
     // reasonable handler window (same shape as menu/page.test.ts).
     const collapsed = code.replace(/\s+/g, " ");
-    expect(collapsed).toMatch(/try\s*\{[^}]*refund[^}]*\}\s*catch/i);
-    expect(collapsed).toMatch(
-      /toast\.error\([^)]*\)[^;]*getConvexErrorMessage/,
-    );
+    // The try-body contains nested `{ orderId }` braces; use a permissive
+    // greedy/lazy match (collapsed single-line) — same shape as the menu
+    // page test but tolerating nested brace pairs in the body.
+    expect(collapsed).toMatch(/try\s*\{[\s\S]*?refund[\s\S]*?\}\s*catch/i);
+    expect(collapsed).toMatch(/toast\.error\([\s\S]*?getConvexErrorMessage/);
   });
 
   it("AC #243 — emits a success toast after the refund completes (« Commande remboursée »)", () => {
