@@ -132,15 +132,20 @@ export {
   readNotificationTemplate,
 } from "./campaignsStore";
 export {
+  type BinaryMilestoneKey,
+  type IntegrationKey,
+  type IntegrationStatusMap,
   type NewInteraction,
   type NewProspect,
   type ProspectPatch,
+  appendIntegrationStatus,
   appendInteraction,
   findProspectByPhone,
   getProspect,
   insertProspect,
   listProspects,
   patchProspect,
+  setMilestoneTimestamp,
   setProspectPhase,
   setProspectTenant,
 } from "./prospectsStore";
