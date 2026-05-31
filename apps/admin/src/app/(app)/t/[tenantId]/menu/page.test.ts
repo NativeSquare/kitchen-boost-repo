@@ -208,6 +208,48 @@ describe("page.tsx — F-MENU-01 (#187) wiring contract", () => {
     expect(collapsed).toMatch(/removeItem[\s\S]{0,800}toast\.error/);
   });
 
+  // ---------------------------------------------------------------------------
+  // F-MENU-06 (#226) — Item photo upload / replace / remove wiring contract
+  // ---------------------------------------------------------------------------
+
+  it("F-MENU-06 — wires `photos.generateUploadUrl` + `photos.attachPhoto` + `photos.removePhoto` via `useTenantMutation`", () => {
+    // The photo flow goes through three tenantMutations (ADR 0014 §4 / #183,
+    // ADR 0010): mint upload URL (generateUploadUrl), record the storage id
+    // on the item (attachPhoto, which the backend invariant guarantees frees
+    // the previous blob on replacement — `setTenantItemPhoto`), drop the
+    // photo entirely (removePhoto). Never raw `useMutation`.
+    const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
+    expect(collapsed).toMatch(
+      /useTenantMutation\([^)]*api\.lib\.menu\.photos\.generateUploadUrl[^)]*\)/,
+    );
+    expect(collapsed).toMatch(
+      /useTenantMutation\([^)]*api\.lib\.menu\.photos\.attachPhoto[^)]*\)/,
+    );
+    expect(collapsed).toMatch(
+      /useTenantMutation\([^)]*api\.lib\.menu\.photos\.removePhoto[^)]*\)/,
+    );
+  });
+
+  it("F-MENU-06 — passes `onUploadPhoto` and `onRemovePhoto` down to the ItemModal", () => {
+    // Wiring contract: the page exposes the two photo handlers via the
+    // dedicated props the modal accepts (callable when in edit mode, where
+    // an item id exists to attach to).
+    expect(PAGE_SOURCE).toMatch(/onUploadPhoto/);
+    expect(PAGE_SOURCE).toMatch(/onRemovePhoto/);
+  });
+
+  it("F-MENU-06 — photo handlers wrap mutations in try/catch + toast.error + getConvexErrorMessage (same discipline as item CRUD)", () => {
+    // Backend errors (NOT_FOUND for a foreign item id during a cross-tenant
+    // race; upload URL minting failures; etc.) MUST surface as a visible
+    // toast — never silently swallowed. Same shape as the F-MENU-05 handlers.
+    const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
+    // The upload path references attachPhoto (or generateUploadUrl) AND has
+    // a toast.error nearby (within the same handler-sized window).
+    expect(collapsed).toMatch(/attachPhoto[\s\S]{0,1200}toast\.error/);
+    // The remove path references removePhoto AND has a toast.error nearby.
+    expect(collapsed).toMatch(/removePhoto[\s\S]{0,800}toast\.error/);
+  });
+
   it("F-MENU-02 — surfaces errors via `toast.error` + `getConvexErrorMessage` (no raw alert / console.error)", () => {
     // The CRUD handlers wrap each mutation call in try/catch and toast the
     // ConvexError's message (slice acceptance criterion « toast sur erreur »

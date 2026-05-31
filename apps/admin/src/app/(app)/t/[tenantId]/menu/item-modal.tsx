@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * F-MENU-05 (#219) — `ItemModal`, the load-bearing CRUD surface for menu items.
+ * F-MENU-05 (#219) + F-MENU-06 (#226) — `ItemModal`, the load-bearing CRUD
+ * surface for menu items.
  *
  * Two modes, ONE component (DRY — same form, same validation, same fields):
  *   - `mode === "create"` — opened by the « + Item » CTA per category. One
@@ -36,14 +37,26 @@
  * dérivé de INVALID_PRICE » (issue body) is wired at the PAGE level via
  * `toast.error(getConvexErrorMessage(error))` should the backend still reject.
  *
- * Scope discipline (#219 hard constraint): this file lives under
+ * Photo CRUD — F-MENU-06 (#226): the edit-mode form layers an opt-in
+ * `ItemPhotoSection` (rendered only when the page passes BOTH
+ * `onUploadPhoto` and `onRemovePhoto`) carrying a thumbnail SLOT, a file
+ * picker, and a « Supprimer la photo » button gated on
+ * `item.photoStorageId !== undefined`. Replacement uses the SAME path as
+ * upload — the backend `setTenantItemPhoto` invariant frees the previous
+ * blob in the same mutation (no orphan, issue body « le backend libère l
+ * ancien blob »); the front never explicitly calls `removePhoto` before
+ * an attach.
+ *
+ * Scope discipline (#219 / #226 hard constraint): this file lives under
  * `apps/admin/src/app/(app)/t/[tenantId]/menu/` — zero touch to `apps/web`,
  * `apps/native`, or `packages/backend/convex/`.
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { IconTrash } from "@tabler/icons-react";
+import { useQuery } from "convex/react";
+import { IconPhoto, IconTrash, IconUpload } from "@tabler/icons-react";
 
+import { api } from "@packages/backend/convex/_generated/api";
 import {
   ALLERGENS_UE_1169,
   type Allergen,
@@ -124,6 +137,27 @@ export type ItemModalProps = {
   onUpdate: (itemId: Id<"menuItems">, patch: ItemUpdatePatch) => void;
   /** Edit-mode delete. Fires from the confirmation dialog's « Confirmer » action. */
   onDelete: (itemId: Id<"menuItems">) => void;
+  /**
+   * F-MENU-06 (#226) — fired when the gérant picks a file from the photo
+   * input (edit mode only). The page owns the two-step Convex upload
+   * (`photos.generateUploadUrl` → POST → `photos.attachPhoto`); the modal
+   * just hands it the picked File. When omitted, the photo section is NOT
+   * rendered (slice is OPT-IN — preserves the F-MENU-05 contract).
+   *
+   * Replacement is the SAME path as upload: the backend's
+   * `setTenantItemPhoto` invariant guarantees the previous blob is freed
+   * (no orphan), so the front never explicitly calls `removePhoto` before
+   * an `attachPhoto` of replacement.
+   */
+  onUploadPhoto?: (itemId: Id<"menuItems">, file: File) => void;
+  /**
+   * F-MENU-06 (#226) — fired when the gérant clicks the « Supprimer la photo »
+   * button (edit mode only, AND only when `item.photoStorageId !== undefined`
+   * — the affordance is gated on the photo's existence to avoid a misleading
+   * « remove nothing » button). The page wires this to
+   * `useTenantMutation(api.lib.menu.photos.removePhoto)`.
+   */
+  onRemovePhoto?: (itemId: Id<"menuItems">) => void;
 };
 
 export function ItemModal(props: ItemModalProps) {
@@ -156,6 +190,8 @@ function ItemModalForm({
   onCreate,
   onUpdate,
   onDelete,
+  onUploadPhoto,
+  onRemovePhoto,
 }: ItemModalProps) {
   // -- Local form state ------------------------------------------------------
   // Edit mode: pre-fill from the item doc. Create mode: empty defaults.
@@ -421,6 +457,23 @@ function ItemModalForm({
         </NativeSelect>
       </div>
 
+      {/* Photo — F-MENU-06 (#226). Edit mode only AND wired only when the
+          page passes BOTH `onUploadPhoto` and `onRemovePhoto` (slice OPT-IN
+          to preserve the F-MENU-05 contract: callers from the previous slice
+          don't pass these). The thumbnail SLOT is ALWAYS rendered when the
+          section is shown (placeholder when no `photoStorageId`, real <img>
+          when resolved) — same layout-stable discipline as `item-list.tsx`. */}
+      {mode === "edit" &&
+      item !== undefined &&
+      onUploadPhoto !== undefined &&
+      onRemovePhoto !== undefined ? (
+        <ItemPhotoSection
+          item={item}
+          onUploadPhoto={onUploadPhoto}
+          onRemovePhoto={onRemovePhoto}
+        />
+      ) : null}
+
       {/* Allergens — closed multi-select on the 14 frozen UE 1169/2011 literals */}
       <div className="flex flex-col gap-2">
         <Label>Allergènes</Label>
@@ -526,6 +579,113 @@ function ItemModalForm({
           </AlertDialogContent>
         </AlertDialog>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * F-MENU-06 (#226) — Photo section: thumbnail SLOT (always rendered while
+ * the section is mounted — placeholder when no photo, real <img> when the
+ * URL resolves), file picker (`<input type="file" accept="image/*">`), and
+ * a « Supprimer la photo » button that only surfaces when the item carries
+ * a `photoStorageId` (the affordance is gated on the photo's existence so
+ * the gérant never clicks « remove » on nothing).
+ *
+ * Replacement is the SAME path as upload: picking a new file fires
+ * `onUploadPhoto`, which the page wires to `attachPhoto` — the backend's
+ * `setTenantItemPhoto` invariant frees the previous blob in the same
+ * mutation (no orphan, issue body « le backend libère l ancien blob »).
+ *
+ * URL resolution mirrors `item-list.tsx`: `useQuery(api.storage.getImageUrl)`
+ * with `"skip"` when no storage id — we don't pay the round-trip for
+ * photoless items. Convex's natural reactivity makes the thumbnail update
+ * immediately after a successful upload (the underlying `items.list` query
+ * refires with the new `photoStorageId`, the parent re-renders the modal
+ * with the new item doc — see `editingItem` memo in `page.tsx`).
+ */
+function ItemPhotoSection({
+  item,
+  onUploadPhoto,
+  onRemovePhoto,
+}: {
+  item: Doc<"menuItems">;
+  onUploadPhoto: (itemId: Id<"menuItems">, file: File) => void;
+  onRemovePhoto: (itemId: Id<"menuItems">) => void;
+}) {
+  // `"skip"` lets Convex bypass the query entirely when there's no storage
+  // id (same pattern as `item-list.tsx` ItemThumbnail).
+  const url = useQuery(
+    api.storage.getImageUrl,
+    item.photoStorageId === undefined
+      ? "skip"
+      : { storageId: item.photoStorageId },
+  );
+  const hasResolvedUrl = typeof url === "string" && url.length > 0;
+  const hasPhoto = item.photoStorageId !== undefined;
+  const inputId = `menu-item-modal-photo-input-${item._id}`;
+
+  const handleChange = (e: { target: { files: FileList | null } }) => {
+    const files = e.target.files;
+    if (files === null || files.length === 0) return; // user cancelled the picker
+    const file = files[0];
+    onUploadPhoto(item._id, file);
+  };
+
+  return (
+    <div
+      data-slot="menu-item-modal-photo-section"
+      className="flex flex-col gap-2"
+    >
+      <Label htmlFor={inputId}>Photo</Label>
+      <div className="flex items-center gap-3">
+        <div
+          data-slot="menu-item-modal-photo-thumbnail"
+          className="bg-muted text-muted-foreground flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-md border"
+        >
+          {hasResolvedUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={url}
+              alt={`Photo de ${item.name}`}
+              className="size-full object-cover"
+            />
+          ) : (
+            <IconPhoto className="size-8" aria-hidden="true" />
+          )}
+        </div>
+        <div className="flex flex-1 flex-col gap-2">
+          <label
+            htmlFor={inputId}
+            className="border-input bg-background hover:bg-accent inline-flex cursor-pointer items-center gap-2 self-start rounded-md border px-3 py-1.5 text-sm font-medium"
+          >
+            <IconUpload className="size-4" aria-hidden="true" />
+            {hasPhoto ? "Remplacer" : "Téléverser"}
+          </label>
+          {/* The native file input is visually hidden but still focusable via
+              the label above (Radix-free, keyboard-accessible). */}
+          <input
+            id={inputId}
+            data-slot="menu-item-modal-photo-input"
+            type="file"
+            accept="image/*"
+            className="sr-only"
+            onChange={handleChange}
+          />
+          {hasPhoto ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              data-slot="menu-item-modal-photo-remove"
+              onClick={() => onRemovePhoto(item._id)}
+              className="text-destructive hover:text-destructive self-start"
+            >
+              <IconTrash className="mr-1.5 size-4" aria-hidden="true" />
+              Supprimer la photo
+            </Button>
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 }
