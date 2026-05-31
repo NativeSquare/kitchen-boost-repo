@@ -98,6 +98,14 @@ vi.mock("@dnd-kit/utilities", () => ({
   CSS: { Transform: { toString: () => undefined } },
 }));
 
+// F-MENU-04 (#211) — the item-list thumbnail resolves `photoStorageId` →
+// URL via `useQuery(api.storage.getImageUrl, ...)`. Under `environment: "node"`
+// (no Convex provider, no React renderer), the real hook throws. Stub it to
+// the loading sentinel so the thumbnail falls through to the placeholder.
+vi.mock("convex/react", () => ({
+  useQuery: () => undefined,
+}));
+
 const { MenuView } = await import("./menu-view");
 
 // ---------------------------------------------------------------------------
@@ -430,6 +438,113 @@ describe("MenuView — F-MENU-01 (#187)", () => {
       return n.props["data-slot"] === "menu-category-drag-handle";
     });
     expect(handles).toHaveLength(UNORDERED_CATEGORIES.length);
+  });
+
+  // -------------------------------------------------------------------------
+  // F-MENU-04 (#211) — items list per category + inline rupture toggle
+  // -------------------------------------------------------------------------
+  // The page wires `itemsByCategory` (Record<categoryId, Doc<"menuItems">[]>
+  // | undefined) and `onToggleItemAvailability` callbacks through MenuView
+  // down to a per-category `ItemList`. When both are wired, each category
+  // row surfaces its items inline with the rupture toggle on each card.
+  // Read-only mode (no callbacks) preserves slice-1 behaviour: no items, no
+  // toggle.
+
+  it("F-MENU-04 — without itemsByCategory, no item row surfaces (read-only mode preserved)", () => {
+    const tree = serialize(
+      MenuView({
+        categories: UNORDERED_CATEGORIES,
+        onCreateCategory: () => {},
+        onRenameCategory: () => {},
+        onDeleteCategory: () => {},
+      }),
+    );
+    const itemRows = flatten(tree).filter((n) => {
+      if (n === null || "text" in n) return false;
+      return n.props["data-slot"] === "menu-item-row";
+    });
+    expect(itemRows).toHaveLength(0);
+  });
+
+  it("F-MENU-04 — with itemsByCategory + onToggleItemAvailability, surfaces item rows under each category", () => {
+    type Item = Doc<"menuItems">;
+    const makeItem = (name: string, categoryId: string, order: number): Item =>
+      ({
+        _id: `item_${name}` as Item["_id"],
+        _creationTime: 0,
+        tenantId: "tenant_test" as Item["tenantId"],
+        categoryId: categoryId as Item["categoryId"],
+        name,
+        description: "",
+        basePrice: 0,
+        allergens: [],
+        available: true,
+        order,
+        createdAt: 0,
+      }) as Item;
+    const cat0 = UNORDERED_CATEGORIES[0]._id as string; // Desserts (order=2)
+    const cat1 = UNORDERED_CATEGORIES[1]._id as string; // Entrées (order=0)
+    const itemsByCategory: Record<string, Item[]> = {
+      [cat0]: [makeItem("Tiramisu", cat0, 0)],
+      [cat1]: [makeItem("Salade", cat1, 0), makeItem("Soupe", cat1, 1)],
+    };
+    const tree = serialize(
+      MenuView({
+        categories: UNORDERED_CATEGORIES,
+        onCreateCategory: () => {},
+        onRenameCategory: () => {},
+        onDeleteCategory: () => {},
+        itemsByCategory,
+        onToggleItemAvailability: () => {},
+      }),
+    );
+    const itemRows = flatten(tree).filter((n) => {
+      if (n === null || "text" in n) return false;
+      return n.props["data-slot"] === "menu-item-row";
+    });
+    // 1 item under Desserts + 2 under Entrées = 3 total.
+    expect(itemRows).toHaveLength(3);
+    const text = allText(tree);
+    expect(text).toMatch(/Tiramisu/);
+    expect(text).toMatch(/Salade/);
+    expect(text).toMatch(/Soupe/);
+  });
+
+  it("F-MENU-04 — with itemsByCategory + onToggleItemAvailability, surfaces a toggle per item", () => {
+    type Item = Doc<"menuItems">;
+    const makeItem = (name: string, categoryId: string, order: number): Item =>
+      ({
+        _id: `item_${name}` as Item["_id"],
+        _creationTime: 0,
+        tenantId: "tenant_test" as Item["tenantId"],
+        categoryId: categoryId as Item["categoryId"],
+        name,
+        description: "",
+        basePrice: 0,
+        allergens: [],
+        available: true,
+        order,
+        createdAt: 0,
+      }) as Item;
+    const cat0 = UNORDERED_CATEGORIES[0]._id as string;
+    const itemsByCategory: Record<string, Item[]> = {
+      [cat0]: [makeItem("Tiramisu", cat0, 0)],
+    };
+    const tree = serialize(
+      MenuView({
+        categories: UNORDERED_CATEGORIES,
+        onCreateCategory: () => {},
+        onRenameCategory: () => {},
+        onDeleteCategory: () => {},
+        itemsByCategory,
+        onToggleItemAvailability: () => {},
+      }),
+    );
+    const toggles = flatten(tree).filter((n) => {
+      if (n === null || "text" in n) return false;
+      return n.props["data-slot"] === "menu-item-availability-toggle";
+    });
+    expect(toggles).toHaveLength(1);
   });
 
   it("AC3 — renders one category per row (count matches input length)", () => {
