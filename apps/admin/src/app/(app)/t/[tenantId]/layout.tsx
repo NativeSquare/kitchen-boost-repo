@@ -48,6 +48,7 @@ import {
 } from "@/components/app/tenant-context";
 import type { AdminTenantLookup } from "@/components/app/tenant-context";
 import { UnauthorizedCard } from "@/components/app/unauthorized-card";
+import { ImpersonationBanner } from "@/components/app/impersonation-banner";
 import { IconBuildingStore } from "@tabler/icons-react";
 
 export default function TenantLayout({
@@ -140,7 +141,14 @@ export default function TenantLayout({
   }
 
   // decision.kind === "allow"
+  // The `ImpersonationBanner` (F-SHELL-08, #214) is mounted INSIDE the
+  // TenantProvider so it has access to `useCurrentTenantId()`. It surfaces
+  // itself only when `session.isAdmin && currentTenantId` (i.e. exactly the
+  // « KB Admin sur /t/[id] » case). For a KB Manager it renders nothing.
   return (
-    <TenantProvider tenantId={decision.tenantId}>{children}</TenantProvider>
+    <TenantProvider tenantId={decision.tenantId}>
+      <ImpersonationBanner />
+      {children}
+    </TenantProvider>
   );
 }
