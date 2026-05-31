@@ -35,13 +35,17 @@ import type { Id } from "@packages/backend/convex/_generated/dataModel";
 export type TenantQueryArgs<TArgs> = TArgs | "skip";
 
 /**
- * The args a Convex `tenantQuery` / `tenantMutation` exposes once `tenantId`
- * is stripped — i.e. the args the public hook signature asks the caller for.
- * Centralised here (the type-companion to `mergeTenantArgs`) so the two hooks
- * stay in sync on what "tenantId is hook-managed" means.
+ * The args a Convex `tenantQuery` / `tenantMutation` / `tenantAction` exposes
+ * once `tenantId` is stripped — i.e. the args the public hook signature asks
+ * the caller for. Centralised here (the type-companion to `mergeTenantArgs`)
+ * so the three hooks stay in sync on what "tenantId is hook-managed" means.
+ *
+ * The action arm was added by F-COMMANDES-REFUND (#243), which introduced
+ * `useTenantAction` for the public `refundOrder` `tenantAction` exposed by
+ * `packages/backend/convex/lib/stripe/refund.ts`.
  */
 export type PublicTenantArgs<
-  F extends FunctionReference<"query" | "mutation">,
+  F extends FunctionReference<"query" | "mutation" | "action">,
 > = Omit<F["_args"], "tenantId">;
 
 /**
