@@ -187,15 +187,15 @@ function findAllByType(n: SerializedNode, type: string): SerializedNode[] {
   );
 }
 
-function findAllBySlot(n: SerializedNode, slot: string): SerializedNode[] {
+type ElementNode = {
+  type: string;
+  props: Record<string, unknown>;
+  children: SerializedNode[];
+};
+
+function findAllBySlot(n: SerializedNode, slot: string): ElementNode[] {
   return flatten(n).filter(
-    (
-      x,
-    ): x is {
-      type: string;
-      props: Record<string, unknown>;
-      children: SerializedNode[];
-    } =>
+    (x): x is ElementNode =>
       x !== null &&
       "type" in x &&
       (x.props as Record<string, unknown>)["data-slot"] === slot,
@@ -257,9 +257,7 @@ describe("GenerateContractModal — F-CONTRATS slice 3/4 (#174)", () => {
     // The unwrapped tree surfaces a button with `data-slot="radio-group-item"`.
     const radios = findAllBySlot(tree, "radio-group-item");
     expect(radios.length).toBe(3);
-    const values = radios
-      .map((r) => (r?.props as Record<string, unknown>).value)
-      .sort();
+    const values = radios.map((r) => r.props.value as string).sort();
     expect(values).toEqual(["A", "A_AND_B", "B"]);
   });
 
@@ -286,9 +284,7 @@ describe("GenerateContractModal — F-CONTRATS slice 3/4 (#174)", () => {
     const rows = findAllBySlot(tree, "juridical-field-row");
     expect(rows.length).toBe(5);
     for (const row of rows) {
-      expect((row?.props as Record<string, unknown>)["data-missing"]).toBe(
-        "false",
-      );
+      expect(row.props["data-missing"]).toBe("false");
     }
   });
 
@@ -302,9 +298,7 @@ describe("GenerateContractModal — F-CONTRATS slice 3/4 (#174)", () => {
     );
     // The 2 missing rows are flagged.
     const rows = findAllBySlot(tree, "juridical-field-row");
-    const missing = rows.filter(
-      (r) => (r?.props as Record<string, unknown>)["data-missing"] === "true",
-    );
+    const missing = rows.filter((r) => r.props["data-missing"] === "true");
     expect(missing.length).toBe(2);
     // Help message MUST surface verbatim per the issue spec.
     const text = allText(tree);
@@ -312,18 +306,14 @@ describe("GenerateContractModal — F-CONTRATS slice 3/4 (#174)", () => {
     // Submit button MUST be disabled.
     const submit = findAllBySlot(tree, "generate-contract-submit");
     expect(submit.length).toBe(1);
-    const submitNode = submit[0] as {
-      props: Record<string, unknown>;
-    };
-    expect(submitNode.props.disabled).toBe(true);
+    expect(submit[0]!.props.disabled).toBe(true);
   });
 
   it("AC — submit is ENABLED when every juridical field is present + a prestation is selected (default A)", () => {
     const tree = serialize(GenerateContractModal(baseProps()));
     const submit = findAllBySlot(tree, "generate-contract-submit");
     expect(submit.length).toBe(1);
-    const submitNode = submit[0] as { props: Record<string, unknown> };
-    expect(submitNode.props.disabled).toBe(false);
+    expect(submit[0]!.props.disabled).toBe(false);
   });
 
   it("AC — `isSubmitting` disables the submit button + surfaces a loading label", () => {
@@ -332,8 +322,7 @@ describe("GenerateContractModal — F-CONTRATS slice 3/4 (#174)", () => {
     );
     const submit = findAllBySlot(tree, "generate-contract-submit");
     expect(submit.length).toBe(1);
-    const submitNode = submit[0] as { props: Record<string, unknown> };
-    expect(submitNode.props.disabled).toBe(true);
+    expect(submit[0]!.props.disabled).toBe(true);
     const text = allText(tree);
     expect(text).toMatch(/G[ée]n[ée]ration…|G[ée]n[ée]ration\.{3}/);
   });
@@ -341,10 +330,8 @@ describe("GenerateContractModal — F-CONTRATS slice 3/4 (#174)", () => {
   it("AC — clicking submit fires `onSubmit(prestation)` with the currently selected prestation (default A)", () => {
     const onSubmit = vi.fn();
     const tree = serialize(GenerateContractModal(baseProps({ onSubmit })));
-    const submitNodes = findAllBySlot(tree, "generate-contract-submit");
-    const submit = submitNodes[0] as {
-      props: Record<string, unknown>;
-    };
+    const submit = findAllBySlot(tree, "generate-contract-submit")[0];
+    if (submit === undefined) throw new Error("expected submit");
     const handler = submit.props.onClick as (() => void) | undefined;
     expect(typeof handler).toBe("function");
     if (handler === undefined) throw new Error("expected onClick");
@@ -363,9 +350,8 @@ describe("GenerateContractModal — F-CONTRATS slice 3/4 (#174)", () => {
         }),
       ),
     );
-    const submit = findAllBySlot(tree, "generate-contract-submit")[0] as {
-      props: Record<string, unknown>;
-    };
+    const submit = findAllBySlot(tree, "generate-contract-submit")[0];
+    if (submit === undefined) throw new Error("expected submit");
     const handler = submit.props.onClick as (() => void) | undefined;
     expect(typeof handler).toBe("function");
     if (handler === undefined) throw new Error("expected onClick");
@@ -418,9 +404,8 @@ describe("GenerateContractModal — F-CONTRATS slice 3/4 (#174)", () => {
         await import("./generate-contract-modal");
       const onSubmit = vi.fn();
       const tree = serialize(ModalB(baseProps({ onSubmit })));
-      const submit = findAllBySlot(tree, "generate-contract-submit")[0] as {
-        props: Record<string, unknown>;
-      };
+      const submit = findAllBySlot(tree, "generate-contract-submit")[0];
+      if (submit === undefined) throw new Error("expected submit");
       const handler = submit.props.onClick as (() => void) | undefined;
       if (handler === undefined) throw new Error("expected onClick");
       handler();
@@ -450,9 +435,8 @@ describe("GenerateContractModal — F-CONTRATS slice 3/4 (#174)", () => {
         await import("./generate-contract-modal");
       const onSubmit = vi.fn();
       const tree = serialize(ModalAB(baseProps({ onSubmit })));
-      const submit = findAllBySlot(tree, "generate-contract-submit")[0] as {
-        props: Record<string, unknown>;
-      };
+      const submit = findAllBySlot(tree, "generate-contract-submit")[0];
+      if (submit === undefined) throw new Error("expected submit");
       const handler = submit.props.onClick as (() => void) | undefined;
       if (handler === undefined) throw new Error("expected onClick");
       handler();

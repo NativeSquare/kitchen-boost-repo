@@ -68,7 +68,6 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   JURIDICAL_FIELD_LABEL,
   decideGenerateContract,
-  type ContractPartnerPayload,
 } from "./generate-contract.decision";
 
 /**
@@ -171,11 +170,11 @@ export function GenerateContractModal(props: GenerateContractModalProps) {
   }
 
   // decision.kind === "ready"
-  const { recap, missingFields, canGenerate, partner: _partner } = decision;
-  // `_partner` is forwarded by the launcher — the modal itself only
-  // signals « ready to submit » via `canGenerate`. The launcher reads
-  // `decideGenerateContract(...)` again to grab the partner payload at
-  // submit time (single source of truth — no risk of stale capture).
+  // The launcher re-derives `decideGenerateContract(...)` at submit time
+  // (single source of truth — no risk of stale capture) so the modal only
+  // signals « ready to submit » via `canGenerate` and forwards the
+  // selected prestation via `onSubmit`.
+  const { recap, missingFields, canGenerate } = decision;
 
   const isSubmitEnabled = canGenerate && !isSubmitting;
 
