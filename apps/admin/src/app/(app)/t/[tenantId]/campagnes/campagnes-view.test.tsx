@@ -1,33 +1,39 @@
 /**
- * F-CAMPAGNES [1/7] (#179) — `CampagnesView`, pure presentational shell of the
- * first tracer-bullet of the resto campaign UI (parent EPIC #145, PRD 80 §4 +
- * ADR 0006).
+ * F-CAMPAGNES [1/7] (#179) + [2/7] (#188) — `CampagnesView`, the page shell of
+ * the resto campaign UI (parent EPIC #145, PRD 80 §4 + ADR 0006).
  *
- * Tracer-bullet contract — issue body verbatim: « afficher la liste BRUTE des
- * templates retournés (titre + JSON dump suffit à ce stade). Aucun composant
- * carte, aucune navigation, aucun style — juste la chaîne complète route
- * tenant-scopée → query Convex tenant-scopée → rendu liste ». Subsequent slices
- * (2..7) wire the picker, form, preview, send, result.
+ * Slice 1 (#179) — tracer-bullet: route + Convex tenant-scoped query + brute
+ * list rendering, to prove the chain end-to-end.
+ *
+ * Slice 2 (#188) — dresses the brute list with the shadcn `TemplateCard` +
+ * `TemplatePicker` (the picker owns the loading/empty/list branches now);
+ * the page-level shell keeps only the title + the picker container. The
+ * branch-level assertions live in `_components/TemplatePicker.test.tsx`; this
+ * file keeps the LOAD-BEARING page-shell invariants:
+ *   - the page title « Campagnes » is rendered on every branch (no blank
+ *     flash, the shell stays mounted);
+ *   - the `TemplatePicker` is the surface that owns each branch (so a future
+ *     slice changing the picker contract fails ONE place, not two).
  *
  * Same React-tree-serializer pattern as `mes-clients-view.test.tsx` and
  * `monitoring-view.test.tsx`: `apps/admin/vitest.config.ts` runs in
  * `environment: "node"` (no jsdom, no RTL), so we walk the React tree the view
  * returns and assert text content + structural shape.
  *
- * Acceptance criteria covered (#179):
+ * Acceptance criteria covered:
  *   - AC1 (route accessible) — pinned at the source-file level via the page
- *     test (`page.test.ts`), not here (we test the pure view's branches).
- *   - AC2 (binds `useTenantQuery` on `listTenantTemplates`) — same, page-level.
- *   - AC3 « Les templates retournés sont rendus en liste minimale (un item =
- *     un nom de template) » — the view, given a non-empty array, MUST surface
- *     every template's label (and the issue body explicitly accepts the JSON
- *     dump alongside — we assert label, leave the JSON as an explicit detail).
- *   - AC4 « État loading affiché tant que la query résout » — `undefined`
- *     branch MUST render a loading affordance, NOT the empty state, NOT crash.
- *   - AC5 « État vide affiché si la query retourne `[]` » — empty array
- *     renders the « Aucun template disponible » copy verbatim.
- *   - AC6 « FR uniquement (strings inline) » — every visible string is French
- *     (no English fallback like "Loading..." / "No templates").
+ *     test (`page.test.ts`), not here.
+ *   - AC2 (binds `useTenantQuery` on `listTenantTemplates`) — same.
+ *   - AC3 (#179) « Les templates retournés sont rendus en liste minimale » —
+ *     the view, given a non-empty array, MUST surface every template's label
+ *     (the picker renders the cards; we assert the labels surface).
+ *   - AC4 (#179) « État loading affiché » — `undefined` branch keeps the
+ *     title and DOES NOT show the empty-state copy.
+ *   - AC5 (#179) « État vide affiché » — empty array renders the verbatim
+ *     « Aucun template disponible » copy (now polished with the CSM CTA in
+ *     slice 2 per the issue body).
+ *   - AC6 (#179) « FR uniquement (strings inline) » — every visible string
+ *     is French.
  */
 import { describe, expect, it } from "vitest";
 import type { ReactElement, ReactNode } from "react";
@@ -67,6 +73,19 @@ function typeName(t: unknown): string {
   return String(t);
 }
 
+const FORWARD_REF_TYPE = Symbol.for("react.forward_ref");
+
+/** Whether `t` is a React `forwardRef` value (true for `next/link`'s
+ *  `Link`). We don't invoke `Link.render(...)` because it uses hooks
+ *  internally — instead we shim it to its public anchor shape. */
+function isLinkLikeForwardRef(t: unknown): boolean {
+  return (
+    typeof t === "object" &&
+    t !== null &&
+    (t as { $$typeof?: symbol }).$$typeof === FORWARD_REF_TYPE
+  );
+}
+
 function serialize(node: ReactNode): SerializedNode {
   if (node === null || node === undefined || node === false || node === true) {
     return null;
@@ -91,6 +110,28 @@ function serialize(node: ReactNode): SerializedNode {
       } catch {
         return { type: typeName(node.type), props: {}, children: [] };
       }
+    }
+    // `next/link`'s `Link` is a `forwardRef` whose `.render()` uses React
+    // hooks internally — invoking it outside a real React render throws
+    // « Invalid hook call ». But the public contract Link expresses IS a
+    // `<a href>`, so we shim it: treat any forwardRef element with an
+    // `href` prop as if it had rendered `<a href={...}>{children}</a>`.
+    if (
+      isLinkLikeForwardRef(node.type) &&
+      "href" in (node.props as Record<string, unknown>)
+    ) {
+      const props = { ...(node.props as Record<string, unknown>) };
+      const rawChildren = props.children as ReactNode | undefined;
+      delete props.children;
+      const children: SerializedNode[] = [];
+      if (rawChildren !== undefined) {
+        const list = Array.isArray(rawChildren) ? rawChildren : [rawChildren];
+        for (const c of list) {
+          const s = serialize(c);
+          if (s !== null) children.push(s);
+        }
+      }
+      return { type: "a", props, children };
     }
     const props = { ...(node.props as Record<string, unknown>) };
     const rawChildren = props.children as ReactNode | undefined;
@@ -149,17 +190,22 @@ const TEMPLATES: TenantTemplateSummary[] = [
   makeTemplate("happy_hour", "Happy Hour du jeudi"),
 ];
 
+const TENANT_ID = "tenant_abc" as Id<"tenants">;
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
-describe("CampagnesView — F-CAMPAGNES [1/7] (#179) tracer-bullet", () => {
+describe("CampagnesView — F-CAMPAGNES [1/7] (#179) + [2/7] (#188)", () => {
   it("AC3 — renders one item per template (the label surfaces verbatim)", () => {
-    const text = allText(serialize(CampagnesView({ templates: TEMPLATES })));
+    const text = allText(
+      serialize(
+        CampagnesView({ tenantId: TENANT_ID, templates: TEMPLATES }),
+      ),
+    );
     for (const t of TEMPLATES) {
-      // Every template label MUST surface. The issue body accepts « titre +
-      // JSON dump » — we pin the title at minimum (load-bearing). A future
-      // slice will polish the card layout; the contract is "one item per
-      // template, the label is the user-visible anchor".
+      // Every template label MUST surface. Slice 2 (#188) renders a
+      // `TemplateCard` per template; the label is the load-bearing
+      // user-visible anchor inside each card.
       expect(text).toContain(t.label);
     }
   });
@@ -167,39 +213,66 @@ describe("CampagnesView — F-CAMPAGNES [1/7] (#179) tracer-bullet", () => {
   it("AC3 — the page title « Campagnes » is rendered on the populated branch", () => {
     // The h1 anchors the page across all branches (loading / empty / list) —
     // pinned here for the list branch.
-    const text = allText(serialize(CampagnesView({ templates: TEMPLATES })));
+    const text = allText(
+      serialize(
+        CampagnesView({ tenantId: TENANT_ID, templates: TEMPLATES }),
+      ),
+    );
     expect(text).toMatch(/Campagnes/);
   });
 
   it("AC4 — loading branch (templates === undefined) renders a loading affordance, NOT the empty state, NOT a crash", () => {
-    const tree = serialize(CampagnesView({ templates: undefined }));
+    const tree = serialize(
+      CampagnesView({ tenantId: TENANT_ID, templates: undefined }),
+    );
     expect(tree).not.toBeNull();
     const text = allText(tree);
     // Empty-state copy MUST NOT show during loading (would confuse "nothing
-    // yet" with "still fetching" — the tracer-bullet pins both distinctly).
+    // yet" with "still fetching" — both branches stay distinct).
     expect(text).not.toMatch(/aucun template disponible/i);
-    // FR loading affordance — accept "Chargement" or a generic "…" while
-    // staying strict on FR (AC6 — no English fallback). Pinned via a
-    // forgiving regex so the implementation can pick "Chargement…" or
-    // "Chargement des templates…".
-    expect(text).toMatch(/Chargement/i);
+    // FR loading affordance — slice 2 polishes the slice-1 "Chargement…"
+    // copy with shadcn `<Skeleton/>` primitives (carry
+    // `data-slot="skeleton"`). At least one skeleton MUST be present so the
+    // user sees a loading affordance (AC4 acceptance criterion).
+    const hasSkeleton = flatten(tree).some((n) => {
+      if (n === null || "text" in n) return false;
+      const slot = (n.props as Record<string, unknown>)["data-slot"];
+      return slot === "skeleton";
+    });
+    expect(hasSkeleton).toBe(true);
   });
 
   it("AC4 — loading branch keeps the page title (no blank flash before data lands)", () => {
-    const text = allText(serialize(CampagnesView({ templates: undefined })));
+    const text = allText(
+      serialize(
+        CampagnesView({ tenantId: TENANT_ID, templates: undefined }),
+      ),
+    );
     expect(text).toMatch(/Campagnes/);
   });
 
   it("AC5 — empty branch (templates === []) renders « Aucun template disponible » verbatim (issue body wording)", () => {
-    const text = allText(serialize(CampagnesView({ templates: [] })));
-    // Issue body verbatim: « État vide (« Aucun template disponible ») ».
+    const text = allText(
+      serialize(CampagnesView({ tenantId: TENANT_ID, templates: [] })),
+    );
+    // Issue body verbatim: « État vide (« Aucun template disponible ») »,
+    // polished in slice 2 with « — contacte ton CSM pour en demander un ».
     expect(text).toMatch(/Aucun template disponible/);
-    // No loading copy should leak when we know there's nothing.
-    expect(text).not.toMatch(/Chargement/i);
+    // No skeleton/loading should leak when we know there's nothing.
+    const hasSkeleton = flatten(
+      serialize(CampagnesView({ tenantId: TENANT_ID, templates: [] })),
+    ).some((n) => {
+      if (n === null || "text" in n) return false;
+      const slot = (n.props as Record<string, unknown>)["data-slot"];
+      return slot === "skeleton";
+    });
+    expect(hasSkeleton).toBe(false);
   });
 
   it("AC5 — empty branch keeps the page title (the shell stays mounted)", () => {
-    const text = allText(serialize(CampagnesView({ templates: [] })));
+    const text = allText(
+      serialize(CampagnesView({ tenantId: TENANT_ID, templates: [] })),
+    );
     expect(text).toMatch(/Campagnes/);
   });
 
@@ -209,9 +282,19 @@ describe("CampagnesView — F-CAMPAGNES [1/7] (#179) tracer-bullet", () => {
     // against the usual copy/paste English ("Loading", "No templates",
     // "Error", "Templates", title-cased English headings).
     const branches = [
-      allText(serialize(CampagnesView({ templates: undefined }))),
-      allText(serialize(CampagnesView({ templates: [] }))),
-      allText(serialize(CampagnesView({ templates: TEMPLATES }))),
+      allText(
+        serialize(
+          CampagnesView({ tenantId: TENANT_ID, templates: undefined }),
+        ),
+      ),
+      allText(
+        serialize(CampagnesView({ tenantId: TENANT_ID, templates: [] })),
+      ),
+      allText(
+        serialize(
+          CampagnesView({ tenantId: TENANT_ID, templates: TEMPLATES }),
+        ),
+      ),
     ];
     for (const text of branches) {
       expect(text).not.toMatch(/\bLoading\b/);
@@ -220,16 +303,20 @@ describe("CampagnesView — F-CAMPAGNES [1/7] (#179) tracer-bullet", () => {
     }
   });
 
-  it("AC3 — populated branch surfaces a list landmark (one DOM item per template)", () => {
-    // The issue body accepts « titre + JSON dump » — i.e. we don't need
-    // shadcn Cards yet. But we DO need a list with one item per template so
-    // a future slice replaces the rendering without losing the count.
-    const tree = serialize(CampagnesView({ templates: TEMPLATES }));
-    const liNodes = flatten(tree).filter(
-      (n) => n !== null && !("text" in n) && n.type.toLowerCase() === "li",
+  it("AC3 (#188) — populated branch surfaces one anchor per template (the picker built per-card links)", () => {
+    // Slice 2 (#188) replaces the brute `<li>` list with the shadcn
+    // `TemplatePicker` / `TemplateCard`. The load-bearing contract is now
+    // "one navigation surface per template" — pinned via the per-card `<a>`
+    // built from `/t/[tenantId]/campagnes/[templateId]`. The detailed
+    // grid/loading/empty branches are pinned by `TemplatePicker.test.tsx`
+    // and `TemplateCard.test.tsx`; here we only assert the page-level
+    // delegation didn't lose the count.
+    const tree = serialize(
+      CampagnesView({ tenantId: TENANT_ID, templates: TEMPLATES }),
     );
-    // Exactly as many `<li>` as templates — pinned so a regression that
-    // accidentally renders one big blob (no list) fails loudly.
-    expect(liNodes).toHaveLength(TEMPLATES.length);
+    const anchors = flatten(tree).filter(
+      (n) => n !== null && !("text" in n) && n.type.toLowerCase() === "a",
+    );
+    expect(anchors).toHaveLength(TEMPLATES.length);
   });
 });
