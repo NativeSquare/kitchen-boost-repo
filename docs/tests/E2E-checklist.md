@@ -1,16 +1,34 @@
 # E2E manual checklist — KitchenBoost admin (V1)
 
-Checklist E2E manuelle générée depuis les 41 PRs mergées (PR #317 → #357). Chaque test est un parcours utilisateur à exécuter à la main contre `apps/admin` en dev (Convex live + seeds e2e). Les tests sont regroupés par épique fonctionnelle ; chaque rubrique pointe les `#tickets` qu'elle couvre.
+Checklist E2E manuelle restructurée selon la nomenclature canonique (groupes A / MC / QR / MO / T / P / AC / M / CMD / PR / SUP / W). Chaque test est un parcours utilisateur à exécuter à la main contre `apps/admin` en dev (Convex live + seeds e2e). Les tests marqués `[à valider]` n'ont pas été dérivés d'une PR du drain et doivent être confrontés au code réel avant exécution.
 
 - **Date** : 2026-05-31
-- **Statut global** : 40 stories mergées, 1 bloquée (#268 customDomain). Wizard fonctionnel sur 9/10 étapes.
+- **Statut global** : 41 stories mergées (#317→#358), 0 bloquée. Wizard complet à 10/10.
 - **Pré-requis transverses** : seeds `e2e` chargées (≥ 2 tenants distincts, un compte KB Admin root, ≥ 1 KB Manager mono-tenant, ≥ 1 KB Manager multi-tenant, un compte staff). Stripe en mode test avec un `stripeAccountId` rattaché à au moins un tenant. Resend en mode test pour les magic-links.
 
 ---
 
-## F-SHELL — routing & shell admin
+## A — Auth & shell
 
-### E2E — KB Manager multi-tenants : la dernière resto ouverte est restaurée à l'entrée
+### A1 — Login OTP nominal [à valider]
+
+**Acteur** : KB Manager
+**Pré-requis** : compte manager existant, boîte mail accessible (Resend test).
+**Étapes** :
+
+1. Aller sur `/login`, saisir l'email du manager, cliquer « Recevoir le code ».
+2. Récupérer le code OTP depuis l'inbox (ou Resend dashboard).
+3. Saisir le code, valider.
+
+**Attendu observable** :
+
+- Redirection vers `/` puis `/t/<firstTenant>/menu`.
+- Cookie de session posé.
+- Header montre l'email du manager.
+
+**Couvre** : foundation auth OTP.
+
+### A2 — KB Manager multi-tenants : la dernière resto ouverte est restaurée à l'entrée
 
 **Acteur** : KB Manager multi-tenants (ex. Walid : `lartisan` + `tablelibanaise`)
 **Pré-requis** : compte manager multi-tenants provisionné ; navigateur frais (cookies vidés).
@@ -30,24 +48,275 @@ Checklist E2E manuelle générée depuis les 41 PRs mergées (PR #317 → #357).
 
 **Couvre** : #223 (cookie hint multi-tenant)
 
-### E2E — KB Admin : root entry va toujours en supervision
+### A3 — KB Manager sans tenant rattaché [à valider]
 
-**Acteur** : KB Admin (Alex) — peut avoir 0, 1 ou N tenants attachés.
-**Pré-requis** : compte KB Admin authentifié.
+**Acteur** : KB Manager dont toutes les rattaches `userTenants` ont été révoquées.
+**Pré-requis** : compte authentifié sans aucun tenant accessible.
 **Étapes** :
 
-1. Aller sur `/` (frais ou re-login).
-2. Observer l'URL finale.
-3. (Bonus) Forger un cookie `kb_current_tenant=<n'importe quel tenant>` via DevTools et relancer.
+1. Login → arrive sur `/`.
+2. Observer l'écran de fallback.
 
 **Attendu observable** :
 
-- Étape 2 : redirection vers `/monitoring` (sidebar « Supervision » actif).
-- Étape 3 : toujours `/monitoring` (le cookie est ignoré pour l'admin).
+- Écran « Aucun restaurant rattaché » (ou équivalent), pas de spinner infini.
+- Lien support visible pour contacter KitchenBoost.
+- Aucun redirect en boucle.
 
-**Couvre** : #223 (branche admin)
+**Couvre** : root-entry fallback no-tenant.
 
-### E2E — Cookie stale : manager qui a perdu un resto retombe proprement sur le premier tenant
+### A4a — KB Manager hors-tenant (UnauthorizedCard) [à valider]
+
+**Acteur** : KB Manager rattaché à `T1` uniquement.
+**Pré-requis** : tente d'accéder à `T2` via substitution URL.
+**Étapes** :
+
+1. Login manager T1, copier l'URL `/t/T2/menu` et naviguer manuellement.
+2. Observer le rendu.
+
+**Attendu observable** :
+
+- `UnauthorizedCard` (« Accès refusé » + CTA retour) — PAS une raw error Convex.
+- Pas de fuite des données de T2 (titre, items, etc.).
+
+**Couvre** : withTenant guard + UnauthorizedCard fallback.
+
+### A4b — KB Manager qui hit /monitoring (UnauthorizedCard, pas raw error) [à valider]
+
+**Acteur** : KB Manager (non admin).
+**Pré-requis** : session manager active.
+**Étapes** :
+
+1. Naviguer manuellement vers `/monitoring`.
+
+**Attendu observable** :
+
+- `UnauthorizedCard` rendue proprement (pas un crash ni `FORBIDDEN` brut).
+- Sidebar ne propose pas « Supervision ».
+
+**Couvre** : admin-only route guard + UnauthorizedCard fallback.
+
+### A5 — /accept-invite avec token vide [à valider]
+
+**Acteur** : visiteur cliquant sur un lien magic invalide.
+**Pré-requis** : navigateur sans session.
+**Étapes** :
+
+1. Ouvrir `/accept-invite` (sans paramètre `token`).
+2. Observer le rendu.
+
+**Attendu observable** :
+
+- Message « Lien d'invitation invalide ou expiré ».
+- Pas de tentative d'appel `acceptInvite` côté serveur.
+- CTA pour retourner sur `/login`.
+
+**Couvre** : invite token validation fallback.
+
+---
+
+## MC — Mes clients
+
+### MC1 — Open « Mes clients » + audit event `customer.kpi.consult` [à valider]
+
+**Acteur** : KB Manager
+**Pré-requis** : tenant `T1` avec ≥ 5 commandes payées sur les 90 derniers jours.
+**Étapes** :
+
+1. Login manager T1, ouvrir la sidebar et cliquer « Mes clients » → `/t/T1/clients`.
+2. Vérifier que la page charge sans error boundary.
+3. Côté Convex dashboard → events, vérifier qu'un event `customer.kpi.consult` a été inséré avec `tenantId=T1` + `userId` correct.
+
+**Attendu observable** :
+
+- Page rend les cards KPI.
+- Event d'audit présent côté backend.
+
+**Couvre** : Mes clients route + audit log.
+
+### MC2 — Cards segments (actif/inactif/vip) [à valider]
+
+**Acteur** : KB Manager
+**Pré-requis** : tenant avec un mix de clients (actifs 30j / inactifs / VIP > 3 commandes).
+**Étapes** :
+
+1. `/t/<tenantId>/clients`.
+2. Observer les 3 cards segments.
+
+**Attendu observable** :
+
+- Card « Clients actifs » avec compteur > 0.
+- Card « Clients inactifs » avec compteur cohérent.
+- Card « Clients VIP » avec critère affiché (ex. ≥ 3 commandes / 90j).
+
+**Couvre** : segments KPI cards.
+
+### MC3 — Cards reachability + macro [à valider]
+
+**Acteur** : KB Manager
+**Pré-requis** : tenant avec ≥ 1 client ayant email + ≥ 1 client ayant téléphone vérifié.
+**Étapes** :
+
+1. `/t/<tenantId>/clients`.
+2. Observer les cards reachability (email / SMS) et la card macro globale.
+
+**Attendu observable** :
+
+- Card « Joignables par email » avec compteur + % du total.
+- Card « Joignables par SMS » idem.
+- Card macro (total clients, panier moyen, fréquence) cohérente.
+
+**Couvre** : reachability + macro KPIs.
+
+### MC4 — Anti-PII guard (aucun email/tel visible) [à valider]
+
+**Acteur** : KB Manager
+**Pré-requis** : tenant avec ≥ 10 clients identifiés (email + tel renseignés).
+**Étapes** :
+
+1. `/t/<tenantId>/clients`, parcourir TOUTES les cards et sections.
+2. Ouvrir le DOM via DevTools, chercher (Ctrl+F) un email connu et un numéro de tel connu de la seed.
+
+**Attendu observable** :
+
+- Aucun email visible à l'écran.
+- Aucun numéro de téléphone visible.
+- Uniquement agrégats / compteurs / pourcentages.
+
+**Couvre** : anti-PII discipline V1.
+
+---
+
+## QR — QR PDF
+
+### QR1 — Download PDF nominal [à valider]
+
+**Acteur** : KB Manager
+**Pré-requis** : tenant actif, slug `lartisan` (URL publique = `https://lartisan.kitchen-boost.fr`).
+**Étapes** :
+
+1. Naviguer vers `/t/<tenantId>/qr` (ou section QR depuis Paramètres).
+2. Cliquer « Télécharger le sticker PDF ».
+
+**Attendu observable** :
+
+- Fichier `qr_<tenantSlug>.pdf` téléchargé.
+- PDF contient le QR code pointant vers l'URL publique du tenant.
+- Branding (logo + couleur primaire) visible.
+
+**Couvre** : QR sticker PDF generation.
+
+### QR2 — Regen sur customDomain
+
+**Acteur** : KB Manager
+**Pré-requis** : tenant avec `customDomain` configuré (ex. `commande.monresto.fr`) via #358.
+**Étapes** :
+
+1. Configurer le customDomain depuis Paramètres → Domaine.
+2. Régénérer le QR depuis la section QR.
+
+**Attendu observable** :
+
+- Le nouveau PDF pointe sur le customDomain (pas le slug `*.kitchen-boost.fr`).
+- L'ancien PDF (si caché) est invalidé.
+
+**Couvre** : #358 (customDomain backend) ; QR regen sur changement de domaine.
+
+---
+
+## MO — Monitoring
+
+### MO1 — KB Admin voit les 3 kinds (webhook_latency / kyc_pending / paid_no_course) [à valider]
+
+**Acteur** : KB Admin
+**Pré-requis** : seeds avec au moins 1 alerte de chaque kind active.
+**Étapes** :
+
+1. Login KB Admin, sidebar « Supervision » → `/monitoring`.
+2. Observer la table.
+
+**Attendu observable** :
+
+- 3 lignes (au moins) avec kind = `webhook_latency`, `kyc_pending`, `paid_no_course`.
+- Chaque ligne montre : tenant, kind, severity, timestamp.
+
+**Couvre** : monitoring dashboard core.
+
+### MO2 — Filtres type/tenant/severity [à valider]
+
+**Acteur** : KB Admin
+**Pré-requis** : ≥ 10 alertes mixtes sur ≥ 2 tenants.
+**Étapes** :
+
+1. `/monitoring`, sélectionner type=`kyc_pending` → table filtrée.
+2. Ajouter filtre tenant=`T1` → restriction supplémentaire.
+3. Ajouter severity=`high` → restriction finale.
+4. Reset filtres → table complète.
+
+**Attendu observable** :
+
+- Combinaison AND des filtres.
+- Aucune requête backend supplémentaire (filtrage UI sur live query).
+
+**Couvre** : monitoring filters.
+
+### MO3 — Drill-down panel [à valider]
+
+**Acteur** : KB Admin
+**Pré-requis** : ≥ 1 alerte avec contexte JSON renseigné.
+**Étapes** :
+
+1. Cliquer une ligne d'alerte.
+2. Panel latéral s'ouvre.
+
+**Attendu observable** :
+
+- Détail : timestamp ISO, payload JSON pretty-print, lien vers le tenant `/t/<id>`.
+- Fermeture via Esc ou bouton.
+
+**Couvre** : monitoring drill-down.
+
+### MO4 — Manager refusé (UnauthorizedCard, pas FORBIDDEN raw) [à valider]
+
+**Acteur** : KB Manager
+**Pré-requis** : session manager active.
+**Étapes** :
+
+1. Naviguer manuellement vers `/monitoring`.
+
+**Attendu observable** :
+
+- `UnauthorizedCard` (« Réservé à l'équipe KitchenBoost »).
+- Pas d'erreur Convex `FORBIDDEN` brute affichée.
+
+**Couvre** : monitoring admin-only guard + UnauthorizedCard.
+
+---
+
+## T — Tenants
+
+### T1 — Tenant switcher (manager voit ses restos + supervision pinned pour admin, switch met cookie)
+
+**Acteur** : KB Admin (avec ≥ 2 tenants attachés) + KB Manager multi-tenants
+**Pré-requis** : seeds avec admin multi-tenants + manager multi-tenants.
+**Étapes** :
+
+1. Login KB Admin, ouvrir le tenant switcher dans le header.
+2. Vérifier la liste : « Supervision » en haut (pinned), puis tenants attachés.
+3. Cliquer un tenant → URL `/t/<id>/menu`, cookie `kb_current_tenant=<id>` écrit.
+4. Logout, login KB Manager multi-tenants.
+5. Ouvrir le switcher → vérifier UNIQUEMENT les tenants accessibles (pas « Supervision »).
+6. Switcher entre 2 tenants → cookie réécrit à chaque switch.
+
+**Attendu observable** :
+
+- Admin : supervision pinned en premier.
+- Manager : pas de supervision, juste ses tenants.
+- Cookie mis à jour à chaque switch (vérifiable via DevTools → Application → Cookies).
+
+**Couvre** : #223 (cookie hint) ; tenant switcher RBAC.
+
+### T1bis — Cookie stale : manager qui a perdu un resto retombe proprement sur le premier tenant
 
 **Acteur** : KB Manager dont la rattache à un tenant a été révoquée.
 **Pré-requis** : le compte a un cookie `kb_current_tenant=<tenant qu'il ne possède plus>` (résidu d'une session précédente). Le compte garde A et B accessibles.
@@ -66,17 +335,232 @@ Checklist E2E manuelle générée depuis les 41 PRs mergées (PR #317 → #357).
 
 ---
 
-## F-AUTH / B-AUTH — invitation gérant
+## P — Paramètres
 
-> Note : la PR #329 (B-AUTH-7, ticket #230) ne fournit pas de test E2E dédié mais sa boucle d'invitation est exercée de bout en bout par les tests F-WIZARD ci-dessous (étape 7).
+### P1 — Identité visuelle (logo + color)
 
-_Pas de test E2E spécifique listé dans les PR bodies — voir « F-WIZARD » §Step 7 ci-dessous, qui exerce `inviteManager` + `acceptInvite` + `getSession` end-to-end._
+**Acteur** : KB Manager
+**Pré-requis** : KB Manager loggué sur `/t/[tenantId]/parametres` ; tenant sans branding préalable.
+**Étapes** :
+
+1. Ouvrir la page Paramètres, section « Identité visuelle ».
+2. Cliquer sur le placeholder de logo, sélectionner un PNG (~200 Ko). Vérifier la prévisualisation immédiate (avant save).
+3. Choisir une couleur (`#E5A100`). Swatch reflète la couleur en LIVE.
+4. Cliquer « Enregistrer ».
+5. Recharger la page (F5).
+
+**Attendu observable** :
+
+- Toast vert « Identité visuelle enregistrée. ».
+- Après reload : logo + nouvelle couleur visibles.
+- Aucun toast d'erreur, aucune console error.
+
+**Couvre** : #229 ; #168 (B-TENANT-LIFECYCLE, `tenant.updateSettings` exercée avec wrapper + audit log)
+
+### P2 — Coordonnées
+
+**Acteur** : KB Manager
+**Pré-requis** : tenant actif, user kb_manager rattaché, loggué dans `/t/[tenantId]`.
+**Étapes** :
+
+1. `/t/<tenantId>/parametres`.
+2. Section Coordonnées : adresse « 12 rue Neuve, 75002 Paris ».
+3. Téléphone `06 12 34 56 78`.
+4. Enregistrer.
+5. Modifier UNIQUEMENT le téléphone (`07 88 99 00 11`), Enregistrer.
+
+**Attendu observable** :
+
+- Toast « Coordonnées enregistrées » après chaque save.
+- Aucune erreur inline.
+- Au 2e save, le patch envoyé ne contient QUE `phone` (diff-only, observable via Convex dashboard).
+
+**Couvre** : #231
+
+### P2bis — Validation téléphone FR + bouton désactivé
+
+**Acteur** : KB Manager
+**Pré-requis** : idem P2.
+**Étapes** :
+
+1. Section Coordonnées.
+2. Saisir un téléphone invalide : `abcd` ou `0812345678` (08 = numéro spécial).
+3. Observer le bouton Enregistrer.
+4. Corriger en `06 12 34 56 78`, Enregistrer.
+
+**Attendu observable** :
+
+- Message inline rouge sous l'input.
+- Bouton Enregistrer désactivé.
+- Après correction, erreur disparaît, bouton réactivé, save passe avec toast succès.
+
+**Couvre** : #231
+
+### P2ter — Save isolé entre sections (régression #229)
+
+**Acteur** : KB Manager
+**Pré-requis** : idem.
+**Étapes** :
+
+1. Aller dans Paramètres.
+2. Section Identité visuelle : commencer à modifier la couleur (NE PAS Enregistrer).
+3. Section Coordonnées : nouvelle adresse + téléphone valide, Enregistrer.
+4. Vérifier section Identité visuelle.
+
+**Attendu observable** :
+
+- Toast « Coordonnées enregistrées ».
+- La couleur en cours de modification dans Identité visuelle est PRÉSERVÉE (`useForm` isolés).
+
+**Couvre** : #231 + régression #229
+
+### P3 — Modes acceptés
+
+**Acteur** : KB Manager (gérant resto, connecté sur son tenant)
+**Pré-requis** : Tenant `active` avec `acceptedModes = { delivery: true, clickAndCollect: true }`.
+**Étapes** :
+
+1. `/t/<tenantId>/parametres`.
+2. Section « Modes acceptés » : désactiver le toggle « Click & Collect ».
+3. Enregistrer → toast « Modes acceptés enregistrés. ».
+4. Tenter de désactiver le toggle « Livraison » (seul restant actif).
+
+**Attendu observable** :
+
+- Toggle « Livraison » visuellement désactivé (curseur not-allowed) — clic sans effet.
+- Message inline « Au moins un mode doit rester actif. ».
+- Réactiver « Click & Collect » fait disparaître le message ET débloque Livraison.
+- Reload : état persisté `{ delivery: true, clickAndCollect: false }` correctement lu.
+
+**Couvre** : #234 ; #168 (backend D5 élargi)
+
+### P4 — Horaires serviceHours
+
+**Acteur** : KB Manager
+**Pré-requis** : tenant actif sans horaires configurés.
+**Étapes** :
+
+1. `/t/<tenantId>/parametres`, section « Horaires de service ».
+2. Configurer Lundi : 11h30–14h30, 18h30–22h30 (double créneau).
+3. Configurer Dimanche : fermé.
+4. Enregistrer.
+5. Recharger.
+
+**Attendu observable** :
+
+- Toast « Horaires enregistrés ».
+- Reload : horaires persistés correctement.
+- Validation : pas de chevauchement, fin > début.
+
+**Couvre** : #236
+
+### P5 — Uber Direct read-only (info only)
+
+**Acteur** : KB Manager
+**Pré-requis** : tenant sans intégration Uber Direct active.
+**Étapes** :
+
+1. `/t/<tenantId>/parametres`, section « Uber Direct ».
+2. Observer le rendu.
+
+**Attendu observable** :
+
+- Skeleton informationnel : description du service + statut « Non configuré » ou « À venir ».
+- Pas de bouton actif (V1 read-only).
+- Aucune erreur.
+
+**Couvre** : #193 (skeleton Uber Direct)
 
 ---
 
-## F-MENU — édition menu & publication
+## AC — Auth core
 
-### E2E — Toggle rupture live, sans republication (F-MENU-04)
+### AC1 — Invite admin (acceptInvite admin path) [à valider]
+
+**Acteur** : KB Admin existant + futur KB Admin invité
+**Pré-requis** : KB Admin loggué peut inviter un autre admin.
+**Étapes** :
+
+1. Login KB Admin, naviguer vers `/admin/team` (ou équivalent), cliquer « Inviter un admin ».
+2. Saisir email du nouvel admin, envoyer.
+3. Récupérer le magic-link Resend, l'ouvrir en incognito.
+4. Compléter le `acceptInvite` (création de compte).
+
+**Attendu observable** :
+
+- Nouvelle row `userTenants` rôle `kb_admin` créée.
+- Le nouvel admin atterrit sur `/monitoring` après login.
+- Audit event `admin.invite.accept`.
+
+**Couvre** : acceptInvite admin path.
+
+### AC2 — Invite manager via wizard step 7
+
+**Acteur** : KB Admin (envoi) + gérant invité (acceptation)
+**Pré-requis** : prospect en phase `preparation`/`installation`/`operationnel` AVEC `tenantId` (step 1 fait) ; aucune ligne `managerInvites` n'existe encore pour ce tenant.
+**Étapes** :
+
+1. `/pipeline/<prospectId>/provision`, ouvrir le wizard, cliquer step 7 « Invitation ».
+2. Vérifier que l'email gérant est pré-rempli (== `prospect.email`), READ-ONLY.
+3. Cliquer « Envoyer l'invitation » sans toucher au nom.
+4. Vérifier qu'une `managerInvites` row apparaît côté backend (Convex dashboard).
+5. Badge « Invitation envoyée le DD/MM/YYYY à HH:MM » apparaît, warning « Sans invitation… » disparaît, bouton flippe sur « Renvoyer l'invitation ».
+6. Le gérant reçoit l'email (Resend) — cliquer le lien magic, créer son compte → `userTenants` row `kb_manager` créé.
+7. Revenir sur le wizard : step 7 dans le stepper coché (✓ complete).
+8. Cliquer « Renvoyer l'invitation » → échec `ALREADY_INVITED` → toast erreur + message inline.
+
+**Attendu observable** :
+
+- Badge timestamp dans la timezone navigateur, format `DD/MM/YYYY à HH:MM`.
+- Hook `useWizardState` flippe step 7 sur « complete » via la query `getLatestManagerInviteForTenant`.
+- Email Resend avec `tenantName` snapshot.
+- Bouton « Continuer » reste actif tout du long (step non-bloquant).
+
+**Couvre** : #273 ; B-AUTH-4 (#204) ; B-AUTH-5 (#212) ; B-AUTH-6 (#230) ; useWizardState gate (#265)
+
+### AC2bis — Step 7 non-bloquant : continuer vers step 8 sans envoyer + relance après expiration
+
+**Acteur** : KB Admin
+**Pré-requis** : prospect provisionné, step 1 fait ; aucune invite gérant envoyée.
+**Étapes** :
+
+1. Step 7, sans cliquer « Envoyer », vérifier warning « Sans invitation, le gérant ne pourra pas se connecter ».
+2. Cliquer « Continuer » → navigue vers step 8.
+3. Revenir manuellement sur step 7, envoyer l'invitation. Attendre expiration (ou patcher `expiresAt` à `Date.now() - 1` en DB).
+4. Cliquer « Renvoyer l'invitation » → relance succède (backend supprime l'expirée + crée une fresh), badge timestamp à l'heure courante.
+
+**Attendu observable** :
+
+- Bouton « Continuer » jamais désactivé.
+- Relance d'invite expirée : nouvelle row remplace l'ancienne (vérifiable en DB).
+- Badge affiche le NOUVEAU timestamp.
+
+**Couvre** : #273 ; B-AUTH-4 relance (#204)
+
+---
+
+## M — Menu
+
+### M1 — Catégories CRUD [à valider]
+
+**Acteur** : KB Manager
+**Pré-requis** : tenant fraîchement provisionné, 0 catégorie.
+**Étapes** :
+
+1. `/t/<tenantId>/menu`, cliquer « + Catégorie ».
+2. Saisir « Entrées », valider.
+3. Renommer en « Mes Entrées » via inline edit.
+4. Créer « Plats ». Supprimer « Mes Entrées ».
+
+**Attendu observable** :
+
+- Création / rename / delete propagent en live (Convex push).
+- Aucune erreur si dernière catégorie supprimée.
+- Validation : nom non vide.
+
+**Couvre** : #200 ; #206
+
+### M2 — Items list + toggle rupture
 
 **Acteur** : KB Manager
 **Pré-requis** : un tenant avec un menu publié contenant au moins une catégorie et un item « Smash Burger » disponible.
@@ -95,7 +579,7 @@ _Pas de test E2E spécifique listé dans les PR bodies — voir « F-WIZARD » �
 
 **Couvre** : #211 (AC3 + AC4) ; ADR 0015 (toggle live indépendant de publication)
 
-### E2E — Réactivité multi-onglets (toggle apparaît dans un autre onglet)
+### M2bis — Réactivité multi-onglets (toggle apparaît dans un autre onglet)
 
 **Acteur** : KB Manager (deux sessions ou un staff sur mobile + gérant sur desktop)
 **Pré-requis** : même page menu ouverte dans deux onglets/devices différents pour le même tenant.
@@ -111,7 +595,7 @@ _Pas de test E2E spécifique listé dans les PR bodies — voir « F-WIZARD » �
 
 **Couvre** : #211 (AC5 « Réactivité multi-onglets »)
 
-### E2E — Cycle complet d'un item via la modale (create + edit + recat + delete)
+### M3 — Modale item CRUD
 
 **Acteur** : KB Manager
 **Pré-requis** : tenant provisionné avec au moins 2 catégories (« Entrées », « Plats »).
@@ -134,7 +618,7 @@ _Pas de test E2E spécifique listé dans les PR bodies — voir « F-WIZARD » �
 
 **Couvre** : #219 ; #211 (F-MENU-04 click-non-propagation toggle vs card)
 
-### E2E — Validation prix négatif (front + backend)
+### M3bis — Validation prix négatif (front + backend)
 
 **Acteur** : KB Manager
 **Pré-requis** : un item existant dans une catégorie quelconque.
@@ -154,7 +638,7 @@ _Pas de test E2E spécifique listé dans les PR bodies — voir « F-WIZARD » �
 
 **Couvre** : #219 (validation locale + INVALID_PRICE backend)
 
-### E2E — Photo item : upload, remplacement, suppression et libération blob
+### M4 — Upload photo (upload, remplacement, suppression, libération blob)
 
 **Acteur** : KB Manager
 **Pré-requis** : tenant activé avec au moins une catégorie et un item sans photo. Backend joignable.
@@ -174,26 +658,62 @@ _Pas de test E2E spécifique listé dans les PR bodies — voir « F-WIZARD » �
 
 **Couvre** : #226
 
-### E2E — Création inline d'un groupe Personnalisations depuis la modale item
+### M5 — DnD reorder items [à valider]
 
 **Acteur** : KB Manager
-**Pré-requis** : un item I1 existe dans une catégorie ; aucun groupe Personnalisations dans le tenant.
+**Pré-requis** : ≥ 1 catégorie avec ≥ 3 items.
 **Étapes** :
 
-1. Ouvrir le menu, cliquer sur I1 pour ouvrir la modale item.
-2. Section « Personnalisations » → « Créer un nouveau groupe ».
-3. Dans la modale groupe (par-dessus), taper « Sauce » (nom), min=1, max=1, options « Ketchup » (0€) + « Mayo » (0€).
-4. Cliquer « Créer ».
+1. `/t/<tenantId>/menu`, drag un item du milieu vers le haut.
+2. Lâcher.
+3. Recharger (F5).
 
 **Attendu observable** :
 
-- La modale groupe se ferme automatiquement.
-- La modale item I1 reste ouverte ; la section « Personnalisations » liste « Sauce 1/1 · Ketchup, Mayo » avec bouton « Détacher ».
-- Recharger la page : « Sauce » est toujours attaché à I1.
+- Reorder visible immédiatement (optimistic UI).
+- Persistance après F5.
+- Snapshot/publication non impacté tant que pas de Publier.
 
-**Couvre** : #246 (c) ; #242 (F-MENU-08 réutilisé)
+**Couvre** : #237
 
-### E2E — Réutilisation cross-item + détachement isolé
+### M6 — DnD reorder catégories [à valider]
+
+**Acteur** : KB Manager
+**Pré-requis** : ≥ 3 catégories dans le menu.
+**Étapes** :
+
+1. `/t/<tenantId>/menu`, drag la 3e catégorie en position 1.
+2. Lâcher.
+3. F5.
+
+**Attendu observable** :
+
+- Reorder catégories persistant.
+- Items dans chaque catégorie conservent leur ordre interne.
+
+**Couvre** : #206
+
+### M7 — CRUD groupes Personnalisations [à valider]
+
+**Acteur** : KB Manager
+**Pré-requis** : tenant sans groupe Personnalisations.
+**Étapes** :
+
+1. Section « Personnalisations » de la page Menu, cliquer « + Nouveau groupe ».
+2. Saisir « Sauce », min=1, max=1, options « Ketchup » (0€) + « Mayo » (0€). Créer.
+3. Renommer en « Sauces » (edit).
+4. Ajouter une option « BBQ » (+0,50€).
+5. Supprimer le groupe.
+
+**Attendu observable** :
+
+- CRUD complet sans erreur.
+- Validation min ≤ max.
+- Suppression bloquée si attaché à des items (avec warning).
+
+**Couvre** : #242
+
+### M8 — Attach/detach groupes (réutilisation cross-item + détachement isolé)
 
 **Acteur** : KB Manager
 **Pré-requis** : un groupe « Suppléments » (min=0, max=3, options Bacon/Œuf/Cheddar) ; deux items I1 et I2.
@@ -212,7 +732,26 @@ _Pas de test E2E spécifique listé dans les PR bodies — voir « F-WIZARD » �
 
 **Couvre** : #246 (a)(b) ; #242
 
-### E2E — Idempotence attach (re-attach = no-op)
+### M8bis — Création inline d'un groupe Personnalisations depuis la modale item
+
+**Acteur** : KB Manager
+**Pré-requis** : un item I1 existe dans une catégorie ; aucun groupe Personnalisations dans le tenant.
+**Étapes** :
+
+1. Ouvrir le menu, cliquer sur I1 pour ouvrir la modale item.
+2. Section « Personnalisations » → « Créer un nouveau groupe ».
+3. Dans la modale groupe (par-dessus), taper « Sauce » (nom), min=1, max=1, options « Ketchup » (0€) + « Mayo » (0€).
+4. Cliquer « Créer ».
+
+**Attendu observable** :
+
+- La modale groupe se ferme automatiquement.
+- La modale item I1 reste ouverte ; la section « Personnalisations » liste « Sauce 1/1 · Ketchup, Mayo » avec bouton « Détacher ».
+- Recharger la page : « Sauce » est toujours attaché à I1.
+
+**Couvre** : #246 (c) ; #242 (F-MENU-08 réutilisé)
+
+### M8ter — Idempotence attach (re-attach = no-op)
 
 **Acteur** : KB Manager
 **Pré-requis** : un item I1 ; un groupe G existe et est déjà attaché à I1.
@@ -228,7 +767,7 @@ _Pas de test E2E spécifique listé dans les PR bodies — voir « F-WIZARD » �
 
 **Couvre** : #246 (b)
 
-### E2E — Édit prix, badge, publish, vérification PWA vs Aperçu
+### M9 — Publier + badge + Aperçu
 
 **Acteur** : KB Manager
 **Pré-requis** : tenant actif avec ≥ 1 catégorie, ≥ 1 item au prix P0 publié au moins une fois.
@@ -250,7 +789,7 @@ _Pas de test E2E spécifique listé dans les PR bodies — voir « F-WIZARD » �
 
 **Couvre** : #254
 
-### E2E — Publish sur tenant fraîchement provisionné (pas de gate)
+### M9bis — Publish sur tenant fraîchement provisionné (pas de gate)
 
 **Acteur** : KB Manager
 **Pré-requis** : tenant fraîchement provisionné, **jamais publié**, 0 catégorie initialement.
@@ -269,7 +808,7 @@ _Pas de test E2E spécifique listé dans les PR bodies — voir « F-WIZARD » �
 
 **Couvre** : #254 (AC tenant fraîchement provisionné)
 
-### E2E — Aperçu protégé par l'auth admin (lien direct, incognito)
+### M9ter — Aperçu protégé par l'auth admin (lien direct, incognito)
 
 **Acteur** : KB Manager (déjà loggé) + un onglet de navigation externe.
 **Pré-requis** : tenant avec menu publié + modifs draft non publiées.
@@ -289,9 +828,41 @@ _Pas de test E2E spécifique listé dans les PR bodies — voir « F-WIZARD » �
 
 ---
 
-## F-COMMANDES — liste commandes, filtres, détail, refund, export CSV
+## CMD — Commandes
 
-### E2E — Filtres date + statut sur la liste commandes
+### CMD1 — Page shell
+
+**Acteur** : KB Manager
+**Pré-requis** : tenant actif.
+**Étapes** :
+
+1. Sidebar → Commandes → `/t/<tenantId>/commandes`.
+2. Vérifier le shell : header + table empty si pas de commandes.
+
+**Attendu observable** :
+
+- Page rend sans erreur.
+- Header avec titre « Commandes » + bouton CSV (désactivé si vide).
+
+**Couvre** : #222
+
+### CMD2 — Table live Convex
+
+**Acteur** : KB Manager
+**Pré-requis** : tenant avec ≥ 1 commande.
+**Étapes** :
+
+1. `/t/<tenantId>/commandes`, observer la table.
+2. Déclencher une nouvelle commande côté backend (script ou autre onglet).
+
+**Attendu observable** :
+
+- Table peuplée des commandes existantes.
+- Nouvelle commande apparaît live (push Convex WebSocket) sans refresh.
+
+**Couvre** : #227
+
+### CMD3 — Filtres date + statut
 
 **Acteur** : KB Manager
 **Pré-requis** : tenant signé avec au moins ~10 commandes étalées sur > 30 jours, avec un mix de statuts.
@@ -313,7 +884,7 @@ _Pas de test E2E spécifique listé dans les PR bodies — voir « F-WIZARD » �
 
 **Couvre** : #238 ; #227 (réactivité Convex)
 
-### E2E — Ouvrir le détail d'une commande payée et lire items + pricing + timeline
+### CMD4 — Modal détail
 
 **Acteur** : KB Manager
 **Pré-requis** : loggué sur `/t/<tenantId>/commandes` avec ≥ 1 commande payée (status `nouvelle` ou plus, `pricingSnapshot` rempli, ≥ 1 item, ≥ 2 events).
@@ -334,7 +905,7 @@ _Pas de test E2E spécifique listé dans les PR bodies — voir « F-WIZARD » �
 
 **Couvre** : #239 ; #227 (row click)
 
-### E2E — Détail d'une commande en attente de paiement (pricing absent)
+### CMD4bis — Détail d'une commande en attente de paiement (pricing absent)
 
 **Acteur** : KB Manager
 **Pré-requis** : ≥ 1 commande en status `en attente de paiement` (créée mais pas confirmée Stripe → `pricingSnapshot` absent).
@@ -351,7 +922,7 @@ _Pas de test E2E spécifique listé dans les PR bodies — voir « F-WIZARD » �
 
 **Couvre** : #239 (branche `pricingSnapshot === undefined`)
 
-### E2E — Fermeture du modal détail (clavier + backdrop)
+### CMD4ter — Fermeture du modal détail (clavier + backdrop)
 
 **Acteur** : KB Manager
 **Pré-requis** : modal détail ouvert.
@@ -365,7 +936,7 @@ _Pas de test E2E spécifique listé dans les PR bodies — voir « F-WIZARD » �
 
 **Couvre** : #239 (close affordances)
 
-### E2E — Manager rembourse une commande payée depuis le modal détail
+### CMD5 — Refund
 
 **Acteur** : KB Manager
 **Pré-requis** : kb_manager sur `T1`. T1 a ≥ 1 commande payée (`paidAt` set, status `nouvelle` ou ultérieur), `pricingSnapshot.total` connu (ex. 27,50 €). Stripe sandbox + `stripeAccountId` sur le tenant.
@@ -387,7 +958,7 @@ _Pas de test E2E spécifique listé dans les PR bodies — voir « F-WIZARD » �
 
 **Couvre** : #243 ; #221 (end-to-end B-REFUND-PUBLIC-ACTION)
 
-### E2E — Staff ne voit PAS le bouton de remboursement
+### CMD5bis — Staff ne voit PAS le bouton de remboursement
 
 **Acteur** : staff
 **Pré-requis** : staff sur T1. T1 a ≥ 1 commande payée.
@@ -404,7 +975,7 @@ _Pas de test E2E spécifique listé dans les PR bodies — voir « F-WIZARD » �
 
 **Couvre** : #243 (RBAC mirror côté front)
 
-### E2E — Tentative de refund déjà effectué (CTA masqué)
+### CMD5ter — Tentative de refund déjà effectué (CTA masqué)
 
 **Acteur** : KB Manager
 **Pré-requis** : kb_manager sur T1. T1 a une commande DÉJÀ en statut `refusée`.
@@ -419,7 +990,7 @@ _Pas de test E2E spécifique listé dans les PR bodies — voir « F-WIZARD » �
 
 **Couvre** : #243 (gate refundability front + défense en profondeur)
 
-### E2E — Export CSV filtré reflète l'état UI
+### CMD6 — Export CSV filtré reflète l'état UI
 
 **Acteur** : KB Manager
 **Pré-requis** : tenant avec ≥ 10 commandes mixtes (statuts variés, sur 30 derniers jours).
@@ -441,7 +1012,7 @@ _Pas de test E2E spécifique listé dans les PR bodies — voir « F-WIZARD » �
 
 **Couvre** : #244 ; #238 (filtres)
 
-### E2E — Bouton CSV désactivé sans données
+### CMD6bis — Bouton CSV désactivé sans données
 
 **Acteur** : KB Manager
 **Pré-requis** : tenant fraîchement provisionné, zéro commande.
@@ -461,117 +1032,17 @@ _Pas de test E2E spécifique listé dans les PR bodies — voir « F-WIZARD » �
 
 ---
 
-## F-PARAMETRES — paramètres tenant (identité, coordonnées, modes)
+## PR — Pricing
 
-### E2E — Upload logo + couleur primaire bout-en-bout (KB Manager)
-
-**Acteur** : KB Manager
-**Pré-requis** : KB Manager loggué sur `/t/[tenantId]/parametres` ; tenant sans branding préalable.
-**Étapes** :
-
-1. Ouvrir la page Paramètres, section « Identité visuelle ».
-2. Cliquer sur le placeholder de logo, sélectionner un PNG (~200 Ko). Vérifier la prévisualisation immédiate (avant save).
-3. Choisir une couleur (`#E5A100`). Swatch reflète la couleur en LIVE.
-4. Cliquer « Enregistrer ».
-5. Recharger la page (F5).
-
-**Attendu observable** :
-
-- Toast vert « Identité visuelle enregistrée. ».
-- Après reload : logo + nouvelle couleur visibles (KB Admin) ou changement reflété dans le header / sidebar (KB Manager).
-- Aucun toast d'erreur, aucune console error.
-
-**Couvre** : #229 ; #168 (B-TENANT-LIFECYCLE, `tenant.updateSettings` exercée avec wrapper + audit log)
-
-### E2E — Édition Coordonnées tenant (KB Manager)
-
-**Acteur** : KB Manager
-**Pré-requis** : tenant actif, user kb_manager rattaché, loggué dans `/t/[tenantId]`.
-**Étapes** :
-
-1. `/t/<tenantId>/parametres`.
-2. Section Coordonnées : adresse « 12 rue Neuve, 75002 Paris ».
-3. Téléphone `06 12 34 56 78`.
-4. Enregistrer.
-5. Modifier UNIQUEMENT le téléphone (`07 88 99 00 11`), Enregistrer.
-
-**Attendu observable** :
-
-- Toast « Coordonnées enregistrées » après chaque save.
-- Aucune erreur inline.
-- Au 2e save, le patch envoyé ne contient QUE `phone` (diff-only, observable via Convex dashboard).
-
-**Couvre** : #231
-
-### E2E — Validation téléphone FR + bouton désactivé
-
-**Acteur** : KB Manager
-**Pré-requis** : idem.
-**Étapes** :
-
-1. Section Coordonnées.
-2. Saisir un téléphone invalide : `abcd` ou `0812345678` (08 = numéro spécial).
-3. Observer le bouton Enregistrer.
-4. Corriger en `06 12 34 56 78`, Enregistrer.
-
-**Attendu observable** :
-
-- Message inline rouge sous l'input.
-- Bouton Enregistrer désactivé.
-- Après correction, erreur disparaît, bouton réactivé, save passe avec toast succès.
-
-**Couvre** : #231
-
-### E2E — Save isolé entre sections (régression #229)
-
-**Acteur** : KB Manager
-**Pré-requis** : idem.
-**Étapes** :
-
-1. Aller dans Paramètres.
-2. Section Identité visuelle : commencer à modifier la couleur (NE PAS Enregistrer).
-3. Section Coordonnées : nouvelle adresse + téléphone valide, Enregistrer.
-4. Vérifier section Identité visuelle.
-
-**Attendu observable** :
-
-- Toast « Coordonnées enregistrées ».
-- La couleur en cours de modification dans Identité visuelle est PRÉSERVÉE (`useForm` isolés).
-
-**Couvre** : #231 + régression #229
-
-### E2E — Garde-fou « au moins un mode actif » sur la section Modes
-
-**Acteur** : KB Manager (gérant resto, connecté sur son tenant)
-**Pré-requis** : Tenant `active` avec `acceptedModes = { delivery: true, clickAndCollect: true }`.
-**Étapes** :
-
-1. `/t/<tenantId>/parametres`.
-2. Section « Modes acceptés » : désactiver le toggle « Click & Collect ».
-3. Enregistrer → toast « Modes acceptés enregistrés. ».
-4. Tenter de désactiver le toggle « Livraison » (seul restant actif).
-
-**Attendu observable** :
-
-- Toggle « Livraison » visuellement désactivé (curseur not-allowed) — clic sans effet.
-- Message inline « Au moins un mode doit rester actif. ».
-- Réactiver « Click & Collect » fait disparaître le message ET débloque Livraison.
-- Reload : état persisté `{ delivery: true, clickAndCollect: false }` correctement lu.
-
-**Couvre** : #234 ; #168 (backend D5 élargi)
-
----
-
-## F-PRICING — règles tarifaires (read, create, edit, toggle active, delete)
-
-### E2E — Liste règles pricing read-only (tenant avec règles + tenant vierge)
+### PR1 — Liste règles + auto-priorité
 
 **Acteur** : KB Manager (ou KB Admin en impersonation)
 **Pré-requis** :
 
 - Tenant A avec ≥ 2 règles (1 active, 1 inactive ; variétés d'actions : `livraison_offerte_resto`, `frais_livraison_part_resto_fixe`, `frais_livraison_part_resto_pourcentage_panier`).
 - Tenant B vierge (0 règle).
-  **Étapes** :
+
+**Étapes** :
 
 1. Login KB Manager du tenant A → sidebar « Pricing » → page charge.
 2. Vérifier bandeau « Quand plusieurs règles s'appliquent, KitchenBoost applique automatiquement celle qui est la plus avantageuse pour ton client. Pas d'ordre à gérer. ».
@@ -579,7 +1050,7 @@ _Pas de test E2E spécifique listé dans les PR bodies — voir « F-WIZARD » �
 4. Ligne inactive visuellement grisée.
 5. Switcher vers tenant B → sidebar « Pricing ».
 6. État vide : bandeau toujours présent + message « Aucune règle pour l'instant. La règle KitchenBoost par défaut (10 % du panier absorbés par le resto) s'applique. ».
-7. **Absence** de bouton « + Nouvelle règle » sur l'état vide (note : remplacé en F-PRICING-2 ci-dessous).
+7. **Absence** de bouton « + Nouvelle règle » sur l'état vide (note : remplacé en PR2 ci-dessous).
 
 **Attendu observable** :
 
@@ -588,7 +1059,27 @@ _Pas de test E2E spécifique listé dans les PR bodies — voir « F-WIZARD » �
 
 **Couvre** : #241
 
-### E2E — Édition d'une règle pricing avec succès
+### PR2 — Builder create
+
+**Acteur** : KB Manager
+**Pré-requis** : tenant sans règle ou avec règles existantes.
+**Étapes** :
+
+1. Cliquer « + Nouvelle règle » sur la page Pricing.
+2. Modale builder : titre « Créer une règle ».
+3. Ajouter condition `total_panier gte 25 EUR` + condition `premiere_commande true`.
+4. Sélectionner action `livraison_offerte_resto`.
+5. Cliquer « Créer la règle ».
+
+**Attendu observable** :
+
+- Modale ferme, règle apparaît dans la liste avec résumé FR.
+- Réactivité Convex (apparition sans refresh).
+- Validation : pas de save si conditions ou action manquantes.
+
+**Couvre** : #245
+
+### PR3 — Builder edit
 
 **Acteur** : KB Manager
 **Pré-requis** : ≥ 1 règle persistée (ex. `panier >= 25 EUR + premiere commande -> livraison offerte resto`).
@@ -607,7 +1098,7 @@ _Pas de test E2E spécifique listé dans les PR bodies — voir « F-WIZARD » �
 
 **Couvre** : #248 ; #245 (builder réutilisé) ; #241 (réactivité liste)
 
-### E2E — Édition avec conditions contradictoires (erreur inline)
+### PR3bis — Édition avec conditions contradictoires (erreur inline)
 
 **Acteur** : KB Manager
 **Pré-requis** : règle avec condition `total_panier gte 25 EUR`.
@@ -626,7 +1117,7 @@ _Pas de test E2E spécifique listé dans les PR bodies — voir « F-WIZARD » �
 
 **Couvre** : #248 ; #245 (même UX en create)
 
-### E2E — Toggle Active/Inactive drive `setActive` end-to-end + round-trip préserve la règle
+### PR4 — Toggle active (drive `setActive` end-to-end + round-trip préserve la règle)
 
 **Acteur** : KB Manager
 **Pré-requis** : tenant avec ≥ 1 règle (conditions et action non triviales, ex. « Panier ≥ 25 € » + « Livraison offerte resto »).
@@ -646,7 +1137,7 @@ _Pas de test E2E spécifique listé dans les PR bodies — voir « F-WIZARD » �
 
 **Couvre** : #249 ; #248 (pré-fill modal d'édition comme sonde de non-régression)
 
-### E2E — Toggle pricing cross-tenant safe
+### PR4bis — Toggle pricing cross-tenant safe
 
 **Acteur** : KB Manager
 **Pré-requis** : Deux tenants A et B, chacun ≥ 1 règle. Manager rattaché à A uniquement.
@@ -662,7 +1153,7 @@ _Pas de test E2E spécifique listé dans les PR bodies — voir « F-WIZARD » �
 
 **Couvre** : #249 ; ADR 0010 / withTenant
 
-### E2E — Suppression d'une règle pricing avec confirmation 2 clics
+### PR5 — Supprimer (confirmation 2 clics)
 
 **Acteur** : KB Manager
 **Pré-requis** : tenant actif avec ≥ 2 règles actives.
@@ -685,9 +1176,25 @@ _Pas de test E2E spécifique listé dans les PR bodies — voir « F-WIZARD » �
 
 ---
 
-## F-SUPPORT — routes support (supervision + opérationnelle)
+## SUP — Support
 
-### E2E — Route `/support` rend la surface support figée
+### SUP1 — Composant partagé
+
+**Acteur** : tout rôle (admin / manager / staff)
+**Pré-requis** : un compte loggué.
+**Étapes** :
+
+1. Charger n'importe quelle route support (`/support` ou `/t/[id]/support`).
+2. Inspecter le composant rendu.
+
+**Attendu observable** :
+
+- Le même composant `SupportPanel` (config statique : CSM + 4 cards) est rendu.
+- Pas de duplication HTML entre les 2 routes.
+
+**Couvre** : #210
+
+### SUP2 — Route supervision `/support`
 
 **Acteur** : KB Admin (root)
 **Pré-requis** : KB Admin loggué (session.ready + isAdmin === true), shell `(app)` monté.
@@ -704,7 +1211,7 @@ _Pas de test E2E spécifique listé dans les PR bodies — voir « F-WIZARD » �
 
 **Couvre** : #232 ; #210 (composant partagé utilisable depuis la route supervision)
 
-### E2E — Route opérationnelle `/t/[tenantId]/support` accessible (y compris tenant suspendu)
+### SUP3 — Route opérationnelle `/t/[tenantId]/support` (y compris tenant suspendu)
 
 **Acteur** : KB Manager
 **Pré-requis** : compte KB Manager attaché à `T1` actif, plus compte KB Manager attaché à `T2` en status `suspended`.
@@ -723,7 +1230,7 @@ _Pas de test E2E spécifique listé dans les PR bodies — voir « F-WIZARD » �
 
 **Couvre** : #235 ; #150 (épique F-SUPPORT)
 
-### E2E — Parité supervision / opérationnelle (zero duplication)
+### SUP3bis — Parité supervision / opérationnelle (zero duplication)
 
 **Acteur** : KB Admin
 **Pré-requis** : compte KB Admin, ≥ 1 tenant `T1`.
@@ -743,11 +1250,98 @@ _Pas de test E2E spécifique listé dans les PR bodies — voir « F-WIZARD » �
 
 ---
 
-## F-WIZARD — provisioning resto 8 étapes
+## W — Wizard provisioning (10/10 steps)
 
-> Note : les PRs #349 (slice 1/10 #265), #350 (slice 2/10 #266), #351 (slice 3/10 #267, Step 1), #352 (slice 4/10 #269, Step 3), #355 (slice 8/10 #272, Step 6) et #357 (slice 10/10 #274, Step 8) n'ont pas proposé de test E2E dédié dans leur PR body. Les parcours utilisateurs significatifs sont quand même exerçables via les tests Step 4 / Step 5 / Step 7 ci-dessous, plus une checklist manuelle « full wizard » à dériver depuis la roadmap V1.
+### W1 — Skeleton + stepper
 
-### E2E — Wizard Step 4 : branding bout-en-bout sur un tenant fraîchement provisionné
+**Acteur** : KB Admin
+**Pré-requis** : prospect en phase `preparation`.
+**Étapes** :
+
+1. `/pipeline/<prospectId>/provision` → wizard shell.
+2. Observer le stepper (10 steps visibles : Provisioning / Domaine / Stripe KYC / Branding / Menu / QR / Invitation / Activation, etc.).
+
+**Attendu observable** :
+
+- Shell rend sans erreur.
+- Stepper marque les étapes complete/current/pending selon `useWizardState`.
+- Navigation step→step possible.
+
+**Couvre** : #265
+
+### W2 — Launcher button
+
+**Acteur** : KB Admin
+**Pré-requis** : prospect en phase `preparation`.
+**Étapes** :
+
+1. `/pipeline/<prospectId>` (fiche prospect).
+2. Observer le bouton « Lancer le provisioning ».
+3. Cliquer.
+
+**Attendu observable** :
+
+- Bouton visible uniquement sur prospects en phase `preparation`+ (selon RBAC).
+- Clic ouvre `/pipeline/<prospectId>/provision`.
+
+**Couvre** : #266
+
+### W3 — Step 1 provisionTenant
+
+**Acteur** : KB Admin
+**Pré-requis** : prospect sans `tenantId`.
+**Étapes** :
+
+1. Wizard step 1, saisir nom du restaurant + slug suggéré.
+2. Cliquer « Créer le tenant ».
+
+**Attendu observable** :
+
+- Tenant doc créé en DB avec status `pending`.
+- Back-link `tenantId` posé sur le prospect.
+- Step 1 passe `complete`, wizard avance vers step 2.
+
+**Couvre** : #267
+
+### W4 — Step 2 customDomain (débloqué par #358)
+
+**Acteur** : KB Admin
+**Pré-requis** : step 1 fait, tenantId créé.
+**Étapes** :
+
+1. Wizard step 2 « Domaine ».
+2. Saisir `commande.monresto.fr`, lancer la vérification DNS.
+3. Confirmer la propagation.
+
+**Attendu observable** :
+
+- Backend `setCustomDomain` (#358) appelé, DNS check OK.
+- Step 2 passe `complete` une fois le domaine vérifié.
+- L'URL publique du tenant utilise désormais le customDomain.
+
+**Couvre** : #268 (débloqué) ; #358 (customDomain backend)
+
+### W5 — Step 3 Stripe Connect KYC
+
+**Acteur** : KB Admin
+**Pré-requis** : step 1 fait, tenant sans `stripeAccountId`.
+**Étapes** :
+
+1. Wizard step 3 « Stripe KYC ».
+2. Cliquer « Générer le lien Stripe Connect ».
+3. Copier le lien (CTA copier), l'envoyer au gérant (manuellement).
+4. Le gérant complète KYC dans son onglet.
+5. Wizard step 3 : « Régénérer le lien » disponible si besoin.
+
+**Attendu observable** :
+
+- Lien Connect généré valide.
+- Step 3 passe `complete` quand `stripeAccountId` + KYC validé côté Stripe.
+- Webhook Stripe met à jour le statut KYC sur le tenant.
+
+**Couvre** : #269
+
+### W6 — Step 4 Branding (bout-en-bout)
 
 **Acteur** : KB Admin
 **Pré-requis** : prospect en phase `preparation` avec step 1 (provisioning) complété (tenantId back-link posé). Une image PNG/JPG (~200 Ko).
@@ -771,7 +1365,7 @@ _Pas de test E2E spécifique listé dans les PR bodies — voir « F-WIZARD » �
 
 **Couvre** : #270 (Step 4) ; #229 (BrandingEditor) ; #231 (CoordonneesEditor) ; #234 (ModesEditor) ; #168 (tenant.updateSettings D5)
 
-### E2E — Wizard Step 4 : validation backend INVALID_HEX_COLOR
+### W6bis — Step 4 validation backend INVALID_HEX_COLOR
 
 **Acteur** : KB Admin
 **Pré-requis** : tenant déjà créé, step 4 accessible.
@@ -788,7 +1382,7 @@ _Pas de test E2E spécifique listé dans les PR bodies — voir « F-WIZARD » �
 
 **Couvre** : #270 (gestion erreur backend) ; #228 (tenantSettingsValidation `isValidHexColor`)
 
-### E2E — Provisioning Step 5 : publication requise + gate vers Step 6
+### W7 — Step 5 Menu (publication requise + gate vers Step 6)
 
 **Acteur** : KB Admin
 **Pré-requis** : prospect en phase `preparation` avec tenant déjà provisionné (Step 1 OK). Aucune publication antérieure du menu.
@@ -810,48 +1404,47 @@ _Pas de test E2E spécifique listé dans les PR bodies — voir « F-WIZARD » �
 
 **Couvre** : #271 ; #176 (hasUnpublishedChanges) ; #155 (publishMenu) ; #160 (getPublicMenu) ; ADR 0015
 
-### E2E — Envoi puis renvoi du magic-link gérant depuis le wizard Step 7
+### W8 — Step 6 QR sticker PDF
 
 **Acteur** : KB Admin
-**Pré-requis** : prospect en phase `preparation`/`installation`/`operationnel` AVEC `tenantId` (step 1 fait) ; aucune ligne `managerInvites` n'existe encore pour ce tenant.
+**Pré-requis** : step 5 complete (menu publié au moins une fois).
 **Étapes** :
 
-1. `/pipeline/<prospectId>/provision`, ouvrir le wizard, cliquer step 7 « Invitation ».
-2. Vérifier que l'email gérant est pré-rempli (== `prospect.email`), READ-ONLY.
-3. Cliquer « Envoyer l'invitation » sans toucher au nom.
-4. Vérifier qu'une `managerInvites` row apparaît côté backend (Convex dashboard).
-5. Badge « Invitation envoyée le DD/MM/YYYY à HH:MM » apparaît, warning « Sans invitation… » disparaît, bouton flippe sur « Renvoyer l'invitation ».
-6. Le gérant reçoit l'email (Resend) — cliquer le lien magic, créer son compte → `userTenants` row `kb_manager` créé.
-7. Revenir sur le wizard : step 7 dans le stepper coché (✓ complete).
-8. Cliquer « Renvoyer l'invitation » → échec `ALREADY_INVITED` → toast erreur + message inline.
+1. Wizard step 6 « QR sticker ».
+2. Vérifier preview du QR + sélecteur 3 formats (A4 / A5 / sticker carré).
+3. Cliquer « Télécharger le PDF » pour chaque format.
 
 **Attendu observable** :
 
-- Badge timestamp dans la timezone navigateur, format `DD/MM/YYYY à HH:MM`.
-- Hook `useWizardState` flippe step 7 sur « complete » via la query `getLatestManagerInviteForTenant`.
-- Email Resend avec `tenantName` snapshot.
-- Bouton « Continuer » reste actif tout du long (step non-bloquant).
+- Preview rend le QR pointant vers l'URL publique du tenant.
+- 3 PDF distincts téléchargés avec le bon format.
+- Step 6 passe `complete` après premier téléchargement (ou navigation suivante).
 
-**Couvre** : #273 ; B-AUTH-4 (#204) ; B-AUTH-5 (#212) ; B-AUTH-6 (#230) ; useWizardState gate (#265)
+**Couvre** : #272
 
-### E2E — Step 7 non-bloquant : continuer vers step 8 sans envoyer + relance après expiration
+### W9 — Step 7 Invitation gérant
+
+Voir AC2 et AC2bis ci-dessus (couverture identique : #273 + B-AUTH-4/5/6).
+
+### W10 — Step 8 Activation
 
 **Acteur** : KB Admin
-**Pré-requis** : prospect provisionné, step 1 fait ; aucune invite gérant envoyée.
+**Pré-requis** : steps 1-7 complets (ou au moins les bloquants).
 **Étapes** :
 
-1. Step 7, sans cliquer « Envoyer », vérifier warning « Sans invitation, le gérant ne pourra pas se connecter ».
-2. Cliquer « Continuer » → navigue vers step 8.
-3. Revenir manuellement sur step 7, envoyer l'invitation. Attendre expiration (ou patcher `expiresAt` à `Date.now() - 1` en DB).
-4. Cliquer « Renvoyer l'invitation » → relance succède (backend supprime l'expirée + crée une fresh), badge timestamp à l'heure courante.
+1. Wizard step 8 « Activation ».
+2. Vérifier le récap 6 blocs (Tenant / Domaine / Stripe KYC / Branding / Menu / QR + Invitation).
+3. Cliquer « Activer le restaurant ».
+4. Dialog 2 étapes : confirmer le slug définitif, puis cliquer « Activer ».
 
 **Attendu observable** :
 
-- Bouton « Continuer » jamais désactivé.
-- Relance d'invite expirée : nouvelle row remplace l'ancienne (vérifiable en DB).
-- Badge affiche le NOUVEAU timestamp.
+- Tenant passe `status: active` en DB.
+- Phase prospect passe `operationnel`.
+- Wizard se ferme ou affiche un écran de confirmation.
+- Audit event `tenant.activated`.
 
-**Couvre** : #273 ; B-AUTH-4 relance (#204)
+**Couvre** : #274
 
 ---
 
@@ -880,9 +1473,3 @@ Les PRs suivantes n'ont pas inclus de section « Tests E2E proposés » exploita
 | #352 | #269    | F-WIZARD slice 4/10 (Step 3 Stripe KYC)  | Pas de section E2E. À couvrir (génération lien, copie, régénération).                                                                   |
 | #355 | #272    | F-WIZARD slice 8/10 (Step 6 QR)          | Pas de section E2E. À couvrir (preview + 3 formats PDF + télécharger).                                                                  |
 | #357 | #274    | F-WIZARD slice 10/10 (Step 8 Activation) | Pas de section E2E. À couvrir (récap 6 blocs + dialog 2 étapes slug + activate).                                                        |
-
-### Bloquée (hors checklist)
-
-| Ticket | Statut  | Note                                                                                                                                                                     |
-| ------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| #268   | bloquée | F-WIZARD Step 2 customDomain — non implémentée en V1. Le parcours wizard saute step 2 ; la complétion est calculée comme « always-navigable » dans `computeWizardState`. |
