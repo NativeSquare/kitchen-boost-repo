@@ -97,4 +97,21 @@ describe("page.tsx — F-SHELL-10 (#233) wiring contract", () => {
     // any module that calls a client hook).
     expect(PAGE_SOURCE).toMatch(/^["']use client["']/m);
   });
+
+  it("F-CONTRATS slice 1/4 (#158) — fires `api.lib.admin.contracts.listContractsForProspect` and threads it as `contracts` to the view (skipped until session is a ready root admin, mirrors /monitoring's pattern)", () => {
+    const code = stripNonCode(PAGE_SOURCE);
+    // The contracts query lives here (not in the view) so the view stays
+    // pure-callable from vitest's node env.
+    expect(code).toMatch(
+      /api\.lib\.admin\.contracts\.listContractsForProspect/,
+    );
+    expect(code).toMatch(/useQuery/);
+    // Skip-until-admin sentinel — without it a manager who deep-links the
+    // URL would trip the raw Convex FORBIDDEN error boundary instead of the
+    // canonical UnauthorizedCard (A4 of the manual E2E checklist).
+    expect(code).toMatch(/"skip"/);
+    // The contracts prop must reach the view (pure split — view consumes
+    // it via `ContractsBlock`, page owns the data).
+    expect(code).toMatch(/contracts=\{contracts\}/);
+  });
 });

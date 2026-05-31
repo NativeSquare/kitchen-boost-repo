@@ -49,6 +49,10 @@
  */
 
 import { useParams } from "next/navigation";
+import { useQuery } from "convex/react";
+
+import { api } from "@packages/backend/convex/_generated/api";
+import type { Id } from "@packages/backend/convex/_generated/dataModel";
 
 import { useSession } from "@/lib/session";
 
@@ -62,19 +66,17 @@ export default function ProspectFichePage() {
   // Next.js' param type is `string | string[]` and we explicitly assume a
   // single-segment dynamic route.
   const params = useParams<{ prospectId: string }>();
-  // Read — but DO NOT use — the prospectId yet. The stubbed `prospect`
-  // below is `undefined` regardless. When `api.prospects.get` lands, the
-  // shape becomes:
-  //   const isAdminReady = session.status === "ready" && session.session.isAdmin;
+  // `params?.prospectId` is consumed live below by the F-CONTRATS query
+  // (slice 1/4, #158). When F-PIPELINE-CRM lands `api.prospects.get`, the
+  // wiring becomes:
   //   const prospect = useQuery(
   //     api.prospects.get,
   //     isAdminReady && params?.prospectId
   //       ? { prospectId: params.prospectId as unknown as Id<"prospects"> }
   //       : "skip",
   //   );
-  // Until then, we keep the param read so a future grep / refactor doesn't
-  // miss the wiring slot.
-  void params?.prospectId;
+  // The contracts query already follows that shape — replace the prospect
+  // stub the same way and the rest of the wiring does not move.
 
   // STUB until F-PIPELINE-CRM lands `api.prospects.get` (issue #233 explicit
   // allowance). The view's decision treats `undefined` as Convex in-flight,
@@ -87,7 +89,30 @@ export default function ProspectFichePage() {
   // (`view-tenant` lights up automatically when `status === "active"`).
   const tenant = undefined;
 
+  // F-CONTRATS slice 1/4 (#158) — read the prospect's contracts list via
+  // `api.lib.admin.contracts.listContractsForProspect` (exposed by
+  // `kbAdminQuery`, ADR 0010). Like `/monitoring`'s `previewIncidents`, we
+  // SKIP the query until the session resolves as a root admin: a manager
+  // landing here would otherwise surface a raw Convex « FORBIDDEN » error
+  // boundary INSTEAD of the canonical `UnauthorizedCard` (the view's
+  // `decideProspectFiche` short-circuits to `forbidden` before any data
+  // is rendered — A4 of the manual E2E checklist).
+  const isAdminReady = session.status === "ready" && session.session.isAdmin;
+  const contracts = useQuery(
+    api.lib.admin.contracts.listContractsForProspect,
+    isAdminReady && params?.prospectId
+      ? {
+          prospectId: params.prospectId as unknown as Id<"prospects">,
+        }
+      : "skip",
+  );
+
   return (
-    <ProspectFicheView session={session} prospect={prospect} tenant={tenant} />
+    <ProspectFicheView
+      session={session}
+      prospect={prospect}
+      tenant={tenant}
+      contracts={contracts}
+    />
   );
 }

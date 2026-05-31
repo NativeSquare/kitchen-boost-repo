@@ -370,4 +370,39 @@ describe("ProspectFicheView — F-SHELL-10 (#233)", () => {
     // reader of the surface knows where the actual content will live.
     expect(text).toMatch(/F-PIPELINE-CRM/);
   });
+
+  it("F-CONTRATS slice 1/4 (#158) — mounts the `ContractsBlock` in the `show` branch (block heading « Contrats » + empty state when the list is empty)", () => {
+    const prospect = makeProspect();
+    const tree = serialize(
+      ProspectFicheView({
+        session: adminSession(),
+        prospect,
+        contracts: [],
+      }),
+    );
+    const text = allText(tree);
+    // The block's heading « Contrats » must surface so the section is
+    // locatable on the fiche. (The block's branches themselves are pinned
+    // by `contracts-block.test.tsx` — here we only assert it is mounted.)
+    expect(text).toMatch(/Contrats/);
+    // Empty-state copy must surface for `contracts === []`.
+    expect(text).toMatch(/Aucun contrat g[ée]n[ée]r[ée]/i);
+  });
+
+  it("F-CONTRATS slice 1/4 (#158) — does NOT leak the contracts block to a non-admin caller (the refusal UnauthorizedCard is the only surface)", () => {
+    const tree = serialize(
+      ProspectFicheView({
+        session: managerSession(),
+        prospect: makeProspect(),
+        // Even if a hostile caller passed real contract data, the refusal
+        // branch must render the UnauthorizedCard ONLY — no block heading,
+        // no row, no status leak.
+        contracts: [],
+      }),
+    );
+    const text = allText(tree);
+    expect(text).toMatch(/Acc[èe]s non autoris[ée]/i);
+    // The block heading must NOT surface in the refusal branch.
+    expect(text).not.toMatch(/Aucun contrat g[ée]n[ée]r[ée]/i);
+  });
 });
