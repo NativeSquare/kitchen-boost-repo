@@ -70,9 +70,20 @@ export type ItemListProps = {
     itemId: Id<"menuItems">,
     nextAvailable: boolean,
   ) => void;
+  /**
+   * F-MENU-05 (#219) — fired when the gérant clicks the card body (anywhere
+   * outside the rupture toggle). The page wires this to open the
+   * `ItemModal` in EDIT mode pre-filled on this item. When omitted, the
+   * card stays read-only — preserves the F-MENU-04 slice contract.
+   */
+  onItemClick?: (itemId: Id<"menuItems">) => void;
 };
 
-export function ItemList({ items, onToggleAvailability }: ItemListProps) {
+export function ItemList({
+  items,
+  onToggleAvailability,
+  onItemClick,
+}: ItemListProps) {
   if (items === undefined) return <ItemListSkeleton />;
   if (items.length === 0) return <ItemListEmptyState />;
   // Defensive resort — same insurance as `CategoryList` (the backend already
@@ -86,6 +97,7 @@ export function ItemList({ items, onToggleAvailability }: ItemListProps) {
           key={item._id}
           item={item}
           onToggleAvailability={onToggleAvailability}
+          onItemClick={onItemClick}
         />
       ))}
     </div>
@@ -98,31 +110,35 @@ type ItemRowProps = {
     itemId: Id<"menuItems">,
     nextAvailable: boolean,
   ) => void;
+  onItemClick?: (itemId: Id<"menuItems">) => void;
 };
 
-function ItemRow({ item, onToggleAvailability }: ItemRowProps) {
+function ItemRow({ item, onToggleAvailability, onItemClick }: ItemRowProps) {
+  // F-MENU-05 (#219) — when the page wires `onItemClick`, the card body
+  // (thumbnail + name + price) becomes a clickable « open edit modal »
+  // surface. The Switch toggle keeps its OWN click handler and we stop the
+  // event from propagating to the card click — a 1-tap rupture must NEVER
+  // also open the edit modal (bad UX, possibly conflicting writes).
   return (
     <Card data-slot="menu-item-row">
       <CardContent className="flex items-center gap-3 py-3">
-        <ItemThumbnail item={item} />
-        <div className="flex flex-1 flex-col gap-0.5">
-          <div className="flex items-center gap-2">
-            <span className="text-base font-medium">{item.name}</span>
-            {item.available ? null : (
-              <Badge
-                variant="secondary"
-                data-slot="menu-item-rupture-badge"
-                className="bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-100"
-              >
-                <IconAlertCircle className="mr-1 size-3" aria-hidden="true" />
-                Rupture
-              </Badge>
-            )}
-          </div>
-          <span className="text-muted-foreground text-sm tabular-nums">
-            {formatPriceCentimes(item.basePrice)}
-          </span>
-        </div>
+        {onItemClick !== undefined ? (
+          <button
+            type="button"
+            data-slot="menu-item-card-clickable"
+            onClick={() => onItemClick(item._id)}
+            aria-label={`Modifier ${item.name}`}
+            className="-m-1 flex flex-1 cursor-pointer items-center gap-3 rounded-md p-1 text-left outline-none focus-visible:ring-2"
+          >
+            <ItemThumbnail item={item} />
+            <ItemRowBody item={item} />
+          </button>
+        ) : (
+          <>
+            <ItemThumbnail item={item} />
+            <ItemRowBody item={item} />
+          </>
+        )}
         <Switch
           data-slot="menu-item-availability-toggle"
           checked={item.available}
@@ -131,6 +147,29 @@ function ItemRow({ item, onToggleAvailability }: ItemRowProps) {
         />
       </CardContent>
     </Card>
+  );
+}
+
+function ItemRowBody({ item }: { item: Doc<"menuItems"> }) {
+  return (
+    <div className="flex flex-1 flex-col gap-0.5">
+      <div className="flex items-center gap-2">
+        <span className="text-base font-medium">{item.name}</span>
+        {item.available ? null : (
+          <Badge
+            variant="secondary"
+            data-slot="menu-item-rupture-badge"
+            className="bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-100"
+          >
+            <IconAlertCircle className="mr-1 size-3" aria-hidden="true" />
+            Rupture
+          </Badge>
+        )}
+      </div>
+      <span className="text-muted-foreground text-sm tabular-nums">
+        {formatPriceCentimes(item.basePrice)}
+      </span>
+    </div>
   );
 }
 

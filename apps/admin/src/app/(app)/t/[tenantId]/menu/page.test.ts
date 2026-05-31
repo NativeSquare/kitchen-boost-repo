@@ -158,6 +158,56 @@ describe("page.tsx — F-MENU-01 (#187) wiring contract", () => {
     expect(collapsed).toMatch(/setItemAvailability[\s\S]{0,400}toast\.error/);
   });
 
+  // ---------------------------------------------------------------------------
+  // F-MENU-05 (#219) — items CRUD wiring contract
+  // ---------------------------------------------------------------------------
+
+  it("F-MENU-05 — wires `items.create` / `items.update` / `items.remove` via `useTenantMutation`", () => {
+    // The item-modal CRUD goes through three tenantMutations (ADR 0014 §4 /
+    // #183, ADR 0010): create (« + Item »), update (autosave in edit mode),
+    // remove (delete with confirmation). Never raw `useMutation`.
+    const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
+    expect(collapsed).toMatch(
+      /useTenantMutation\([^)]*api\.lib\.menu\.items\.create[^)]*\)/,
+    );
+    expect(collapsed).toMatch(
+      /useTenantMutation\([^)]*api\.lib\.menu\.items\.update[^)]*\)/,
+    );
+    expect(collapsed).toMatch(
+      /useTenantMutation\([^)]*api\.lib\.menu\.items\.remove[^)]*\)/,
+    );
+  });
+
+  it("F-MENU-05 — passes `onCreateItem` and `onItemClick` down to MenuView (modal open hooks)", () => {
+    // Wiring contract: the page exposes the « + Item » per-category + the
+    // « click-on-card-to-edit » handlers via the dedicated props the view
+    // forwards down to the item sections.
+    expect(PAGE_SOURCE).toMatch(/onCreateItem/);
+    expect(PAGE_SOURCE).toMatch(/onItemClick/);
+  });
+
+  it("F-MENU-05 — mounts the `ItemModal` so the modal can render outside the items section", () => {
+    // The modal renders at page-level (not inside the ItemList) so the
+    // backdrop overlays the whole page and the modal state survives a
+    // category/item refresh.
+    expect(PAGE_SOURCE).toMatch(/ItemModal/);
+  });
+
+  it("F-MENU-05 — items create/update/remove handlers wrap mutations in try/catch + toast.error + getConvexErrorMessage", () => {
+    // Same discipline as F-MENU-02: backend errors (INVALID_PRICE, NOT_FOUND
+    // for cross-tenant probes, etc.) surface as a visible toast — never
+    // silently swallowed. We check that each handler references both the
+    // mutation AND a toast.error call within a small window.
+    const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
+    // create — the page-level `handleCreateItem` must catch and toast.
+    expect(collapsed).toMatch(/createItem[\s\S]{0,800}toast\.error/);
+    // update — the autosave path also catches and toasts on the page side
+    // (the modal is presentational only).
+    expect(collapsed).toMatch(/updateItem[\s\S]{0,800}toast\.error/);
+    // remove — the delete-confirmation path catches and toasts.
+    expect(collapsed).toMatch(/removeItem[\s\S]{0,800}toast\.error/);
+  });
+
   it("F-MENU-02 — surfaces errors via `toast.error` + `getConvexErrorMessage` (no raw alert / console.error)", () => {
     // The CRUD handlers wrap each mutation call in try/catch and toast the
     // ConvexError's message (slice acceptance criterion « toast sur erreur »

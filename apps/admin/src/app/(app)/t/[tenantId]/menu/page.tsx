@@ -1,57 +1,68 @@
 "use client";
 
 /**
- * F-MENU-01 (#187) + F-MENU-02 (#200) — Route `/t/[tenantId]/menu/`.
+ * F-MENU-01 (#187) + F-MENU-02 (#200) + F-MENU-03 (#206) + F-MENU-04 (#211)
+ * + F-MENU-05 (#219) — Route `/t/[tenantId]/menu/`.
  *
  * Slice 1 (#187) wired the read-only categories list via `useTenantQuery`.
- * Slice 2 (#200) layers CRUD on top: the page binds the three category
- * mutations (`create` / `rename` / `remove`) through `useTenantMutation`
- * (ADR 0014 §4 / F-SHELL-05 #183), wraps each call in a try/catch that
- * surfaces backend `ConvexError`s as `toast.error(...)` with the
- * server-provided message (« optimistic UI + rollback + toast sur erreur »,
- * « messages d'erreur dérivés des ConvexError backend » — issue body), and
- * hands the resulting callbacks to `MenuView`, which forwards them to the
- * interactive `CategoryListEditor`.
+ * Slice 2 (#200) layered category CRUD on top via `useTenantMutation`. Slice 3
+ * (#206) wired drag&drop reorder on categories. Slice 4 (#211) wired the
+ * per-category items list + the LIVE rupture toggle (`availability.setItemAvailability`,
+ * direct mutation that bypasses publication — ADR 0015 § Conséquences). Slice 5
+ * (#219) layers item CRUD on top: the `ItemModal` opens in CREATE mode via
+ * « + Item » per category, or in EDIT mode via click-on-card; both surface
+ * the four V1 schema fields (name, description, basePrice, allergens) plus a
+ * recategorisation picker (`categoryId` on `items.update`). The page binds
+ * `items.create` / `items.update` / `items.remove` via `useTenantMutation`
+ * (ADR 0014 §4 / #183), wraps each call in a try/catch that surfaces backend
+ * `ConvexError`s as `toast.error(...)` with the server-provided message
+ * (« validation locale + INVALID_PRICE côté backend » — the « message clair »
+ * derives from the ConvexError data). Slice 10 (#254) will activate the
+ * « Aperçu » / « Publier » header buttons.
  *
- * Naming: « Nouvelle catégorie » is the default-name for a fresh create
- * (issue AC1 « bouton + Catégorie crée une catégorie vide en fin de
- * liste »). The backend schema requires a non-empty string, so we send a
- * placeholder the gérant immediately renames inline (the « focus auto sur
- * le champ nom » target is the just-created row's input, surfaced by the
- * `data-autofocus-pending` marker — actual focus is a future enhancement,
- * not pinnable from node-env tests).
+ * Modal state lives at the page level (not inside `MenuView`) so the modal
+ * survives reactive re-renders of the categories/items lists (a successful
+ * autosave round-trip refires `items.list`, which would otherwise unmount
+ * the modal if it lived inside the row).
  *
- * Slice 3 (#206) layers drag&drop reorder on top: the page binds
- * `categories.reorder` through `useTenantMutation` and threads the resulting
- * handler as `onReorderCategories` into `MenuView` → `CategoryListEditor`,
- * which wraps the rows in a dnd-kit `SortableContext`. On drag-end, the
- * editor builds the COMPLETE ordered ids list (backend rejects partial
- * payloads — invariant pinned by
- * `packages/backend/convex/lib/menu/categories.test.ts`) and the page-level
- * try/catch surfaces failures as `toast.error(...)`. Optimistic UI lives in
- * the editor (`displayedIds` local state); Convex's natural reactivity
- * resyncs on success, the rejected payload snaps back on error. Slice 10
- * (#254) will activate the « Aperçu » / « Publier » buttons.
- *
- * Scope discipline (#200 hard constraint): this file (and its siblings under
+ * Scope discipline (#219 hard constraint): this file (and its siblings under
  * `apps/admin/src/app/(app)/t/[tenantId]/menu/`) is the ONLY surface touched
  * by this story. Zero touch to `apps/web`, `apps/native`, or
  * `packages/backend/convex/`.
  */
 
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { api } from "@packages/backend/convex/_generated/api";
-import type { Id } from "@packages/backend/convex/_generated/dataModel";
+import type { Doc, Id } from "@packages/backend/convex/_generated/dataModel";
 
 import { useTenantMutation, useTenantQuery } from "@/hooks";
 import { getConvexErrorMessage } from "@/utils/getConvexErrorMessage";
 
 import { bucketItemsByCategory } from "./item-list";
+import {
+  ItemModal,
+  type ItemCreatePayload,
+  type ItemUpdatePatch,
+} from "./item-modal";
 import { MenuView } from "./menu-view";
 
 /** Placeholder name for a freshly-created category — the gérant renames it inline. */
 const DEFAULT_NEW_CATEGORY_NAME = "Nouvelle catégorie";
+
+/**
+ * Page-level modal state. Three branches:
+ *  - `null`                              → modal closed.
+ *  - `{ kind: "create", categoryId }`    → create modal opened from the
+ *    « + Item » CTA of that category.
+ *  - `{ kind: "edit", itemId }`          → edit modal opened by a click on
+ *    that item's card.
+ */
+type ItemModalState =
+  | null
+  | { kind: "create"; categoryId: Id<"menuCategories"> }
+  | { kind: "edit"; itemId: Id<"menuItems"> };
 
 export default function MenuPage() {
   // `useTenantQuery` / `useTenantMutation` read `tenantId` from
@@ -68,6 +79,11 @@ export default function MenuPage() {
   const setItemAvailability = useTenantMutation(
     api.lib.menu.availability.setItemAvailability,
   );
+  const createItem = useTenantMutation(api.lib.menu.items.create);
+  const updateItem = useTenantMutation(api.lib.menu.items.update);
+  const removeItem = useTenantMutation(api.lib.menu.items.remove);
+
+  const [modalState, setModalState] = useState<ItemModalState>(null);
 
   const handleCreate = async () => {
     try {
@@ -132,17 +148,102 @@ export default function MenuPage() {
     }
   };
 
+  // F-MENU-05 (#219) — Item CRUD.
+  // `handleCreateItem` is fired by the « + Item » CTA per category (opens the
+  // modal in CREATE mode); the actual mutation runs when the user clicks
+  // « Créer » in the modal (handled by `handleCreateItemSubmit`).
+  const handleCreateItem = (categoryId: Id<"menuCategories">) => {
+    setModalState({ kind: "create", categoryId });
+  };
+  const handleItemClick = (itemId: Id<"menuItems">) => {
+    setModalState({ kind: "edit", itemId });
+  };
+
+  // Modal callbacks — wrap each mutation in try/catch + toast.error (same
+  // discipline as the category CRUD handlers above).
+  const handleCreateItemSubmit = async (payload: ItemCreatePayload) => {
+    try {
+      await createItem(payload);
+      setModalState(null);
+    } catch (error) {
+      toast.error("Impossible de créer l'item", {
+        description: getConvexErrorMessage(error),
+      });
+    }
+  };
+  const handleUpdateItem = async (
+    itemId: Id<"menuItems">,
+    patch: ItemUpdatePatch,
+  ) => {
+    try {
+      await updateItem({ itemId, ...patch });
+    } catch (error) {
+      toast.error("Impossible de mettre à jour l'item", {
+        description: getConvexErrorMessage(error),
+      });
+    }
+  };
+  const handleRemoveItem = async (itemId: Id<"menuItems">) => {
+    try {
+      await removeItem({ itemId });
+    } catch (error) {
+      toast.error("Impossible de supprimer l'item", {
+        description: getConvexErrorMessage(error),
+      });
+    }
+  };
+
   const itemsByCategory = bucketItemsByCategory(items);
 
+  // Resolve the modal's item doc (edit mode only) from the live items query
+  // so the modal re-renders if the doc changes server-side (e.g. another
+  // tab edited the same item).
+  const editingItem = useMemo<Doc<"menuItems"> | undefined>(() => {
+    if (
+      modalState === null ||
+      modalState.kind !== "edit" ||
+      items === undefined
+    )
+      return undefined;
+    return items.find((i) => i._id === modalState.itemId);
+  }, [modalState, items]);
+
   return (
-    <MenuView
-      categories={categories}
-      onCreateCategory={handleCreate}
-      onRenameCategory={handleRename}
-      onDeleteCategory={handleDelete}
-      onReorderCategories={handleReorder}
-      itemsByCategory={itemsByCategory}
-      onToggleItemAvailability={handleToggleItemAvailability}
-    />
+    <>
+      <MenuView
+        categories={categories}
+        onCreateCategory={handleCreate}
+        onRenameCategory={handleRename}
+        onDeleteCategory={handleDelete}
+        onReorderCategories={handleReorder}
+        itemsByCategory={itemsByCategory}
+        onToggleItemAvailability={handleToggleItemAvailability}
+        onCreateItem={handleCreateItem}
+        onItemClick={handleItemClick}
+      />
+      {modalState !== null && categories !== undefined ? (
+        <ItemModal
+          mode={modalState.kind}
+          open={
+            modalState.kind === "create" ||
+            (modalState.kind === "edit" && editingItem !== undefined)
+          }
+          onOpenChange={(open) => {
+            if (!open) setModalState(null);
+          }}
+          categories={categories}
+          categoryId={
+            modalState.kind === "create"
+              ? modalState.categoryId
+              : (editingItem?.categoryId ??
+                (modalState.itemId as unknown as Id<"menuCategories">))
+          }
+          item={modalState.kind === "edit" ? editingItem : undefined}
+          onCreate={handleCreateItemSubmit}
+          onUpdate={handleUpdateItem}
+          onDelete={handleRemoveItem}
+        />
+      ) : null}
+    </>
   );
 }
