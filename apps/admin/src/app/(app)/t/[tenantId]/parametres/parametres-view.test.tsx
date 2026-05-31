@@ -182,6 +182,7 @@ const noopBranding = async () => {};
 const noopUpload = async () => "https://cdn/x.png";
 const noopCoordonnees = async () => {};
 const noopModes = async () => {};
+const noopServiceHours = async () => {};
 const BASE_BRANDING_PROPS = {
   branding: undefined,
   onSaveBranding: noopBranding,
@@ -190,6 +191,7 @@ const BASE_BRANDING_PROPS = {
   onSaveCoordonnees: noopCoordonnees,
   acceptedModes: undefined,
   onSaveAcceptedModes: noopModes,
+  onSaveServiceHours: noopServiceHours,
 } as const;
 
 const LOADING: ParametresViewProps = {
@@ -234,15 +236,14 @@ describe("ParametresView — F-PARAMETRES-01 (#193)", () => {
     expect(horairesIdx).toBeGreaterThan(modesIdx);
   });
 
-  it("AC2 — the still-unwired sections show « À implémenter » placeholders (F-PARAMETRES-02 wired Identité visuelle, F-PARAMETRES-03 wired Coordonnées, F-PARAMETRES-04 wired Modes; Horaires lands in F-PARAMETRES-05)", () => {
-    // 1 still-unwired section × 1 placeholder = ≥1 occurrence. Pinning the
-    // COUNT (not just presence) so a regression that drops the section is
-    // caught. Identité visuelle (BrandingEditor), Coordonnées
-    // (CoordonneesEditor), and Modes (ModesEditor) are now live and
-    // don't count.
+  it("F-PARAMETRES-05 (#236) — all 4 sections are now WIRED — no « À implémenter » placeholder remains on the Paramètres page", () => {
+    // Identité visuelle (BrandingEditor), Coordonnées (CoordonneesEditor),
+    // Modes (ModesEditor), and now Horaires (ServiceHoursEditor) are all
+    // live editors. Slice 5 closes the EPIC's Implementation Decisions
+    // « 4 sections in the canonical order » loop — no placeholder body
+    // remains on the page.
     const text = allText(serialize(ParametresView(EMPTY)));
-    const matches = text.match(/[ÀA] impl[ée]menter/g) ?? [];
-    expect(matches.length).toBeGreaterThanOrEqual(1);
+    expect(text).not.toMatch(/[ÀA] impl[ée]menter/);
   });
 
   it("AC3 — surfaces the « Zone livraison Uber Direct » read-only block with the V1 informative copy", () => {
@@ -354,12 +355,23 @@ describe("ParametresView — F-PARAMETRES-01 (#193)", () => {
     expect(slots).toContain("parametres-section-modes");
   });
 
-  it("AC2 — populated branch (serviceHours with windows) still renders the placeholder body (V1 = read but don't display the editor)", () => {
-    // Slice 1 reads via useTenantQuery but DOES NOT yet render the editor —
-    // that's F-PARAMETRES-05. So even when windows are present, the
-    // « À implémenter » placeholder of the Horaires section must stay
-    // visible (the editor is the slice-5 deliverable, not this one).
-    const text = allText(serialize(ParametresView(WITH_WINDOWS)));
-    expect(text).toMatch(/[ÀA] impl[ée]menter/);
+  it("F-PARAMETRES-05 (#236) — section Horaires de service is WIRED (ServiceHoursEditor) and no longer a placeholder", () => {
+    // The wired section surfaces the save button slot exposed by
+    // `ServiceHoursEditor`. The section card's data-slot from slice 1
+    // is preserved so downstream consumers don't need to know whether
+    // it's a placeholder or a live editor.
+    const tree = serialize(ParametresView(WITH_WINDOWS));
+    const slots = dataSlots(tree);
+    expect(slots).toContain("parametres-service-hours-save");
+    expect(slots).toContain("parametres-service-hours-form");
+    expect(slots).toContain("parametres-section-horaires");
+  });
+
+  it("F-PARAMETRES-05 (#236) — Horaires section renders even on the LOADING branch (serviceHours === undefined seeds the editor with an empty windows list)", () => {
+    // The editor accepts an empty list gracefully — loading and empty look
+    // the same from the editor's perspective. The page rehydrates on the
+    // next Convex reactivity tick.
+    const tree = serialize(ParametresView(LOADING));
+    expect(dataSlots(tree)).toContain("parametres-service-hours-form");
   });
 });

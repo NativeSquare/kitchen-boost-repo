@@ -161,6 +161,18 @@ describe("page.tsx — F-PARAMETRES-01 (#193) wiring contract", () => {
     expect(updateSettingsBindings).toBe(1);
   });
 
+  it("F-PARAMETRES-05 (#236) — wires `onSaveServiceHours` via a SEPARATE `useTenantMutation(api.lib.menu.serviceHours.set)` (the Horaires section talks to a different backend brick than D5 élargi — `serviceHours.set` is its own mutation)", () => {
+    // The Horaires section forwards a `windows[]` array into the
+    // `serviceHours.set` mutation. NEW useTenantMutation binding (sections
+    // 1/2/3 share `tenant.updateSettings`, section 4 talks to
+    // `serviceHours.set`).
+    expect(PAGE_SOURCE).toMatch(/onSaveServiceHours/);
+    const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
+    expect(collapsed).toMatch(
+      /useTenantMutation\([^)]*api\.lib\.menu\.serviceHours\.set[^)]*\)/,
+    );
+  });
+
   it("AC delegation — delegates rendering to `ParametresView` (keeps the page thin + the view testable in node env)", () => {
     expect(PAGE_SOURCE).toMatch(/ParametresView/);
   });
