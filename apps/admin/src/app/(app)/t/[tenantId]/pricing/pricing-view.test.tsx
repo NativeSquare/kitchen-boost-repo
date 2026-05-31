@@ -656,6 +656,185 @@ describe("PricingView — F-PRICING-1 (#241)", () => {
     });
   });
 
+  describe("F-PRICING-5 (#251) — « Supprimer » becomes active with 2-click confirmation when `onDeleteRule` is wired", () => {
+    // Slice 5 (#251) turns the « Supprimer » placeholder from slice 1 into a
+    // working 2-click confirmation flow: row button → AlertDialog → « Supprimer »
+    // inside the dialog. The page owns the wiring via a new
+    // `onDeleteRule(ruleId)` callback that bridges to
+    // `api.lib.pricing.rules.remove`. Hard guardrails from the issue body:
+    //   - 1-click delete is INTERDIT — the row button must NEVER invoke
+    //     `onDeleteRule` directly; only the dialog's « Supprimer » action does.
+    //   - « Annuler » in the dialog = no-op (dialog closes, rule stays).
+    //   - Backward compat: when `onDeleteRule` is omitted, the « Supprimer »
+    //     button stays disabled — same shape as slice 1's placeholder, no
+    //     row-mutation risk for callers that haven't wired it yet (already
+    //     pinned by the « placeholders disabled » test above; we re-pin it
+    //     here from the slice-5 vantage point).
+    //
+    // The dialog itself is a Radix `<AlertDialog>` which throws inside the
+    // serializer's recursive call (no React renderer under `environment:
+    // "node"`); the serializer catches and returns an empty placeholder. We
+    // therefore pin the contract via two stable hooks the row exposes:
+    //   - `data-slot="pricing-rule-delete"` on the row trigger button.
+    //   - `data-slot="pricing-rule-delete-confirm"` on the dialog's action
+    //     button. We reach into the row's `confirmAction` prop (a verbatim
+    //     handler the dialog binds onClick to) via the same flat scan, NOT
+    //     by trying to render the radix dialog itself.
+
+    it("AC — when `onDeleteRule` is passed, every row's « Supprimer » button is ENABLED", () => {
+      const tree = serialize(
+        PricingView({
+          rules: [ACTIVE_RULE, INACTIVE_RULE],
+          onDeleteRule: () => {},
+        }),
+      );
+      const buttons: { text: string; disabled: boolean }[] = [];
+      function walk(n: SerializedNode) {
+        if (n === null || "text" in n) return;
+        if (typeof n.type === "string" && n.type.toLowerCase() === "button") {
+          const t = allText(n);
+          const disabled =
+            n.props["disabled"] === true ||
+            n.props["disabled"] === "" ||
+            n.props["aria-disabled"] === true ||
+            n.props["aria-disabled"] === "true";
+          buttons.push({ text: t, disabled });
+        }
+        for (const c of n.children) walk(c);
+      }
+      walk(tree);
+      const removeBtns = buttons.filter((b) =>
+        /^\s*Supprimer\s*$/.test(b.text),
+      );
+      // 2 rules → 2 « Supprimer » row buttons (the dialog's button is rendered
+      // via radix and is unreachable from this serializer — we pin it via the
+      // `confirmAction` prop below).
+      expect(removeBtns).toHaveLength(2);
+      for (const b of removeBtns) {
+        expect(
+          b.disabled,
+          "Supprimer row button must be enabled when onDeleteRule is wired",
+        ).toBe(false);
+      }
+    });
+
+    it("AC — clicking the row « Supprimer » button does NOT call `onDeleteRule` directly (1-click delete INTERDIT — confirmation gate)", () => {
+      // Load-bearing safety: a misclick on the row button must NEVER wipe a
+      // rule. The row button only opens the dialog; only the dialog's
+      // « Supprimer » action fires `onDeleteRule`. We mirror the
+      // `category-list-editor.test.tsx` AC3 pattern: fire EVERY row delete
+      // button's onClick and assert the callback was NOT invoked.
+      const onDeleteRule = vi.fn();
+      const tree = serialize(
+        PricingView({
+          rules: [ACTIVE_RULE, INACTIVE_RULE],
+          onDeleteRule,
+        }),
+      );
+      const rowDeleteBtns = flatten(tree).filter((n) => {
+        if (n === null || "text" in n) return false;
+        return n.props["data-slot"] === "pricing-rule-delete";
+      }) as Array<{
+        type: string;
+        props: Record<string, unknown>;
+        children: SerializedNode[];
+      }>;
+      expect(rowDeleteBtns).toHaveLength(2);
+      for (const btn of rowDeleteBtns) {
+        const onClick = btn.props["onClick"] as (() => void) | undefined;
+        if (typeof onClick === "function") onClick();
+      }
+      expect(onDeleteRule).not.toHaveBeenCalled();
+    });
+
+    it("AC — dialog « Supprimer » action calls `onDeleteRule(ruleId)` with THIS row's id (per-row binding, no shared closure leak)", () => {
+      const captured: unknown[] = [];
+      const tree = serialize(
+        PricingView({
+          rules: [ACTIVE_RULE, INACTIVE_RULE, FIXED_AMOUNT_RULE],
+          onDeleteRule: (ruleId) => captured.push(ruleId),
+        }),
+      );
+      // The confirm-action carries `data-slot="pricing-rule-delete-confirm"`.
+      // We reach into its `onClick` via the flat scan (it's rendered inside
+      // the radix AlertDialogAction shell, but the data-slot is on the
+      // element itself).
+      const confirmBtns = flatten(tree).filter((n) => {
+        if (n === null || "text" in n) return false;
+        return n.props["data-slot"] === "pricing-rule-delete-confirm";
+      }) as Array<{
+        type: string;
+        props: Record<string, unknown>;
+        children: SerializedNode[];
+      }>;
+      // 3 rules → 3 dialog confirm actions (one per row's dialog).
+      expect(confirmBtns).toHaveLength(3);
+      // Fire each row's confirm onClick in turn — the captured calls must
+      // match the rule under the row, not a leaked closure value.
+      for (const btn of confirmBtns) {
+        const onClick = btn.props["onClick"] as (() => void) | undefined;
+        onClick?.();
+      }
+      expect(captured).toHaveLength(3);
+      expect(captured[0]).toBe(ACTIVE_RULE._id);
+      expect(captured[1]).toBe(INACTIVE_RULE._id);
+      expect(captured[2]).toBe(FIXED_AMOUNT_RULE._id);
+    });
+
+    it("AC — when `onDeleteRule` is OMITTED (F-PRICING-1 isolated caller), « Supprimer » stays disabled (backward compat)", () => {
+      // The existing « placeholders disabled » test above already pins this
+      // implicitly. We re-pin it from the slice-5 vantage point so a future
+      // contributor who tries to drop the disabled-when-omitted fallback
+      // sees the explicit slice-5 reason.
+      const tree = serialize(PricingView({ rules: [ACTIVE_RULE] }));
+      const buttons: { text: string; disabled: boolean }[] = [];
+      function walk(n: SerializedNode) {
+        if (n === null || "text" in n) return;
+        if (typeof n.type === "string" && n.type.toLowerCase() === "button") {
+          const t = allText(n);
+          const disabled =
+            n.props["disabled"] === true ||
+            n.props["disabled"] === "" ||
+            n.props["aria-disabled"] === true ||
+            n.props["aria-disabled"] === "true";
+          buttons.push({ text: t, disabled });
+        }
+        for (const c of n.children) walk(c);
+      }
+      walk(tree);
+      const removeBtn = buttons.find((b) => /^\s*Supprimer\s*$/.test(b.text));
+      expect(removeBtn?.disabled).toBe(true);
+      // And the confirm action must NOT exist when no handler is wired (no
+      // dialog is rendered for a disabled row — same shape as the slice-3 /
+      // slice-4 « no handler → inert » contract).
+      const confirmBtns = flatten(tree).filter((n) => {
+        if (n === null || "text" in n) return false;
+        return n.props["data-slot"] === "pricing-rule-delete-confirm";
+      });
+      expect(confirmBtns).toHaveLength(0);
+    });
+
+    it("AC — row delete button carries an aria-label (screen-reader announces the rule it deletes)", () => {
+      const tree = serialize(
+        PricingView({
+          rules: [ACTIVE_RULE, INACTIVE_RULE],
+          onDeleteRule: () => {},
+        }),
+      );
+      const rowDeleteBtns = flatten(tree).filter((n) => {
+        if (n === null || "text" in n) return false;
+        return n.props["data-slot"] === "pricing-rule-delete";
+      }) as Array<{ props: Record<string, unknown> }>;
+      expect(rowDeleteBtns).toHaveLength(2);
+      for (const b of rowDeleteBtns) {
+        const aria = b.props["aria-label"];
+        expect(typeof aria).toBe("string");
+        expect(aria as string).toMatch(/supprimer/i);
+        expect(aria as string).toMatch(/r[èe]gle/i);
+      }
+    });
+  });
+
   it("GUARDRAIL — NO `[draggable]` attribute anywhere in the rendered tree (auto-priority, no manual order)", () => {
     // Issue body: « Pas de drag-handle DOM : aucun élément draggable ».
     const tree = serialize(

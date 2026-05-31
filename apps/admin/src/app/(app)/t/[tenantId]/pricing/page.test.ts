@@ -127,14 +127,20 @@ describe("page.tsx — F-PRICING-1 (#241) wiring contract", () => {
     expect(PAGE_SOURCE).toMatch(/onToggleActive/);
   });
 
-  it("GUARDRAIL F-PRICING-4 (#249) — toggle path does NOT call `remove` (un toggle n'est PAS un delete déguisé)", () => {
-    // The toggle's only sanctioned mutation is `setActive`. Importing OR
-    // calling `api.lib.pricing.rules.remove` from the page would mean the
-    // toggle (or some other handler) could silently destroy the rule's
-    // definition. Pinning the absence of the `remove` chain on the page
-    // source string blocks that regression — slice 5 (delete) will live in
-    // its own surface with its own dedicated, explicit affordance.
-    expect(PAGE_SOURCE).not.toMatch(/api\.lib\.pricing\.rules\.remove/);
+  it("GUARDRAIL F-PRICING-4 (#249) — toggle handler does NOT call `removeRule(` (un toggle n'est PAS un delete déguisé)", () => {
+    // The toggle's only sanctioned mutation is `setActive`. Slice 5 (#251)
+    // now legitimately binds `api.lib.pricing.rules.remove` (the row delete
+    // 2-click confirmation), so the file-level ban on the `remove` chain
+    // can no longer hold. We narrow the ban: the `removeRule(` call site
+    // (the bound mutation handle) must appear EXACTLY ONCE — inside the
+    // delete handler. A future contributor wiring the toggle to `remove`
+    // (instead of `setActive`) would add a second call site and trip this
+    // assertion.
+    const code = PAGE_SOURCE.replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "")
+      .replace(/`[^`]*`/g, "");
+    const callMatches = code.match(/\bremoveRule\s*\(/g) ?? [];
+    expect(callMatches.length).toBe(1);
   });
 
   it("GUARDRAIL F-PRICING-4 (#249) — `update` mutation is wired (slice 3 — Éditer modal) but is NOT referenced from any toggle handler (it stays the modal's exclusive consumer)", () => {
@@ -152,6 +158,38 @@ describe("page.tsx — F-PRICING-1 (#241) wiring contract", () => {
     // direct `.update(` chain. We allow the binding line itself
     // (`useTenantMutation(api.lib.pricing.rules.update)`) — only count CALL
     // sites.
+    const callMatches = code.match(/\bupdateRule\s*\(/g) ?? [];
+    expect(callMatches.length).toBe(1);
+  });
+
+  it("AC F-PRICING-5 (#251) — binds `api.lib.pricing.rules.remove` via `useTenantMutation` (NOT raw useMutation)", () => {
+    // Slice 5 (#251) wires the per-row 2-click delete. Same auto-tenantId
+    // discipline as create/update/setActive (ADR 0014 §4 / #183, ADR 0010);
+    // takes `{ ruleId }`. Collapse whitespace so a Prettier line-wrap inside
+    // the call still matches.
+    const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
+    expect(collapsed).toMatch(
+      /useTenantMutation\([^)]*api\.lib\.pricing\.rules\.remove[^)]*\)/,
+    );
+  });
+
+  it("AC F-PRICING-5 (#251) — wires the per-row delete handler via the `onDeleteRule` prop of `PricingView`", () => {
+    // The page-to-view contract: the row delete button is enabled by passing
+    // `onDeleteRule={…}`. Pinning the prop name guarantees the page wires it
+    // (and PricingView consumes the same name).
+    expect(PAGE_SOURCE).toMatch(/onDeleteRule/);
+  });
+
+  it("AC F-PRICING-5 (#251) — does NOT touch `update` from the delete handler (delete is `remove` ONLY, not a patch)", () => {
+    // Defensive: slice 5 must call `api.lib.pricing.rules.remove`, NEVER
+    // `update` to "soft-delete" a row by clearing its conditions. The slice-4
+    // « toggle is not a delete déguisé » guardrail above already pins that
+    // `updateRule(` is called exactly ONCE (the modal-submit branch). Slice 5
+    // re-pins it: a delete handler MUST NOT add a second call site to
+    // `updateRule(`. We re-evaluate the count here.
+    const code = PAGE_SOURCE.replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "")
+      .replace(/`[^`]*`/g, "");
     const callMatches = code.match(/\bupdateRule\s*\(/g) ?? [];
     expect(callMatches.length).toBe(1);
   });
