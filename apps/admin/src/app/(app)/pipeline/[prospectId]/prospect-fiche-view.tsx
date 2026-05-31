@@ -58,6 +58,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { UnauthorizedCard } from "@/components/app/unauthorized-card";
 import type { SessionState } from "@/lib/session";
 
+import { ContractsBlock } from "./contracts-block";
 import { decideProspectFiche } from "./prospect-fiche.decision";
 import { ProvisionLauncherButton } from "./provision-launcher-button";
 
@@ -83,6 +84,15 @@ export type ProspectFicheViewProps = {
    * `resume` until it lands. Optional so existing callers stay compatible.
    */
   tenant?: Doc<"tenants"> | null | undefined;
+  /**
+   * F-CONTRATS slice 1/4 (#158) — the prospect's contracts list from
+   * `useQuery(api.lib.admin.contracts.listContractsForProspect, ...)`,
+   * threaded through to the read-only `ContractsBlock`. Convex tri-state
+   * contract: `undefined` (in-flight) | `[]` (resolved, empty) | `Doc[]`
+   * (resolved, hydrated). Optional so existing callers stay compatible —
+   * when omitted, the block renders its loading shell (no layout shift).
+   */
+  contracts?: Doc<"contracts">[] | undefined;
 };
 
 /**
@@ -102,6 +112,7 @@ export function ProspectFicheView({
   session,
   prospect,
   tenant,
+  contracts,
 }: ProspectFicheViewProps) {
   const decision = decideProspectFiche({ session, prospect });
 
@@ -171,6 +182,15 @@ export function ProspectFicheView({
          *  decides whether to render anything at all (Closing-completion
          *  gate). The fiche just hands it the snapshot. */}
         <ProvisionLauncherButton prospect={p} tenant={tenant} />
+      </div>
+      {/* F-CONTRATS slice 1/4 (#158) — read-only contracts block. Mounted
+       *  unconditionally in the « show » branch (the upstream
+       *  decideProspectFiche refuses non-admin callers before getting here).
+       *  Lives BEFORE the F-PIPELINE-CRM placeholder so the section orders
+       *  «header → contrats → reste» on the fiche.
+       */}
+      <div className="px-4 lg:px-6">
+        <ContractsBlock contracts={contracts} />
       </div>
       <div className="px-4 lg:px-6">
         <div className="rounded-lg border border-dashed p-8 text-center">
