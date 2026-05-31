@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   assertNonEmptyString,
+  isValidCustomDomain,
   isValidHexColor,
   normalisePhone,
 } from "./tenantSettingsValidation";
@@ -157,5 +158,60 @@ describe("assertNonEmptyString", () => {
       const data = (err as { data?: { code?: string } }).data;
       expect(data?.code).toBe("SOMETHING_ELSE");
     }
+  });
+});
+
+/**
+ * F-WIZARD [4/10] (#268) — `isValidCustomDomain` shape check.
+ *
+ * The wizard's step 2 form (« domaine personnalisé optionnel », modèle
+ * Owner.com) MUST share the SAME regex on the front AND the back so the UX
+ * never accepts a value the backend will refuse — single source of validation
+ * shape. Regex verbatim from the issue body: `^[a-z0-9.-]+\.[a-z]{2,}$`.
+ * Trims input first; case-insensitive on the leading host part is NOT
+ * supported (FQDN convention is lowercase, the form lowercases on submit).
+ */
+describe("isValidCustomDomain — F-WIZARD [4/10] (#268)", () => {
+  it("accepts canonical FQDN with multiple labels", () => {
+    expect(isValidCustomDomain("commander.le-petit-bistrot.fr")).toBe(true);
+    expect(isValidCustomDomain("artisan.fr")).toBe(true);
+    expect(isValidCustomDomain("sub.example.co.uk")).toBe(true);
+  });
+
+  it("accepts digits and hyphens in labels", () => {
+    expect(isValidCustomDomain("123-resto.fr")).toBe(true);
+    expect(isValidCustomDomain("a1b2.fr")).toBe(true);
+  });
+
+  it("rejects missing TLD (no dot)", () => {
+    expect(isValidCustomDomain("localhost")).toBe(false);
+    expect(isValidCustomDomain("artisan")).toBe(false);
+  });
+
+  it("rejects single-letter TLD (regex requires >= 2)", () => {
+    expect(isValidCustomDomain("artisan.f")).toBe(false);
+  });
+
+  it("rejects uppercase letters (lowercase FQDN convention)", () => {
+    expect(isValidCustomDomain("Artisan.fr")).toBe(false);
+    expect(isValidCustomDomain("artisan.FR")).toBe(false);
+  });
+
+  it("rejects whitespace and empty input", () => {
+    expect(isValidCustomDomain("")).toBe(false);
+    expect(isValidCustomDomain("   ")).toBe(false);
+    expect(isValidCustomDomain("artisan .fr")).toBe(false);
+  });
+
+  it("rejects underscores / non-allowed chars (only [a-z0-9.-])", () => {
+    expect(isValidCustomDomain("art_isan.fr")).toBe(false);
+    expect(isValidCustomDomain("artisan!.fr")).toBe(false);
+    expect(isValidCustomDomain("artisan@fr")).toBe(false);
+  });
+
+  it("rejects schemes / paths / ports (FQDN only)", () => {
+    expect(isValidCustomDomain("https://artisan.fr")).toBe(false);
+    expect(isValidCustomDomain("artisan.fr/path")).toBe(false);
+    expect(isValidCustomDomain("artisan.fr:443")).toBe(false);
   });
 });

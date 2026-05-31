@@ -160,6 +160,74 @@ describe("B-TENANT-LIFECYCLE [3/4] tenant.updateSettings — happy paths", () =>
     const tenant = await t.run((ctx) => ctx.db.get(seed.tenantB.tenantId));
     expect(tenant?.branding).toEqual({ primaryColor: "#E5A100" });
   });
+
+  // -------------------------------------------------------------------------
+  // F-WIZARD [4/10] (#268) — `customDomain` patch support. The wizard step 2
+  // form (« domaine personnalisé optionnel », modèle Owner.com) calls this
+  // very mutation; the backend MUST accept + validate + persist the field.
+  // -------------------------------------------------------------------------
+  it("F-WIZARD [4/10] (#268): kb_admin patches customDomain → row reflects it (string)", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+
+    await asAdmin.mutation(api.lib.admin.tenantSettings.updateSettings, {
+      tenantId: seed.tenantA.tenantId,
+      patch: { customDomain: "commander.le-petit-bistrot.fr" },
+    });
+
+    const tenant = await t.run((ctx) => ctx.db.get(seed.tenantA.tenantId));
+    expect(tenant?.customDomain).toBe("commander.le-petit-bistrot.fr");
+
+    // Audit row written (the wrapper auto-audit fires once per call regardless
+    // of which fields are in the patch).
+    const rows = await readAuditLog(t);
+    const row = rows.find((r) => r.action === "tenant.updateSettings");
+    expect(row).toBeDefined();
+  });
+
+  it("F-WIZARD [4/10] (#268): customDomain is trimmed before persist", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+
+    await asAdmin.mutation(api.lib.admin.tenantSettings.updateSettings, {
+      tenantId: seed.tenantA.tenantId,
+      patch: { customDomain: "  artisan.fr  " },
+    });
+
+    const tenant = await t.run((ctx) => ctx.db.get(seed.tenantA.tenantId));
+    expect(tenant?.customDomain).toBe("artisan.fr");
+  });
+
+  it("F-WIZARD [4/10] (#268): patching customDomain leaves branding / address / phone untouched (shallow merge)", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    // Seed an unrelated field first.
+    await asAdmin.mutation(api.lib.admin.tenantSettings.updateSettings, {
+      tenantId: seed.tenantA.tenantId,
+      patch: { branding: { primaryColor: "#1B7A3D" } },
+    });
+    // Then patch ONLY customDomain.
+    await asAdmin.mutation(api.lib.admin.tenantSettings.updateSettings, {
+      tenantId: seed.tenantA.tenantId,
+      patch: { customDomain: "artisan.fr" },
+    });
+
+    const tenant = await t.run((ctx) => ctx.db.get(seed.tenantA.tenantId));
+    expect(tenant?.customDomain).toBe("artisan.fr");
+    expect(tenant?.branding).toEqual({ primaryColor: "#1B7A3D" });
+  });
+
+  it("F-WIZARD [4/10] (#268): re-submitting an updated customDomain replaces the previous value", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    await asAdmin.mutation(api.lib.admin.tenantSettings.updateSettings, {
+      tenantId: seed.tenantA.tenantId,
+      patch: { customDomain: "first.fr" },
+    });
+    await asAdmin.mutation(api.lib.admin.tenantSettings.updateSettings, {
+      tenantId: seed.tenantA.tenantId,
+      patch: { customDomain: "second.fr" },
+    });
+
+    const tenant = await t.run((ctx) => ctx.db.get(seed.tenantA.tenantId));
+    expect(tenant?.customDomain).toBe("second.fr");
+  });
 });
 
 describe("B-TENANT-LIFECYCLE [3/4] tenant.updateSettings — validation", () => {
@@ -232,6 +300,67 @@ describe("B-TENANT-LIFECYCLE [3/4] tenant.updateSettings — validation", () => 
     expect(tenant?.address).toBeUndefined();
     expect(tenant?.branding).toBeUndefined();
   });
+
+  // -------------------------------------------------------------------------
+  // F-WIZARD [4/10] (#268) — `customDomain` validation rejections. Same
+  // regex as the front (single source of validation shape).
+  // -------------------------------------------------------------------------
+  it("F-WIZARD [4/10] (#268): invalid customDomain throws INVALID_CUSTOM_DOMAIN (no TLD)", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    await expect(
+      asAdmin.mutation(api.lib.admin.tenantSettings.updateSettings, {
+        tenantId: seed.tenantA.tenantId,
+        patch: { customDomain: "localhost" },
+      }),
+    ).rejects.toThrow(/INVALID_CUSTOM_DOMAIN/);
+  });
+
+  it("F-WIZARD [4/10] (#268): uppercase customDomain rejected", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    await expect(
+      asAdmin.mutation(api.lib.admin.tenantSettings.updateSettings, {
+        tenantId: seed.tenantA.tenantId,
+        patch: { customDomain: "Artisan.fr" },
+      }),
+    ).rejects.toThrow(/INVALID_CUSTOM_DOMAIN/);
+  });
+
+  it("F-WIZARD [4/10] (#268): URL-shaped input rejected (no scheme / no path)", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    await expect(
+      asAdmin.mutation(api.lib.admin.tenantSettings.updateSettings, {
+        tenantId: seed.tenantA.tenantId,
+        patch: { customDomain: "https://artisan.fr" },
+      }),
+    ).rejects.toThrow(/INVALID_CUSTOM_DOMAIN/);
+  });
+
+  it("F-WIZARD [4/10] (#268): empty / whitespace-only customDomain rejected", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    await expect(
+      asAdmin.mutation(api.lib.admin.tenantSettings.updateSettings, {
+        tenantId: seed.tenantA.tenantId,
+        patch: { customDomain: "   " },
+      }),
+    ).rejects.toThrow(/INVALID_CUSTOM_DOMAIN/);
+  });
+
+  it("F-WIZARD [4/10] (#268): a failed customDomain validation does NOT persist any partial change", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    await expect(
+      asAdmin.mutation(api.lib.admin.tenantSettings.updateSettings, {
+        tenantId: seed.tenantA.tenantId,
+        patch: {
+          address: "Should not land either",
+          customDomain: "not-a-domain",
+        },
+      }),
+    ).rejects.toThrow(/INVALID_CUSTOM_DOMAIN/);
+
+    const tenant = await t.run((ctx) => ctx.db.get(seed.tenantA.tenantId));
+    expect(tenant?.address).toBeUndefined();
+    expect(tenant?.customDomain).toBeUndefined();
+  });
 });
 
 describe("B-TENANT-LIFECYCLE [3/4] tenant.updateSettings — cross-tenant fuzz", () => {
@@ -286,6 +415,50 @@ describe("B-TENANT-LIFECYCLE [3/4] tenant.updateSettings — cross-tenant fuzz",
         patch: { branding: { primaryColor: "#000000" } },
       }),
     ).rejects.toThrow(/unauthenticated/i);
+  });
+
+  // -------------------------------------------------------------------------
+  // F-WIZARD [4/10] (#268) — cross-tenant fuzz on the customDomain patch
+  // path. Same wrapper as the rest of `updateSettings`, but explicitly
+  // exercise the new field so a future regression on validator wiring
+  // (e.g. handler short-circuits BEFORE the auth gate) is caught.
+  // -------------------------------------------------------------------------
+  it("F-WIZARD [4/10] (#268): non-kb_manager actors patching customDomain are refused (no leak)", async () => {
+    const actors = [
+      { label: "B-manager", subject: seed.tenantB.managerId },
+      { label: "A-staff", subject: seed.tenantA.staffId },
+      { label: "plain-customer", subject: seed.customerId },
+      { label: "detached", subject: seed.detachedUserId },
+      { label: "anonymous", subject: null },
+    ];
+
+    const { leaks, pairs } = await runCrossTenantFuzz(t, {
+      functions: [api.lib.admin.tenantSettings.updateSettings],
+      isQuery: () => false,
+      tenantId: seed.tenantA.tenantId,
+      actors,
+      extraArgs: { patch: { customDomain: "leaky.fr" } },
+    });
+
+    expect(leaks).toEqual([]);
+    expect(pairs).toBe(actors.length);
+
+    const tenantA = await t.run((ctx) => ctx.db.get(seed.tenantA.tenantId));
+    expect(tenantA?.customDomain).toBeUndefined();
+  });
+
+  it("F-WIZARD [4/10] (#268): B's manager cannot patch tenant A customDomain", async () => {
+    const asBmgr = t.withIdentity({ subject: seed.tenantB.managerId });
+
+    await expect(
+      asBmgr.mutation(api.lib.admin.tenantSettings.updateSettings, {
+        tenantId: seed.tenantA.tenantId,
+        patch: { customDomain: "evil.fr" },
+      }),
+    ).rejects.toThrow(/forbidden/i);
+
+    const tenantA = await t.run((ctx) => ctx.db.get(seed.tenantA.tenantId));
+    expect(tenantA?.customDomain).toBeUndefined();
   });
 });
 
