@@ -69,6 +69,7 @@ import { getConvexErrorMessage } from "@/utils/getConvexErrorMessage";
 
 import type { BrandingPatch, BrandingValue } from "./branding-editor";
 import type { CoordonneesPatch, CoordonneesValue } from "./coordonnees-editor";
+import type { AcceptedModesPatch, ModesValue } from "./modes-editor";
 import { ParametresView } from "./parametres-view";
 
 export default function ParametresPage() {
@@ -121,6 +122,22 @@ export default function ParametresPage() {
   const coordonnees: CoordonneesValue | undefined = isAdmin
     ? adminTenantDoc !== undefined && adminTenantDoc !== null
       ? { address: adminTenantDoc.address, phone: adminTenantDoc.phone }
+      : undefined
+    : undefined;
+
+  // F-PARAMETRES-04 (#234) — Modes acceptés seed follows the SAME degradation
+  // rule as branding / coordonnées: KB Manager has no manager-accessible read
+  // yet → `undefined` (editor seeds both flags to the safe default `true`).
+  // KB Admin gets the real `{ delivery, clickAndCollect }` from
+  // `loadTenantForStripe` (still ZERO extra read — same query).
+  const acceptedModes: ModesValue | undefined = isAdmin
+    ? adminTenantDoc !== undefined &&
+      adminTenantDoc !== null &&
+      adminTenantDoc.acceptedModes !== undefined
+      ? {
+          delivery: adminTenantDoc.acceptedModes.delivery,
+          clickAndCollect: adminTenantDoc.acceptedModes.clickAndCollect,
+        }
       : undefined
     : undefined;
 
@@ -195,6 +212,29 @@ export default function ParametresPage() {
     }
   };
 
+  // F-PARAMETRES-04 (#234) — Modes acceptés save handler. Same pattern as
+  // siblings: wraps the SHARED `updateSettings` mutation (ONE backend
+  // brick across all sections — D5 élargi), forwards the `{ acceptedModes:
+  // { delivery, clickAndCollect } }` patch as-is. The « au moins un mode
+  // actif » guard runs at the EDITOR level (front-side, AC clé) — the
+  // backend has no equivalent invariant in V1 (the validator just accepts
+  // both booleans), but the editor's guard makes a both = false patch
+  // impossible to construct via the UI. Re-throws so the editor surfaces
+  // the inline error too.
+  const handleSaveAcceptedModes = async (
+    patch: AcceptedModesPatch,
+  ): Promise<void> => {
+    try {
+      await updateSettings({ patch });
+      toast.success("Modes acceptés enregistrés.");
+    } catch (error) {
+      toast.error("Impossible d'enregistrer les modes acceptés", {
+        description: getConvexErrorMessage(error),
+      });
+      throw error;
+    }
+  };
+
   return (
     <ParametresView
       serviceHours={serviceHours}
@@ -203,6 +243,8 @@ export default function ParametresPage() {
       onUploadLogo={handleUploadLogo}
       coordonnees={coordonnees}
       onSaveCoordonnees={handleSaveCoordonnees}
+      acceptedModes={acceptedModes}
+      onSaveAcceptedModes={handleSaveAcceptedModes}
     />
   );
 }

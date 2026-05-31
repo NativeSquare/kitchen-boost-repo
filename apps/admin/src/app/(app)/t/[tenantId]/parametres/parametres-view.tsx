@@ -55,6 +55,11 @@ import {
   type CoordonneesPatch,
   type CoordonneesValue,
 } from "./coordonnees-editor";
+import {
+  ModesEditor,
+  type AcceptedModesPatch,
+  type ModesValue,
+} from "./modes-editor";
 
 export type ParametresViewProps = {
   /**
@@ -106,6 +111,25 @@ export type ParametresViewProps = {
    */
   coordonnees: CoordonneesValue | undefined;
   onSaveCoordonnees: (patch: CoordonneesPatch) => Promise<void>;
+  /**
+   * F-PARAMETRES-04 (#234) — Modes acceptés section.
+   *
+   * `acceptedModes`: the current persisted `{ delivery?, clickAndCollect? }`.
+   *   - `undefined` is treated as « no acceptedModes set yet » (fresh
+   *     tenant). The editor seeds both flags to `true` in that case
+   *     (safe default — see the editor's file header).
+   *   - Today the KB Manager branch starts at this sentinel because no
+   *     manager-accessible read query exists for tenant-row fields
+   *     (same degradation as `branding` / `coordonnees`, see file
+   *     header). A KB Admin gets the real value from
+   *     `loadTenantForStripe` (already loaded in the page).
+   * `onSaveAcceptedModes`: page-wired handler for the section's
+   *   « Enregistrer » button — wired to the SAME `useTenantMutation`
+   *   binding as branding / coordonnées (ONE backend brick for all
+   *   sections, D5 élargi).
+   */
+  acceptedModes: ModesValue | undefined;
+  onSaveAcceptedModes: (patch: AcceptedModesPatch) => Promise<void>;
 };
 
 export function ParametresView({
@@ -114,6 +138,8 @@ export function ParametresView({
   onUploadLogo,
   coordonnees,
   onSaveCoordonnees,
+  acceptedModes,
+  onSaveAcceptedModes,
 }: ParametresViewProps): React.ReactElement {
   return (
     <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
@@ -128,7 +154,10 @@ export function ParametresView({
           value={coordonnees ?? {}}
           onSave={onSaveCoordonnees}
         />
-        <SectionModesAcceptes />
+        <SectionModesAcceptes
+          value={acceptedModes ?? {}}
+          onSave={onSaveAcceptedModes}
+        />
         <SectionHorairesService />
         <Separator className="my-2" />
         <UberDirectReadOnlyBlock />
@@ -242,13 +271,33 @@ function SectionCoordonnees({
   );
 }
 
-function SectionModesAcceptes() {
+/**
+ * F-PARAMETRES-04 (#234) — wired Modes acceptés section. Wraps the reusable
+ * `ModesEditor` (signature `{ value, onSave }`) inside the canonical Section
+ * card so the visual rhythm with the still-unwired Horaires section stays
+ * consistent. The card's `data-slot` is preserved from slice 1 (#193) so
+ * consumers and tests that target the section by slot don't need to know
+ * whether it's a placeholder or a live editor.
+ */
+function SectionModesAcceptes({
+  value,
+  onSave,
+}: {
+  value: ModesValue;
+  onSave: (patch: AcceptedModesPatch) => Promise<void>;
+}) {
   return (
-    <SectionPlaceholder
-      slot="parametres-section-modes"
-      title="Modes acceptés"
-      description="Activez la livraison et / ou le click & collect."
-    />
+    <Card data-slot="parametres-section-modes">
+      <CardHeader>
+        <CardTitle>Modes acceptés</CardTitle>
+        <CardDescription>
+          Activez la livraison et / ou le click &amp; collect.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ModesEditor value={value} onSave={onSave} />
+      </CardContent>
+    </Card>
   );
 }
 
