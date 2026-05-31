@@ -25,6 +25,80 @@ import type { ReactElement, ReactNode } from "react";
 
 import type { Doc } from "@packages/backend/convex/_generated/dataModel";
 
+// ---------------------------------------------------------------------------
+// React hooks shim — F-PRICING-5 (#251) made `RuleRow` stateful (local
+// `confirmOpen` flag for the delete `AlertDialog`). Under
+// `environment: "node"` (no React renderer), the real `useState` throws
+// « can't dispatch ». We replace it with a closure-scoped stub that returns
+// the initial value + a no-op setter (we never trigger state transitions
+// from a test — the assertions only walk the FIRST render, which is exactly
+// what the « dialog action carries the right onClick » contract pins).
+// Same shape as `category-list-editor.test.tsx` (slice 5 of menu).
+// ---------------------------------------------------------------------------
+vi.mock("react", async () => {
+  const actual = await vi.importActual<typeof import("react")>("react");
+  return {
+    ...actual,
+    useState: <T,>(initial: T | (() => T)) => {
+      const v =
+        typeof initial === "function" ? (initial as () => T)() : initial;
+      return [v, () => {}];
+    },
+  };
+});
+
+// ---------------------------------------------------------------------------
+// AlertDialog shim — F-PRICING-5 (#251). The real Radix `AlertDialog*`
+// primitives call internal hooks (`useContext`, `useId`, …) which throw
+// under `environment: "node"` and the serializer's `try/catch` then returns
+// an empty placeholder — losing the dialog's children (including the
+// load-bearing « Supprimer » confirm action). We replace the 7 used
+// primitives with thin passthroughs that mirror the production tree shape
+// just enough for the assertions to find the `data-slot` markers and the
+// `onClick` handlers. Same shape as `menu/item-modal.test.tsx` and
+// `commandes/order-detail-modal.test.tsx` (the two other AlertDialog test
+// surfaces in apps/admin).
+// ---------------------------------------------------------------------------
+vi.mock("@/components/ui/alert-dialog", () => {
+  const passthrough = ({
+    children,
+  }: {
+    children?: React.ReactNode;
+  }): React.ReactNode => children ?? null;
+  return {
+    AlertDialog: passthrough,
+    AlertDialogContent: passthrough,
+    AlertDialogHeader: passthrough,
+    AlertDialogTitle: passthrough,
+    AlertDialogDescription: passthrough,
+    AlertDialogFooter: passthrough,
+    // Render Action/Cancel as plain buttons so the serializer surfaces them
+    // and the data-slot scan can find them. The production component (a
+    // shadcn `Button` wrapping the Radix Action) emits the SAME data-slot
+    // on its outer element, so the production tree shape is preserved.
+    AlertDialogAction: ({
+      children,
+      onClick,
+      ...rest
+    }: {
+      children?: React.ReactNode;
+      onClick?: () => void;
+      [k: string]: unknown;
+    }) => ({
+      type: "button",
+      props: {
+        ...rest,
+        onClick,
+        "data-slot":
+          (rest["data-slot"] as string | undefined) ?? "alert-dialog-action",
+        children: children ?? null,
+      },
+      $$typeof: Symbol.for("react.element"),
+    }),
+    AlertDialogCancel: passthrough,
+  };
+});
+
 import { PricingView, AUTO_PRIORITY_BANNER_TEXT } from "./pricing-view";
 
 // ---------------------------------------------------------------------------
@@ -688,31 +762,27 @@ describe("PricingView — F-PRICING-1 (#241)", () => {
           onDeleteRule: () => {},
         }),
       );
-      const buttons: { text: string; disabled: boolean }[] = [];
-      function walk(n: SerializedNode) {
-        if (n === null || "text" in n) return;
-        if (typeof n.type === "string" && n.type.toLowerCase() === "button") {
-          const t = allText(n);
-          const disabled =
-            n.props["disabled"] === true ||
-            n.props["disabled"] === "" ||
-            n.props["aria-disabled"] === true ||
-            n.props["aria-disabled"] === "true";
-          buttons.push({ text: t, disabled });
-        }
-        for (const c of n.children) walk(c);
-      }
-      walk(tree);
-      const removeBtns = buttons.filter((b) =>
-        /^\s*Supprimer\s*$/.test(b.text),
-      );
-      // 2 rules → 2 « Supprimer » row buttons (the dialog's button is rendered
-      // via radix and is unreachable from this serializer — we pin it via the
-      // `confirmAction` prop below).
-      expect(removeBtns).toHaveLength(2);
-      for (const b of removeBtns) {
+      // Narrow to the row trigger via `data-slot="pricing-rule-delete"` —
+      // a plain text scan for « Supprimer » would also match the dialog's
+      // confirm action (which carries the same FR copy verbatim).
+      const rowDeleteBtns = flatten(tree).filter((n) => {
+        if (n === null || "text" in n) return false;
+        return n.props["data-slot"] === "pricing-rule-delete";
+      }) as Array<{
+        type: string;
+        props: Record<string, unknown>;
+        children: SerializedNode[];
+      }>;
+      // 2 rules → 2 « Supprimer » row buttons.
+      expect(rowDeleteBtns).toHaveLength(2);
+      for (const b of rowDeleteBtns) {
+        const disabled =
+          b.props["disabled"] === true ||
+          b.props["disabled"] === "" ||
+          b.props["aria-disabled"] === true ||
+          b.props["aria-disabled"] === "true";
         expect(
-          b.disabled,
+          disabled,
           "Supprimer row button must be enabled when onDeleteRule is wired",
         ).toBe(false);
       }

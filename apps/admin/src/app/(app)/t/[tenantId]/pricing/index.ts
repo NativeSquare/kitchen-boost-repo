@@ -40,6 +40,13 @@
  * delete déguisé », issue body), pinned at the page-source level in
  * `page.test.ts`.
  *
+ * Slice 5 (F-PRICING-5 / #251) also adds no new exports — it extends the
+ * existing `PricingViewProps` with an optional `onDeleteRule(ruleId)`
+ * callback. The per-row « Supprimer » button is the 1st click of a 2-click
+ * confirmation flow (Radix `AlertDialog`) — only the dialog's « Supprimer »
+ * action invokes the callback (1-click delete INTERDIT, issue body). The
+ * page bridges it to `api.lib.pricing.rules.remove`.
+ *
  * Page default export (`./page`) is consumed by Next.js routing directly and
  * does not need to be re-exported here.
  */
