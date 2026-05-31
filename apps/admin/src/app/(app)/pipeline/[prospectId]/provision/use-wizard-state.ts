@@ -34,6 +34,8 @@
  * `/pipeline/[id]/provision`).
  */
 import { useCallback, useState } from "react";
+import { useQuery } from "convex/react";
+import { api } from "@packages/backend/convex/_generated/api";
 import type { Doc, Id } from "@packages/backend/convex/_generated/dataModel";
 
 import { computeWizardState } from "./wizard.decision";
@@ -83,18 +85,20 @@ export type UseWizardStateResult = {
 export function useWizardState(
   prospectId: Id<"prospects"> | undefined,
 ): UseWizardStateResult {
-  // Stubs — every dependency the wizard needs but doesn't yet have a live
-  // Convex query for. Marked explicitly so a grep on `STUB` lights them all
-  // up when a follow-up slice swaps in the real `useQuery`.
+  // Prospect is now LIVE (F-WIZARD [3/10] #267): the wizard cannot do
+  // anything without the prospect doc — step 1's pre-fill, the back-link
+  // detection (`prospect.tenantId`), and the cursor heuristic all need it.
+  // The live query was deliberately stubbed in slice [1/10] (#265) so the
+  // wizard shell could land independently of `api.lib.onboarding.crm
+  // .getProspect`; #267 swaps it in.
   //
-  // The prospectId is read defensively so a future refactor that lives-wires
-  // the query has the call site already wired:
-  //   const prospect = useQuery(
-  //     api.prospects.get,
-  //     prospectId ? { prospectId } : "skip",
-  //   );
-  void prospectId;
-  const prospect: Doc<"prospects"> | null | undefined = undefined; // STUB
+  // Tenant / publishedMenu / managerInvite remain STUBs — each follow-up
+  // wizard slice swaps its own ones (4/10 = tenant + branding, 5/10 = menu,
+  // 7/10 = manager invite).
+  const prospect = useQuery(
+    api.lib.onboarding.crm.getProspect,
+    prospectId !== undefined ? { prospectId } : "skip",
+  );
   const tenant: Doc<"tenants"> | null | undefined = undefined; // STUB
   const publishedMenu: Doc<"publishedMenus"> | null | undefined = undefined; // STUB
   const managerInvite: ManagerInviteDoc | null | undefined = undefined; // STUB
