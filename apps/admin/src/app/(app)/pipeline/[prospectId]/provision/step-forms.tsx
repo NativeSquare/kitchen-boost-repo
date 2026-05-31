@@ -2,7 +2,7 @@
 
 /**
  * F-WIZARD [1/10] (#265) + [3/10] (#267) + [5/10] (#269) + [6/10] (#270) +
- * [7/10] (#271) — Step{N}Form dispatch map.
+ * [7/10] (#271) + [9/10] (#273) — Step{N}Form dispatch map.
  *
  * Steps still using a placeholder (« TODO Step N — <title> » + Prev/Next nav
  * buttons): 2, 6, 7, 8. Each follow-up wizard slice swaps its own
@@ -75,6 +75,10 @@ import { Step3StripeKycForm } from "./step3-stripe-kyc-form";
 import { Step4BrandingForm } from "./step4-branding-form";
 import { Step5MenuForm } from "./step5-menu-form";
 import { Step6QrForm } from "./step6-qr-form";
+import {
+  Step7ManagerInviteForm,
+  type ExistingManagerInvite,
+} from "./step7-manager-invite-form";
 import { WIZARD_STEPS, type WizardStepNumber } from "./wizard-stepper";
 
 export type StepFormProps = {
@@ -119,7 +123,7 @@ function NavButtons({
   );
 }
 
-function makeStepForm(step: Exclude<WizardStepNumber, 1 | 3 | 4 | 5 | 6>) {
+function makeStepForm(step: Exclude<WizardStepNumber, 1 | 3 | 4 | 5 | 6 | 7>) {
   function StepForm({ onPrev, onNext }: StepFormProps) {
     return (
       <div className="flex flex-col gap-4 px-4 py-2 lg:px-6">
@@ -1022,8 +1026,173 @@ function Step6Form({ onPrev, onNext }: StepFormProps): React.JSX.Element {
   );
 }
 
+/**
+ * F-WIZARD [9/10] (#273) — Step7Form: thin Convex-wiring wrapper around the
+ * pure `Step7ManagerInviteForm`. Owns:
+ *   - the prospect read (`useQuery(api.lib.onboarding.crm.getProspect)`) for
+ *     the `tenantId` back-link + the default email/name pre-fill (from
+ *     `prospect.email` / `prospect.contactName` — same source-of-truth as
+ *     step 1's `Step1ProvisioningForm` pre-fill);
+ *   - the existing-invite read via
+ *     `useQuery(api.lib.admin.managerInvites.getLatestManagerInviteForTenant,
+ *     { tenantId })` — the canonical « step 7 already done » signal (issue
+ *     spec: « le hook useWizardState marque step 7 complete si une ligne
+ *     managerInvites existe pour le tenant, peu importe acceptedAt »).
+ *     Returns the row OR `null`; both states drive the form's UX (badge +
+ *     « Renvoyer » vs. « Envoyer » + warning copy).
+ *   - the `inviteManager` mutation (`useMutation(api.lib.admin.managerInvites
+ *     .inviteManager)`) called with `{ tenantId, email, name? }`. Same root
+ *     mutation the issue spec mandates (B-AUTH-4 #204).
+ *   - the in-flight + error state surfaced to the form + the toast UX:
+ *     - success → `toast.success("Invitation envoyée")`;
+ *     - error → `toast.error(<message>)` (e.g. ALREADY_INVITED for an
+ *       active non-expired invite — the operator sees a clear message and
+ *       can wait for the existing one to expire, or send via the tenant
+ *       settings later).
+ *
+ * Mirror of `Step4Form` / `Step5Form` / `Step6Form`'s discipline: the lean
+ * `node` vitest env doesn't execute these hooks (the serializer's try/catch
+ * swallows the « invalid hook call » when invoking the wrapper outside a
+ * React render); the wrapper's behaviour is pinned indirectly through the
+ * pure form tests (`step7-manager-invite-form.test.tsx`) and directly through
+ * CI runtime + E2E.
+ *
+ * Acceptance ordering note (issue body, documented here per spec): the
+ * gérant's acceptInvite can happen BEFORE or AFTER step 8's activation —
+ * the two orders are both supported. `acceptInvite` (B-AUTH-6 #230) consumes
+ * a token regardless of `tenant.status`; the wizard does not gate on
+ * acceptance, only on « an invite row exists ». Nothing to code here, just
+ * a contract reminder so future contributors don't tighten the gate by
+ * accident.
+ */
+function Step7Form({ onPrev, onNext }: StepFormProps): React.JSX.Element {
+  const params = useParams<{ prospectId: string }>();
+  const prospectId = params?.prospectId as unknown as
+    | Id<"prospects">
+    | undefined;
+
+  const prospect = useQuery(
+    api.lib.onboarding.crm.getProspect,
+    prospectId !== undefined ? { prospectId } : "skip",
+  );
+
+  const tenantId = prospect?.tenantId;
+  const latestInvite = useQuery(
+    api.lib.admin.managerInvites.getLatestManagerInviteForTenant,
+    tenantId !== undefined ? { tenantId } : "skip",
+  );
+
+  const inviteManager = useMutation(api.lib.admin.managerInvites.inviteManager);
+
+  const [isSending, setIsSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+
+  // Defensive loading / not-found — outer `decideWizardShell` + the cursor
+  // heuristic normally gate these (same defence as the sibling Step{N}Form
+  // wrappers).
+  if (prospect === undefined) {
+    return (
+      <div
+        className="flex items-center justify-center px-4 py-12 lg:px-6"
+        data-slot="wizard-step7-loading"
+      >
+        <Spinner className="h-6 w-6" />
+      </div>
+    );
+  }
+  if (prospect === null) {
+    return (
+      <div
+        className="px-4 py-6 text-sm text-destructive lg:px-6"
+        data-slot="wizard-step7-not-found"
+      >
+        Prospect introuvable. Impossible d&apos;inviter le gérant.
+      </div>
+    );
+  }
+  if (tenantId === undefined) {
+    // Hard gate: the invite is keyed on tenantId — step 1 must run first.
+    return (
+      <div
+        className="px-4 py-6 text-sm text-destructive lg:px-6"
+        data-slot="wizard-step7-no-tenant"
+      >
+        Le tenant doit être créé (Step 1) avant d&apos;inviter le gérant.
+      </div>
+    );
+  }
+  if (latestInvite === undefined) {
+    // Invite query in flight — render a spinner rather than the form (we'd
+    // briefly flash the « Envoyer » state then jump to « Renvoyer » once
+    // the query resolves).
+    return (
+      <div
+        className="flex items-center justify-center px-4 py-12 lg:px-6"
+        data-slot="wizard-step7-loading-invite"
+      >
+        <Spinner className="h-6 w-6" />
+      </div>
+    );
+  }
+
+  // Email source: a row exists → trust the invite (the operator may have
+  // edited it via tenant settings post-send); no row yet → fall back to
+  // `prospect.email` (same prefill source as step 1). The form treats this
+  // as read-only; to change it the operator goes back to step 1 or edits
+  // the tenant settings.
+  const email = latestInvite?.email ?? prospect.email ?? "";
+  const defaultName = latestInvite?.name ?? prospect.contactName ?? "";
+
+  const existingInvite: ExistingManagerInvite | null =
+    latestInvite !== null
+      ? {
+          sentAt: latestInvite._creationTime,
+          email: latestInvite.email,
+          name: latestInvite.name,
+        }
+      : null;
+
+  const handleSend = async (input: { email: string; name?: string }) => {
+    if (isSending) return;
+    setIsSending(true);
+    setSendError(null);
+    try {
+      await inviteManager({
+        tenantId,
+        email: input.email,
+        name: input.name,
+      });
+      toast.success(
+        existingInvite !== null
+          ? "Invitation renvoyée au gérant."
+          : "Invitation envoyée au gérant.",
+      );
+    } catch (error) {
+      const message = getConvexErrorMessage(error);
+      setSendError(message);
+      toast.error("Impossible d'envoyer l'invitation", {
+        description: message,
+      });
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  return (
+    <Step7ManagerInviteForm
+      email={email}
+      defaultName={defaultName}
+      existingInvite={existingInvite}
+      onSend={handleSend}
+      isSending={isSending}
+      sendError={sendError}
+      onPrev={onPrev}
+      onNext={onNext}
+    />
+  );
+}
+
 export const Step2Form = makeStepForm(2);
-export const Step7Form = makeStepForm(7);
 export const Step8Form = makeStepForm(8);
 
 /**

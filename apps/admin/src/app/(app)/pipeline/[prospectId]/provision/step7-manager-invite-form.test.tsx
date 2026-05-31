@@ -265,9 +265,7 @@ describe("Step7ManagerInviteForm — F-WIZARD [9/10] (#273)", () => {
   });
 
   it("renders an editable « Nom du gérant » input when no invite has been sent", () => {
-    const tree = serialize(
-      defaultProps().onSend ? Step7ManagerInviteForm(defaultProps()) : null,
-    );
+    const tree = serialize(Step7ManagerInviteForm(defaultProps()));
     const nameInput = findInputByName(tree, "name") as {
       props: { readOnly?: boolean; disabled?: boolean };
     } | null;
@@ -304,8 +302,12 @@ describe("Step7ManagerInviteForm — F-WIZARD [9/10] (#273)", () => {
     expect(btn?.props.disabled).not.toBe(true);
     await btn?.props.onClick?.();
     expect(onSend).toHaveBeenCalledTimes(1);
-    const arg = onSend.mock.calls[0]?.[0] as { email: string; name?: string };
-    expect(arg.email).toBe("send@example.fr");
+    const call = (onSend.mock.calls[0] ?? []) as unknown as Array<{
+      email: string;
+      name?: string;
+    }>;
+    const arg = call[0];
+    expect(arg?.email).toBe("send@example.fr");
   });
 
   it("when an invite already exists: badge « Invitation envoyée [timestamp] » is shown", () => {
@@ -410,18 +412,20 @@ describe("Step7ManagerInviteForm — F-WIZARD [9/10] (#273)", () => {
     expect(text).toMatch(/Email invalide/);
   });
 
-  it("send-in-flight state disables the « Envoyer » button", () => {
+  it("send-in-flight state disables the send button (label flips to « Envoi… »)", () => {
     const tree = serialize(
       Step7ManagerInviteForm(defaultProps({ isSending: true })),
     );
-    const btn = findButtonByText(tree, /Envoyer/i) as {
+    // The label flips from « Envoyer l'invitation » to « Envoi en cours… »
+    // when in-flight; match either form.
+    const btn = findButtonByText(tree, /Envoyer|Envoi/i) as {
       props: { disabled?: boolean };
     } | null;
     expect(btn).not.toBeNull();
     expect(btn?.props.disabled).toBe(true);
   });
 
-  it("send-in-flight state disables the « Renvoyer » button when invite exists", () => {
+  it("send-in-flight state disables the resend button when invite exists", () => {
     const tree = serialize(
       Step7ManagerInviteForm(
         defaultProps({
@@ -434,7 +438,9 @@ describe("Step7ManagerInviteForm — F-WIZARD [9/10] (#273)", () => {
         }),
       ),
     );
-    const btn = findButtonByText(tree, /Renvoyer/i) as {
+    // Same label flip applies on the resend path — match « Renvoyer » OR
+    // « Envoi » (the in-flight copy is shared between send / resend).
+    const btn = findButtonByText(tree, /Renvoyer|Envoi/i) as {
       props: { disabled?: boolean };
     } | null;
     expect(btn).not.toBeNull();

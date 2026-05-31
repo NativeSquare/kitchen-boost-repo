@@ -74,3 +74,46 @@ export async function deleteAdminInvite(
 ): Promise<void> {
   await ctx.db.delete(inviteId);
 }
+
+/**
+ * F-WIZARD [9/10] (#273) — read the LATEST manager invite for a tenant (any
+ * acceptedAt / expiresAt). Used by the wizard's Step 7 to surface the
+ * « invitation envoyée » state + by `useWizardState` as the completion gate
+ * for step 7 (issue spec: « le hook marque step 7 complete si une ligne
+ * managerInvites existe pour le tenant, peu importe acceptedAt »).
+ *
+ * Filters on `targetRole === "kb_manager"` so legacy admin invites (no
+ * targetRole, no tenantId) never surface — the `by_email_tenant` index keys
+ * `(email, tenantId)` and the legacy rows have `tenantId === undefined`, so
+ * they're not returned by the `eq("tenantId", ...)` lookup anyway, but we
+ * keep the targetRole filter as a defensive narrowing.
+ *
+ * Orders by `_creationTime` desc and returns the head — Convex indexes are
+ * sorted ascending by default; we use `.order("desc")` to flip and `.first()`
+ * to grab the most recently created row.
+ *
+ * There is no dedicated `by_tenant` index for manager invites — we reuse the
+ * existing `by_email_tenant` compound by collecting all rows for the tenant
+ * and selecting the latest. V1 cardinality is bounded by the wizard flow
+ * itself (one operator-driven invite per (email, tenantId), relance replaces
+ * the row), so the scan is O(few) per tenant. A dedicated `by_tenant` index
+ * can land later if a tenant's invite history grows unbounded.
+ */
+export async function getLatestManagerInviteForTenant(
+  ctx: QueryCtx | MutationCtx,
+  tenantId: Id<"tenants">,
+): Promise<Doc<"adminInvites"> | null> {
+  // There is no dedicated `by_tenant` index for manager invites today —
+  // the wizard tenant has at most a handful of invites (one per operator
+  // action; the `(email, tenantId)` dedupes via `by_email_tenant`), so a
+  // full collect filtered in-memory is correct and bounded. A dedicated
+  // `by_tenant` schema index can land later if a tenant's invite history
+  // grows unbounded.
+  const all = await ctx.db.query("adminInvites").collect();
+  const tenantRows = all.filter(
+    (r) => r.tenantId === tenantId && r.targetRole === "kb_manager",
+  );
+  if (tenantRows.length === 0) return null;
+  tenantRows.sort((a, b) => b._creationTime - a._creationTime);
+  return tenantRows[0] ?? null;
+}
