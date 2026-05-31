@@ -80,6 +80,14 @@ export default function ProspectFichePage() {
   // allowance). The view's decision treats `undefined` as Convex in-flight,
   // which is the correct UX while the backend isn't ready.
   const prospect = undefined;
+  // STUB until F-PIPELINE-CRM lands the admin-side `api.tenants.get`
+  // lookup. The fiche plumbs `tenant` through to
+  // `ProvisionLauncherButton` (F-WIZARD [2/10] #266), which stays on
+  // `launch` / `resume` until the live query reports a hydrated tenant
+  // (`view-tenant` lights up automatically when `status === "active"`).
+  const tenant = undefined;
 
-  return <ProspectFicheView session={session} prospect={prospect} />;
+  return (
+    <ProspectFicheView session={session} prospect={prospect} tenant={tenant} />
+  );
 }

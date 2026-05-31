@@ -14,9 +14,13 @@
  *   - AC1 « Header affiche nom + statut du prospect » — assert the prospect
  *     name AND its `phase` (the canonical pipeline status from the schema
  *     — kb-admin CONTEXT « Phase pipeline ») surface in the rendered tree.
- *   - AC2 « Bouton "Ouvrir la vue resto" présent uniquement si
- *     `prospect.tenantId` non null » — assert the button text + href
- *     `/t/<tenantId>` is rendered when provisioned, AND absent when not.
+ *   - AC2 « Bouton "Ouvrir la vue resto" » — DELEGATED to
+ *     `ProvisionLauncherButton` (F-WIZARD [2/10] #266) which now owns
+ *     ALL provisioning-side CTAs and their visibility logic. The fiche
+ *     just mounts it. The launcher's branches are pinned by
+ *     `provision-launcher.decision.test.ts` and
+ *     `provision-launcher-button.test.tsx`; here we only assert that the
+ *     fiche actually mounts the launcher (and feeds it `tenant`).
  *   - AC3 « KB Manager → erreur 403 (kbAdminQuery throw) » — at the UX
  *     layer, this is the shared `UnauthorizedCard` (« Accès non autorisé »).
  *     The real backend throw is owned by `kbAdminQuery` (ADR 0010) — this
@@ -302,17 +306,35 @@ describe("ProspectFicheView — F-SHELL-10 (#233)", () => {
     expect(text).toMatch(/pr[ée]paration/i);
   });
 
-  it("AC2 — « Ouvrir la vue resto » CTA is rendered when `prospect.tenantId` is set, pointing to `/t/<tenantId>`", () => {
-    const prospect = makeProspect({ tenantId: TENANT_ID });
+  it("AC2 — « Ouvrir la vue resto » CTA is rendered when `prospect.tenantId` is set AND the (plumbed) tenant is `active` (F-WIZARD [2/10] #266 policy)", () => {
+    // Policy change vs the original AC2: the launcher (#266) only promotes
+    // to « Ouvrir la vue resto » once `tenant.status === "active"`. A
+    // tenantId back-link alone keeps it on « Reprendre le wizard ». The
+    // fiche just plumbs the tenant doc through; the launcher decides.
+    const prospect = makeProspect({
+      tenantId: TENANT_ID,
+      milestones: {
+        contratSigne: 1,
+        kbisRecu: 1,
+        pieceIdentiteRecue: 1,
+        ribRecu: 1,
+      },
+    });
+    const tenant: Doc<"tenants"> = {
+      _id: TENANT_ID,
+      _creationTime: 1_700_000_000_000,
+      slug: "lartisan",
+      name: "L'Artisan",
+      siret: "12345678900012",
+      status: "active",
+    };
     const tree = serialize(
-      ProspectFicheView({ session: adminSession(), prospect }),
+      ProspectFicheView({ session: adminSession(), prospect, tenant }),
     );
     const text = allText(tree);
     expect(text).toMatch(/Ouvrir la vue resto/i);
-    // Pinned at the anchor level — the button is rendered as `<a>` (via
-    // shadcn `<Button asChild>` wrapping a `<Link>`), so we assert the href.
-    // The serializer unwraps next/link into its native <a>, so the bare DOM
-    // tag carries the href.
+    // Pinned at the anchor level — the button is rendered as `<a>` via
+    // shadcn `<Button asChild>`. The serializer surfaces the href directly.
     const anchors = findAllByType(tree, "a");
     const hrefs = anchors
       .map((a) => (a as { props: { href?: unknown } }).props.href)
