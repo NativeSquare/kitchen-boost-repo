@@ -200,12 +200,46 @@ describe("PricingView — F-PRICING-1 (#241)", () => {
     expect(text).toMatch(/absorbés par le resto|absorb[ée]s par le resto/i);
   });
 
-  it("AC — empty branch does NOT render a « create rule » CTA (slice 2 only)", () => {
-    // Issue body: « pas de bouton de création ici (arrive en bullet 2) ».
-    const text = allText(serialize(PricingView({ rules: [] })));
-    expect(text).not.toMatch(/nouvelle\s+règle/i);
-    expect(text).not.toMatch(/cr[ée]er.*règle/i);
-    expect(text).not.toMatch(/\+\s*Règle/);
+  it("AC F-PRICING-2 (#245) — populated branch surfaces the « + Nouvelle règle » CTA on the header", () => {
+    // F-PRICING-2 (#245) flipped this from F-PRICING-1's « no CTA » to the
+    // mandatory CTA: the page list opens the builder modal via this button.
+    // We pin BOTH the visible FR copy AND a stable data-slot so the page
+    // wiring test can rely on either.
+    const tree = serialize(
+      PricingView({ rules: [ACTIVE_RULE], onNewRule: () => {} }),
+    );
+    const text = allText(tree);
+    expect(text).toMatch(/Nouvelle règle/i);
+  });
+
+  it("AC F-PRICING-2 (#245) — empty branch also surfaces « + Nouvelle règle » (gérant must be able to create the first rule from empty)", () => {
+    const tree = serialize(PricingView({ rules: [], onNewRule: () => {} }));
+    expect(allText(tree)).toMatch(/Nouvelle règle/i);
+  });
+
+  it("AC F-PRICING-2 (#245) — « + Nouvelle règle » click fires `onNewRule`", () => {
+    let clicked = 0;
+    const tree = serialize(
+      PricingView({ rules: [], onNewRule: () => clicked++ }),
+    );
+    // Walk to the button whose text contains « Nouvelle règle » and call its
+    // onClick.
+    let handler: (() => void) | undefined;
+    function walk(n: SerializedNode) {
+      if (n === null || "text" in n) return;
+      if (typeof n.type === "string" && n.type.toLowerCase() === "button") {
+        const t = allText(n);
+        if (/Nouvelle règle/i.test(t)) {
+          const h = n.props["onClick"];
+          if (typeof h === "function") handler = h as () => void;
+        }
+      }
+      for (const c of n.children) walk(c);
+    }
+    walk(tree);
+    expect(typeof handler).toBe("function");
+    handler?.();
+    expect(clicked).toBe(1);
   });
 
   it("AC — loading branch (rules === undefined) renders a skeleton, NOT the empty state, NOT a crash", () => {
