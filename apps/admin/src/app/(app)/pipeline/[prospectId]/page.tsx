@@ -48,6 +48,7 @@
  * `packages/backend/convex/`.
  */
 
+import { useState } from "react";
 import { useParams } from "next/navigation";
 import { useQuery } from "convex/react";
 
@@ -78,17 +79,6 @@ export default function ProspectFichePage() {
   // The contracts query already follows that shape — replace the prospect
   // stub the same way and the rest of the wiring does not move.
 
-  // STUB until F-PIPELINE-CRM lands `api.prospects.get` (issue #233 explicit
-  // allowance). The view's decision treats `undefined` as Convex in-flight,
-  // which is the correct UX while the backend isn't ready.
-  const prospect = undefined;
-  // STUB until F-PIPELINE-CRM lands the admin-side `api.tenants.get`
-  // lookup. The fiche plumbs `tenant` through to
-  // `ProvisionLauncherButton` (F-WIZARD [2/10] #266), which stays on
-  // `launch` / `resume` until the live query reports a hydrated tenant
-  // (`view-tenant` lights up automatically when `status === "active"`).
-  const tenant = undefined;
-
   // F-CONTRATS slice 1/4 (#158) — read the prospect's contracts list via
   // `api.lib.admin.contracts.listContractsForProspect` (exposed by
   // `kbAdminQuery`, ADR 0010). Like `/monitoring`'s `previewIncidents`, we
@@ -98,6 +88,30 @@ export default function ProspectFichePage() {
   // `decideProspectFiche` short-circuits to `forbidden` before any data
   // is rendered — A4 of the manual E2E checklist).
   const isAdminReady = session.status === "ready" && session.session.isAdmin;
+
+  // Prospect is now LIVE (F-CONTRATS slice 3/4 #174 — the modal needs the
+  // juridical fields to pre-fill the « Générer contrat » recap). The hook
+  // is gated on a ready root admin actor + a present URL segment, mirroring
+  // the contracts query below. The slice [1/10] (#265) wizard hook already
+  // depends on this exact root-only kbAdminQuery
+  // (`api.lib.onboarding.crm.getProspect`); this page now consumes it
+  // directly so the launcher can derive a partner payload without an extra
+  // sub-query.
+  const prospect = useQuery(
+    api.lib.onboarding.crm.getProspect,
+    isAdminReady && params?.prospectId
+      ? {
+          prospectId: params.prospectId as unknown as Id<"prospects">,
+        }
+      : "skip",
+  );
+  // STUB until F-PIPELINE-CRM lands the admin-side `api.tenants.get`
+  // lookup. The fiche plumbs `tenant` through to
+  // `ProvisionLauncherButton` (F-WIZARD [2/10] #266), which stays on
+  // `launch` / `resume` until the live query reports a hydrated tenant
+  // (`view-tenant` lights up automatically when `status === "active"`).
+  const tenant = undefined;
+
   const contracts = useQuery(
     api.lib.admin.contracts.listContractsForProspect,
     isAdminReady && params?.prospectId
@@ -107,12 +121,44 @@ export default function ProspectFichePage() {
       : "skip",
   );
 
+  // F-CONTRATS slice 3/4 (#174) — the page owns the « last generated
+  // contract id this session ». The launcher (mounted inside the
+  // `ContractsBlock` header by `ProspectFicheView`) calls `onGenerated`
+  // with the new id once the mutation resolves; we use that id to fire a
+  // `useQuery(getContract, ...)` so the iframe (slice 2/4) below the
+  // block hydrates reactively with the generated HTML. The id is reset
+  // only on full page reload — re-generating overwrites it with the new
+  // id (issue AC : « la nouvelle entrée apparaît », the iframe follows
+  // the latest).
+  const [generatedContractId, setGeneratedContractId] =
+    useState<Id<"contracts"> | null>(null);
+  const generatedContract = useQuery(
+    api.lib.admin.contracts.getContract,
+    isAdminReady && generatedContractId !== null
+      ? { contractId: generatedContractId }
+      : "skip",
+  );
+  // The view's `generatedContractHtml` prop is tri-state:
+  //   - `undefined` → no contract id yet (no iframe rendered at all)
+  //   - `null`       → contract row resolved-but-no-html (iframe's
+  //                    error branch surfaces a clear message)
+  //   - `string`     → hydrated HTML (iframe renders the sandboxed
+  //                    preview + the « Télécharger HTML » action)
+  const generatedContractHtml: string | null | undefined =
+    generatedContractId === null
+      ? undefined
+      : generatedContract === undefined
+        ? undefined
+        : (generatedContract?.htmlContent ?? null);
+
   return (
     <ProspectFicheView
       session={session}
       prospect={prospect}
       tenant={tenant}
       contracts={contracts}
+      onGenerated={setGeneratedContractId}
+      generatedContractHtml={generatedContractHtml}
     />
   );
 }

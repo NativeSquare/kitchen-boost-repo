@@ -53,6 +53,7 @@
  *   - `[]`        → resolved, no row (empty state)
  *   - `Doc[]`     → resolved, hydrated (one row per contract)
  */
+import type { ReactNode } from "react";
 import type { Doc } from "@packages/backend/convex/_generated/dataModel";
 
 import { Badge } from "@/components/ui/badge";
@@ -120,9 +121,21 @@ export type ContractsBlockProps = {
    *   - `Doc[]`     → query resolved, hydrated (one row per contract).
    */
   contracts: Doc<"contracts">[] | undefined;
+  /**
+   * F-CONTRATS slice 3/4 (#174) — optional slot rendered to the right of
+   * the « Contrats » heading. Used by `prospect-fiche-view.tsx` to mount
+   * the `GenerateContractLauncher` trigger (« Générer contrat » CTA +
+   * modal). Kept OPTIONAL so the slice-1 « V1 read-only » test matrix
+   * stays green : if the slot is not provided, the block renders no
+   * action button (the slice-1 « zero `<button>` » pin still holds).
+   */
+  headerAction?: ReactNode;
 };
 
-export function ContractsBlock({ contracts }: ContractsBlockProps) {
+export function ContractsBlock({
+  contracts,
+  headerAction,
+}: ContractsBlockProps) {
   // The wrapper is shared across all three tri-state branches so the block
   // keeps a stable visual footprint in the fiche (no layout shift between
   // « loading » → « empty » → « N rows »).
@@ -131,8 +144,11 @@ export function ContractsBlock({ contracts }: ContractsBlockProps) {
       data-slot="contracts-block"
       className="flex flex-col gap-3 rounded-lg border p-4"
     >
-      <header className="flex items-center justify-between">
+      <header className="flex items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">Contrats</h2>
+        {headerAction !== undefined ? (
+          <div data-slot="contracts-block-header-action">{headerAction}</div>
+        ) : null}
       </header>
       {contracts === undefined ? (
         // Loading — distinct from the empty state so the user can tell
