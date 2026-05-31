@@ -280,10 +280,74 @@ describe("page.tsx — F-MENU-01 (#187) wiring contract", () => {
     // categories reorder handler.
     const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
     // The handler references items.reorder (`reorderItems` local) AND has a
-    // toast.error within a handler-sized window.
+    // toast.error within a handler-sized window. The window is wide enough
+    // (3500) to absorb intermediate mutation declarations the page accumulates
+    // as later slices land (#242 added the modifier-group block between the
+    // `items.reorder` mutation and the `reorderItems` handler — pure decl
+    // ordering, the actual `await reorderItems(...) → toast.error` pairing
+    // is intact).
     expect(collapsed).toMatch(
-      /api\.lib\.menu\.items\.reorder[\s\S]{0,1200}toast\.error/,
+      /api\.lib\.menu\.items\.reorder[\s\S]{0,3500}toast\.error/,
     );
+  });
+
+  // ---------------------------------------------------------------------------
+  // F-MENU-08 (#242) — Reusable modifier groups CRUD wiring contract
+  // ---------------------------------------------------------------------------
+
+  it("F-MENU-08 — wires `modifiers.listGroups` via `useTenantQuery` (not raw useQuery)", () => {
+    // The « Personnalisations » section reads the tenant's REUSABLE groups
+    // through the canonical tenantQuery (ADR 0014 §4 / #183) — never a raw
+    // `useQuery` (which would bypass tenantId auto-injection, ADR 0010).
+    const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
+    expect(collapsed).toMatch(
+      /useTenantQuery\([^)]*api\.lib\.menu\.modifiers\.listGroups[^)]*\)/,
+    );
+  });
+
+  it("F-MENU-08 — wires `modifiers.createGroup` / `updateGroup` / `removeGroup` via `useTenantMutation`", () => {
+    // The modifier-group modal CRUD goes through three tenantMutations
+    // (ADR 0014 §4 / #183, ADR 0010): createGroup (« + Personnalisation »),
+    // updateGroup (« Sauvegarder » from the edit modal), removeGroup (delete
+    // with confirmation, cascades to N-N edges backend-side — see
+    // `packages/backend/convex/lib/menu/modifiers.ts`).
+    const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
+    expect(collapsed).toMatch(
+      /useTenantMutation\([^)]*api\.lib\.menu\.modifiers\.createGroup[^)]*\)/,
+    );
+    expect(collapsed).toMatch(
+      /useTenantMutation\([^)]*api\.lib\.menu\.modifiers\.updateGroup[^)]*\)/,
+    );
+    expect(collapsed).toMatch(
+      /useTenantMutation\([^)]*api\.lib\.menu\.modifiers\.removeGroup[^)]*\)/,
+    );
+  });
+
+  it("F-MENU-08 — wires `modifiers.listGroupItems` via `useTenantQuery` (impact set for the delete confirmation)", () => {
+    // Issue body: « Avant édit/suppression, afficher la liste des items qui
+    // réutilisent ce groupe » → resolved through `listGroupItems`. The page
+    // calls it ON DEMAND when the modal is open in edit mode (skip otherwise
+    // to keep the round-trip count down).
+    const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
+    expect(collapsed).toMatch(
+      /useTenantQuery\([^)]*api\.lib\.menu\.modifiers\.listGroupItems[^)]*\)/,
+    );
+  });
+
+  it("F-MENU-08 — mounts the `ModifierGroupModal` so it can render outside the section", () => {
+    // The modal renders at page-level (not inside the section) so the backdrop
+    // overlays the whole page and the modal state survives a list refresh.
+    expect(PAGE_SOURCE).toMatch(/ModifierGroupModal/);
+  });
+
+  it("F-MENU-08 — modifier-group CRUD handlers wrap mutations in try/catch + toast.error + getConvexErrorMessage", () => {
+    // Same discipline as F-MENU-02/05: backend errors (INVALID_MODIFIER,
+    // NOT_FOUND for cross-tenant probes, etc.) surface as a visible toast —
+    // never silently swallowed.
+    const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
+    expect(collapsed).toMatch(/createGroup[\s\S]{0,1200}toast\.error/);
+    expect(collapsed).toMatch(/updateGroup[\s\S]{0,1200}toast\.error/);
+    expect(collapsed).toMatch(/removeGroup[\s\S]{0,1200}toast\.error/);
   });
 
   it("F-MENU-02 — surfaces errors via `toast.error` + `getConvexErrorMessage` (no raw alert / console.error)", () => {

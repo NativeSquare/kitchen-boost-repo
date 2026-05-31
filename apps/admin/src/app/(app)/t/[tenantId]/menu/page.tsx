@@ -55,6 +55,12 @@ import {
   type ItemUpdatePatch,
 } from "./item-modal";
 import { MenuView } from "./menu-view";
+import {
+  ModifierGroupModal,
+  type ModifierGroupCreatePayload,
+  type ModifierGroupUpdatePayload,
+} from "./modifier-group-modal";
+import { ModifierGroupsSection } from "./modifier-groups-section";
 
 /** Placeholder name for a freshly-created category — the gérant renames it inline. */
 const DEFAULT_NEW_CATEGORY_NAME = "Nouvelle catégorie";
@@ -71,6 +77,20 @@ type ItemModalState =
   | null
   | { kind: "create"; categoryId: Id<"menuCategories"> }
   | { kind: "edit"; itemId: Id<"menuItems"> };
+
+/**
+ * F-MENU-08 (#242) — Modifier-group modal state. Three branches mirror the
+ * item modal:
+ *   - `null`                          → closed.
+ *   - `{ kind: "create" }`            → create modal opened from the
+ *     « + Personnalisation » CTA.
+ *   - `{ kind: "edit", groupId }`     → edit modal opened from a row's
+ *     « Éditer » button.
+ */
+type ModifierGroupModalState =
+  | null
+  | { kind: "create" }
+  | { kind: "edit"; groupId: Id<"modifierGroups"> };
 
 export default function MenuPage() {
   // `useTenantQuery` / `useTenantMutation` read `tenantId` from
@@ -114,7 +134,39 @@ export default function MenuPage() {
   const attachPhoto = useTenantMutation(api.lib.menu.photos.attachPhoto);
   const removePhoto = useTenantMutation(api.lib.menu.photos.removePhoto);
 
+  // F-MENU-08 (#242) — REUSABLE modifier groups CRUD. Three tenantMutations
+  // (ADR 0014 §4 / #183, ADR 0010): createGroup (« + Personnalisation »),
+  // updateGroup (« Sauvegarder » from the edit modal), removeGroup (delete
+  // with confirmation; the cascade — drop the N-N edges WITHOUT deleting the
+  // items — happens backend-side, see `packages/backend/convex/lib/menu/modifiers.ts`).
+  // The wrapper gate keeps cross-tenant ids out (NOT_FOUND surfaces as a toast).
+  const modifierGroups = useTenantQuery(api.lib.menu.modifiers.listGroups);
+  const createModifierGroup = useTenantMutation(
+    api.lib.menu.modifiers.createGroup,
+  );
+  const updateModifierGroup = useTenantMutation(
+    api.lib.menu.modifiers.updateGroup,
+  );
+  const removeModifierGroup = useTenantMutation(
+    api.lib.menu.modifiers.removeGroup,
+  );
+
   const [modalState, setModalState] = useState<ItemModalState>(null);
+  const [modifierGroupModalState, setModifierGroupModalState] =
+    useState<ModifierGroupModalState>(null);
+
+  // F-MENU-08 (#242) — Impact items query: resolved ON DEMAND when the modal
+  // is open in edit mode, skipped otherwise (no round-trip when the modal is
+  // closed). `useTenantQuery` accepts `"skip"` as a sentinel like Convex's
+  // own `useQuery` — preserves the « réutilisé par N items » discipline of
+  // the modal head comment without paying for the list while the modal is
+  // closed (issue body « afficher d'abord listGroupItems (impact) »).
+  const impactItems = useTenantQuery(
+    api.lib.menu.modifiers.listGroupItems,
+    modifierGroupModalState !== null && modifierGroupModalState.kind === "edit"
+      ? { modifierGroupId: modifierGroupModalState.groupId }
+      : "skip",
+  );
 
   const handleCreate = async () => {
     try {
@@ -284,6 +336,52 @@ export default function MenuPage() {
     }
   };
 
+  // F-MENU-08 (#242) — Modifier-group CRUD handlers. The modal owns the form
+  // (name/min/max/options) and surfaces local validation (mirror of the
+  // backend `assertGroupBounds`); these handlers only own the network call +
+  // toast.error discipline (same shape as the item / category CRUD).
+  const handleOpenCreateModifierGroup = () => {
+    setModifierGroupModalState({ kind: "create" });
+  };
+  const handleEditModifierGroup = (groupId: Id<"modifierGroups">) => {
+    setModifierGroupModalState({ kind: "edit", groupId });
+  };
+  const handleCreateModifierGroup = async (
+    payload: ModifierGroupCreatePayload,
+  ) => {
+    try {
+      await createModifierGroup(payload);
+      setModifierGroupModalState(null);
+    } catch (error) {
+      toast.error("Impossible de créer la personnalisation", {
+        description: getConvexErrorMessage(error),
+      });
+    }
+  };
+  const handleUpdateModifierGroup = async (
+    groupId: Id<"modifierGroups">,
+    payload: ModifierGroupUpdatePayload,
+  ) => {
+    try {
+      await updateModifierGroup({ modifierGroupId: groupId, ...payload });
+      setModifierGroupModalState(null);
+    } catch (error) {
+      toast.error("Impossible de mettre à jour la personnalisation", {
+        description: getConvexErrorMessage(error),
+      });
+    }
+  };
+  const handleRemoveModifierGroup = async (groupId: Id<"modifierGroups">) => {
+    try {
+      await removeModifierGroup({ modifierGroupId: groupId });
+      setModifierGroupModalState(null);
+    } catch (error) {
+      toast.error("Impossible de supprimer la personnalisation", {
+        description: getConvexErrorMessage(error),
+      });
+    }
+  };
+
   const itemsByCategory = bucketItemsByCategory(items);
 
   // Resolve the modal's item doc (edit mode only) from the live items query
@@ -299,6 +397,22 @@ export default function MenuPage() {
     return items.find((i) => i._id === modalState.itemId);
   }, [modalState, items]);
 
+  // F-MENU-08 (#242) — Resolve the editing group doc from the live list query
+  // (Convex reactivity: a sibling tab edit shows up immediately).
+  const editingModifierGroup = useMemo<
+    Doc<"modifierGroups"> | undefined
+  >(() => {
+    if (
+      modifierGroupModalState === null ||
+      modifierGroupModalState.kind !== "edit" ||
+      modifierGroups === undefined
+    )
+      return undefined;
+    return modifierGroups.find(
+      (g) => g._id === modifierGroupModalState.groupId,
+    );
+  }, [modifierGroupModalState, modifierGroups]);
+
   return (
     <>
       <MenuView
@@ -313,6 +427,38 @@ export default function MenuPage() {
         onItemClick={handleItemClick}
         onReorderItems={handleReorderItems}
       />
+      <div className="px-4 lg:px-6">
+        <ModifierGroupsSection
+          groups={modifierGroups}
+          onCreateGroup={handleOpenCreateModifierGroup}
+          onEditGroup={handleEditModifierGroup}
+          onDeleteGroup={handleRemoveModifierGroup}
+        />
+      </div>
+      {modifierGroupModalState !== null ? (
+        <ModifierGroupModal
+          mode={modifierGroupModalState.kind}
+          open={
+            modifierGroupModalState.kind === "create" ||
+            (modifierGroupModalState.kind === "edit" &&
+              editingModifierGroup !== undefined)
+          }
+          onOpenChange={(open) => {
+            if (!open) setModifierGroupModalState(null);
+          }}
+          group={
+            modifierGroupModalState.kind === "edit"
+              ? editingModifierGroup
+              : undefined
+          }
+          impactItems={
+            modifierGroupModalState.kind === "edit" ? impactItems : undefined
+          }
+          onCreate={handleCreateModifierGroup}
+          onUpdate={handleUpdateModifierGroup}
+          onDelete={handleRemoveModifierGroup}
+        />
+      ) : null}
       {modalState !== null && categories !== undefined ? (
         <ItemModal
           mode={modalState.kind}
