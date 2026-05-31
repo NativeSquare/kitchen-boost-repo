@@ -498,4 +498,148 @@ describe("ProspectFicheView — F-SHELL-10 (#233)", () => {
       expect(text).toMatch(/aucun|erreur|impossible|indisponible/i);
     });
   });
+
+  /**
+   * F-CONTRATS slice 4/4 (#185) — relecture d'un contrat existant.
+   *
+   * The view threads `onSelectContract` + `selectedContractId` down to the
+   * `ContractsBlock` so each row becomes clickable + the active row gets
+   * a visual state. The view itself does NOT own state — `page.tsx` does,
+   * so vitest can still pin everything in the lean `node` env.
+   *
+   * The iframe `html` source is unified: the page drives `previewedHtml`
+   * (whatever id is currently selected — either freshly-generated, or the
+   * row the operator just clicked). The view just passes it through.
+   */
+  describe("F-CONTRATS slice 4/4 (#185) — clickable rows + active state plumbing", () => {
+    it("threads `onSelectContract` + `selectedContractId` to the `ContractsBlock` (rows become interactive, the active row is highlighted)", () => {
+      const c1: Doc<"contracts"> = {
+        _id: "contracts_aaa" as unknown as Id<"contracts">,
+        _creationTime: 1_700_000_000_000,
+        prospectId: PROSPECT_ID,
+        prestation: "A",
+        status: "draft",
+        statusUpdatedAt: 1_700_000_000_000,
+        createdAt: 1_700_000_000_000,
+        updatedAt: 1_700_000_000_000,
+      };
+      const c2: Doc<"contracts"> = {
+        ...c1,
+        _id: "contracts_bbb" as unknown as Id<"contracts">,
+        prestation: "B",
+      };
+      const tree = serialize(
+        ProspectFicheView({
+          session: adminSession(),
+          prospect: makeProspect(),
+          contracts: [c1, c2],
+          onSelectContract: () => {},
+          selectedContractId: c2._id,
+          onGenerated: () => {},
+        }),
+      );
+      // Each contract row in the block must be rendered as an interactive
+      // row (data-slot="contracts-block-row"). The matching active row
+      // carries data-active="true".
+      const rows = flatten(tree).filter(
+        (
+          x,
+        ): x is {
+          type: string;
+          props: Record<string, unknown>;
+          children: SerializedNode[];
+        } =>
+          x !== null &&
+          "type" in x &&
+          (x.props as Record<string, unknown>)["data-slot"] ===
+            "contracts-block-row",
+      );
+      expect(rows.length).toBe(2);
+      const activeRows = rows.filter(
+        (r) => (r.props as Record<string, unknown>)["data-active"] === "true",
+      );
+      expect(activeRows.length).toBe(1);
+      expect(
+        (activeRows[0].props as Record<string, unknown>)["data-contract-id"],
+      ).toBe(c2._id as unknown as string);
+    });
+
+    it("does NOT make rows interactive when `onSelectContract` is omitted (slice-1 read-only contract preserved for callers that don't want selection)", () => {
+      const c1: Doc<"contracts"> = {
+        _id: "contracts_aaa" as unknown as Id<"contracts">,
+        _creationTime: 1_700_000_000_000,
+        prospectId: PROSPECT_ID,
+        prestation: "A",
+        status: "draft",
+        statusUpdatedAt: 1_700_000_000_000,
+        createdAt: 1_700_000_000_000,
+        updatedAt: 1_700_000_000_000,
+      };
+      const tree = serialize(
+        ProspectFicheView({
+          session: adminSession(),
+          prospect: makeProspect(),
+          contracts: [c1],
+          // no onSelectContract
+        }),
+      );
+      const rows = flatten(tree).filter(
+        (
+          x,
+        ): x is {
+          type: string;
+          props: Record<string, unknown>;
+          children: SerializedNode[];
+        } =>
+          x !== null &&
+          "type" in x &&
+          (x.props as Record<string, unknown>)["data-slot"] ===
+            "contracts-block-row",
+      );
+      expect(rows.length).toBe(0);
+      // No <button> elements in the rows themselves.
+      expect(findAllByType(tree, "button").length).toBe(0);
+    });
+
+    it("AC loop closed — when `generatedContractHtml` is hydrated from a re-read (slice 4) the iframe re-renders with that HTML, no duplicate iframe", () => {
+      const c1: Doc<"contracts"> = {
+        _id: "contracts_aaa" as unknown as Id<"contracts">,
+        _creationTime: 1_700_000_000_000,
+        prospectId: PROSPECT_ID,
+        prestation: "A",
+        status: "draft",
+        statusUpdatedAt: 1_700_000_000_000,
+        createdAt: 1_700_000_000_000,
+        updatedAt: 1_700_000_000_000,
+      };
+      const c2: Doc<"contracts"> = {
+        ...c1,
+        _id: "contracts_bbb" as unknown as Id<"contracts">,
+        prestation: "B",
+      };
+      const reReadHtml = "<html><body><h1>Contrat A — relu</h1></body></html>";
+      const tree = serialize(
+        ProspectFicheView({
+          session: adminSession(),
+          prospect: makeProspect(),
+          contracts: [c1, c2],
+          onGenerated: () => {},
+          onSelectContract: () => {},
+          selectedContractId: c1._id,
+          generatedContractHtml: reReadHtml,
+        }),
+      );
+      // The iframe is unique (no stacking — AC «pas dupliqué, pas
+      // d'iframes empilées»).
+      const iframes = findAllByType(tree, "iframe");
+      expect(iframes.length).toBe(1);
+      // It carries the re-read HTML.
+      const iframe = iframes[0] as { props: { srcDoc?: unknown } };
+      expect(iframe.props.srcDoc).toBe(reReadHtml);
+      // The « Télécharger HTML » button is rendered (AC : bouton
+      // Télécharger marche identiquement pour les relectures).
+      const text = allText(tree);
+      expect(text).toMatch(/T[ée]l[ée]charger HTML/i);
+    });
+  });
 });

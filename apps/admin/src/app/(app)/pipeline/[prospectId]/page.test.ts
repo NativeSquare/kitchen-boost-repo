@@ -129,12 +129,35 @@ describe("page.tsx — F-SHELL-10 (#233) wiring contract", () => {
     // The page owns the last-generated contract id (so re-generation
     // overrides the iframe content with the latest version).
     expect(code).toMatch(/useState/);
-    expect(code).toMatch(/setGeneratedContractId/);
     // The HTML hydration uses the canonical `getContract` kbAdminQuery
     // (NOT the list query — single-row read).
     expect(code).toMatch(/api\.lib\.admin\.contracts\.getContract/);
     // Both view props are wired.
-    expect(code).toMatch(/onGenerated=\{setGeneratedContractId\}/);
+    expect(code).toMatch(/onGenerated=/);
     expect(code).toMatch(/generatedContractHtml=\{generatedContractHtml\}/);
+  });
+
+  it("F-CONTRATS slice 4/4 (#185) — owns the selected contractId state + threads `onSelectContract` + `selectedContractId` to the view (rows become clickable, iframe re-renders from the selected row)", () => {
+    const code = stripNonCode(PAGE_SOURCE);
+    // The page must thread the selection plumbing to the view (these props
+    // are consumed by the view → ContractsBlock).
+    expect(code).toMatch(/onSelectContract=/);
+    expect(code).toMatch(/selectedContractId=/);
+    // No new dependency on the backend — the AC «pas de nouvelle
+    // dépendance backend (consommation des queries existantes)» is
+    // pinned at the symbol level: only the EXISTING `getContract` query
+    // hydrates the iframe (the same one slice 3 already used).
+    const newQueryMatches = code.match(
+      /api\.lib\.admin\.contracts\.[a-zA-Z]+/g,
+    );
+    expect(newQueryMatches).toBeTruthy();
+    const allowed = new Set([
+      "api.lib.admin.contracts.listContractsForProspect",
+      "api.lib.admin.contracts.getContract",
+      "api.lib.admin.contracts.generateContract",
+    ]);
+    for (const m of newQueryMatches ?? []) {
+      expect(allowed.has(m)).toBe(true);
+    }
   });
 });
