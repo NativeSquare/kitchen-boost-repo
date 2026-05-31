@@ -2,7 +2,7 @@
 
 Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / M / CMD / PR / SUP / W). Chaque parcours est à exécuter à la main contre `apps/admin` en dev (Convex live + seeds e2e).
 
-- **Date** : 2026-05-31
+- **Date** : 2026-06-01
 - **Statut global** : 41 stories mergées (#317→#358), 0 bloquée. Wizard complet à 10/10.
 - **Pré-requis transverses** : seeds `e2e` chargées (≥ 2 tenants distincts, un KB Admin root, ≥ 1 KB Manager mono-tenant, ≥ 1 KB Manager multi-tenant, un staff). Stripe en mode test avec un `stripeAccountId` rattaché à au moins un tenant. Resend en mode test pour les magic-links et OTP.
 - **Convention** : les parcours référencent ces pré-requis par leur étiquette (« seeds e2e ») sans les reproduire. Format strict : **Acteur / Pré-requis / Étapes / Attendu / Couvre**.
@@ -125,6 +125,107 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
   - Aucun email, aucun numéro de tel, aucun nom client visible.
   - Uniquement agrégats / compteurs / pourcentages. Label « E-mail » (hyphené) = canal, jamais une adresse.
 - **Couvre** : #190 (anti-PII MOAT).
+
+### MC5 — Liste campagnes : tracer-bullet vide → peuplé
+- **Acteur** : KB Manager
+- **Pré-requis** : seeds e2e ; tenant `T1` rattaché au manager, aucun `notificationTemplate` actif scope=`tenant` lié à `T1` initialement.
+- **Étapes** :
+  1. Depuis `/t/T1` (dashboard), cliquer dans la sidebar sur « Campagnes » → URL `/t/T1/campagnes`.
+  2. Observer : titre « Campagnes » + message « Aucun template disponible ».
+  3. Dans un second onglet KB Admin, insérer 2 templates scope=`tenant` actifs rattachés à `T1` (1 KB-central, 1 spécifique). Laisser Convex réagir.
+  4. Vérifier que la liste affiche désormais 2 items, chacun avec son `label` et un dump JSON lisible (variables, body, `deepLinkTarget`…).
+- **Attendu** :
+  - UI : titre « Campagnes » présent sur les 3 états (loading transitoire, vide, peuplé). État vide en FR (« Aucun template disponible »).
+  - DB : aucune écriture côté tenant (slice read-only). Pas de log d'audit créé par cette page.
+  - Isolation : un autre KB Manager (autre tenant) qui ouvre `/t/<sonTenant>/campagnes` ne voit QUE ses templates.
+- **Couvre** : #179 (slice 1 F-CAMPAGNES) ; sanity check #183 (`useTenantQuery`) + #157 (`listTenantTemplates`).
+
+### MC6 — Garde de route campagnes cross-tenant
+- **Acteur** : KB Manager rattaché à `T1` uniquement
+- **Pré-requis** : seeds e2e ; templates actifs sur `T1` ET sur `T2` ; manager NON rattaché à `T2`.
+- **Étapes** :
+  1. Depuis `/t/T1/campagnes` (liste `T1` visible), modifier l'URL à la main vers `/t/T2/campagnes`.
+  2. Observer l'écran.
+- **Attendu** :
+  - UI : `UnauthorizedCard` « Ce restaurant ne fait pas partie de votre périmètre… » rendu par le layout `(app)/t/[tenantId]/layout.tsx` — la page Campagnes ne se monte pas, AUCUN template de `T2` n'est rendu.
+  - DB : aucune query `listTenantTemplates` exécutée pour `T2` (la garde court-circuite avant le mount).
+  - Bouton « Aller à mon resto » renvoie vers `/t/T1`.
+- **Couvre** : #179 (propagation A4 via `useTenantQuery`) + #175 (UnauthorizedCard layout tenant).
+
+### MC7 — Picker campagnes : grid responsive + navigation vers template
+- **Acteur** : KB Manager
+- **Pré-requis** : seeds e2e (tenant `lartisan` avec ≥ 2 templates `scope:"tenant"` `active:true`) ; session manager loggée ; sur `/t/lartisan/menu`.
+- **Étapes** :
+  1. Cliquer « Campagnes » dans la sidebar → URL = `/t/lartisan/campagnes`.
+  2. Observer la grille : une `TemplateCard` shadcn par template, label visible, badges « Push » (vert KB `#1B7A3D`) et « E-mail » (jaune/or KB `#E5A100`), aperçu body tronqué (80 chars + ellipsis).
+  3. Redimensionner la fenêtre (mobile → tablet → desktop) et vérifier la responsivité `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3`.
+  4. Cliquer sur une carte → navigation vers `/t/lartisan/campagnes/<templateId>`.
+  5. Revenir en arrière.
+- **Attendu** :
+  - Grille responsive avec cartes shadcn correctement palettées KB.
+  - Tri alphabétique stable des labels (déterministe).
+  - URL post-clic exactement `/t/lartisan/campagnes/<id>` (id = celui de la carte cliquée).
+  - DB inchangée (présentation pure, aucune mutation).
+- **Couvre** : #188 (F-CAMPAGNES slice 2/7).
+
+### MC8 — Picker campagnes : empty state CSM
+- **Acteur** : KB Manager
+- **Pré-requis** : seeds e2e ; un tenant secondaire `nouveau-resto` sans aucun `notificationTemplate` actif scope tenant.
+- **Étapes** :
+  1. Switcher sur `nouveau-resto` via le header switcher.
+  2. Aller sur `/t/nouveau-resto/campagnes`.
+- **Attendu** :
+  - Card empty-state bordée pointillée centrée avec exactement le texte « Aucun template disponible — contacte ton CSM pour en demander un. ».
+  - Aucune skeleton card, aucune grid card.
+  - Aucune fuite (pas de templates d'un autre tenant — isolation via `listTenantTemplates`).
+- **Couvre** : #188 (empty state) + #170 (cross-tenant fuzz `listTenantTemplates`).
+
+### MC9 — Picker campagnes : loading skeletons sans flash empty
+- **Acteur** : KB Manager
+- **Pré-requis** : seeds e2e + DevTools Network throttling « Slow 3G » activé.
+- **Étapes** :
+  1. Hard-reload de `/t/lartisan/campagnes` (Ctrl+Shift+R).
+  2. Observer les 100-300 premières ms.
+- **Attendu** :
+  - 3 skeleton cards shadcn (`animate-pulse`) visibles immédiatement, alignés sur le même grid que les cartes finales (pas de layout shift quand la data arrive).
+  - Le titre « Campagnes » est rendu sur la branche loading (pas de blank flash).
+  - L'empty-state « Aucun template disponible — … CSM … » ne flash JAMAIS avant la grille (loading ≠ empty).
+- **Couvre** : #188 (AC distinction loading/empty).
+
+### MC10 — Template campagne : formulaire dynamique (texte + slider + time)
+- **Acteur** : KB Manager
+- **Pré-requis** : seeds e2e (tenant `lartisan` avec ≥ 2 templates : un « welcome_back » texte-only, un « weekend_promo » slider+time+texte). Session manager loggée.
+- **Étapes** :
+  1. Naviguer `/t/lartisan/campagnes` → grid des cartes (slice 2/7).
+  2. Cliquer la carte « Promo weekend » (template mixte).
+  3. Sur `/t/lartisan/campagnes/<templateId>` : observer le label + le body brut du template en haut, puis le formulaire.
+  4. Le formulaire affiche EXACTEMENT 5 champs : Jour (texte), Pourcentage de réduction (slider 0-50), Plat phare (texte), Heure de début (time), Heure de fin (time). Aucun champ « Prénom du client » ou « Nom du restaurant » (non déclarés par ce template).
+  5. Glisser le slider → label « -X % de réduction » se met à jour en live ; impossible de dépasser 50.
+  6. Saisir « 09:00 » dans Heure de début, « 21:00 » dans Heure de fin → pas d'erreur inline.
+  7. Saisir « Vin rouge » dans Plat phare → erreur inline rouge « Mention d'alcool interdite » apparaît sous le champ.
+  8. Saisir « vinaigrette » dans Plat phare → aucune erreur (word-boundary OK).
+  9. Saisir 200 caractères dans Plat phare → erreur inline « Texte trop long (max 80 caractères) ».
+  10. Cliquer « Envoyer maintenant » → button reste désactivé (slice 4/7 l'activera). Cliquer « ← Campagnes » → retour au picker.
+- **Attendu** :
+  - Slider DOM : `<input type="range" max="50" min="0" step="1">`. Time inputs DOM : `<input type="time">`.
+  - Erreur « alcool » s'affiche dès la frappe ; disparaît au remplacement par un mot OK.
+  - Bouton « Envoyer maintenant » DOM : `<button disabled data-slot="button">` pendant toute la session.
+  - Aucune coordonnée destinataire, aucune liste client affichée (MOAT).
+  - Pas de fuite cross-tenant : copier l'URL `/t/<autre_tenant>/campagnes/<templateId>` (template appartient à `lartisan`) → la query refuse `Forbidden` côté backend, le shell `UnauthorizedCard` (A4) prend le relais.
+- **Couvre** : #205 (F-CAMPAGNES 3/7) + #188 (carte → navigation, recoupé) + #175 (UnauthorizedCard cross-tenant) + #170 (tenant fuzz).
+
+### MC11 — Template campagne introuvable (URL stale / désactivé)
+- **Acteur** : KB Manager
+- **Pré-requis** : un `templateId` qui n'existe pas ou plus dans l'`active` set du tenant (template désactivé côté backend OU URL bookmarkée d'un ancien template).
+- **Étapes** :
+  1. Naviguer manuellement vers `/t/lartisan/campagnes/tpl_doesnotexist`.
+  2. Observer la page « Template introuvable ».
+  3. Cliquer « Retour aux campagnes ».
+- **Attendu** :
+  - Page affiche titre « Template introuvable » + paragraphe FR mentionnant le `templateId`.
+  - Lien « Retour aux campagnes » navigue vers `/t/lartisan/campagnes` (le picker).
+  - Aucun crash, aucun spinner infini.
+- **Couvre** : #205 (F-CAMPAGNES 3/7, branche not-found).
 
 ---
 
@@ -923,3 +1024,5 @@ Les 13 PRs suivantes n'ont pas inclus de section « Tests E2E proposés » explo
 | #359 | #158    | F-CONTRATS (slice 1)         | Body PR réduit à `@-` (artefact d'édition post-merge). Parcours « bloc Contrats lecture seule » couvert indirectement par T6 (E2E #174 qui exerce le bloc slice 1 visible).                                |
 | #360 | #163    | B-ONBOARDING-MILESTONES (s1) | _Justifié_ : pure addition de seam backend (`prospectsStore`), aucun appel front, aucune Convex function exposée. Parcours porté par les slices 2/3 (#172, futures).        |
 | #362 | #172    | B-ONBOARDING-MILESTONES (s2) | _Justifié_ : refacto interne backend (helper privé `maybeAutoBascule`), shape de retour `applyClosing` strictement inchangé, helper hors barrel. Aucune surface modifiée.        |
+| #365 | #185    | F-CONTRATS (slice 4)         | Body PR réduit à `@-` (artefact d'édition post-merge). Parcours « relecture contrat existant » couvert par T3/T4 (iframe sandboxée + téléchargement HTML) ; clic ligne → iframe vérifié manuellement via T3.                                |
+| #367 | #189    | B-ONBOARDING-MILESTONES (s3) | Body PR réduit à `@-` (artefact d'édition post-merge). Mutation `setMilestone` granulaire + auto-Closing : invariants backend purs couverts par les tests convex-test du module ; aucune surface front directe (consommée par slices ultérieures).        |
