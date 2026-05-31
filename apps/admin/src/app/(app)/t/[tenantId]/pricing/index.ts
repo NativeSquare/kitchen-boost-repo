@@ -1,7 +1,7 @@
 /**
- * F-PRICING-1 (#241) + F-PRICING-2 (#245) — public module API of the admin
- * pricing surface (front equivalent of a `convex/lib/<feature>/index.ts`
- * barrel).
+ * F-PRICING-1 (#241) + F-PRICING-2 (#245) + F-PRICING-3 (#248) — public module
+ * API of the admin pricing surface (front equivalent of a
+ * `convex/lib/<feature>/index.ts` barrel).
  *
  * Slice 1 exposes:
  *   - `PricingView`                       — the pure presentational shell.
@@ -21,6 +21,16 @@
  *   - `RuleBuilderSubmitPayload`          — the typed payload the page
  *                                            forwards to
  *                                            `api.lib.pricing.rules.create`.
+ *
+ * Slice 3 (F-PRICING-3 / #248) does NOT add new exports — it extends the
+ * existing surfaces:
+ *   - `PricingViewProps` gains an optional `onEditRule(rule)` callback used
+ *     by the row « Éditer » button.
+ *   - `RuleBuilderModalProps` gains an optional `existingRule` prop that
+ *     pre-fills the form and flips the modal to edit mode (same component,
+ *     no duplicate).
+ * The page owns the create-vs-update branching at submit time
+ * (`api.lib.pricing.rules.update` vs `.create`).
  *
  * Page default export (`./page`) is consumed by Next.js routing directly and
  * does not need to be re-exported here.
