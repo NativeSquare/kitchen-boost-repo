@@ -90,6 +90,15 @@ export default function MenuPage() {
   const createItem = useTenantMutation(api.lib.menu.items.create);
   const updateItem = useTenantMutation(api.lib.menu.items.update);
   const removeItem = useTenantMutation(api.lib.menu.items.remove);
+  // F-MENU-07 (#237) — items drag&drop reorder WITHIN one category. Strict
+  // mirror of `categories.reorder` (slice 3, #206): the backend rejects any
+  // payload that isn't the full ordered set for THAT category — the front
+  // always sends the complete list (no diff). The mutation is tenant-scoped
+  // via the wrapper (ADR 0014 §4 / #183, ADR 0010); a cross-tenant
+  // categoryId or item id surfaces as NOT_FOUND, an inconsistent ordered
+  // list surfaces as INVALID_REORDER — both flow through the same toast.error
+  // discipline as the other CRUD handlers.
+  const reorderItems = useTenantMutation(api.lib.menu.items.reorder);
   // F-MENU-06 (#226) — photo upload / replace / remove. Three mutations:
   //   - generateUploadUrl: mints a short-lived URL the browser POSTs the
   //     file to (the blob never transits the backend).
@@ -145,6 +154,25 @@ export default function MenuPage() {
       await reorderCategories({ orderedIds });
     } catch (error) {
       toast.error("Impossible de réordonner les catégories", {
+        description: getConvexErrorMessage(error),
+      });
+    }
+  };
+
+  // F-MENU-07 (#237) — Items drag&drop reorder within ONE category. The
+  // optimistic UI in `ItemList` paints the new order before the round-trip
+  // resolves; on success Convex's reactivity re-fires `items.list` and the
+  // server order matches the optimistic guess (silent). On reject the
+  // toast surfaces the wire message and the local state snaps back when
+  // `items.list` re-emits the OLD order.
+  const handleReorderItems = async (
+    categoryId: Id<"menuCategories">,
+    orderedIds: Id<"menuItems">[],
+  ) => {
+    try {
+      await reorderItems({ categoryId, orderedIds });
+    } catch (error) {
+      toast.error("Impossible de réordonner les items", {
         description: getConvexErrorMessage(error),
       });
     }
@@ -283,6 +311,7 @@ export default function MenuPage() {
         onToggleItemAvailability={handleToggleItemAvailability}
         onCreateItem={handleCreateItem}
         onItemClick={handleItemClick}
+        onReorderItems={handleReorderItems}
       />
       {modalState !== null && categories !== undefined ? (
         <ItemModal
