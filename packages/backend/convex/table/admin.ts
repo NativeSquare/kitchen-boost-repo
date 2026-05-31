@@ -96,7 +96,7 @@ export const getInvite = query({
  * Consume the invite and apply the role grant that matches its `targetRole`.
  *
  * Two acceptance shapes, discriminated on `invite.targetRole`
- * (B-AUTH-3 schema extension, branched by this slice):
+ * (B-AUTH-3 schema extension, branched by B-AUTH-6 #230):
  *
  *   1. **KB Admin invite** — `targetRole === "kb_admin"` OR ABSENT (legacy
  *      rows from before B-AUTH-3 carry neither `targetRole` nor `tenantId`;
@@ -106,18 +106,26 @@ export const getInvite = query({
  *
  *   2. **KB Manager invite** — `targetRole === "kb_manager"` + `tenantId` set
  *      (issued by `lib/admin/managerInvites.ts:inviteManager`, B-AUTH-4).
- *      Effect: patches `users.role = "customer"` (the GLOBAL role of a
- *      manager is `customer` — per-tenant roles live on `userTenants`, ADR
- *      0011) + creates an active `userTenants(userId, tenantId,
- *      role: "kb_manager", attachedBy: invite.invitedBy)` row. If a soft-
- *      detached attachment already exists on that (user, tenant), it is
- *      RE-ACTIVATED (`detachedAt → undefined`, fresh `attachedAt`); if an
- *      active attachment already exists, the insert is a no-op
- *      (idempotence). Throws if the linked tenant has been deleted between
- *      invite creation and acceptance, or if the manager invite is missing
- *      its `tenantId` (incoherent row — shouldn't happen given the
- *      `inviteManager` validator, but the guard is cheap and surfaces a
- *      clearer error than a Convex null-deref).
+ *      Effect: creates an active `userTenants(userId, tenantId,
+ *      role: "kb_manager", attachedBy: invite.invitedBy)` row. The user
+ *      row itself is LEFT UNTOUCHED — no `users.role` patch, no
+ *      `users.name` patch (issue #230). Rationale: the gérant qualification
+ *      lives entirely on the `userTenants` link; the global `users.role`
+ *      stays at its sign-up default (absent → `getCurrentActor` reads it
+ *      as "customer"), so an explicit `customer` patch would be a no-op
+ *      semantically AND a silent contradiction of the spec ("NE PAS
+ *      patcher users.role"). If a soft-detached attachment already exists
+ *      on that (user, tenant), it is RE-ACTIVATED (`detachedAt → undefined`,
+ *      fresh `attachedAt`) — mirrors `inviteManager`'s "detached ⇒
+ *      re-invitable" rule. If an ACTIVE attachment already exists, throws
+ *      « Vous êtes déjà rattaché à ce resto » so a double-click on the
+ *      magic-link, or an out-of-flow attachment created by another path,
+ *      surfaces loudly instead of silently no-op'ing. Throws if the
+ *      linked tenant has been deleted between invite creation and
+ *      acceptance, or if the manager invite is missing its `tenantId`
+ *      (incoherent row — shouldn't happen given the `inviteManager`
+ *      validator, but the guard is cheap and surfaces a clearer error
+ *      than a Convex null-deref).
  *
  * Preconditions enforced before the role branch:
  *   - caller IS authenticated (the accept-invite form awaits OTP verif +
@@ -129,12 +137,18 @@ export const getInvite = query({
  *     able to claim the role under their own signed-up address).
  *
  * Stamps `adminInvites.acceptedAt = now` in BOTH branches. Replays of an
- * already-consumed token hit the "already used" guard.
+ * already-consumed token hit the "already used" guard. The
+ * « déjà rattaché » throw rolls back the whole mutation including the
+ * `acceptedAt` stamp — the magic-link can be replayed once the
+ * conflicting attachment is cleaned up.
  *
- * History — before this slice the mutation hard-coded `role: "kb_admin"`
- * ignoring `targetRole`, which meant ANY manager invite silently promoted
- * the recipient to root admin. That's the bug this slice closes; the
- * rétrocompat above keeps the legacy admin flow intact.
+ * History — before B-AUTH-3 wiring the mutation hard-coded
+ * `role: "kb_admin"` ignoring `targetRole`, which meant ANY manager
+ * invite silently promoted the recipient to root admin. The first wiring
+ * (commit 5ec2906) closed that escalation by branching on `targetRole`
+ * but patched `users.role = "customer"` and treated active duplicates as
+ * idempotent no-ops. B-AUTH-6 (#230) tightens both: NO `users.role`
+ * patch on the manager branch, and active duplicates throw.
  */
 export const acceptInvite = mutation({
   args: {
@@ -181,7 +195,7 @@ export const acceptInvite = mutation({
       });
     }
 
-    // ----- Role branch (B-AUTH-3 wiring) ------------------------------------
+    // ----- Role branch (B-AUTH-3 schema, B-AUTH-6 #230 final wiring) --------
 
     if (invite.targetRole === "kb_manager") {
       // Manager invite — REQUIRES a tenantId (validator on `inviteManager`
@@ -207,16 +221,20 @@ export const acceptInvite = mutation({
         });
       }
 
-      // Global role: managers are GLOBALLY `customer` — per-tenant roles
-      // live on userTenants (ADR 0011 — the global users.role field only
-      // distinguishes kb_admin vs customer).
-      await ctx.db.patch(userId, {
-        role: "customer",
-        name: invite.name,
-      });
+      // Issue #230 — the manager branch DOES NOT patch users.role or
+      // users.name. The gérant qualification lives entirely on the
+      // userTenants link below. `users.role` stays at its sign-up default
+      // (absent → getCurrentActor reads it as "customer", which IS the
+      // canonical global role for a manager). Patching `users.role =
+      // "customer"` would be a semantic no-op AND violate the spec.
 
-      // userTenants link: idempotent by (userId, tenantId). The
-      // `by_user_tenant` compound index gives us O(1) uniqueness lookup.
+      // userTenants link: by (userId, tenantId). The `by_user_tenant`
+      // compound index gives us O(1) uniqueness lookup. Three sub-cases:
+      //   - no row             → fresh insert (common path);
+      //   - soft-detached row  → re-activation (mirrors `inviteManager`'s
+      //                          "detached ⇒ re-invitable" rule, B-AUTH-4);
+      //   - active row         → throw « déjà rattaché » (double-click
+      //                          safety / out-of-flow attachment defence).
       const existing = await ctx.db
         .query("userTenants")
         .withIndex("by_user_tenant", (q) =>
@@ -243,11 +261,20 @@ export const acceptInvite = mutation({
           attachedBy: invite.invitedBy,
           role: "kb_manager",
         });
+      } else {
+        // Active attachment already exists — surface clearly rather than
+        // silently no-op. The accept-invite form is normally gated by
+        // `inviteManager`'s ALREADY_MEMBER check, so this branch fires
+        // only on out-of-flow attachments (manual DB inserts, parallel
+        // bootstrap scripts) or on accidental double-clicks of a stale
+        // magic-link. The throw rolls the WHOLE mutation back including
+        // the `acceptedAt` stamp, so the magic-link can be replayed once
+        // the conflicting attachment is cleaned up.
+        throw new ConvexError({
+          message:
+            "Vous êtes déjà rattaché à ce resto. Si vous pensez qu'il s'agit d'une erreur, contactez KB.",
+        });
       }
-      // else: active attachment already exists — no-op (idempotence). The
-      // accept-invite form is also gated by `inviteManager`'s
-      // ALREADY_MEMBER check, so this branch shouldn't fire in practice,
-      // but the safety is worth the two lines.
     } else {
       // Admin invite — legacy default. Covers `targetRole === "kb_admin"`
       // AND `targetRole === undefined` (pre-B-AUTH-3 rows).
