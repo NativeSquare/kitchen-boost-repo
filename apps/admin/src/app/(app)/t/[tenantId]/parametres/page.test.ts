@@ -82,9 +82,21 @@ describe("page.tsx — F-PARAMETRES-01 (#193) wiring contract", () => {
     );
   });
 
-  it("AC2 — does NOT use a raw `useQuery` (bypasses tenantId injection — ADR 0014 §4)", () => {
+  it("AC2 — does NOT use raw `useQuery` on any TENANT-SCOPED query (those go through `useTenantQuery`; root-only `loadTenantForStripe` is the documented exception, same as qr/page.tsx)", () => {
+    // The only legitimate raw `useQuery` here is on the root-only
+    // `loadTenantForStripe` (a `kbAdminQuery`, NOT a `tenantQuery` — so
+    // tenantId is a regular arg, not injected). Mirror the rule used by
+    // `qr/page.tsx` (#198) which reused the same query for branding.
     const code = stripNonCode(PAGE_SOURCE);
-    expect(code).not.toMatch(/\buseQuery\b/);
+    // No `useQuery(api.lib...` on a tenant-scoped path. The allowed call
+    // is `useQuery(api.lib.stripe.account.loadTenantForStripe, ...)`.
+    const collapsed = code.replace(/\s+/g, " ");
+    // Find every `useQuery(` call and ensure each target is in the
+    // root-only allowlist (today: only `loadTenantForStripe`).
+    const useQueryCalls = collapsed.match(/useQuery\(\s*api\.[^,)]+/g) ?? [];
+    for (const call of useQueryCalls) {
+      expect(call).toMatch(/loadTenantForStripe/);
+    }
   });
 
   it("F-PARAMETRES-02 (#229) — wires `tenant.updateSettings` via `useTenantMutation` (front-side withTenant discipline, never raw `useMutation` on a tenantMutation)", () => {

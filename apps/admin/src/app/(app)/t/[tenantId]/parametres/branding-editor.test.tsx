@@ -395,19 +395,17 @@ describe("BrandingEditor — save flow (integration)", () => {
   it("AC save with color only — onSave receives `{ branding: { primaryColor } }`, no upload triggered", async () => {
     const onSave = vi.fn(async () => {});
     const onUploadLogo = vi.fn(async () => "https://cdn/x.png");
-    // Seed the form values that the mock returns.
-    formMock.values = { primaryColor: "#E5A100", logoFile: null };
-    const props = makeProps({ value: {}, onSave, onUploadLogo });
-    // Re-mount via the serializer (this re-runs the editor body and seeds
-    // formMock through `useForm`).
-    serialize(BrandingEditor(props));
-    // Now drive the submit through our mock's handleSubmit. The editor's
-    // own onSubmit closure has been captured via `useForm`'s handleSubmit;
-    // we simulate it by calling the user-provided save handler ourselves
-    // through the same shape the editor would build.
-    // Strategy: re-render and find the form node, then invoke its onSubmit.
-    formMock.values = { primaryColor: "#E5A100", logoFile: null };
+    const props = makeProps({
+      value: { primaryColor: "#1B7A3D" },
+      onSave,
+      onUploadLogo,
+    });
+    // Render first (this resets formMock.values to defaultValues via the
+    // mocked useForm), THEN simulate the user picking a different color
+    // by writing into formMock.values — the mock's handleSubmit reads
+    // values at submit-time, not render-time.
     const tree = serialize(BrandingEditor(props));
+    formMock.values = { primaryColor: "#E5A100", logoFile: null };
     const formNode = findBySlot(tree, "parametres-branding-form");
     expect(formNode).not.toBeNull();
     if (formNode !== null && !("text" in formNode)) {
@@ -434,13 +432,15 @@ describe("BrandingEditor — save flow (integration)", () => {
     const onSave = vi.fn(async () => {});
     const onUploadLogo = vi.fn(async () => "https://cdn/uploaded.png");
 
-    formMock.values = { primaryColor: "#1B7A3D", logoFile: fileList };
     const props = makeProps({
       value: { primaryColor: "#1B7A3D" },
       onSave,
       onUploadLogo,
     });
     const tree = serialize(BrandingEditor(props));
+    // Simulate user picking a file AFTER render (mock's handleSubmit reads
+    // formMock.values at submit-time).
+    formMock.values = { primaryColor: "#1B7A3D", logoFile: fileList };
     const formNode = findBySlot(tree, "parametres-branding-form");
     if (formNode !== null && !("text" in formNode)) {
       const onSubmit = formNode.props["onSubmit"] as
@@ -451,9 +451,10 @@ describe("BrandingEditor — save flow (integration)", () => {
     expect(onUploadLogo).toHaveBeenCalledTimes(1);
     expect(onUploadLogo).toHaveBeenCalledWith(fakeFile);
     expect(onSave).toHaveBeenCalledTimes(1);
+    // The patch carries logoUrl. primaryColor is unchanged vs value, so
+    // it's NOT in the patch (diff-only behaviour).
     expect(onSave).toHaveBeenCalledWith({
       branding: {
-        primaryColor: "#1B7A3D",
         logoUrl: "https://cdn/uploaded.png",
       },
     });
@@ -462,9 +463,15 @@ describe("BrandingEditor — save flow (integration)", () => {
   it("AC empty patch is a no-op — neither uploads nor calls onSave when no field changed", async () => {
     const onSave = vi.fn(async () => {});
     const onUploadLogo = vi.fn(async () => "https://cdn/x.png");
-    formMock.values = { primaryColor: undefined, logoFile: null };
-    const props = makeProps({ value: {}, onSave, onUploadLogo });
+    // value = { primaryColor: "#1B7A3D" } AND form is left at default
+    // (which equals value.primaryColor) → no diff → no-op.
+    const props = makeProps({
+      value: { primaryColor: "#1B7A3D" },
+      onSave,
+      onUploadLogo,
+    });
     const tree = serialize(BrandingEditor(props));
+    // Don't change formMock.values — leave at default (same as value).
     const formNode = findBySlot(tree, "parametres-branding-form");
     if (formNode !== null && !("text" in formNode)) {
       const onSubmit = formNode.props["onSubmit"] as

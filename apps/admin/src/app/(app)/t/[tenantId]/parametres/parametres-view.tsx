@@ -45,6 +45,12 @@ import {
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 
+import {
+  BrandingEditor,
+  type BrandingPatch,
+  type BrandingValue,
+} from "./branding-editor";
+
 export type ParametresViewProps = {
   /**
    * Service hours from `useTenantQuery(api.lib.menu.serviceHours.get)`.
@@ -56,16 +62,43 @@ export type ParametresViewProps = {
    * agent doesn't have to revisit the page contract once the editor lands.
    */
   serviceHours: ServiceHours | undefined;
+  /**
+   * F-PARAMETRES-02 (#229) — Identité visuelle section.
+   *
+   * `branding`: the current persisted branding (logo URL + primary color).
+   *   - `undefined` is treated as « no branding set yet » (empty object).
+   *     Today this is the only branch a KB Manager sees, because no
+   *     manager-accessible read query for `branding` exists yet (a
+   *     follow-up slice will expose one). The editor handles it gracefully.
+   *   - For a KB Admin the page resolves this from the existing root
+   *     `loadTenantForStripe` (a `kbAdminQuery` already reused by
+   *     `qr/page.tsx` for branding).
+   * `onSaveBranding`: page-wired handler for the « Enregistrer » button.
+   *   Page wires it to `useTenantMutation(api.lib.admin.tenantSettings.updateSettings)`.
+   * `onUploadLogo`: page-wired handler for the file picker upload step.
+   *   Page wires it to a two-step Convex upload
+   *   (`useTenantMutation(api.lib.menu.photos.generateUploadUrl)` →
+   *   POST → resolve the public URL via `api.storage.getImageUrl`).
+   */
+  branding: BrandingValue | undefined;
+  onSaveBranding: (patch: BrandingPatch) => Promise<void>;
+  onUploadLogo: (file: File) => Promise<string>;
 };
 
-export function ParametresView(
-  _props: ParametresViewProps,
-): React.ReactElement {
+export function ParametresView({
+  branding,
+  onSaveBranding,
+  onUploadLogo,
+}: ParametresViewProps): React.ReactElement {
   return (
     <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
       <ParametresHeader />
       <div className="flex flex-col gap-4 px-4 md:gap-6 lg:px-6">
-        <SectionIdentiteVisuelle />
+        <SectionIdentiteVisuelle
+          value={branding ?? {}}
+          onSave={onSaveBranding}
+          onUploadLogo={onUploadLogo}
+        />
         <SectionCoordonnees />
         <SectionModesAcceptes />
         <SectionHorairesService />
@@ -116,13 +149,40 @@ function SectionPlaceholder({
   );
 }
 
-function SectionIdentiteVisuelle() {
+/**
+ * F-PARAMETRES-02 (#229) — wired Identité visuelle section. Wraps the
+ * extracted, reusable `BrandingEditor` (signature `{ value, onSave,
+ * onUploadLogo }`) inside the canonical Section card so the visual
+ * rhythm with the still-unwired sections (Coordonnées / Modes / Horaires)
+ * stays consistent. The card's `data-slot` is preserved from slice 1
+ * (#193) so consumers and tests that target the section by slot don't
+ * need to know whether it's a placeholder or a live editor.
+ */
+function SectionIdentiteVisuelle({
+  value,
+  onSave,
+  onUploadLogo,
+}: {
+  value: BrandingValue;
+  onSave: (patch: BrandingPatch) => Promise<void>;
+  onUploadLogo: (file: File) => Promise<string>;
+}) {
   return (
-    <SectionPlaceholder
-      slot="parametres-section-identite"
-      title="Identité visuelle"
-      description="Logo et couleur primaire de votre marque."
-    />
+    <Card data-slot="parametres-section-identite">
+      <CardHeader>
+        <CardTitle>Identité visuelle</CardTitle>
+        <CardDescription>
+          Logo et couleur primaire de votre marque.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <BrandingEditor
+          value={value}
+          onSave={onSave}
+          onUploadLogo={onUploadLogo}
+        />
+      </CardContent>
+    </Card>
   );
 }
 
