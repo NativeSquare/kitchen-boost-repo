@@ -54,7 +54,7 @@ import { useState } from "react";
 import { ConvexError } from "convex/values";
 
 import { api } from "@packages/backend/convex/_generated/api";
-import type { Doc } from "@packages/backend/convex/_generated/dataModel";
+import type { Doc, Id } from "@packages/backend/convex/_generated/dataModel";
 
 import { useTenantMutation, useTenantQuery } from "@/hooks";
 
@@ -74,6 +74,13 @@ export default function PricingPage() {
   // F-PRICING-3 (#248) — update binding. Same auto-tenantId discipline;
   // takes a `ruleId` from the rule being edited.
   const updateRule = useTenantMutation(api.lib.pricing.rules.update);
+  // F-PRICING-4 (#249) — setActive binding. The toggle on each row flips
+  // `active` WITHOUT touching `conditions` / `action` (the rule's definition
+  // stays intact across activate / deactivate cycles — « pas un delete
+  // déguisé », issue body). Auto-injected `tenantId` (ADR 0014 §4 / #183,
+  // ADR 0010); the wrapper gate on `tenantMutation` enforces `kb_manager`
+  // (or `kb_admin` via the root override).
+  const setRuleActive = useTenantMutation(api.lib.pricing.rules.setActive);
 
   // Modal lifecycle + inline error state (NOT a toast — issue body).
   const [modalOpen, setModalOpen] = useState(false);
@@ -98,6 +105,23 @@ export default function PricingPage() {
     setSubmitError(null);
     setEditingRule(rule);
     setModalOpen(true);
+  };
+
+  // F-PRICING-4 (#249) — row toggle handler. Bridges
+  // `PricingView`'s `onToggleActive(ruleId, active)` to the backend
+  // `setActive` mutation. Fire-and-forget at the page level: Convex
+  // reactivity drives the list re-render, so flipping the toggle is the only
+  // user-visible action. No optimistic update at V1 (issue body : « L'état UI
+  // suit la réactivité Convex (pas d'optimistic update obligatoire V1) »).
+  // Errors are swallowed silently for V1 — there's no inline error surface
+  // here (vs the modal's `submitError`), and a toast is forbidden by the
+  // module's discipline (« Pas de toast technique. »). A future slice can
+  // surface failures via the row itself if the gérant complains; the
+  // backend tenancy seam already guards against foreign / missing ruleIds
+  // (`requireTenantPricingRule` → NOT_FOUND), so the worst case is a no-op,
+  // not a cross-tenant leak.
+  const handleToggleActive = (ruleId: Id<"pricingRules">, active: boolean) => {
+    void setRuleActive({ ruleId, active });
   };
 
   const handleCloseBuilder = (open: boolean) => {
@@ -164,6 +188,7 @@ export default function PricingPage() {
         rules={rules}
         onNewRule={handleOpenBuilder}
         onEditRule={handleEditRule}
+        onToggleActive={handleToggleActive}
       />
       <RuleBuilderModal
         // KEY discipline — re-mount when the target rule changes (or when

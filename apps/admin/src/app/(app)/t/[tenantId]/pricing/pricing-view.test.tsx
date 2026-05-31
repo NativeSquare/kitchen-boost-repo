@@ -20,7 +20,7 @@
  * Same React-tree-serializer pattern as `mes-clients/mes-clients-view.test.tsx`
  * — vitest runs in `environment: "node"`.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ReactElement, ReactNode } from "react";
 
 import type { Doc } from "@packages/backend/convex/_generated/dataModel";
@@ -451,6 +451,208 @@ describe("PricingView — F-PRICING-1 (#241)", () => {
       walk(tree);
       const editBtn = buttons.find((b) => /^\s*Éditer\s*$/.test(b.text));
       expect(editBtn?.disabled).toBe(true);
+    });
+  });
+
+  describe("F-PRICING-4 (#249) — Active/Inactive toggle wired via `onToggleActive`", () => {
+    // Slice 4 (#249) turns the « toggle Active » placeholder from slice 1 into
+    // a working Radix `<Switch>` per row. The page owns the wiring via a new
+    // `onToggleActive(ruleId, active)` callback that bridges to
+    // `api.lib.pricing.rules.setActive`. Hard guardrails from the issue body:
+    //   - The toggle calls ONLY `setActive` — never `remove`, never `update`
+    //     (un toggle n'est pas un delete déguisé : la définition reste intacte).
+    //   - The row visually de-emphasises when `active === false` (already
+    //     covered by the slice-1 test « ligne grisée »; we re-pin it here to
+    //     show that flipping the toggle is the source of truth that drives it).
+    //   - Backward compat : when `onToggleActive` is omitted, the toggle
+    //     stays rendered but disabled — same shape as slice 1's placeholder,
+    //     no row-mutation risk for callers that haven't wired it yet.
+    //
+    // We pin the toggle via `data-slot="pricing-rule-active-toggle"` so the
+    // page wiring + future e2e affordances have a stable hook.
+
+    function findBySlot(n: SerializedNode, slot: string) {
+      return flatten(n).filter((x) => {
+        if (x === null || "text" in x) return false;
+        return x.props["data-slot"] === slot;
+      }) as Array<{
+        type: string;
+        props: Record<string, unknown>;
+        children: SerializedNode[];
+      }>;
+    }
+
+    it("AC — every row exposes a Switch toggle (`data-slot=pricing-rule-active-toggle`)", () => {
+      const tree = serialize(
+        PricingView({
+          rules: [ACTIVE_RULE, INACTIVE_RULE, FIXED_AMOUNT_RULE],
+          onToggleActive: () => {},
+        }),
+      );
+      const toggles = findBySlot(tree, "pricing-rule-active-toggle");
+      // 3 rules → 3 toggles, one per row.
+      expect(toggles).toHaveLength(3);
+    });
+
+    it("AC — toggle `checked` mirrors `rule.active` (active rule → true ; inactive → false)", () => {
+      const tree = serialize(
+        PricingView({
+          rules: [ACTIVE_RULE, INACTIVE_RULE],
+          onToggleActive: () => {},
+        }),
+      );
+      const toggles = findBySlot(tree, "pricing-rule-active-toggle");
+      expect(toggles).toHaveLength(2);
+      // Match by aria-label which embeds the rule's _id (stable across the
+      // render order — same affordance the screen-reader announces).
+      const activeToggle = toggles.find(
+        (t) =>
+          typeof t.props["aria-label"] === "string" &&
+          (t.props["aria-label"] as string).includes(String(ACTIVE_RULE._id)),
+      );
+      const inactiveToggle = toggles.find(
+        (t) =>
+          typeof t.props["aria-label"] === "string" &&
+          (t.props["aria-label"] as string).includes(String(INACTIVE_RULE._id)),
+      );
+      expect(activeToggle?.props["checked"]).toBe(true);
+      expect(inactiveToggle?.props["checked"]).toBe(false);
+    });
+
+    it("AC — toggle carries an aria-label (screen-reader announces the rule it controls)", () => {
+      const tree = serialize(
+        PricingView({
+          rules: [ACTIVE_RULE, INACTIVE_RULE],
+          onToggleActive: () => {},
+        }),
+      );
+      const toggles = findBySlot(tree, "pricing-rule-active-toggle");
+      for (const t of toggles) {
+        const aria = t.props["aria-label"];
+        expect(typeof aria).toBe("string");
+        // Load-bearing FR phrasing — same shape as the « Disponibilité de
+        // <name> » pattern on the menu toggle.
+        expect(aria as string).toMatch(/r[èe]gle/i);
+      }
+    });
+
+    it("AC — `onCheckedChange(next)` fires `onToggleActive(ruleId, next)` exactly once with the FLIPPED value (active → false)", () => {
+      const onToggleActive = vi.fn();
+      const tree = serialize(
+        PricingView({
+          rules: [ACTIVE_RULE, INACTIVE_RULE],
+          onToggleActive,
+        }),
+      );
+      const toggles = findBySlot(tree, "pricing-rule-active-toggle");
+      const activeToggle = toggles.find(
+        (t) =>
+          typeof t.props["aria-label"] === "string" &&
+          (t.props["aria-label"] as string).includes(String(ACTIVE_RULE._id)),
+      );
+      expect(activeToggle).toBeDefined();
+      const onCheckedChange = activeToggle?.props["onCheckedChange"] as
+        | ((next: boolean) => void)
+        | undefined;
+      expect(typeof onCheckedChange).toBe("function");
+      // Radix Switch hands us the NEW (flipped) value — for an active row,
+      // the flip means « deactivate », i.e. false.
+      onCheckedChange?.(false);
+      expect(onToggleActive).toHaveBeenCalledTimes(1);
+      expect(onToggleActive).toHaveBeenCalledWith(ACTIVE_RULE._id, false);
+    });
+
+    it("AC — inactive row's toggle flips to true → re-activates the rule", () => {
+      const onToggleActive = vi.fn();
+      const tree = serialize(
+        PricingView({
+          rules: [ACTIVE_RULE, INACTIVE_RULE],
+          onToggleActive,
+        }),
+      );
+      const toggles = findBySlot(tree, "pricing-rule-active-toggle");
+      const inactiveToggle = toggles.find(
+        (t) =>
+          typeof t.props["aria-label"] === "string" &&
+          (t.props["aria-label"] as string).includes(String(INACTIVE_RULE._id)),
+      );
+      const onCheckedChange = inactiveToggle?.props["onCheckedChange"] as
+        | ((next: boolean) => void)
+        | undefined;
+      onCheckedChange?.(true);
+      expect(onToggleActive).toHaveBeenCalledTimes(1);
+      expect(onToggleActive).toHaveBeenCalledWith(INACTIVE_RULE._id, true);
+    });
+
+    it("AC — toggle is per-row (clicking row 2 fires with row 2's id, NOT row 1's — no shared closure leak)", () => {
+      const captured: Array<[unknown, boolean]> = [];
+      const tree = serialize(
+        PricingView({
+          rules: [ACTIVE_RULE, INACTIVE_RULE, FIXED_AMOUNT_RULE],
+          onToggleActive: (ruleId, active) => captured.push([ruleId, active]),
+        }),
+      );
+      const toggles = findBySlot(tree, "pricing-rule-active-toggle");
+      expect(toggles).toHaveLength(3);
+      // Fire each row's onCheckedChange in turn — the captured calls must
+      // match the rule under the row, not a leaked reference to a previous
+      // closure value.
+      for (const t of toggles) {
+        const h = t.props["onCheckedChange"] as
+          | ((next: boolean) => void)
+          | undefined;
+        h?.(false);
+      }
+      expect(captured).toHaveLength(3);
+      expect(captured[0]?.[0]).toBe(ACTIVE_RULE._id);
+      expect(captured[1]?.[0]).toBe(INACTIVE_RULE._id);
+      expect(captured[2]?.[0]).toBe(FIXED_AMOUNT_RULE._id);
+    });
+
+    it("AC — flipping the toggle does NOT mutate the rule object (no in-place rewrite of conditions/action — pas un delete déguisé)", () => {
+      // The « pas un delete déguisé » contract: the toggle is the ONLY thing
+      // that should change about the rule. We snapshot the rule's conditions
+      // + action before serialising, fire the toggle handler, and assert the
+      // snapshots are still structurally equal. The page is responsible for
+      // persisting via `setActive` (NOT `update` / `remove`) — that ban is
+      // pinned on the page source string in `page.test.ts`.
+      const beforeConditions = JSON.parse(
+        JSON.stringify(ACTIVE_RULE.conditions),
+      );
+      const beforeAction = JSON.parse(JSON.stringify(ACTIVE_RULE.action));
+      const tree = serialize(
+        PricingView({ rules: [ACTIVE_RULE], onToggleActive: () => {} }),
+      );
+      const toggles = findBySlot(tree, "pricing-rule-active-toggle");
+      const onCheckedChange = toggles[0]?.props["onCheckedChange"] as
+        | ((next: boolean) => void)
+        | undefined;
+      onCheckedChange?.(false);
+      expect(ACTIVE_RULE.conditions).toEqual(beforeConditions);
+      expect(ACTIVE_RULE.action).toEqual(beforeAction);
+    });
+
+    it("AC — « Inactive » label still rendered when active === false (toggle drives the visual state, slice-1 contract retained)", () => {
+      // Slice 1 already pinned « Inactive » label + opacity for inactive
+      // rows; slice 4 doesn't break that — we re-pin from the slice-4 vantage
+      // point so a future contributor who replaces the label with a toggle-
+      // only signal sees the explicit slice-4 reason.
+      const tree = serialize(
+        PricingView({ rules: [INACTIVE_RULE], onToggleActive: () => {} }),
+      );
+      const text = allText(tree);
+      expect(text).toMatch(/\bInactive\b/);
+    });
+
+    it("AC — when `onToggleActive` is OMITTED (F-PRICING-1 isolated caller), the toggle is rendered but `disabled` (backward compat)", () => {
+      // Same backward-compat discipline as slice 3's `onEditRule`: the
+      // toggle's shape stays identical (test serializer still finds it), but
+      // it stays inert so the F-PRICING-1 isolated callers + the « placeholders
+      // disabled » test keep passing without supplying a handler.
+      const tree = serialize(PricingView({ rules: [ACTIVE_RULE] }));
+      const toggles = findBySlot(tree, "pricing-rule-active-toggle");
+      expect(toggles).toHaveLength(1);
+      expect(toggles[0]?.props["disabled"]).toBe(true);
     });
   });
 
