@@ -1,26 +1,30 @@
 /**
- * F-PARAMETRES-01 (#193) — `page.tsx` wiring contract.
+ * F-PARAMETRES-01 (#193) + F-PARAMETRES-02 (#229) — `page.tsx` wiring contract.
  *
  * Pinned at the source-file level (same pattern as `menu/page.test.ts` and
- * `mes-clients/page.test.ts`). The page is a thin wiring layer:
+ * `mes-clients/page.test.ts`). The page is the thin wiring layer between the
+ * Convex hooks and the pure `ParametresView`:
  *
- *   useTenantQuery(api.lib.menu.serviceHours.get) → ParametresView
+ *   - reads `api.lib.menu.serviceHours.get` via `useTenantQuery` (section 4
+ *     source, lives untouched since #193);
+ *   - wires the F-PARAMETRES-02 (#229) section 1 editor handlers:
+ *      • `tenant.updateSettings` via `useTenantMutation` (the canonical D5
+ *        élargi mutation, B-TENANT-LIFECYCLE [3/4]) — patches branding;
+ *      • `photos.generateUploadUrl` via `useTenantMutation` — tenant-gated
+ *        upload URL mint (kb_manager only, ADR 0014 §4 / no-untenanted-query);
+ *      • forwards both to `ParametresView` so the pure view stays UI-only.
  *
- * What's pinned here is the assembly: the page binds the read via
- * `useTenantQuery` (front-side `withTenant` discipline, ADR 0014 §4 / F-SHELL-05
- * #183), never a raw `useQuery` (would bypass tenantId auto-injection — and
- * either fail at runtime or — worse — leak the wrong tenant's data, ADR 0010),
- * and delegates rendering to the pure `ParametresView`.
- *
- * `api.lib.menu.serviceHours.get` is the only tenant-scoped read this slice
- * wires today — it's the source for the « Horaires de service » section
- * (section 4 of 4). The other three sections (Identité visuelle, Coordonnées,
- * Modes accepés) display the « À implémenter » placeholder; their value
- * sources (`branding` / `address` / `phone` / `acceptedModes` on the tenant
- * row) will be exposed via dedicated `tenantQuery`(s) in F-PARAMETRES-02..04.
- * Slice 1 = skeleton + ONE wired read + 4 placeholder bodies + Uber Direct
- * read-only block (issue body « no mutation à ce stade — seulement la lecture
- * + le layout »).
+ * Source of the initial branding value
+ * ------------------------------------
+ * No KB-Manager-accessible read query exists for `branding` today (EPIC #148
+ * Implementation Decisions explicitly anticipated this — the sections that
+ * read tenant-row fields land alongside their editors). #229's scope is
+ * `apps/admin/...` ONLY (no backend changes allowed), so the initial value
+ * is fed from the EXISTING root query `loadTenantForStripe` (a `kbAdminQuery`
+ * already reused for branding by `qr/page.tsx`) when the caller is a KB Admin
+ * — and starts empty for a KB Manager (the editor handles `value = {}`
+ * gracefully, and the saved value re-surfaces via Convex's reactivity once
+ * the backend exposes a manager-accessible read in a follow-up slice).
  *
  * What's NOT covered here (and on purpose): the rendering branches —
  * placeholder copy, section cards, Uber Direct block — those are pinned by
@@ -78,20 +82,50 @@ describe("page.tsx — F-PARAMETRES-01 (#193) wiring contract", () => {
     );
   });
 
-  it("AC2 — does NOT use a raw `useQuery` (bypasses tenantId injection — ADR 0014 §4)", () => {
+  it("AC2 — does NOT use raw `useQuery` on any TENANT-SCOPED query (those go through `useTenantQuery`; root-only `loadTenantForStripe` is the documented exception, same as qr/page.tsx)", () => {
+    // The only legitimate raw `useQuery` here is on the root-only
+    // `loadTenantForStripe` (a `kbAdminQuery`, NOT a `tenantQuery` — so
+    // tenantId is a regular arg, not injected). Mirror the rule used by
+    // `qr/page.tsx` (#198) which reused the same query for branding.
     const code = stripNonCode(PAGE_SOURCE);
-    expect(code).not.toMatch(/\buseQuery\b/);
+    // No `useQuery(api.lib...` on a tenant-scoped path. The allowed call
+    // is `useQuery(api.lib.stripe.account.loadTenantForStripe, ...)`.
+    const collapsed = code.replace(/\s+/g, " ");
+    // Find every `useQuery(` call and ensure each target is in the
+    // root-only allowlist (today: only `loadTenantForStripe`).
+    const useQueryCalls = collapsed.match(/useQuery\(\s*api\.[^,)]+/g) ?? [];
+    for (const call of useQueryCalls) {
+      expect(call).toMatch(/loadTenantForStripe/);
+    }
   });
 
-  it("AC6 — does NOT call any mutation (slice 1 is read-only; mutations land in F-PARAMETRES-02..05)", () => {
+  it("F-PARAMETRES-02 (#229) — wires `tenant.updateSettings` via `useTenantMutation` (front-side withTenant discipline, never raw `useMutation` on a tenantMutation)", () => {
+    expect(PAGE_SOURCE).toMatch(/useTenantMutation/);
+    const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
+    expect(collapsed).toMatch(
+      /useTenantMutation\([^)]*api\.lib\.admin\.tenantSettings\.updateSettings[^)]*\)/,
+    );
+  });
+
+  it("F-PARAMETRES-02 (#229) — wires the tenant-gated `photos.generateUploadUrl` (kb_manager-only upload URL mint, NOT the ungated template `api.storage.generateUploadUrl`)", () => {
+    // The tenant-gated mutation is the only one a kb_manager can call —
+    // the template's bare `api.storage.generateUploadUrl` is ungated and
+    // would bypass the wrapper. Pin we use the right one.
+    const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
+    expect(collapsed).toMatch(
+      /useTenantMutation\([^)]*api\.lib\.menu\.photos\.generateUploadUrl[^)]*\)/,
+    );
     const code = stripNonCode(PAGE_SOURCE);
-    // No `useMutation` import or call — the page is read-only this slice.
-    expect(code).not.toMatch(/\buseMutation\b/);
-    // No reference to the canonical tenant settings mutation (defensive — a
-    // future agent might wire it here by accident before its dedicated slice).
-    expect(code).not.toMatch(/updateSettings/);
-    // No reference to the serviceHours setter (same defensive pin).
-    expect(code).not.toMatch(/serviceHours\.set\b/);
+    // No raw `api.storage.generateUploadUrl` (it would bypass the tenant
+    // wrapper). The PUBLIC URL read uses `api.storage.getImageUrl` which is
+    // a read and allowed — but the upload-url mutation must be tenant-gated.
+    expect(code).not.toMatch(/api\.storage\.generateUploadUrl/);
+  });
+
+  it("F-PARAMETRES-02 (#229) — does NOT call a raw `useMutation` (every mutation goes through `useTenantMutation`, ADR 0014 §4)", () => {
+    const code = stripNonCode(PAGE_SOURCE);
+    // A bare `useMutation(` would bypass tenantId injection.
+    expect(code).not.toMatch(/\buseMutation\(/);
   });
 
   it("AC delegation — delegates rendering to `ParametresView` (keeps the page thin + the view testable in node env)", () => {

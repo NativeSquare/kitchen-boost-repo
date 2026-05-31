@@ -3,11 +3,13 @@
  * tenant Paramètres page (skeleton + 4 empty sections + Uber Direct read-only
  * block, first tracer-bullet of EPIC F-PARAMETRES #148).
  *
- * Owns the visible contract of slice 1 (read-only, no mutation):
+ * Owns the visible contract:
  *   - Page title « Paramètres ».
  *   - 4 section cards in the canonical order: Identité visuelle / Coordonnées
- *     / Modes acceptés / Horaires de service — each with an « À implémenter »
- *     placeholder body (the per-section editors land in F-PARAMETRES-02..05).
+ *     / Modes acceptés / Horaires de service — sections 2-4 keep an
+ *     « À implémenter » placeholder body (the editors land in
+ *     F-PARAMETRES-03..05); section 1 has been WIRED by F-PARAMETRES-02
+ *     (#229) and now mounts the live `BrandingEditor`.
  *   - The « Zone livraison Uber Direct » read-only informational block
  *     (user story 12 from EPIC #148) — V1 cannot be edited.
  *
@@ -32,10 +34,46 @@
  *     `page.test.ts` (the view is pure and could never call a mutation
  *     anyway).
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ReactElement, ReactNode } from "react";
 
-import { ParametresView, type ParametresViewProps } from "./parametres-view";
+// F-PARAMETRES-02 (#229) — the section 1 editor (`BrandingEditor`) uses
+// `useState` / `useRef` / `useEffect` + `react-hook-form`. Under
+// `environment: "node"` (no React renderer), the real hooks throw — same
+// stub pattern as `menu-view.test.tsx`.
+vi.mock("react", async () => {
+  const actual = await vi.importActual<typeof import("react")>("react");
+  return {
+    ...actual,
+    useState: <T,>(initial: T | (() => T)) => {
+      const v =
+        typeof initial === "function" ? (initial as () => T)() : initial;
+      return [v, () => {}];
+    },
+    useEffect: () => {},
+    useMemo: <T,>(factory: () => T) => factory(),
+    useRef: <T,>(initial: T) => ({ current: initial }),
+  };
+});
+vi.mock("react-hook-form", () => ({
+  useForm: () => ({
+    register: (name: string) => ({
+      name,
+      onChange: () => {},
+      onBlur: () => {},
+      ref: () => {},
+    }),
+    watch: () => undefined,
+    setValue: () => {},
+    getValues: () => undefined,
+    handleSubmit: (fn: (data: unknown) => unknown) => async () => fn({}),
+    formState: { errors: {}, isSubmitting: false },
+    reset: () => {},
+  }),
+}));
+
+const { ParametresView } = await import("./parametres-view");
+type ParametresViewProps = import("./parametres-view").ParametresViewProps;
 
 // ---------------------------------------------------------------------------
 // Tiny React-tree serializer — same shape as menu-view.test.tsx /
@@ -134,8 +172,25 @@ function dataSlots(n: SerializedNode): string[] {
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
-const LOADING: ParametresViewProps = { serviceHours: undefined };
-const EMPTY: ParametresViewProps = { serviceHours: { windows: [] } };
+// F-PARAMETRES-02 (#229) widens the view's prop contract with `branding` +
+// `onSaveBranding` + `onUploadLogo` — the section 1 editor is now LIVE
+// (BrandingEditor) and consumes them. The other 3 sections still placeholder.
+const noopBranding = async () => {};
+const noopUpload = async () => "https://cdn/x.png";
+const BASE_BRANDING_PROPS = {
+  branding: undefined,
+  onSaveBranding: noopBranding,
+  onUploadLogo: noopUpload,
+} as const;
+
+const LOADING: ParametresViewProps = {
+  serviceHours: undefined,
+  ...BASE_BRANDING_PROPS,
+};
+const EMPTY: ParametresViewProps = {
+  serviceHours: { windows: [] },
+  ...BASE_BRANDING_PROPS,
+};
 const WITH_WINDOWS: ParametresViewProps = {
   serviceHours: {
     windows: [
@@ -143,6 +198,7 @@ const WITH_WINDOWS: ParametresViewProps = {
       { dayOfWeek: 1, startMinute: 18 * 60 + 30, endMinute: 22 * 60 },
     ],
   },
+  ...BASE_BRANDING_PROPS,
 };
 
 // ---------------------------------------------------------------------------
@@ -169,12 +225,14 @@ describe("ParametresView — F-PARAMETRES-01 (#193)", () => {
     expect(horairesIdx).toBeGreaterThan(modesIdx);
   });
 
-  it("AC2 — every section body shows an « À implémenter » placeholder (the per-section editors land in F-PARAMETRES-02..05)", () => {
-    // 4 sections × 1 placeholder = 4 occurrences. Pinning the COUNT (not
-    // just presence) so a regression that drops one section is caught.
+  it("AC2 — the still-unwired sections show « À implémenter » placeholders (F-PARAMETRES-02 wired Identité visuelle; Coordonnées / Modes / Horaires land in F-PARAMETRES-03..05)", () => {
+    // 3 still-unwired sections × 1 placeholder = ≥3 occurrences. Pinning the
+    // COUNT (not just presence) so a regression that drops one section is
+    // caught. Identité visuelle is now live (BrandingEditor) so it doesn't
+    // count.
     const text = allText(serialize(ParametresView(EMPTY)));
     const matches = text.match(/[ÀA] impl[ée]menter/g) ?? [];
-    expect(matches.length).toBeGreaterThanOrEqual(4);
+    expect(matches.length).toBeGreaterThanOrEqual(3);
   });
 
   it("AC3 — surfaces the « Zone livraison Uber Direct » read-only block with the V1 informative copy", () => {
@@ -248,6 +306,16 @@ describe("ParametresView — F-PARAMETRES-01 (#193)", () => {
     expect(slots).toContain("parametres-section-modes");
     expect(slots).toContain("parametres-section-horaires");
     expect(slots).toContain("parametres-uber-direct-readonly");
+  });
+
+  it("F-PARAMETRES-02 (#229) — section Identité visuelle is WIRED (BrandingEditor) and no longer a placeholder", () => {
+    // The wired section surfaces the save button slot exposed by
+    // `BrandingEditor`, AND the section's title is no longer accompanied by
+    // an « À implémenter » body underneath.
+    const tree = serialize(ParametresView(EMPTY));
+    expect(dataSlots(tree)).toContain("parametres-branding-save");
+    // The section card itself still carries the canonical slot from slice 1.
+    expect(dataSlots(tree)).toContain("parametres-section-identite");
   });
 
   it("AC2 — populated branch (serviceHours with windows) still renders the placeholder body (V1 = read but don't display the editor)", () => {
