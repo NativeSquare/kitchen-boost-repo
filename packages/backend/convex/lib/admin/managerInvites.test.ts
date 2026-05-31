@@ -428,3 +428,187 @@ describe("B-AUTH-4 inviteManager — wrapper enforcement (root-only)", () => {
     ).rejects.toThrow(/unauthenticated/i);
   });
 });
+
+/**
+ * F-WIZARD [9/10] (#273) — `getLatestManagerInviteForTenant` query (root-only).
+ *
+ * The wizard's Step 7 `useWizardState` hook needs to know whether a manager
+ * invite row already exists for a tenant — that's the canonical completion
+ * signal per the issue spec (« Le hook useWizardState marque step 7 complete
+ * si une ligne managerInvites existe pour le tenant, peu importe acceptedAt »).
+ *
+ * Wraps `kbAdminQuery` — V1 strict: the wizard runs as KB Admin only. Returns
+ * the most recently created manager invite for `tenantId` (last by
+ * `_creationTime`) or `null` if none has ever been emitted for the tenant.
+ * Reads via the sanctioned `lib/tenancy/adminInvitesStore` seam — same ADR 0010
+ * discipline as `inviteManager` (no raw `ctx.db` in `lib/admin/**`).
+ */
+describe("F-WIZARD [9/10] — getLatestManagerInviteForTenant query", () => {
+  let t: ReturnType<typeof convexTest>;
+  let seed: Seed;
+  beforeEach(async () => {
+    t = convexTest(schema, modules);
+    seed = await seedTwoTenantsAllRoles(t);
+  });
+
+  it("returns null when no manager invite exists for the tenant", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    const row = await asAdmin.query(
+      api.lib.admin.managerInvites.getLatestManagerInviteForTenant,
+      { tenantId: seed.tenantA.tenantId },
+    );
+    expect(row).toBeNull();
+  });
+
+  it("returns the invite row when one exists (any acceptedAt)", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    await asAdmin.mutation(api.lib.admin.managerInvites.inviteManager, {
+      tenantId: seed.tenantA.tenantId,
+      email: "gerant@example.fr",
+      name: "Le Gérant",
+    });
+
+    const row = await asAdmin.query(
+      api.lib.admin.managerInvites.getLatestManagerInviteForTenant,
+      { tenantId: seed.tenantA.tenantId },
+    );
+    expect(row).not.toBeNull();
+    expect(row?.email).toBe("gerant@example.fr");
+    expect(row?.tenantId).toBe(seed.tenantA.tenantId);
+    expect(row?.targetRole).toBe("kb_manager");
+  });
+
+  it("returns the LATEST invite when multiple exist (by _creationTime desc)", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+
+    // Seed two invites for the same tenant directly via raw ctx.db so we can
+    // control _creationTime ordering. The newer one is inserted SECOND.
+    const olderId = await t.run((ctx) =>
+      ctx.db.insert("adminInvites", {
+        email: "first@example.fr",
+        name: "First",
+        token: "old-token-xxxx",
+        invitedBy: seed.adminId,
+        expiresAt: Date.now() + 60_000,
+        targetRole: "kb_manager",
+        tenantId: seed.tenantA.tenantId,
+      }),
+    );
+    // Small delay so _creationTime differs.
+    await new Promise((r) => setTimeout(r, 5));
+    const newerId = await t.run((ctx) =>
+      ctx.db.insert("adminInvites", {
+        email: "second@example.fr",
+        name: "Second",
+        token: "new-token-xxxx",
+        invitedBy: seed.adminId,
+        expiresAt: Date.now() + 60_000,
+        targetRole: "kb_manager",
+        tenantId: seed.tenantA.tenantId,
+      }),
+    );
+
+    const row = await asAdmin.query(
+      api.lib.admin.managerInvites.getLatestManagerInviteForTenant,
+      { tenantId: seed.tenantA.tenantId },
+    );
+    expect(row).not.toBeNull();
+    expect(row?._id).toBe(newerId);
+    expect(row?.email).toBe("second@example.fr");
+    // Sanity: the older row still exists.
+    const older = await t.run((ctx) => ctx.db.get(olderId));
+    expect(older).not.toBeNull();
+  });
+
+  it("ignores invites for OTHER tenants (tenant scoping)", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    // Seed an invite for tenant B.
+    await asAdmin.mutation(api.lib.admin.managerInvites.inviteManager, {
+      tenantId: seed.tenantB.tenantId,
+      email: "b@example.fr",
+    });
+    // Tenant A still returns null.
+    const rowA = await asAdmin.query(
+      api.lib.admin.managerInvites.getLatestManagerInviteForTenant,
+      { tenantId: seed.tenantA.tenantId },
+    );
+    expect(rowA).toBeNull();
+    // Tenant B returns the row.
+    const rowB = await asAdmin.query(
+      api.lib.admin.managerInvites.getLatestManagerInviteForTenant,
+      { tenantId: seed.tenantB.tenantId },
+    );
+    expect(rowB).not.toBeNull();
+    expect(rowB?.email).toBe("b@example.fr");
+  });
+
+  it("returns the invite EVEN IF acceptedAt is set (presence is the gate)", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    await t.run((ctx) =>
+      ctx.db.insert("adminInvites", {
+        email: "accepted@example.fr",
+        name: "Accepted",
+        token: "tok-accepted",
+        invitedBy: seed.adminId,
+        expiresAt: Date.now() + 60_000,
+        targetRole: "kb_manager",
+        tenantId: seed.tenantA.tenantId,
+        acceptedAt: Date.now(),
+      }),
+    );
+    const row = await asAdmin.query(
+      api.lib.admin.managerInvites.getLatestManagerInviteForTenant,
+      { tenantId: seed.tenantA.tenantId },
+    );
+    expect(row).not.toBeNull();
+    expect(row?.acceptedAt).toBeDefined();
+  });
+
+  it("ignores rows whose targetRole !== 'kb_manager' (legacy kb_admin invites)", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    // Insert a LEGACY admin invite shape: no targetRole, no tenantId — these
+    // do not surface (the by_tenant index has no entry for them).
+    await t.run((ctx) =>
+      ctx.db.insert("adminInvites", {
+        email: "legacy-admin@example.fr",
+        name: "Legacy Admin",
+        token: "legacy-tok",
+        invitedBy: seed.adminId,
+        expiresAt: Date.now() + 60_000,
+      }),
+    );
+    const row = await asAdmin.query(
+      api.lib.admin.managerInvites.getLatestManagerInviteForTenant,
+      { tenantId: seed.tenantA.tenantId },
+    );
+    expect(row).toBeNull();
+  });
+
+  it("non-kb_admin callers are refused (FORBIDDEN / UNAUTHENTICATED) — cross-tenant fuzz", async () => {
+    // Seed an invite so a leak would visibly return a row.
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    await asAdmin.mutation(api.lib.admin.managerInvites.inviteManager, {
+      tenantId: seed.tenantA.tenantId,
+      email: "leakcheck@example.fr",
+    });
+
+    const actors = [
+      { label: "A-manager", subject: seed.tenantA.managerId },
+      { label: "A-staff", subject: seed.tenantA.staffId },
+      { label: "B-manager", subject: seed.tenantB.managerId },
+      { label: "plain-customer", subject: seed.customerId },
+      { label: "detached", subject: seed.detachedUserId },
+      { label: "anonymous", subject: null },
+    ];
+
+    const { leaks, pairs } = await runCrossTenantFuzz(t, {
+      functions: [api.lib.admin.managerInvites.getLatestManagerInviteForTenant],
+      isQuery: () => true,
+      tenantId: undefined,
+      actors,
+      extraArgs: { tenantId: seed.tenantA.tenantId },
+    });
+    expect(leaks).toEqual([]);
+    expect(pairs).toBe(actors.length);
+  });
+});
