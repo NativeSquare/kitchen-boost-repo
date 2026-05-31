@@ -232,6 +232,90 @@ Voir A4b (identique).
   - KB Manager qui deep-link → `UnauthorizedCard` « Cette fiche est réservée à l'équipe KitchenBoost ».
 - **Couvre** : #233.
 
+### T3 — Aperçu contrat dans iframe sandboxée
+- **Acteur** : KB Admin (root)
+- **Pré-requis** : seeds e2e ; un prospect avec contrat déjà généré (HTML stocké côté backend, statut `draft`) ; route `/pipeline/<prospectId>` accessible ; bloc Contrats (slice 1) visible.
+- **Étapes** :
+  1. Naviguer vers la fiche d'un prospect avec contrat existant — le bloc « Contrats » affiche la ligne contrat (slice 1).
+  2. Déclencher l'affichage de `ContractIframe` (clic sur la ligne contrat slice 3, ou story dédiée) avec le HTML du contrat.
+  3. Vérifier visuellement que l'iframe affiche bien le contenu du contrat (en-tête, sections, signature).
+  4. DevTools → inspecter `<iframe>` : attribut `sandbox` présent, **ne contient pas** `allow-scripts`.
+  5. (Test sec) Injecter un `<script>alert("XSS")</script>` dans le template upstream et vérifier que le script **ne s'exécute pas**.
+- **Attendu** :
+  - UI : contrat rendu visuellement, lisible, mise en forme préservée.
+  - DOM : `<iframe sandbox="">` (ou sandbox sans `allow-scripts`).
+  - Sécurité : zéro alerte JS, console clean (sandbox iframe bloque le script).
+  - DB : statut contrat inchangé (lecture seule).
+- **Couvre** : #165 + invariant sécurité PRD 70 §3.5.
+
+### T4 — Téléchargement HTML du contrat
+- **Acteur** : KB Admin (root)
+- **Pré-requis** : `ContractIframe` monté avec un HTML non vide (cf. T3).
+- **Étapes** :
+  1. Cliquer sur le bouton « Télécharger HTML ».
+  2. Le navigateur déclenche un téléchargement.
+  3. Ouvrir le fichier téléchargé dans un onglet ou éditeur de texte.
+- **Attendu** :
+  - UI : pas de changement visible (iframe reste affichée), bouton non désactivé.
+  - Fichier : nom `contrat-<timestamp>.html` (ex : `contrat-1717161600000.html`), MIME `text/html`, contenu identique au `srcDoc` de l'iframe.
+  - DB : aucune mutation déclenchée (téléchargement 100% front).
+- **Couvre** : #165.
+
+### T5 — Fallback erreur si HTML manquant
+- **Acteur** : KB Admin (root)
+- **Pré-requis** : `ContractIframe` monté avec `html = ""` ou `null` ou `undefined` (simulation d'échec backend en amont, ou tri-state Convex « no row »).
+- **Étapes** :
+  1. Naviguer sur la surface où le composant serait monté (story dédiée, ou anticipation slice 3 si la génération échoue).
+  2. Observer le rendu.
+- **Attendu** :
+  - UI : message FR clair (« Aucun contenu de contrat à afficher. La génération a peut-être échoué — réessayez ou contactez le support. »), encadré pointillé, **pas d'iframe blanche silencieuse**, **pas de bouton « Télécharger »**.
+  - DB : aucune mutation, aucune erreur console côté front.
+- **Couvre** : #165 + PRD 70 §3.5 (pas d'iframe blanche).
+
+### T6 — Génération d'un contrat A&B depuis la fiche prospect (parcours complet)
+- **Acteur** : KB Admin (root)
+- **Pré-requis** : seeds e2e ; session connectée avec rôle `kb_admin` ; un prospect avec les 5 champs juridiques renseignés (`name`, `siret`, `address`, `contactName`, `email`) ; aucun contrat encore généré pour ce prospect ; route `/pipeline/<prospectId>`.
+- **Étapes** :
+  1. Ouvrir `/pipeline/<prospectId>` — le bloc « Contrats » affiche « Aucun contrat généré pour ce prospect. » et un bouton « Générer contrat » dans le header.
+  2. Cliquer « Générer contrat » — le modal s'ouvre avec le titre « Générer un contrat », 3 radios (A seul / B seul / A & B), et les 5 champs juridiques pré-remplis depuis le prospect (raison sociale, SIRET, adresse, email, représentant).
+  3. Sélectionner le radio « A & B ».
+  4. Cliquer « Générer » — le bouton affiche « Génération… » et est désactivé pendant l'appel.
+  5. À la résolution : le modal se ferme, l'iframe du contrat apparaît sous le bloc Contrats, et la liste des contrats s'est rafraîchie avec une nouvelle ligne « Prestation A&B / Brouillon » datée d'aujourd'hui.
+  6. Cliquer « Télécharger HTML » dans l'iframe — un fichier `contrat-<timestamp>.html` est téléchargé.
+- **Attendu** :
+  - UI : modal fermé, iframe rendue avec le contenu du contrat A&B incluant les 5 champs interpolés (balises `<!-- BEGIN` absentes). Liste contrats avec 1 ligne « A&B / Brouillon ».
+  - DB : nouvelle ligne `contracts` avec `prospectId` du prospect, `prestation = "A_AND_B"`, `status = "draft"`, `htmlContent` non-vide contenant les valeurs du prospect, `statusUpdatedAt` et `createdAt` cohérents.
+  - Audit : une ligne `audit` avec `action = "contract.generate"` et l'`adminId` courant.
+- **Couvre** : #174 (modal Générer contrat) + #158 (bloc lecture seule visible) + #165 (iframe + download).
+
+### T7 — Échec génération sur prospect incomplet (champs juridiques manquants)
+- **Acteur** : KB Admin (root)
+- **Pré-requis** : seeds e2e ; session `kb_admin` ; un prospect avec `name` + `phone` uniquement (les 4 champs `siret`/`address`/`email`/`contactName` sont vides) ; route `/pipeline/<prospectId>`.
+- **Étapes** :
+  1. Cliquer « Générer contrat » dans le header du bloc Contrats.
+  2. Inspecter le modal : 4 lignes juridiques marquées en rouge avec « — Manquant », la ligne « Raison sociale » remplie (← `name`).
+  3. Vérifier que le bouton « Générer » est désactivé (grisé) et que le message « Complète la fiche prospect avant de générer un contrat. Champs absents : SIRET, Adresse, Email, Représentant. » s'affiche sous la recap.
+  4. Tenter de cliquer « Générer » — aucune action n'est déclenchée (mutation jamais appelée).
+  5. Fermer le modal via « Annuler ».
+- **Attendu** :
+  - UI : 4 lignes recap rouges (`data-missing="true"`), bouton submit désactivé, message d'aide nominatif avec la liste exacte des champs absents, modal fermable proprement.
+  - DB : aucune nouvelle ligne `contracts`, aucune ligne `audit` `contract.generate` ajoutée.
+- **Couvre** : #174 (gating champs manquants) + #158 (liste reste vide).
+
+### T8 — Erreur backend génération contrat (toast + pas d'iframe blanche)
+- **Acteur** : KB Admin (root)
+- **Pré-requis** : seeds e2e ; session `kb_admin` ; un prospect complet (5 champs juridiques OK) ; simulation d'erreur backend (couper la connexion Convex après ouverture du modal, ou seed un prospect dont le SIRET force une `ConvexError` côté `generateContract`) ; route `/pipeline/<prospectId>`.
+- **Étapes** :
+  1. Ouvrir le modal « Générer contrat ».
+  2. Sélectionner la prestation « A seul ».
+  3. Cliquer « Générer » — le bouton affiche « Génération… ».
+  4. Provoquer l'échec de la mutation (cf. pré-requis).
+  5. Observer les retours UI.
+- **Attendu** :
+  - UI : toast d'erreur Sonner en bas avec « Échec génération contrat : <message backend> ». Modal reste ouvert, bouton « Générer » à nouveau actif. Message d'erreur inline dans le modal (rouge). **Aucune iframe vide** ne s'affiche sous le bloc Contrats.
+  - DB : aucune ligne `contracts` créée.
+- **Couvre** : #174 (branche erreur) + #165 (ContractIframe error branch indirectement).
+
 ---
 
 ## P — Paramètres
@@ -836,3 +920,6 @@ Les 13 PRs suivantes n'ont pas inclus de section « Tests E2E proposés » explo
 | #336 | _(n/a)_ | _empty_                      | Body vide.                                                                                                                              |
 | #340 | #242    | F-MENU                       | Pas de section E2E (CRUD groupes Personnalisations standalone). Parcours couvert par les E2E de #246.                                   |
 | #343 | #245    | F-PRICING                    | Pas de section E2E (CREATE de règle). Parcours couvert indirectement par les E2E d'édition #248. À compléter pour le chemin CREATE pur. |
+| #359 | #158    | F-CONTRATS (slice 1)         | Body PR réduit à `@-` (artefact d'édition post-merge). Parcours « bloc Contrats lecture seule » couvert indirectement par T6 (E2E #174 qui exerce le bloc slice 1 visible).                                |
+| #360 | #163    | B-ONBOARDING-MILESTONES (s1) | _Justifié_ : pure addition de seam backend (`prospectsStore`), aucun appel front, aucune Convex function exposée. Parcours porté par les slices 2/3 (#172, futures).        |
+| #362 | #172    | B-ONBOARDING-MILESTONES (s2) | _Justifié_ : refacto interne backend (helper privé `maybeAutoBascule`), shape de retour `applyClosing` strictement inchangé, helper hors barrel. Aucune surface modifiée.        |
