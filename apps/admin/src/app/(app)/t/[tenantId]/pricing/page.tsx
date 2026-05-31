@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * F-PRICING-1 (#241) + F-PRICING-2 (#245) + F-PRICING-3 (#248) — Route
- * `/t/[tenantId]/pricing`.
+ * F-PRICING-1 (#241) + F-PRICING-2 (#245) + F-PRICING-3 (#248) +
+ * F-PRICING-4 (#249) + F-PRICING-5 (#251) — Route `/t/[tenantId]/pricing`.
  *
  * Slice 1 (#241) wired the read-only list via `useTenantQuery`. Slice 2 (#245)
  * layered CREATE on top: a « + Nouvelle règle » CTA on the list opens the
@@ -81,6 +81,15 @@ export default function PricingPage() {
   // ADR 0010); the wrapper gate on `tenantMutation` enforces `kb_manager`
   // (or `kb_admin` via the root override).
   const setRuleActive = useTenantMutation(api.lib.pricing.rules.setActive);
+  // F-PRICING-5 (#251) — remove binding. The row 2-click confirmation
+  // (AlertDialog) is owned by `PricingView`; this page only bridges the
+  // callback to `api.lib.pricing.rules.remove`. Same auto-injected
+  // `tenantId` discipline (ADR 0014 §4 / #183, ADR 0010); the wrapper gate
+  // on `tenantMutation` enforces `kb_manager` (or `kb_admin` via the root
+  // override). Backend seam throws NOT_FOUND for a foreign / missing
+  // `ruleId` (`requireTenantPricingRule`), so a leaked id from a stale UI
+  // is rejected — never a cross-tenant leak.
+  const removeRule = useTenantMutation(api.lib.pricing.rules.remove);
 
   // Modal lifecycle + inline error state (NOT a toast — issue body).
   const [modalOpen, setModalOpen] = useState(false);
@@ -122,6 +131,22 @@ export default function PricingPage() {
   // not a cross-tenant leak.
   const handleToggleActive = (ruleId: Id<"pricingRules">, active: boolean) => {
     void setRuleActive({ ruleId, active });
+  };
+
+  // F-PRICING-5 (#251) — row delete handler. Bridges
+  // `PricingView`'s `onDeleteRule(ruleId)` (fired ONLY from the
+  // AlertDialog's « Supprimer » action — the 2nd click) to the backend
+  // `remove` mutation. Fire-and-forget at the page level: Convex
+  // reactivity drives the list re-render (the deleted row disappears) so
+  // the user-visible action completes without an explicit refetch. No
+  // optimistic update at V1 (mirrors the `setActive` handler's discipline
+  // — the modal's `submitError` is the ONLY inline error surface in this
+  // module; a toast is forbidden by the module's discipline « Pas de toast
+  // technique. »). The backend seam handles ownership: a foreign /
+  // missing `ruleId` (e.g. a stale tab clicking on an already-deleted
+  // row) is rejected with NOT_FOUND, never a cross-tenant leak.
+  const handleDeleteRule = (ruleId: Id<"pricingRules">) => {
+    void removeRule({ ruleId });
   };
 
   const handleCloseBuilder = (open: boolean) => {
@@ -189,6 +214,7 @@ export default function PricingPage() {
         onNewRule={handleOpenBuilder}
         onEditRule={handleEditRule}
         onToggleActive={handleToggleActive}
+        onDeleteRule={handleDeleteRule}
       />
       <RuleBuilderModal
         // KEY discipline — re-mount when the target rule changes (or when

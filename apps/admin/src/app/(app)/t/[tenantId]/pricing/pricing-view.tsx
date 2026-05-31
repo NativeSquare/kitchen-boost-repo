@@ -18,17 +18,30 @@
  *     order to drag.
  *   - NO `priority` / `order` identifier in the rendered DOM, nor as a form
  *     input name.
- *   - The placeholders « Éditer » / « Supprimer » MUST be disabled (slices
- *     2-3 will flip them on).
+ *   - F-PRICING-5 (#251) — « Supprimer » becomes active when the page wires
+ *     `onDeleteRule`, gated by a 2-click `AlertDialog` confirmation
+ *     (1-click delete INTERDIT, issue body). Backward compat: when omitted,
+ *     the button stays disabled (slice 1 placeholder shape).
  *
  * Split out of `page.tsx` (which owns the `useTenantQuery` call) so vitest
  * can pin every branch under `environment: "node"` — same pattern as
  * `menu/menu-view.tsx` and `mes-clients/mes-clients-view.tsx`.
  */
+import { useState } from "react";
 import { IconPlus } from "@tabler/icons-react";
 
 import type { Doc, Id } from "@packages/backend/convex/_generated/dataModel";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -88,6 +101,24 @@ export type PricingViewProps = {
    * in `page.test.ts`.
    */
   onToggleActive?: (ruleId: Id<"pricingRules">, active: boolean) => void;
+  /**
+   * F-PRICING-5 (#251) — fires when the gérant confirms the deletion of a
+   * rule via the 2-click `AlertDialog` flow. The page bridges this to
+   * `api.lib.pricing.rules.remove` via `useTenantMutation` (auto-injected
+   * `tenantId`, ADR 0014 §4 / #183, ADR 0010). Optional so the F-PRICING-1
+   * isolated callers (and the « placeholders disabled » test) keep working
+   * without supplying a handler: when omitted, the row's « Supprimer »
+   * button stays disabled — same shape as slice 1's placeholder, no
+   * row-mutation risk.
+   *
+   * Contract (issue body) — load-bearing:
+   *   - The row button never invokes this directly; it only opens the
+   *     confirmation `AlertDialog`. 1-click delete = INTERDIT.
+   *   - The dialog's « Annuler » action is a no-op (dialog closes, rule
+   *     intact). Only its « Supprimer » action fires this callback with the
+   *     row's `_id`.
+   */
+  onDeleteRule?: (ruleId: Id<"pricingRules">) => void;
 };
 
 export function PricingView({
@@ -95,6 +126,7 @@ export function PricingView({
   onNewRule,
   onEditRule,
   onToggleActive,
+  onDeleteRule,
 }: PricingViewProps) {
   // Default the click handler so the button is always present (issue body:
   // « Bouton « + Nouvelle règle » sur la page liste »). The page wires the
@@ -122,6 +154,7 @@ export function PricingView({
           rules={rules}
           onEditRule={onEditRule}
           onToggleActive={onToggleActive}
+          onDeleteRule={onDeleteRule}
         />
       </div>
     </div>
@@ -146,10 +179,12 @@ function PricingBody({
   rules,
   onEditRule,
   onToggleActive,
+  onDeleteRule,
 }: {
   rules: Doc<"pricingRules">[] | undefined;
   onEditRule?: (rule: Doc<"pricingRules">) => void;
   onToggleActive?: (ruleId: Id<"pricingRules">, active: boolean) => void;
+  onDeleteRule?: (ruleId: Id<"pricingRules">) => void;
 }) {
   if (rules === undefined) {
     return <RulesSkeleton />;
@@ -165,6 +200,7 @@ function PricingBody({
             rule={rule}
             onEditRule={onEditRule}
             onToggleActive={onToggleActive}
+            onDeleteRule={onDeleteRule}
           />
         </li>
       ))}
@@ -187,10 +223,12 @@ function RuleRow({
   rule,
   onEditRule,
   onToggleActive,
+  onDeleteRule,
 }: {
   rule: Doc<"pricingRules">;
   onEditRule?: (rule: Doc<"pricingRules">) => void;
   onToggleActive?: (ruleId: Id<"pricingRules">, active: boolean) => void;
+  onDeleteRule?: (ruleId: Id<"pricingRules">) => void;
 }) {
   const conditionsSummary = formatConditionsSummary(rule.conditions);
   const actionSummary = formatActionSummary(rule.action);
@@ -217,6 +255,22 @@ function RuleRow({
   const toggleEnabled = onToggleActive !== undefined;
   const handleToggle = (next: boolean) => {
     onToggleActive?.(rule._id, next);
+  };
+  // F-PRICING-5 (#251) — same backward-compat discipline as `onEditRule` /
+  // `onToggleActive`: when the page omits `onDeleteRule`, « Supprimer »
+  // stays disabled (slice-1 placeholder shape). When wired, clicking the row
+  // button toggles a local `confirmOpen` flag that mounts an `AlertDialog`;
+  // ONLY the dialog's « Supprimer » action invokes `onDeleteRule(rule._id)`
+  // — never the row button itself (1-click delete INTERDIT). « Annuler » is
+  // a no-op (the dialog's onOpenChange closes itself).
+  const deleteEnabled = onDeleteRule !== undefined;
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const handleOpenConfirm = () => {
+    setConfirmOpen(true);
+  };
+  const handleConfirmDelete = () => {
+    onDeleteRule?.(rule._id);
+    setConfirmOpen(false);
   };
   return (
     <Card className={rowClass}>
@@ -246,9 +300,7 @@ function RuleRow({
           </Badge>
           {/*
             F-PRICING-3 (#248) wires « Éditer » via `onEditRule` (per-row
-            binding — clicking emits THIS row's rule). « Supprimer » remains a
-            disabled placeholder (slice 5 will wire it to the CRUD remove
-            mutation).
+            binding — clicking emits THIS row's rule).
           */}
           <Button
             variant="outline"
@@ -258,11 +310,54 @@ function RuleRow({
           >
             Éditer
           </Button>
-          <Button variant="outline" size="sm" disabled>
+          {/*
+            F-PRICING-5 (#251) — « Supprimer » row button is the 1st click of
+            the 2-click confirmation. It NEVER invokes `onDeleteRule`; it
+            only opens the AlertDialog (`confirmOpen` local state). The
+            dialog's « Supprimer » action (rendered below, identical FR
+            label) is the 2nd click — that one fires the callback. When
+            `onDeleteRule` is omitted, the button stays disabled (same
+            backward-compat shape as slice 3 / 4) and the dialog is not
+            mounted at all (no risk of an inert dialog leaking into the
+            tree).
+          */}
+          <Button
+            variant="outline"
+            size="sm"
+            data-slot="pricing-rule-delete"
+            disabled={!deleteEnabled}
+            onClick={deleteEnabled ? handleOpenConfirm : undefined}
+            aria-label={`Supprimer la règle ${String(rule._id)}`}
+          >
             Supprimer
           </Button>
         </div>
       </CardContent>
+      {deleteEnabled ? (
+        <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Supprimer cette règle ?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Cette action est irréversible. La règle ne sera plus appliquée
+                aux prochaines commandes.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              {/* « Annuler » = AlertDialogCancel — Radix wires it to close
+                  the dialog (onOpenChange(false)). No-op on the rule. */}
+              <AlertDialogCancel>Annuler</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleConfirmDelete}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                data-slot="pricing-rule-delete-confirm"
+              >
+                Supprimer
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      ) : null}
     </Card>
   );
 }
