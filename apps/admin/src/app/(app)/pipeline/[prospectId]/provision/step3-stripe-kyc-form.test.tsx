@@ -281,13 +281,12 @@ describe("Step3StripeKycForm — F-WIZARD [5/10] (#269)", () => {
         defaultProps({ accountLinkUrl: ACCOUNT_LINK_URL, onGenerate }),
       ),
     );
-    const regen = findBySlot(tree, "wizard-step3-regenerate") as {
-      props: { onClick?: () => void };
-    } | null;
+    const regen = findBySlot(tree, "wizard-step3-regenerate");
     expect(regen).not.toBeNull();
     const text = allText(regen);
     expect(text).toMatch(/R[ée]g[ée]n[ée]rer/i);
-    regen?.props.onClick?.();
+    const regenBtn = regen as { props: { onClick?: () => void } } | null;
+    regenBtn?.props.onClick?.();
     expect(onGenerate).toHaveBeenCalledTimes(1);
   });
 
@@ -305,13 +304,12 @@ describe("Step3StripeKycForm — F-WIZARD [5/10] (#269)", () => {
   it("renders a « Continuer » button always (step non-bloquant) — calls `onNext`", () => {
     const onNext = vi.fn();
     const tree = serialize(Step3StripeKycForm(defaultProps({ onNext })));
-    const next = findBySlot(tree, "wizard-step3-next") as {
-      props: { onClick?: () => void };
-    } | null;
+    const next = findBySlot(tree, "wizard-step3-next");
     expect(next).not.toBeNull();
     const text = allText(next);
     expect(text).toMatch(/Continuer|Suivant/i);
-    next?.props.onClick?.();
+    const nextBtn = next as { props: { onClick?: () => void } } | null;
+    nextBtn?.props.onClick?.();
     expect(onNext).toHaveBeenCalledTimes(1);
   });
 
