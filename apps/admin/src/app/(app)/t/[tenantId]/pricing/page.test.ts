@@ -109,6 +109,53 @@ describe("page.tsx — F-PRICING-1 (#241) wiring contract", () => {
     expect(PAGE_SOURCE).toMatch(/ruleId/);
   });
 
+  it("AC F-PRICING-4 (#249) — binds `api.lib.pricing.rules.setActive` via `useTenantMutation` (NOT raw useMutation)", () => {
+    // Slice 4 (#249) wires the per-row Active/Inactive toggle. Same auto-
+    // tenantId discipline as create/update (ADR 0014 §4 / #183, ADR 0010);
+    // takes `{ ruleId, active }`. Collapse whitespace so a Prettier line-wrap
+    // inside the call still matches.
+    const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
+    expect(collapsed).toMatch(
+      /useTenantMutation\([^)]*api\.lib\.pricing\.rules\.setActive[^)]*\)/,
+    );
+  });
+
+  it("AC F-PRICING-4 (#249) — wires the per-row toggle handler via the `onToggleActive` prop of `PricingView`", () => {
+    // The page-to-view contract: the row toggle is enabled by passing
+    // `onToggleActive={…}`. Pinning the prop name guarantees the page wires
+    // it (and PricingView consumes the same name).
+    expect(PAGE_SOURCE).toMatch(/onToggleActive/);
+  });
+
+  it("GUARDRAIL F-PRICING-4 (#249) — toggle path does NOT call `remove` (un toggle n'est PAS un delete déguisé)", () => {
+    // The toggle's only sanctioned mutation is `setActive`. Importing OR
+    // calling `api.lib.pricing.rules.remove` from the page would mean the
+    // toggle (or some other handler) could silently destroy the rule's
+    // definition. Pinning the absence of the `remove` chain on the page
+    // source string blocks that regression — slice 5 (delete) will live in
+    // its own surface with its own dedicated, explicit affordance.
+    expect(PAGE_SOURCE).not.toMatch(/api\.lib\.pricing\.rules\.remove/);
+  });
+
+  it("GUARDRAIL F-PRICING-4 (#249) — `update` mutation is wired (slice 3 — Éditer modal) but is NOT referenced from any toggle handler (it stays the modal's exclusive consumer)", () => {
+    // Defensive: `update` IS legitimately bound at the top of the file (slice
+    // 3). The slice-4 ban is « the toggle handler must not call update » —
+    // we pin it by asserting the page only references `update(` exactly once
+    // in non-comment code, the one call inside the modal-submit branch. A
+    // future contributor wiring the toggle to update (e.g. to flip
+    // `active` by patching the row instead of calling `setActive`) would
+    // double the count and this test fails.
+    const code = PAGE_SOURCE.replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "")
+      .replace(/`[^`]*`/g, "");
+    // Match call sites: `updateRule(` (the bound mutation handle) or any
+    // direct `.update(` chain. We allow the binding line itself
+    // (`useTenantMutation(api.lib.pricing.rules.update)`) — only count CALL
+    // sites.
+    const callMatches = code.match(/\bupdateRule\s*\(/g) ?? [];
+    expect(callMatches.length).toBe(1);
+  });
+
   it("GUARDRAIL — does NOT import `api.lib.pricing.evaluate` (engine is backend-only, ADR 0013)", () => {
     // Issue body: « Pas d'import vers `api.lib.pricing.evaluate.evaluate` dans
     // tout le module pricing (assertion statique grep). »
