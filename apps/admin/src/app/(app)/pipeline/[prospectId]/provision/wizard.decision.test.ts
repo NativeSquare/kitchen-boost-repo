@@ -51,8 +51,7 @@ const PROSPECT_ID = "prospects_xxx" as unknown as Id<"prospects">;
 const TENANT_ID = "tenants_aaa" as unknown as Id<"tenants">;
 const PUBLISHED_MENU_ID =
   "publishedMenus_xxx" as unknown as Id<"publishedMenus">;
-const MANAGER_INVITE_ID =
-  "managerInvites_xxx" as unknown as Id<"managerInvites">;
+const MANAGER_INVITE_ID = "adminInvites_xxx" as unknown as Id<"adminInvites">;
 const FIXTURE_USER = {
   userId: "users_xxx" as unknown as Id<"users">,
   email: "fixture@kb.test",
@@ -297,7 +296,7 @@ describe("computeWizardState — F-WIZARD [1/10] (#265) step heuristic", () => {
       _id: MANAGER_INVITE_ID,
       _creationTime: 1,
       tenantId: TENANT_ID,
-    } as unknown as Doc<"managerInvites">;
+    } as unknown as Doc<"adminInvites">;
     const state = computeWizardState({
       prospect: makeProspect({ tenantId: TENANT_ID }),
       tenant,
@@ -323,7 +322,7 @@ describe("computeWizardState — F-WIZARD [1/10] (#265) step heuristic", () => {
       _id: MANAGER_INVITE_ID,
       _creationTime: 1,
       tenantId: TENANT_ID,
-    } as unknown as Doc<"managerInvites">;
+    } as unknown as Doc<"adminInvites">;
     const state = computeWizardState({
       prospect: makeProspect({ tenantId: TENANT_ID }),
       tenant,

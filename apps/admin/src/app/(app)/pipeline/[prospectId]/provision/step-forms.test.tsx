@@ -127,13 +127,26 @@ function allText(n: SerializedNode): string {
 }
 
 function findByText(n: SerializedNode, label: RegExp): SerializedNode | null {
-  return (
-    flatten(n).find((x) => {
-      if (x === null || "text" in x) return false;
-      const t = allText(x);
-      return label.test(t);
-    }) ?? null
+  // Find the MOST SPECIFIC element whose own rendered text matches the
+  // label — i.e. an interactive element (button) whose children carry the
+  // label. We prefer nodes that look button-like (have an onClick handler)
+  // so the click test actually targets the clickable surface rather than
+  // an outer wrapper that happens to contain the same text.
+  const candidates = flatten(n).filter((x) => {
+    if (x === null || "text" in x) return false;
+    const t = allText(x);
+    return label.test(t);
+  });
+  // Prefer nodes carrying an onClick (the actual <button>); fall back to
+  // the deepest match if none has a handler.
+  const withHandler = candidates.find(
+    (x) =>
+      x !== null &&
+      "props" in x &&
+      typeof (x.props as { onClick?: unknown }).onClick === "function",
   );
+  if (withHandler !== undefined) return withHandler;
+  return candidates[candidates.length - 1] ?? null;
 }
 
 describe("STEP_FORMS — F-WIZARD [1/10] (#265)", () => {

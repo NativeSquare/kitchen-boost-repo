@@ -30,6 +30,13 @@ const LAYOUT_SOURCE = readFileSync(
   "utf8",
 );
 
+function stripNonCode(source: string): string {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "")
+    .replace(/`[^`]*`/g, "");
+}
+
 describe("layout.tsx — F-WIZARD [1/10] (#265) chrome-less wizard wrapper", () => {
   it("exports a default function (Next.js App Router layout contract)", () => {
     expect(LAYOUT_SOURCE).toMatch(/export\s+default\s+(?:function|\w)/);
@@ -40,7 +47,8 @@ describe("layout.tsx — F-WIZARD [1/10] (#265) chrome-less wizard wrapper", () 
   });
 
   it("scope — never imports from `apps/web` or `apps/native`", () => {
-    expect(LAYOUT_SOURCE).not.toMatch(/apps\/web/);
-    expect(LAYOUT_SOURCE).not.toMatch(/apps\/native/);
+    const code = stripNonCode(LAYOUT_SOURCE);
+    expect(code).not.toMatch(/apps\/web/);
+    expect(code).not.toMatch(/apps\/native/);
   });
 });
