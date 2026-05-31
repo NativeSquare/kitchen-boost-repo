@@ -637,3 +637,138 @@ describe("B-MENU-PUBLICATION slice 7 — items.reorder strictness", () => {
     expect(items.map((i) => i.order)).toEqual([0, 1, 2]);
   });
 });
+
+/**
+ * B-MENU-PUBLICATION slice 8 (#224) — edge: deleting a draft item whose photo
+ * is REFERENCED by the published snapshot (ADR 0015 « pas de versioning V1 » +
+ * ADR 0010).
+ *
+ * Contract pinned here (cf. publication.ts header docstring):
+ *  - `deleteTenantItem` succeeds and cascades the BLOB (current behaviour), but
+ *    DOES NOT touch the `publishedMenus` snapshot — the snapshot can therefore
+ *    transiently reference a `photoStorageId` whose blob has been deleted, until
+ *    the next `publishMenu` rebuild.
+ *  - The PWA-facing `getPublicMenu` reads the snapshot and tolerates this
+ *    orphan: `ctx.storage.getUrl(<deleted id>)` returns `null` in Convex, and
+ *    the read returns `photoUrl: null` instead of throwing.
+ *
+ * This pins the « snapshot lecture tolérante » invariant from the front side,
+ * complementing the consolidated edges suite in `publication.test.ts`.
+ */
+describe("B-MENU-PUBLICATION slice 8 — delete item referenced by snapshot (#224, ADR 0015)", () => {
+  let t: ReturnType<typeof convexTest>;
+  let seed: Seed;
+  beforeEach(async () => {
+    t = convexTest(schema, modules);
+    seed = await seedTwoTenantsAllRoles(t);
+  });
+
+  it("deleting a draft item with a photo SNAPSHOTTED leaves the snapshot intact, getPublicMenu serves photoUrl=null", async () => {
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    const cat = await asManager.mutation(api.lib.menu.categories.create, {
+      tenantId: seed.tenantA.tenantId,
+      name: "Smashs",
+    });
+    const itemId = await asManager.mutation(api.lib.menu.items.create, {
+      tenantId: seed.tenantA.tenantId,
+      categoryId: cat,
+      name: "Smash Double",
+      description: "",
+      basePrice: 1200,
+      allergens: [],
+    });
+    const storageId = await t.run(async (ctx) =>
+      ctx.storage.store(new Blob(["png-bytes"])),
+    );
+    await asManager.mutation(api.lib.menu.photos.attachPhoto, {
+      tenantId: seed.tenantA.tenantId,
+      itemId,
+      storageId,
+    });
+    // Publish so the snapshot carries this item + photoStorageId.
+    await asManager.mutation(api.lib.menu.publication.publishMenu, {
+      tenantId: seed.tenantA.tenantId,
+    });
+
+    // Sanity: photo served pre-deletion.
+    const before = await t.query(api.lib.menu.catalog.getPublicMenu, {
+      tenantId: seed.tenantA.tenantId,
+    });
+    expect(before.categories[0]?.items[0]?.photoUrl).toBeTypeOf("string");
+
+    // Delete the item from the draft — cascades the blob, NOT the snapshot.
+    await asManager.mutation(api.lib.menu.items.remove, {
+      tenantId: seed.tenantA.tenantId,
+      itemId,
+    });
+
+    // The snapshot row is UNTOUCHED (still references the now-orphan storageId).
+    const snapshot = await t.run((ctx) =>
+      ctx.db
+        .query("publishedMenus")
+        .withIndex("by_tenant", (q) => q.eq("tenantId", seed.tenantA.tenantId))
+        .unique(),
+    );
+    const snapItem = snapshot?.payload.categories[0]?.items[0];
+    expect(snapItem?._id).toBe(itemId);
+    expect(snapItem?.photoStorageId).toBe(storageId);
+
+    // The blob itself is gone (deleteTenantItem cascade).
+    const blobUrl = await t.run((ctx) => ctx.storage.getUrl(storageId));
+    expect(blobUrl).toBeNull();
+
+    // getPublicMenu still serves the snapshot row, with photoUrl=null (tolerant
+    // read, NOT a throw). The item shape stays intact otherwise.
+    const after = await t.query(api.lib.menu.catalog.getPublicMenu, {
+      tenantId: seed.tenantA.tenantId,
+    });
+    const publicItem = after.categories[0]?.items[0];
+    expect(publicItem?._id).toBe(itemId);
+    expect(publicItem?.name).toBe("Smash Double");
+    expect(publicItem?.photoUrl).toBeNull();
+    // Live availability overlay → deleted item is missing from the live table,
+    // so availability defaults to false (safe). This is the existing contract.
+    expect(publicItem?.available).toBe(false);
+  });
+
+  it("republishing after the deletion drops the row from the snapshot (regression)", async () => {
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    const cat = await asManager.mutation(api.lib.menu.categories.create, {
+      tenantId: seed.tenantA.tenantId,
+      name: "Smashs",
+    });
+    const keepId = await asManager.mutation(api.lib.menu.items.create, {
+      tenantId: seed.tenantA.tenantId,
+      categoryId: cat,
+      name: "Keep",
+      description: "",
+      basePrice: 500,
+      allergens: [],
+    });
+    const dropId = await asManager.mutation(api.lib.menu.items.create, {
+      tenantId: seed.tenantA.tenantId,
+      categoryId: cat,
+      name: "Drop",
+      description: "",
+      basePrice: 800,
+      allergens: [],
+    });
+    await asManager.mutation(api.lib.menu.publication.publishMenu, {
+      tenantId: seed.tenantA.tenantId,
+    });
+    // Drop one item from the draft, then republish.
+    await asManager.mutation(api.lib.menu.items.remove, {
+      tenantId: seed.tenantA.tenantId,
+      itemId: dropId,
+    });
+    await asManager.mutation(api.lib.menu.publication.publishMenu, {
+      tenantId: seed.tenantA.tenantId,
+    });
+    const publicMenu = await t.query(api.lib.menu.catalog.getPublicMenu, {
+      tenantId: seed.tenantA.tenantId,
+    });
+    const ids = publicMenu.categories.flatMap((c) => c.items.map((i) => i._id));
+    expect(ids).toEqual([keepId]);
+    expect(ids).not.toContain(dropId);
+  });
+});
