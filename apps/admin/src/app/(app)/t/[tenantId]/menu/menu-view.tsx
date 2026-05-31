@@ -11,11 +11,22 @@
  *   - else                       → flat vertical list of category rows,
  *     sorted by `order` (no V1 sub-cats, ADR 0010 / PRD 10 §5).
  *
- * Header is ALWAYS rendered with the page title « Menu » and three INACTIVE
- * placeholders — « Aperçu », « Publier », « modifications non publiées » —
- * that F-MENU-10 (#254) will wire to the publication flow. They MUST stay
- * `disabled` here so a manager can't accidentally trigger a publish before
- * the mutation is bound (ADR 0015 forbids partial publication).
+ * Header is ALWAYS rendered with the page title « Menu » and three
+ * publication affordances — « Aperçu », « Publier », « modifications non
+ * publiées ». F-MENU-10 (#254) activated them via four optional props
+ * (`onPublish` / `publishLoading` / `previewHref` / `hasUnpublishedChanges`).
+ * Each surface stays a disabled placeholder when its backing prop isn't
+ * wired (keeps the slice-1 read-only callers and the disabled-baseline test
+ * safe; preserves ADR 0015 « no partial publication before the mutation is
+ * bound »):
+ *   - Badge rendered iff `hasUnpublishedChanges === true` (ADR 0015 « disparaît
+ *     après publication réussie » — Convex reactivity flips it automatically).
+ *   - « Aperçu » renders as an anchor (target=_blank) iff `previewHref` is
+ *     set, else stays a disabled `<Button>`. The link opens the DRAFT
+ *     renderer (see `preview/page.tsx`) — the issue body's load-bearing
+ *     observable « Aperçu montre le NOUVEAU prix avant publish ».
+ *   - « Publier » enabled iff `onPublish` is wired AND `publishLoading` is
+ *     falsy — a second click while in flight would fire the mutation twice.
  *
  * F-MENU-02 (#200) layering: the view stays a pure function of its props,
  * but accepts THREE optional callbacks (`onCreateCategory` / `onRenameCategory`
