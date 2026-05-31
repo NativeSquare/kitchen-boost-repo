@@ -524,3 +524,380 @@ describe("B-ONBOARDING-MILESTONES slice 3 — RBAC (#189): setMilestone is kb_ad
     ).rejects.toThrow(/forbidden/i);
   });
 });
+
+/**
+ * B-ONBOARDING-MILESTONES slice 4 (#213) — granular `recordIntegrationStatus`
+ * mutation that appends ONE transition to a composite integration milestone
+ * (`stripeConnect` / `uberDirect` / `hubrise`) and chains `maybeAutoBascule` in
+ * the SAME transaction. Written BEFORE the implementation (TDD red).
+ *
+ * Slice scope:
+ *  - ONE `kbAdminMutation` `recordIntegrationStatus({prospectId, integration,
+ *    status})` that updates `current` AND appends `{status, at}` to `history[]`
+ *    for ONE integration.
+ *  - `status` is typed PER integration via a discriminated `v.union` of
+ *    `v.object`s — passing a `uberDirect` status with `integration: stripeConnect`
+ *    is rejected runtime + compile-time.
+ *  - `basculed` is always `false` (the 3 integrations are NOT Closing milestones
+ *    by construction) — `maybeAutoBascule` is still chained for uniform return
+ *    shape + defence in depth.
+ *  - Return shape: `{basculed, phase, closing: {complete, missing}}` — the same
+ *    triple `setMilestone` returns.
+ *
+ * Audit: the `kbAdminMutation` wrapper auto-logs `prospect.integration.recordStatus`
+ * once per call (covers any (integration × status) tuple).
+ */
+describe("B-ONBOARDING-MILESTONES slice 4 — recordIntegrationStatus granular mutation (#213)", () => {
+  let t: ReturnType<typeof convexTest>;
+  let seed: Seed;
+  beforeEach(async () => {
+    t = convexTest(schema, modules);
+    seed = await seedTwoTenantsAllRoles(t);
+  });
+
+  it("creates the integration sub-object on first call (current + 1-entry history)", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    const id = await asAdmin.mutation(api.lib.onboarding.crm.createProspect, {
+      name: "Integ Fresh",
+      phone: "0600000300",
+      source: "cold_call",
+    });
+
+    const result = await asAdmin.mutation(
+      api.lib.onboarding.milestones.recordIntegrationStatus,
+      {
+        prospectId: id,
+        integration: "stripeConnect",
+        status: "verified",
+      },
+    );
+    expect(result.basculed).toBe(false);
+    expect(result.phase).toBe("acquisition");
+    expect(result.closing.complete).toBe(false);
+
+    const p = await asAdmin.query(api.lib.onboarding.crm.getProspect, {
+      prospectId: id,
+    });
+    expect(p?.milestones?.stripeConnect?.current).toBe("verified");
+    expect(p?.milestones?.stripeConnect?.history).toHaveLength(1);
+    expect(p?.milestones?.stripeConnect?.history?.[0]?.status).toBe("verified");
+    expect(p?.milestones?.stripeConnect?.history?.[0]?.at).toBeTypeOf("number");
+
+    // The kbAdminMutation auto-audit row carries the canonical action label.
+    const auditRows = await t.run(async (ctx) =>
+      ctx.db
+        .query("auditLog")
+        .filter((q) =>
+          q.eq(q.field("action"), "prospect.integration.recordStatus"),
+        )
+        .collect(),
+    );
+    expect(auditRows.length).toBe(1);
+  });
+
+  it("successive transitions append to history in order, current always up to date", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    const id = await asAdmin.mutation(api.lib.onboarding.crm.createProspect, {
+      name: "Oscillator",
+      phone: "0600000301",
+      source: "cold_call",
+    });
+
+    const order = [
+      "pending_kyc",
+      "verified",
+      "rejected",
+      "pending_kyc",
+      "verified",
+    ] as const;
+    for (const status of order) {
+      await asAdmin.mutation(
+        api.lib.onboarding.milestones.recordIntegrationStatus,
+        {
+          prospectId: id,
+          integration: "stripeConnect",
+          status,
+        },
+      );
+    }
+
+    const p = await asAdmin.query(api.lib.onboarding.crm.getProspect, {
+      prospectId: id,
+    });
+    expect(p?.milestones?.stripeConnect?.current).toBe("verified");
+    expect(p?.milestones?.stripeConnect?.history?.map((h) => h.status)).toEqual(
+      [...order],
+    );
+  });
+
+  it("recordIntegrationStatus on stripeConnect does NOT touch uberDirect / hubrise / binary milestones", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    const id = await asAdmin.mutation(api.lib.onboarding.crm.createProspect, {
+      name: "Isolation",
+      phone: "0600000302",
+      source: "cold_call",
+    });
+    // Pre-seed the other two integrations + a binary milestone via the existing
+    // granular mutations (slice 3 for binary, this slice for the other two integrations).
+    await asAdmin.mutation(
+      api.lib.onboarding.milestones.recordIntegrationStatus,
+      { prospectId: id, integration: "uberDirect", status: "pending_kyc" },
+    );
+    await asAdmin.mutation(
+      api.lib.onboarding.milestones.recordIntegrationStatus,
+      { prospectId: id, integration: "hubrise", status: "configured" },
+    );
+    await asAdmin.mutation(api.lib.onboarding.milestones.setMilestone, {
+      prospectId: id,
+      milestoneKey: "contratSigne",
+      achieved: true,
+    });
+
+    await asAdmin.mutation(
+      api.lib.onboarding.milestones.recordIntegrationStatus,
+      { prospectId: id, integration: "stripeConnect", status: "verified" },
+    );
+
+    const p = await asAdmin.query(api.lib.onboarding.crm.getProspect, {
+      prospectId: id,
+    });
+    expect(p?.milestones?.stripeConnect?.current).toBe("verified");
+    expect(p?.milestones?.stripeConnect?.history?.map((h) => h.status)).toEqual(
+      ["verified"],
+    );
+    // The other two integrations + the binary milestone survive untouched.
+    expect(p?.milestones?.uberDirect?.current).toBe("pending_kyc");
+    expect(p?.milestones?.uberDirect?.history?.map((h) => h.status)).toEqual([
+      "pending_kyc",
+    ]);
+    expect(p?.milestones?.hubrise?.current).toBe("configured");
+    expect(p?.milestones?.hubrise?.history?.map((h) => h.status)).toEqual([
+      "configured",
+    ]);
+    expect(p?.milestones?.contratSigne).toBeTypeOf("number");
+  });
+
+  it("rejects a cross-integration status at runtime (uberDirect status with integration stripeConnect)", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    const id = await asAdmin.mutation(api.lib.onboarding.crm.createProspect, {
+      name: "Cross Bad",
+      phone: "0600000303",
+      source: "cold_call",
+    });
+    // Compile-time: TS refuses this; we cast to reach the runtime validator.
+    await expect(
+      asAdmin.mutation(api.lib.onboarding.milestones.recordIntegrationStatus, {
+        prospectId: id,
+        integration: "stripeConnect",
+        status: "active" as never,
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("rejects an unknown integration at runtime", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    const id = await asAdmin.mutation(api.lib.onboarding.crm.createProspect, {
+      name: "Unknown Integ",
+      phone: "0600000304",
+      source: "cold_call",
+    });
+    await expect(
+      asAdmin.mutation(api.lib.onboarding.milestones.recordIntegrationStatus, {
+        prospectId: id,
+        integration: "doesNotExist" as never,
+        status: "verified" as never,
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("rejects an unknown status (within a known integration) at runtime", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    const id = await asAdmin.mutation(api.lib.onboarding.crm.createProspect, {
+      name: "Unknown Status",
+      phone: "0600000305",
+      source: "cold_call",
+    });
+    await expect(
+      asAdmin.mutation(api.lib.onboarding.milestones.recordIntegrationStatus, {
+        prospectId: id,
+        integration: "stripeConnect",
+        status: "totally_made_up" as never,
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("always returns basculed=false even when Closing is complete (integrations are NOT Closing milestones)", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    const id = await asAdmin.mutation(api.lib.onboarding.crm.createProspect, {
+      name: "All Closing Done",
+      phone: "0600000306",
+      source: "cold_call",
+      tabletteMode: "appareil_existant",
+    });
+    // Complete the 4 mandatory Closing milestones so any subsequent call would
+    // bascule IF the integration were a Closing milestone (it is not).
+    for (const key of [
+      "contratSigne",
+      "kbisRecu",
+      "pieceIdentiteRecue",
+      "ribRecu",
+    ] as const) {
+      await asAdmin.mutation(api.lib.onboarding.milestones.setMilestone, {
+        prospectId: id,
+        milestoneKey: key,
+        achieved: true,
+      });
+    }
+    // The 4th setMilestone already basculed the prospect — confirm it.
+    const after = await asAdmin.query(api.lib.onboarding.crm.getProspect, {
+      prospectId: id,
+    });
+    expect(after?.phase).toBe("preparation");
+
+    // Now record an integration status — basculed stays false (helper no-op:
+    // not in acquisition + integrations are not Closing milestones anyway).
+    const result = await asAdmin.mutation(
+      api.lib.onboarding.milestones.recordIntegrationStatus,
+      {
+        prospectId: id,
+        integration: "uberDirect",
+        status: "active",
+      },
+    );
+    expect(result.basculed).toBe(false);
+    expect(result.phase).toBe("preparation");
+    expect(result.closing.complete).toBe(true);
+    expect(result.closing.missing).toEqual([]);
+  });
+
+  it("on a Closing-incomplete prospect: closing.missing reflects the real state of binary milestones", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    const id = await asAdmin.mutation(api.lib.onboarding.crm.createProspect, {
+      name: "Partial Closing",
+      phone: "0600000307",
+      source: "cold_call",
+    });
+    // Achieve 2 of 4 mandatory Closing milestones.
+    await asAdmin.mutation(api.lib.onboarding.milestones.setMilestone, {
+      prospectId: id,
+      milestoneKey: "contratSigne",
+      achieved: true,
+    });
+    await asAdmin.mutation(api.lib.onboarding.milestones.setMilestone, {
+      prospectId: id,
+      milestoneKey: "kbisRecu",
+      achieved: true,
+    });
+
+    const result = await asAdmin.mutation(
+      api.lib.onboarding.milestones.recordIntegrationStatus,
+      {
+        prospectId: id,
+        integration: "stripeConnect",
+        status: "pending_kyc",
+      },
+    );
+    expect(result.basculed).toBe(false);
+    expect(result.closing.complete).toBe(false);
+    expect(result.closing.missing).toEqual(
+      expect.arrayContaining(["pieceIdentiteRecue", "ribRecu"]),
+    );
+    expect(result.closing.missing).not.toContain("contratSigne");
+    expect(result.closing.missing).not.toContain("kbisRecu");
+  });
+
+  it("each call emits exactly ONE prospect.integration.recordStatus audit row", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    const id = await asAdmin.mutation(api.lib.onboarding.crm.createProspect, {
+      name: "Audit Count",
+      phone: "0600000308",
+      source: "cold_call",
+    });
+
+    for (const integration of [
+      "stripeConnect",
+      "uberDirect",
+      "hubrise",
+    ] as const) {
+      const status =
+        integration === "stripeConnect"
+          ? "pending_kyc"
+          : integration === "uberDirect"
+            ? "pending_kyc"
+            : "configured";
+      await asAdmin.mutation(
+        api.lib.onboarding.milestones.recordIntegrationStatus,
+        // biome-ignore lint/suspicious/noExplicitAny: discriminated union narrowing in a test loop
+        { prospectId: id, integration, status } as any,
+      );
+    }
+
+    const rows = await t.run(async (ctx) =>
+      ctx.db
+        .query("auditLog")
+        .filter((q) =>
+          q.eq(q.field("action"), "prospect.integration.recordStatus"),
+        )
+        .collect(),
+    );
+    expect(rows.length).toBe(3);
+  });
+});
+
+describe("B-ONBOARDING-MILESTONES slice 4 — RBAC (#213): recordIntegrationStatus is kb_admin-gated", () => {
+  let t: ReturnType<typeof convexTest>;
+  let seed: Seed;
+  beforeEach(async () => {
+    t = convexTest(schema, modules);
+    seed = await seedTwoTenantsAllRoles(t);
+  });
+
+  it("no non-root actor can reach recordIntegrationStatus (no leak)", async () => {
+    const prospectId = await t
+      .withIdentity({ subject: seed.adminId })
+      .mutation(api.lib.onboarding.crm.createProspect, {
+        name: "RBAC Integ Probe",
+        phone: "0600000400",
+        source: "whatsapp",
+      });
+
+    const { leaks, pairs } = await runCrossTenantFuzz(t, {
+      functions: [api.lib.onboarding.milestones.recordIntegrationStatus],
+      isQuery: () => false,
+      tenantId: undefined,
+      actors: [
+        { label: "A-manager", subject: seed.tenantA.managerId },
+        { label: "A-staff", subject: seed.tenantA.staffId },
+        { label: "plain-customer", subject: seed.customerId },
+        { label: "detached", subject: seed.detachedUserId },
+        { label: "anonymous", subject: null },
+      ],
+      extraArgs: {
+        prospectId,
+        integration: "stripeConnect",
+        status: "verified",
+      },
+    });
+    expect(pairs).toBe(5);
+    expect(leaks).toEqual([]);
+  });
+
+  it("a kb_manager caller is rejected with Forbidden", async () => {
+    const prospectId = await t
+      .withIdentity({ subject: seed.adminId })
+      .mutation(api.lib.onboarding.crm.createProspect, {
+        name: "RBAC Integ 2",
+        phone: "0600000401",
+        source: "whatsapp",
+      });
+    await expect(
+      t
+        .withIdentity({ subject: seed.tenantA.managerId })
+        .mutation(api.lib.onboarding.milestones.recordIntegrationStatus, {
+          prospectId,
+          integration: "stripeConnect",
+          status: "verified",
+        }),
+    ).rejects.toThrow(/forbidden/i);
+  });
+});

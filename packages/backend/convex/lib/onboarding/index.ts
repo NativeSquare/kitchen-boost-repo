@@ -60,7 +60,7 @@ export {
   evaluateClosing,
   isLegalPhaseTransition,
 } from "./pipeline";
-export { setMilestone } from "./milestones";
+export { recordIntegrationStatus, setMilestone } from "./milestones";
 export {
   generateSlug,
   provisionTenant,
