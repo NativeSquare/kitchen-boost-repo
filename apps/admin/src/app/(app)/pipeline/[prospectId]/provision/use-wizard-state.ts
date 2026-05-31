@@ -104,8 +104,20 @@ export function useWizardState(
   // `computeWizardState` interprets as « tenant in flight » and parks the
   // cursor on step 2 (the safe non-blocking step).
   //
-  // publishedMenu / managerInvite remain STUBs — each follow-up wizard
-  // slice swaps its own ones (5/10 = menu, 7/10 = manager invite).
+  // publishedMenu is now LIVE (F-WIZARD [7/10] #271): step 5's completion
+  // gate (`step5Complete` in `wizard.decision.ts`) needs to know whether the
+  // tenant has EVER published a snapshot. The canonical source is the
+  // `publishedMenus` row, but the only surfaces exposed at the read seam
+  // today are `hasUnpublishedChanges` (returns `lastPublishedAt: number |
+  // null`) and `previewMenu` (returns the projected payload, not the doc).
+  // The cheapest reuse is to call `hasUnpublishedChanges` and synthesize a
+  // minimal `Doc<"publishedMenus">` shape when `lastPublishedAt !== null`
+  // — `computeWizardState` only checks `publishedMenu !== undefined &&
+  // publishedMenu !== null` (presence), so a minimally-shaped object
+  // satisfies the contract without piggy-backing on the actual snapshot
+  // payload (which we don't need at the wizard level).
+  //
+  // managerInvite remains a STUB — slice 9/10 owns it.
   const prospect = useQuery(
     api.lib.onboarding.crm.getProspect,
     prospectId !== undefined ? { prospectId } : "skip",
@@ -115,7 +127,29 @@ export function useWizardState(
     api.lib.stripe.account.loadTenantForStripe,
     tenantBackLink !== undefined ? { tenantId: tenantBackLink } : "skip",
   );
-  const publishedMenu: Doc<"publishedMenus"> | null | undefined = undefined; // STUB
+  const publicationStatus = useQuery(
+    api.lib.menu.publication.hasUnpublishedChanges,
+    tenantBackLink !== undefined ? { tenantId: tenantBackLink } : "skip",
+  );
+  // Tri-state mapping:
+  //   - `undefined` (query in flight)              → undefined.
+  //   - `lastPublishedAt === null` (never published) → null.
+  //   - `lastPublishedAt: number` (snapshot exists)  → synthesized sentinel.
+  // The sentinel carries `publishedAt` so future consumers can read the
+  // timestamp from the same object; `computeWizardState` itself only checks
+  // presence (`publishedMenu !== undefined && publishedMenu !== null`).
+  const publishedMenu: Doc<"publishedMenus"> | null | undefined =
+    publicationStatus === undefined
+      ? undefined
+      : publicationStatus.lastPublishedAt === null
+        ? null
+        : ({
+            _id: "synthetic-published-menu" as unknown as Doc<"publishedMenus">["_id"],
+            _creationTime: publicationStatus.lastPublishedAt,
+            tenantId: tenantBackLink as Id<"tenants">,
+            publishedAt: publicationStatus.lastPublishedAt,
+            payload: { categories: [] },
+          } as unknown as Doc<"publishedMenus">);
   const managerInvite: ManagerInviteDoc | null | undefined = undefined; // STUB
 
   // Cursor state.

@@ -1,11 +1,11 @@
 "use client";
 
 /**
- * F-WIZARD [1/10] (#265) + [3/10] (#267) + [5/10] (#269) + [6/10] (#270) —
- * Step{N}Form dispatch map.
+ * F-WIZARD [1/10] (#265) + [3/10] (#267) + [5/10] (#269) + [6/10] (#270) +
+ * [7/10] (#271) — Step{N}Form dispatch map.
  *
  * Steps still using a placeholder (« TODO Step N — <title> » + Prev/Next nav
- * buttons): 2, 5, 6, 7, 8. Each follow-up wizard slice swaps its own
+ * buttons): 2, 6, 7, 8. Each follow-up wizard slice swaps its own
  * placeholder for a real form WITHOUT touching the wizard shell. The shell
  * hands `onPrev` / `onNext` to whatever form lives at the slot.
  *
@@ -64,12 +64,15 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { getConvexErrorMessage } from "@/utils/getConvexErrorMessage";
 
+import { bucketItemsByCategory } from "@/app/(app)/t/[tenantId]/menu/item-list";
+
 import {
   Step1ProvisioningForm,
   type Step1ProvisioningPayload,
 } from "./step1-provisioning-form";
 import { Step3StripeKycForm } from "./step3-stripe-kyc-form";
 import { Step4BrandingForm } from "./step4-branding-form";
+import { Step5MenuForm } from "./step5-menu-form";
 import { WIZARD_STEPS, type WizardStepNumber } from "./wizard-stepper";
 
 export type StepFormProps = {
@@ -114,7 +117,7 @@ function NavButtons({
   );
 }
 
-function makeStepForm(step: Exclude<WizardStepNumber, 1 | 3 | 4>) {
+function makeStepForm(step: Exclude<WizardStepNumber, 1 | 3 | 4 | 5>) {
   function StepForm({ onPrev, onNext }: StepFormProps) {
     return (
       <div className="flex flex-col gap-4 px-4 py-2 lg:px-6">
@@ -584,8 +587,305 @@ function Step4Form({ onPrev, onNext }: StepFormProps): React.JSX.Element {
   );
 }
 
+/**
+ * F-WIZARD [7/10] (#271) — Step5Form: thin Convex-wiring wrapper around the
+ * pure `Step5MenuForm`. Owns:
+ *   - the prospect read (`useQuery(api.lib.onboarding.crm.getProspect)`) for
+ *     the `tenantId` back-link (every menu mutation needs an explicit
+ *     `tenantId` arg here — the wizard route lives OUTSIDE the
+ *     `/t/[tenantId]/menu` shell that backs `<TenantProvider/>`, so
+ *     `useTenantQuery` / `useTenantMutation` are NOT usable);
+ *   - the three live data queries (categories, items, modifier groups) —
+ *     plain `useQuery(... , { tenantId })`. The KB Admin root override on
+ *     `tenantQuery` (cf. `withTenant.ts`) lets the wizard call the
+ *     `kb_manager`-allow-listed queries directly while running as KB Admin;
+ *   - the publication status query — `hasUnpublishedChanges.lastPublishedAt`
+ *     is the canonical gate signal (ADR 0015 « édition brouillon →
+ *     publication globale atomique »; B-MENU-PUBLICATION slice 5, #176);
+ *   - the seven CRUD mutations (categories.create / .rename / .remove /
+ *     .reorder, items.reorder, availability.setItemAvailability,
+ *     modifiers.createGroup / .updateGroup / .removeGroup) plus the
+ *     `publishMenu` mutation — all called with explicit `tenantId`;
+ *   - the publish + CRUD error toasts + the wizard-side persistent
+ *     `publishError` state surfaced to the form (the form keeps the
+ *     message visible across the wizard chrome even after the toast
+ *     dismisses).
+ *
+ * NOT WIRED HERE (deliberately): `ItemModal` (create/edit items) and
+ * `ModifierGroupModal` (create/edit modifier groups). The standalone
+ * `/t/[tenantId]/menu` page mounts those modals because they require a
+ * `<TenantProvider/>` ancestor (the modal itself calls `useQuery`
+ * internally for image-storage URL resolution + the photo upload uses
+ * `useTenantMutation`). Reusing them under the wizard route would require
+ * extending each modal's prop set to thread the tenantId — explicitly out
+ * of scope for the V1 slice (issue spec accepts « CRUD catégories + items
+ * minimum, modifiers idéalement », and the « items » CRUD here means
+ * « category-level + reordering + rupture toggle » — the per-item details
+ * remain editable from the standalone Menu page that the operator opens
+ * post-provisioning when needed). Adding the item modal here requires its
+ * own slice once the modal accepts a `tenantId` prop or once `TenantProvider`
+ * can be mounted around a subtree without changing the route.
+ *
+ * Mirror of `Step4Form`'s discipline: the lean `node` vitest env doesn't
+ * execute these hooks (the serializer's try/catch swallows the « invalid
+ * hook call » when invoking the wrapper outside a React render); the
+ * wrapper's behaviour is pinned indirectly through the pure form tests
+ * (`step5-menu-form.test.tsx`) and directly through CI runtime + E2E.
+ */
+function Step5Form({ onPrev, onNext }: StepFormProps): React.JSX.Element {
+  const params = useParams<{ prospectId: string }>();
+  const prospectId = params?.prospectId as unknown as
+    | Id<"prospects">
+    | undefined;
+
+  const prospect = useQuery(
+    api.lib.onboarding.crm.getProspect,
+    prospectId !== undefined ? { prospectId } : "skip",
+  );
+
+  const tenantId = prospect?.tenantId;
+
+  // All menu queries are KB Admin root-overridden tenantQueries — we call
+  // them directly with the explicit `tenantId`. `"skip"` until the prospect
+  // resolves AND has a `tenantId` back-link (step 1 must have run first).
+  const categories = useQuery(
+    api.lib.menu.categories.list,
+    tenantId !== undefined ? { tenantId } : "skip",
+  );
+  const items = useQuery(
+    api.lib.menu.items.list,
+    tenantId !== undefined ? { tenantId } : "skip",
+  );
+  const modifierGroups = useQuery(
+    api.lib.menu.modifiers.listGroups,
+    tenantId !== undefined ? { tenantId } : "skip",
+  );
+  const publicationStatus = useQuery(
+    api.lib.menu.publication.hasUnpublishedChanges,
+    tenantId !== undefined ? { tenantId } : "skip",
+  );
+
+  // CRUD mutations — all explicit `{ tenantId, ... }`. Same KB Admin root
+  // override applies.
+  const createCategory = useMutation(api.lib.menu.categories.create);
+  const renameCategory = useMutation(api.lib.menu.categories.rename);
+  const removeCategory = useMutation(api.lib.menu.categories.remove);
+  const reorderCategories = useMutation(api.lib.menu.categories.reorder);
+  const reorderItems = useMutation(api.lib.menu.items.reorder);
+  const setItemAvailability = useMutation(
+    api.lib.menu.availability.setItemAvailability,
+  );
+  // NOTE: `createModifierGroup` + `updateGroup` mutations are intentionally
+  // NOT bound here — the wizard's modifier-group create / edit affordances
+  // surface a hint toast directing the operator to the standalone Menu page
+  // (the dedicated UX mounts the full `ModifierGroupModal`, which the wizard
+  // would need a `<TenantProvider/>` ancestor to host — out of scope for
+  // this slice, see the head comment). `removeGroup` IS bound: a future
+  // slice mounting the modal here can use the delete callback as-is from
+  // inside the modal's confirmation panel.
+  const removeModifierGroup = useMutation(api.lib.menu.modifiers.removeGroup);
+  const publishMenu = useMutation(api.lib.menu.publication.publishMenu);
+
+  const [publishLoading, setPublishLoading] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
+
+  // Defensive loading / not-found — outer `decideWizardShell` + the cursor
+  // heuristic normally gate these (same defence as Step3Form / Step4Form).
+  if (prospect === undefined) {
+    return (
+      <div
+        className="flex items-center justify-center px-4 py-12 lg:px-6"
+        data-slot="wizard-step5-loading"
+      >
+        <Spinner className="h-6 w-6" />
+      </div>
+    );
+  }
+  if (prospect === null) {
+    return (
+      <div
+        className="px-4 py-6 text-sm text-destructive lg:px-6"
+        data-slot="wizard-step5-not-found"
+      >
+        Prospect introuvable. Impossible de configurer le menu.
+      </div>
+    );
+  }
+  if (tenantId === undefined) {
+    // Hard gate: menu lives on the tenant — step 1 must run first.
+    return (
+      <div
+        className="px-4 py-6 text-sm text-destructive lg:px-6"
+        data-slot="wizard-step5-no-tenant"
+      >
+        Le tenant doit être créé (Step 1) avant de configurer le menu.
+      </div>
+    );
+  }
+
+  // Bucket items by their `categoryId` for the per-category sections (same
+  // pattern as `/t/[tenantId]/menu/page.tsx`).
+  const itemsByCategory = bucketItemsByCategory(items);
+
+  const handleCreateCategory = async () => {
+    try {
+      await createCategory({ tenantId, name: "Nouvelle catégorie" });
+    } catch (error) {
+      toast.error("Impossible de créer la catégorie", {
+        description: getConvexErrorMessage(error),
+      });
+    }
+  };
+
+  const handleRenameCategory = async (
+    categoryId: Id<"menuCategories">,
+    name: string,
+  ) => {
+    try {
+      await renameCategory({ tenantId, categoryId, name });
+    } catch (error) {
+      toast.error("Impossible de renommer la catégorie", {
+        description: getConvexErrorMessage(error),
+      });
+    }
+  };
+
+  const handleDeleteCategory = async (categoryId: Id<"menuCategories">) => {
+    try {
+      await removeCategory({ tenantId, categoryId });
+    } catch (error) {
+      toast.error("Impossible de supprimer la catégorie", {
+        description: getConvexErrorMessage(error),
+      });
+    }
+  };
+
+  const handleReorderCategories = async (
+    orderedIds: Id<"menuCategories">[],
+  ) => {
+    try {
+      await reorderCategories({ tenantId, orderedIds });
+    } catch (error) {
+      toast.error("Impossible de réordonner les catégories", {
+        description: getConvexErrorMessage(error),
+      });
+    }
+  };
+
+  const handleReorderItems = async (
+    categoryId: Id<"menuCategories">,
+    orderedIds: Id<"menuItems">[],
+  ) => {
+    try {
+      await reorderItems({ tenantId, categoryId, orderedIds });
+    } catch (error) {
+      toast.error("Impossible de réordonner les items", {
+        description: getConvexErrorMessage(error),
+      });
+    }
+  };
+
+  const handleToggleItemAvailability = async (
+    itemId: Id<"menuItems">,
+    nextAvailable: boolean,
+  ) => {
+    try {
+      await setItemAvailability({ tenantId, itemId, available: nextAvailable });
+    } catch (error) {
+      toast.error("Impossible de mettre à jour la disponibilité", {
+        description: getConvexErrorMessage(error),
+      });
+    }
+  };
+
+  // The wizard's step 5 surface does NOT mount the item modal (see the
+  // wrapper's head comment for the rationale). The « + Item » CTA and the
+  // item-card click are wired to no-ops here — the operator creates / edits
+  // items from the standalone Menu page post-provisioning. We keep the
+  // callbacks present so `MenuView` renders its full surface (categories
+  // + per-category items sections); they simply do nothing in this slice.
+  const handleCreateItem = (_categoryId: Id<"menuCategories">) => {
+    toast.info(
+      "Ouvre la page Menu du tenant pour créer / éditer les items en détail.",
+    );
+  };
+  const handleItemClick = (_itemId: Id<"menuItems">) => {
+    toast.info("Ouvre la page Menu du tenant pour éditer cet item en détail.");
+  };
+
+  // Modifier-group CRUD: the « + Personnalisation » / « Éditer » row
+  // affordances on `ModifierGroupsSection` open the modifier-group modal
+  // on the standalone /menu page. Same scope discipline as the item
+  // modal — we surface a hint toast here directing the operator to the
+  // dedicated page. The « Supprimer » path (called from the modal) is
+  // wired live: a future slice mounting the modal here can use it as-is.
+  const handleCreateModifierGroup = () => {
+    toast.info(
+      "Ouvre la page Menu du tenant pour créer une personnalisation détaillée.",
+    );
+  };
+  const handleEditModifierGroup = (_groupId: Id<"modifierGroups">) => {
+    toast.info(
+      "Ouvre la page Menu du tenant pour éditer cette personnalisation.",
+    );
+  };
+  const handleDeleteModifierGroup = async (groupId: Id<"modifierGroups">) => {
+    try {
+      await removeModifierGroup({ tenantId, modifierGroupId: groupId });
+    } catch (error) {
+      toast.error("Impossible de supprimer la personnalisation", {
+        description: getConvexErrorMessage(error),
+      });
+    }
+  };
+
+  // F-MENU-10 mirror — track in-flight + surface backend errors BOTH as a
+  // page-level toast AND as a wizard-side persistent message. The persistent
+  // message lives in `publishError` so the operator sees it after the toast
+  // auto-dismisses (typically 4-5s).
+  const handlePublish = async () => {
+    if (publishLoading) return;
+    setPublishLoading(true);
+    setPublishError(null);
+    try {
+      await publishMenu({ tenantId });
+      toast.success("Menu publié");
+    } catch (error) {
+      const message = getConvexErrorMessage(error);
+      setPublishError(message);
+      toast.error("Impossible de publier le menu", { description: message });
+    } finally {
+      setPublishLoading(false);
+    }
+  };
+
+  return (
+    <Step5MenuForm
+      categories={categories}
+      itemsByCategory={itemsByCategory}
+      modifierGroups={modifierGroups}
+      lastPublishedAt={publicationStatus?.lastPublishedAt}
+      publishLoading={publishLoading}
+      publishError={publishError}
+      onPublish={handlePublish}
+      onCreateCategory={handleCreateCategory}
+      onRenameCategory={handleRenameCategory}
+      onDeleteCategory={handleDeleteCategory}
+      onReorderCategories={handleReorderCategories}
+      onToggleItemAvailability={handleToggleItemAvailability}
+      onCreateItem={handleCreateItem}
+      onItemClick={handleItemClick}
+      onReorderItems={handleReorderItems}
+      onCreateModifierGroup={handleCreateModifierGroup}
+      onEditModifierGroup={handleEditModifierGroup}
+      onDeleteModifierGroup={handleDeleteModifierGroup}
+      onPrev={onPrev}
+      onNext={onNext}
+    />
+  );
+}
+
 export const Step2Form = makeStepForm(2);
-export const Step5Form = makeStepForm(5);
 export const Step6Form = makeStepForm(6);
 export const Step7Form = makeStepForm(7);
 export const Step8Form = makeStepForm(8);
