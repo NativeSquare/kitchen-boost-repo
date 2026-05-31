@@ -80,6 +80,19 @@ describe("page.tsx — F-CAMPAGNES [1/7] (#179) wiring contract", () => {
     expect(PAGE_SOURCE).toMatch(/CampagnesView/);
   });
 
+  it("AC (#188) — the page reads the current tenantId and forwards it to the view (`TemplatePicker` needs it to build per-card hrefs)", () => {
+    // Slice 2 (#188) introduces per-card navigation to
+    // `/t/[tenantId]/campagnes/[templateId]`. The picker MUST receive the
+    // current tenantId; rather than calling `useCurrentTenantId` deep inside
+    // the view (which would break the pure-function-callable contract its
+    // node-env test relies on), the page reads the hook and threads it
+    // down. Pin: `useCurrentTenantId` is imported AND forwarded as a prop
+    // named `tenantId`.
+    expect(PAGE_SOURCE).toMatch(/useCurrentTenantId/);
+    const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
+    expect(collapsed).toMatch(/tenantId=\{[^}]*tenantId[^}]*\}/);
+  });
+
   it('AC1 — declares `"use client"` (page uses Convex hooks)', () => {
     // `useTenantQuery` is a client hook — the page directive must be
     // present or Next will try to render it server-side and crash.
