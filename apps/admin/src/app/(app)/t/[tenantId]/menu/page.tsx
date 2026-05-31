@@ -82,6 +82,20 @@ export default function MenuPage() {
   const createItem = useTenantMutation(api.lib.menu.items.create);
   const updateItem = useTenantMutation(api.lib.menu.items.update);
   const removeItem = useTenantMutation(api.lib.menu.items.remove);
+  // F-MENU-06 (#226) — photo upload / replace / remove. Three mutations:
+  //   - generateUploadUrl: mints a short-lived URL the browser POSTs the
+  //     file to (the blob never transits the backend).
+  //   - attachPhoto: records the `_storage` id on the item; the backend
+  //     `setTenantItemPhoto` frees the previous blob on replacement (no
+  //     orphan — issue body « le backend libère l ancien blob »).
+  //   - removePhoto: deletes the blob + clears the field. Idempotent.
+  // All three are tenant-scoped (ADR 0014 §4 / #183, ADR 0010); the
+  // wrapper gate keeps cross-tenant ids out (NOT_FOUND).
+  const generatePhotoUploadUrl = useTenantMutation(
+    api.lib.menu.photos.generateUploadUrl,
+  );
+  const attachPhoto = useTenantMutation(api.lib.menu.photos.attachPhoto);
+  const removePhoto = useTenantMutation(api.lib.menu.photos.removePhoto);
 
   const [modalState, setModalState] = useState<ItemModalState>(null);
 
@@ -193,6 +207,47 @@ export default function MenuPage() {
     }
   };
 
+  // F-MENU-06 (#226) — Photo handlers.
+  // `handleUploadPhoto` orchestrates the two-step Convex upload:
+  //   1. mint a short-lived upload URL (`generateUploadUrl`),
+  //   2. POST the file bytes directly to that URL (the blob never transits
+  //      our Convex functions), parse the returned `{ storageId }`,
+  //   3. record the storage id on the item (`attachPhoto`). The backend
+  //      frees the previous blob in the SAME mutation on replacement —
+  //      no orphan (issue body « le backend libère l ancien blob »).
+  // Any failure in any step surfaces as a `toast.error` with the wire
+  // message — same discipline as the other CRUD handlers.
+  const handleUploadPhoto = async (itemId: Id<"menuItems">, file: File) => {
+    try {
+      const uploadUrl = await generatePhotoUploadUrl();
+      const response = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!response.ok) {
+        throw new Error(`Upload failed (HTTP ${response.status})`);
+      }
+      const { storageId } = (await response.json()) as {
+        storageId: Id<"_storage">;
+      };
+      await attachPhoto({ itemId, storageId });
+    } catch (error) {
+      toast.error("Impossible d'uploader la photo", {
+        description: getConvexErrorMessage(error),
+      });
+    }
+  };
+  const handleRemovePhoto = async (itemId: Id<"menuItems">) => {
+    try {
+      await removePhoto({ itemId });
+    } catch (error) {
+      toast.error("Impossible de supprimer la photo", {
+        description: getConvexErrorMessage(error),
+      });
+    }
+  };
+
   const itemsByCategory = bucketItemsByCategory(items);
 
   // Resolve the modal's item doc (edit mode only) from the live items query
@@ -242,6 +297,8 @@ export default function MenuPage() {
           onCreate={handleCreateItemSubmit}
           onUpdate={handleUpdateItem}
           onDelete={handleRemoveItem}
+          onUploadPhoto={handleUploadPhoto}
+          onRemovePhoto={handleRemovePhoto}
         />
       ) : null}
     </>

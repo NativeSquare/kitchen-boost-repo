@@ -100,6 +100,16 @@ vi.mock("@/components/ui/dialog", () => {
   };
 });
 
+// F-MENU-06 (#226) — the photo section calls `useQuery(api.storage.getImageUrl)`
+// to resolve `photoStorageId` → URL (same pattern as item-list.tsx). Under
+// `environment: "node"` (no Convex provider, no React renderer), the real
+// hook throws. Stub it to return `undefined` (the Convex loading sentinel)
+// so the thumbnail falls through to the placeholder branch — pinned by the
+// « slot always present » assertion.
+vi.mock("convex/react", () => ({
+  useQuery: () => undefined,
+}));
+
 vi.mock("@/components/ui/alert-dialog", () => {
   const passthrough = ({
     children,
