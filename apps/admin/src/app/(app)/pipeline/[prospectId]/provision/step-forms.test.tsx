@@ -1,22 +1,24 @@
 /**
- * F-WIZARD [1/10] (#265) + [3/10] (#267) + [5/10] (#269) — Step{N}Form
- * placeholders test matrix.
+ * F-WIZARD [1/10] (#265) + [3/10] (#267) + [5/10] (#269) + [6/10] (#270) —
+ * Step{N}Form placeholders test matrix.
  *
  * Each step renders a placeholder « TODO Step N » + Prev/Next nav buttons,
- * EXCEPT Step 1 (real form, #267) and Step 3 (real form, #269) which are
- * pinned by their own test files (`step1-provisioning-form.test.tsx` /
- * `step3-stripe-kyc-form.test.tsx`). The placeholder slots for the remaining
- * steps (2, 4..8) stay stable so each follow-up wizard slice can replace its
- * own Step{N}Form without touching the wizard shell.
+ * EXCEPT Step 1 (real form, #267), Step 3 (real form, #269) and Step 4
+ * (real form, #270) which are pinned by their own test files
+ * (`step1-provisioning-form.test.tsx` / `step3-stripe-kyc-form.test.tsx` /
+ * `step4-branding-form.test.tsx`). The placeholder slots for the remaining
+ * steps (2, 5..8) stay stable so each follow-up wizard slice can replace
+ * its own Step{N}Form without touching the wizard shell.
  *
- * Why Step 1 / Step 3 are excluded from the placeholder iterations:
- * -----------------------------------------------------------------
+ * Why Step 1 / Step 3 / Step 4 are excluded from the placeholder iterations:
+ * --------------------------------------------------------------------------
  * Step 1 (« Compte resto ») is the SLICE CHARNIÈRE — without the provisioned
  * tenant, no subsequent step has an object to operate on. Step 3 (« Stripe
  * KYC ») is non-blocking but ships its own real form (generate / regenerate
- * link, copy-to-clipboard, continue) — neither's surface fits the « TODO
- * Step N » placeholder shape. Each form's contract is pinned in its own
- * test file.
+ * link, copy-to-clipboard, continue). Step 4 (« Branding ») composes the
+ * three reusable F-PARAMETRES editors (BrandingEditor + CoordonneesEditor +
+ * ModesEditor) — its surface doesn't fit the « TODO Step N » placeholder
+ * shape either. Each form's contract is pinned in its own test file.
  */
 import { describe, expect, it, vi } from "vitest";
 import type { ReactElement, ReactNode } from "react";
@@ -176,9 +178,9 @@ describe("STEP_FORMS — F-WIZARD [1/10] (#265)", () => {
   });
 
   it("each placeholder form renders a placeholder mentioning its own step number (« Step N » or « Étape N »)", () => {
-    // Step 1 (#267) and Step 3 (#269) are real forms — pinned by their own
-    // test files, not by this placeholder loop.
-    for (const n of [2, 4, 5, 6, 7, 8] as const) {
+    // Step 1 (#267), Step 3 (#269) and Step 4 (#270) are real forms —
+    // pinned by their own test files, not by this placeholder loop.
+    for (const n of [2, 5, 6, 7, 8] as const) {
       const Form = STEP_FORMS[n];
       const tree = serialize(Form({ onPrev: () => {}, onNext: () => {} }));
       const text = allText(tree);
@@ -189,7 +191,7 @@ describe("STEP_FORMS — F-WIZARD [1/10] (#265)", () => {
   });
 
   it("each form renders a « Précédent » button that triggers onPrev (Step 1's Précédent is disabled but still wired — issue spec « boutons Précédent / Suivant qui naviguent »)", () => {
-    for (const n of [2, 4, 5, 6, 7, 8] as const) {
+    for (const n of [2, 5, 6, 7, 8] as const) {
       const Form = STEP_FORMS[n];
       const onPrev = vi.fn();
       const tree = serialize(Form({ onPrev, onNext: () => {} }));
@@ -201,10 +203,11 @@ describe("STEP_FORMS — F-WIZARD [1/10] (#265)", () => {
     }
   });
 
-  it("each placeholder form (steps 2, 4..7) renders a « Suivant » button that triggers onNext", () => {
-    // Step 1 (« Créer le tenant » submit) and Step 3 (« Continuer ») own
-    // their own next-button UX — pinned in their respective test files.
-    for (const n of [2, 4, 5, 6, 7] as const) {
+  it("each placeholder form (steps 2, 5..7) renders a « Suivant » button that triggers onNext", () => {
+    // Step 1 (« Créer le tenant » submit), Step 3 (« Continuer ») and
+    // Step 4 (« Suivant » via composite nav strip) own their own next-
+    // button UX — pinned in their respective test files.
+    for (const n of [2, 5, 6, 7] as const) {
       const Form = STEP_FORMS[n];
       const onNext = vi.fn();
       const tree = serialize(Form({ onPrev: () => {}, onNext }));
