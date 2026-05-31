@@ -335,13 +335,17 @@ describe("PricingView — F-PRICING-1 (#241)", () => {
     expect(offenders, "no element should carry draggable=true").toHaveLength(0);
   });
 
-  it("GUARDRAIL — NO `order` / `priority` field name OR number visible in the populated branch", () => {
+  it("GUARDRAIL — NO `order` / `priority` field name OR number visible in the populated branch (excluding the auto-priority banner, which legitimately contains « Pas d'ordre à gérer »)", () => {
     // Issue body: « Pas d'affichage de `priority` / `order` : aucun numéro
-    // d'ordre, aucun champ visible. »
+    // d'ordre, aucun champ visible. » The banner ITSELF says « Pas d'ordre à
+    // gérer » (load-bearing copy from the spec — explaining the auto-priority
+    // model), so we strip the banner text from the scan before asserting the
+    // ban. What we want to catch is a per-row leak (« Ordre : 3 », « priority:
+    // 2 »…) — those would survive the strip.
     const tree = serialize(
       PricingView({ rules: [ACTIVE_RULE, INACTIVE_RULE, FIXED_AMOUNT_RULE] }),
     );
-    const text = allText(tree);
+    const text = allText(tree).replace(AUTO_PRIORITY_BANNER_TEXT, "");
     // Field-name leaks (the schema doesn't HAVE these fields, but a slice 2
     // mistake could re-introduce them — pin now to fail loudly).
     expect(text).not.toMatch(/\border\b/i);
