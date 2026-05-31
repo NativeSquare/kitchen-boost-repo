@@ -121,9 +121,42 @@ describe("page.tsx — F-COMMANDES-LIVE-TABLE (#227) wiring contract", () => {
     expect(matches.length).toBe(1);
   });
 
-  it("slice discipline — does NOT reference `getOrder` (detail modal lands in a later slice of EPIC #141)", () => {
+  // -------------------------------------------------------------------------
+  // F-COMMANDES-DETAIL-MODAL (#239) — the page now layers `OrderDetailModal`
+  // on top of the table. It owns the selected order id (`useState`), binds
+  // `api.lib.orders.orders.getOrder` via `useTenantQuery` (skipped while no
+  // row is selected, so no extra subscription is opened on first mount —
+  // « Pas de N+1 »), and renders `<OrderDetailModal />` when a row is
+  // selected.
+  // -------------------------------------------------------------------------
+  it("AC #239 — binds `api.lib.orders.orders.getOrder` via `useTenantQuery` (modal payload)", () => {
     const code = stripNonCode(PAGE_SOURCE);
-    expect(code).not.toMatch(/\bgetOrder\b/);
+    expect(code).toMatch(/\bgetOrder\b/);
+    const collapsed = code.replace(/\s+/g, " ");
+    expect(collapsed).toMatch(
+      /useTenantQuery\([^)]*api\.lib\.orders\.orders\.getOrder[^)]*\)/,
+    );
+  });
+
+  it("AC #239 — skips the `getOrder` subscription while no row is selected (no extra fetch on first mount)", () => {
+    // The page must pass `"skip"` to `useTenantQuery(getOrder, ...)` when
+    // the selected order id is null — otherwise Convex would open a
+    // subscription on EVERY page mount, even before the gérant clicks a
+    // row (« Pas de N+1: une seule subscription Convex » remains the
+    // invariant of the live table; getOrder only opens once a row is
+    // selected).
+    const code = stripNonCode(PAGE_SOURCE);
+    expect(code).toMatch(/"skip"|'skip'/);
+  });
+
+  it("AC #239 — mounts `OrderDetailModal` (the detail modal component)", () => {
+    const code = stripNonCode(PAGE_SOURCE);
+    expect(code).toMatch(/\bOrderDetailModal\b/);
+  });
+
+  it("AC #239 — forwards a row-click handler to the view via `onOrderClick`", () => {
+    const code = stripNonCode(PAGE_SOURCE);
+    expect(code).toMatch(/\bonOrderClick\b/);
   });
 
   it("slice discipline — does NOT call `useTenantMutation` / `useTenantAction` / `useMutation` / `useAction` (refund lands in a later slice; filters are pure client state)", () => {

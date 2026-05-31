@@ -372,4 +372,82 @@ describe("OrdersTable — F-COMMANDES-LIVE-TABLE (#227)", () => {
       expect(slots).toContain("table-body");
     });
   });
+
+  // -------------------------------------------------------------------------
+  // F-COMMANDES-DETAIL-MODAL (#239) — row click opens the detail modal.
+  // The table is fully controlled: the page passes `onRowClick(orderId)`,
+  // the table wires it onto each row. No internal state, no derived id.
+  // -------------------------------------------------------------------------
+  describe("row click (#239)", () => {
+    it("invokes `onRowClick` with the row's order id when the row is clicked", () => {
+      const calls: string[] = [];
+      const tree = serialize(
+        OrdersTable({
+          orders: THREE_ORDERS,
+          onRowClick: (id) => calls.push(String(id)),
+        }),
+      );
+      // Find each row in the serialized tree and invoke its onClick.
+      const rows = flatten(tree).filter((n) => {
+        if (n === null || "text" in n) return false;
+        return n.props["data-slot"] === "orders-table-row";
+      }) as Array<{
+        type: string;
+        props: Record<string, unknown>;
+        children: SerializedNode[];
+      }>;
+      expect(rows.length).toBe(3);
+      // Click the first row → expect the first order id.
+      const firstClick = rows[0]!.props.onClick as (() => void) | undefined;
+      expect(typeof firstClick).toBe("function");
+      firstClick?.();
+      expect(calls).toEqual(["orders_a"]);
+      // Click the second row → expect the second order id appended.
+      const secondClick = rows[1]!.props.onClick as (() => void) | undefined;
+      secondClick?.();
+      expect(calls).toEqual(["orders_a", "orders_b"]);
+    });
+
+    it("marks each row as clickable when `onRowClick` is passed (cursor + role)", () => {
+      const tree = serialize(
+        OrdersTable({
+          orders: THREE_ORDERS,
+          onRowClick: () => {},
+        }),
+      );
+      const rows = flatten(tree).filter((n) => {
+        if (n === null || "text" in n) return false;
+        return n.props["data-slot"] === "orders-table-row";
+      }) as Array<{
+        type: string;
+        props: Record<string, unknown>;
+        children: SerializedNode[];
+      }>;
+      expect(rows.length).toBe(3);
+      for (const row of rows) {
+        // Affordance hint: the row carries an onClick, so it MUST tell the
+        // gérant it's clickable (cursor-pointer). We assert via the
+        // className substring (Tailwind utility class) so the test stays
+        // robust to other classnames composing alongside.
+        const className = (row.props.className as string | undefined) ?? "";
+        expect(className).toMatch(/cursor-pointer/);
+      }
+    });
+
+    it("does NOT crash and rows have no onClick when `onRowClick` is omitted (optional prop)", () => {
+      const tree = serialize(OrdersTable({ orders: THREE_ORDERS }));
+      const rows = flatten(tree).filter((n) => {
+        if (n === null || "text" in n) return false;
+        return n.props["data-slot"] === "orders-table-row";
+      }) as Array<{
+        type: string;
+        props: Record<string, unknown>;
+        children: SerializedNode[];
+      }>;
+      expect(rows.length).toBe(3);
+      for (const row of rows) {
+        expect(row.props.onClick).toBeUndefined();
+      }
+    });
+  });
 });

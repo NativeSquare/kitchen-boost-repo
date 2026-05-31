@@ -172,6 +172,10 @@ function defaults(orders: Doc<"orders">[] | undefined) {
     filter: { dateRange: "tout" as const, statuses: [] },
     onDateRangeChange: NOOP,
     onStatusesChange: NOOP,
+    // F-COMMANDES-DETAIL-MODAL (#239) — the view now forwards a row-click
+    // handler to `OrdersTable`. Test branches that don't exercise the
+    // click reuse a no-op here.
+    onOrderClick: NOOP,
   };
 }
 
@@ -336,5 +340,44 @@ describe("CommandesView — F-COMMANDES-FILTERS (#238)", () => {
     const slots = dataSlots(tree);
     expect(slots).toContain("orders-filters-date-tout");
     expect(slots).toContain("orders-table-skeleton");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// F-COMMANDES-DETAIL-MODAL (#239) — the view forwards a row-click handler to
+// `OrdersTable`. The page owns the modal state; the view's only job here is
+// to relay the click. We pin this is a pure forwarding (the view does NOT
+// derive the orderId itself, doesn't sniff the row, doesn't open anything).
+// ---------------------------------------------------------------------------
+describe("CommandesView — F-COMMANDES-DETAIL-MODAL (#239)", () => {
+  it("forwards `onOrderClick` to the table — clicking a row invokes the prop with the row's order id", () => {
+    const populated = [
+      order({
+        _id: "orders_x",
+        createdAt: Date.UTC(2026, 4, 29, 14, 30),
+        pricingSnapshot: { subtotal: 1800, deliveryFee: 200, total: 2000 },
+      }),
+    ];
+    const calls: string[] = [];
+    const tree = serialize(
+      CommandesView({
+        orders: populated,
+        filter: { dateRange: "tout", statuses: [] },
+        onDateRangeChange: NOOP,
+        onStatusesChange: NOOP,
+        onOrderClick: (id) => calls.push(String(id)),
+      }),
+    );
+    const row = flatten(tree).find(
+      (x) =>
+        x !== null &&
+        !("text" in x) &&
+        x.props["data-slot"] === "orders-table-row",
+    );
+    if (!row || "text" in row) throw new Error("row missing in tree");
+    const click = row.props.onClick as (() => void) | undefined;
+    expect(typeof click).toBe("function");
+    click?.();
+    expect(calls).toEqual(["orders_x"]);
   });
 });
