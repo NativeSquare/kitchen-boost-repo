@@ -115,6 +115,49 @@ describe("page.tsx — F-MENU-01 (#187) wiring contract", () => {
     expect(PAGE_SOURCE).toMatch(/onReorderCategories/);
   });
 
+  // ---------------------------------------------------------------------------
+  // F-MENU-04 (#211) — items list + inline rupture toggle wiring contract
+  // ---------------------------------------------------------------------------
+
+  it("F-MENU-04 — wires `api.lib.menu.items.list` via `useTenantQuery` (not raw useQuery)", () => {
+    // The page reads the tenant's items through the canonical tenantQuery
+    // (ADR 0014 §4 / #183) — never a raw `useQuery` (which would bypass
+    // tenantId auto-injection, ADR 0010).
+    const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
+    expect(collapsed).toMatch(
+      /useTenantQuery\([^)]*api\.lib\.menu\.items\.list[^)]*\)/,
+    );
+  });
+
+  it("F-MENU-04 — wires `availability.setItemAvailability` via `useTenantMutation` (live toggle, ADR 0015)", () => {
+    // The rupture toggle calls `setItemAvailability` DIRECTLY (not through
+    // publishMenu — ADR 0015 § Conséquences, story body « SANS passer par
+    // publication »). The mutation is bound through `useTenantMutation` so
+    // the tenantId injection is automatic.
+    const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
+    expect(collapsed).toMatch(
+      /useTenantMutation\([^)]*api\.lib\.menu\.availability\.setItemAvailability[^)]*\)/,
+    );
+  });
+
+  it("F-MENU-04 — passes `itemsByCategory` and `onToggleItemAvailability` down to MenuView", () => {
+    // Wiring contract: the page exposes the per-category items map +
+    // toggle handler via the dedicated props the view forwards down to
+    // ItemList.
+    expect(PAGE_SOURCE).toMatch(/itemsByCategory/);
+    expect(PAGE_SOURCE).toMatch(/onToggleItemAvailability/);
+  });
+
+  it("F-MENU-04 — toggle handler wraps the mutation in try/catch + `toast.error` + `getConvexErrorMessage` (same discipline as CRUD)", () => {
+    // The toggle is a live mutation; backend errors (e.g. NOT_FOUND for a
+    // foreign id during a race) must surface as a user-visible toast, not
+    // silently swallowed. Same shape as the F-MENU-02 CRUD handlers.
+    // We pin the source mentions « setItemAvailability » + an associated
+    // toast wiring nearby.
+    const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
+    expect(collapsed).toMatch(/setItemAvailability[\s\S]{0,400}toast\.error/);
+  });
+
   it("F-MENU-02 — surfaces errors via `toast.error` + `getConvexErrorMessage` (no raw alert / console.error)", () => {
     // The CRUD handlers wrap each mutation call in try/catch and toast the
     // ConvexError's message (slice acceptance criterion « toast sur erreur »
