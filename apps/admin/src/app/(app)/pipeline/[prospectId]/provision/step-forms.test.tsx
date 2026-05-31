@@ -1,19 +1,22 @@
 /**
- * F-WIZARD [1/10] (#265) + [3/10] (#267) — Step{N}Form placeholders test matrix.
+ * F-WIZARD [1/10] (#265) + [3/10] (#267) + [5/10] (#269) — Step{N}Form
+ * placeholders test matrix.
  *
  * Each step renders a placeholder « TODO Step N » + Prev/Next nav buttons,
- * EXCEPT Step 1 which #267 replaces with the real `Step1ProvisioningForm`
- * (pinned by `step1-provisioning-form.test.tsx`). The placeholder slots for
- * steps 2..8 stay stable so each follow-up wizard slice can replace its own
- * Step{N}Form without touching the wizard shell.
+ * EXCEPT Step 1 (real form, #267) and Step 3 (real form, #269) which are
+ * pinned by their own test files (`step1-provisioning-form.test.tsx` /
+ * `step3-stripe-kyc-form.test.tsx`). The placeholder slots for the remaining
+ * steps (2, 4..8) stay stable so each follow-up wizard slice can replace its
+ * own Step{N}Form without touching the wizard shell.
  *
- * Why Step 1 is excluded from the placeholder iterations:
- * ------------------------------------------------------
+ * Why Step 1 / Step 3 are excluded from the placeholder iterations:
+ * -----------------------------------------------------------------
  * Step 1 (« Compte resto ») is the SLICE CHARNIÈRE — without the provisioned
- * tenant, no subsequent step has an object to operate on. The placeholder
- * iterations therefore start at step 2; Step 1's own contract (6 fields,
- * validation, submit, read-only mode after creation) is pinned in
- * `step1-provisioning-form.test.tsx`.
+ * tenant, no subsequent step has an object to operate on. Step 3 (« Stripe
+ * KYC ») is non-blocking but ships its own real form (generate / regenerate
+ * link, copy-to-clipboard, continue) — neither's surface fits the « TODO
+ * Step N » placeholder shape. Each form's contract is pinned in its own
+ * test file.
  */
 import { describe, expect, it, vi } from "vitest";
 import type { ReactElement, ReactNode } from "react";
@@ -172,11 +175,11 @@ describe("STEP_FORMS — F-WIZARD [1/10] (#265)", () => {
     ]);
   });
 
-  it("each placeholder form (steps 2..8) renders a placeholder mentioning its own step number (« Step N » or « Étape N »)", () => {
-    // Step 1 is now the real `Step1ProvisioningForm` (#267) — its surface is
-    // pinned by `step1-provisioning-form.test.tsx`, not this placeholder loop.
-    for (let n = 2; n <= 8; n++) {
-      const Form = STEP_FORMS[n as 2 | 3 | 4 | 5 | 6 | 7 | 8];
+  it("each placeholder form renders a placeholder mentioning its own step number (« Step N » or « Étape N »)", () => {
+    // Step 1 (#267) and Step 3 (#269) are real forms — pinned by their own
+    // test files, not by this placeholder loop.
+    for (const n of [2, 4, 5, 6, 7, 8] as const) {
+      const Form = STEP_FORMS[n];
       const tree = serialize(Form({ onPrev: () => {}, onNext: () => {} }));
       const text = allText(tree);
       // Either « Step N » or « Étape N » is acceptable; pinning either form
@@ -186,8 +189,8 @@ describe("STEP_FORMS — F-WIZARD [1/10] (#265)", () => {
   });
 
   it("each form renders a « Précédent » button that triggers onPrev (Step 1's Précédent is disabled but still wired — issue spec « boutons Précédent / Suivant qui naviguent »)", () => {
-    for (let n = 2; n <= 8; n++) {
-      const Form = STEP_FORMS[n as 2 | 3 | 4 | 5 | 6 | 7 | 8];
+    for (const n of [2, 4, 5, 6, 7, 8] as const) {
+      const Form = STEP_FORMS[n];
       const onPrev = vi.fn();
       const tree = serialize(Form({ onPrev, onNext: () => {} }));
       const prevBtn = findByText(tree, /Pr[ée]c[ée]dent/i);
@@ -198,11 +201,11 @@ describe("STEP_FORMS — F-WIZARD [1/10] (#265)", () => {
     }
   });
 
-  it("each placeholder form (steps 2..7) renders a « Suivant » button that triggers onNext", () => {
-    // Step 1's « Suivant »-like affordance is the « Créer le tenant » submit
-    // (real form, #267) — pinned separately by `step1-provisioning-form.test.tsx`.
-    for (let n = 2; n <= 7; n++) {
-      const Form = STEP_FORMS[n as 2 | 3 | 4 | 5 | 6 | 7];
+  it("each placeholder form (steps 2, 4..7) renders a « Suivant » button that triggers onNext", () => {
+    // Step 1 (« Créer le tenant » submit) and Step 3 (« Continuer ») own
+    // their own next-button UX — pinned in their respective test files.
+    for (const n of [2, 4, 5, 6, 7] as const) {
+      const Form = STEP_FORMS[n];
       const onNext = vi.fn();
       const tree = serialize(Form({ onPrev: () => {}, onNext }));
       const nextBtn = findByText(tree, /Suivant/i);
