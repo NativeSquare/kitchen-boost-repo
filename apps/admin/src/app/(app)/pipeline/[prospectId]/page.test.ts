@@ -114,4 +114,27 @@ describe("page.tsx — F-SHELL-10 (#233) wiring contract", () => {
     // it via `ContractsBlock`, page owns the data).
     expect(code).toMatch(/contracts=\{contracts\}/);
   });
+
+  it("F-CONTRATS slice 3/4 (#174) — fires `api.lib.onboarding.crm.getProspect` so the modal can pre-fill the juridical recap (skipped until ready root admin)", () => {
+    const code = stripNonCode(PAGE_SOURCE);
+    // The prospect query is now LIVE (no longer the #233 stub).
+    expect(code).toMatch(/api\.lib\.onboarding\.crm\.getProspect/);
+    // The prospect must be passed to the view (the launcher reads it from
+    // there through the `headerAction` plumbing).
+    expect(code).toMatch(/prospect=\{prospect\}/);
+  });
+
+  it("F-CONTRATS slice 3/4 (#174) — owns the `generatedContractId` state, drives `api.lib.admin.contracts.getContract` for the iframe, threads `onGenerated` + `generatedContractHtml` to the view", () => {
+    const code = stripNonCode(PAGE_SOURCE);
+    // The page owns the last-generated contract id (so re-generation
+    // overrides the iframe content with the latest version).
+    expect(code).toMatch(/useState/);
+    expect(code).toMatch(/setGeneratedContractId/);
+    // The HTML hydration uses the canonical `getContract` kbAdminQuery
+    // (NOT the list query — single-row read).
+    expect(code).toMatch(/api\.lib\.admin\.contracts\.getContract/);
+    // Both view props are wired.
+    expect(code).toMatch(/onGenerated=\{setGeneratedContractId\}/);
+    expect(code).toMatch(/generatedContractHtml=\{generatedContractHtml\}/);
+  });
 });

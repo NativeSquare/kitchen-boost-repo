@@ -405,4 +405,97 @@ describe("ProspectFicheView — F-SHELL-10 (#233)", () => {
     // The block heading must NOT surface in the refusal branch.
     expect(text).not.toMatch(/Aucun contrat g[ée]n[ée]r[ée]/i);
   });
+
+  /**
+   * F-CONTRATS slice 3/4 (#174) — the fiche mounts the
+   * `GenerateContractLauncher` inside the `ContractsBlock` header slot
+   * when (and only when) the page passes the `onGenerated` callback. It
+   * also renders the slice-2 `ContractIframe` BELOW the block once the
+   * page surfaces `generatedContractHtml`.
+   */
+  describe("F-CONTRATS slice 3/4 (#174) — launcher + iframe plumbing", () => {
+    it("mounts the `GenerateContractLauncher` inside the ContractsBlock header when `onGenerated` is wired", () => {
+      const tree = serialize(
+        ProspectFicheView({
+          session: adminSession(),
+          prospect: makeProspect(),
+          contracts: [],
+          onGenerated: () => {},
+        }),
+      );
+      // The launcher uses Convex `useMutation`, so the serializer's
+      // try/catch yields a typed stub (component name) rather than
+      // expanding its tree. We assert the component IS mounted by name
+      // — its runtime branches (trigger copy, modal contents) are pinned
+      // by `generate-contract-launcher.test.ts` + `generate-contract-
+      // modal.test.tsx`.
+      const launcherNodes = findAllByType(tree, "GenerateContractLauncher");
+      expect(launcherNodes.length).toBe(1);
+    });
+
+    it("does NOT mount the launcher when `onGenerated` is omitted (preserves slice-1 read-only contract for non-supervision callers)", () => {
+      const tree = serialize(
+        ProspectFicheView({
+          session: adminSession(),
+          prospect: makeProspect(),
+          contracts: [],
+        }),
+      );
+      const launcherNodes = findAllByType(tree, "GenerateContractLauncher");
+      expect(launcherNodes.length).toBe(0);
+    });
+
+    it("renders the `ContractIframe` below the block once `generatedContractHtml` is a string (sandbox attribute pinned by slice 2 tests)", () => {
+      const html = "<html><body><h1>Contrat A — L'Artisan</h1></body></html>";
+      const tree = serialize(
+        ProspectFicheView({
+          session: adminSession(),
+          prospect: makeProspect(),
+          contracts: [],
+          onGenerated: () => {},
+          generatedContractHtml: html,
+        }),
+      );
+      const iframes = findAllByType(tree, "iframe");
+      expect(iframes.length).toBe(1);
+      const iframe = iframes[0] as { props: { srcDoc?: unknown } };
+      expect(iframe.props.srcDoc).toBe(html);
+      // Download button must surface alongside the iframe (slice-2 contract).
+      const text = allText(tree);
+      expect(text).toMatch(/T[ée]l[ée]charger HTML/i);
+    });
+
+    it("does NOT render the iframe when `generatedContractHtml` is undefined (no contract generated yet this session)", () => {
+      const tree = serialize(
+        ProspectFicheView({
+          session: adminSession(),
+          prospect: makeProspect(),
+          contracts: [],
+          onGenerated: () => {},
+        }),
+      );
+      const iframes = findAllByType(tree, "iframe");
+      expect(iframes.length).toBe(0);
+    });
+
+    it("renders the iframe's error branch when `generatedContractHtml === null` (row resolved, no html — slice-2 fallback)", () => {
+      const tree = serialize(
+        ProspectFicheView({
+          session: adminSession(),
+          prospect: makeProspect(),
+          contracts: [],
+          onGenerated: () => {},
+          generatedContractHtml: null,
+        }),
+      );
+      // The iframe element itself MUST NOT render in the error branch
+      // (slice-2 contract — « pas d'iframe blanche silencieuse »).
+      const iframes = findAllByType(tree, "iframe");
+      expect(iframes.length).toBe(0);
+      const text = allText(tree);
+      // The slice-2 error-copy semantic surfaces (« aucun / erreur /
+      // impossible / indisponible »).
+      expect(text).toMatch(/aucun|erreur|impossible|indisponible/i);
+    });
+  });
 });

@@ -51,14 +51,16 @@
  * boundary (A4 de la checklist E2E manuelle — la vocabulary est partagée
  * via `UnauthorizedCard`).
  */
-import type { Doc } from "@packages/backend/convex/_generated/dataModel";
+import type { Doc, Id } from "@packages/backend/convex/_generated/dataModel";
 
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { UnauthorizedCard } from "@/components/app/unauthorized-card";
 import type { SessionState } from "@/lib/session";
 
+import { ContractIframe } from "./contract-iframe";
 import { ContractsBlock } from "./contracts-block";
+import { GenerateContractLauncher } from "./generate-contract-launcher";
 import { decideProspectFiche } from "./prospect-fiche.decision";
 import { ProvisionLauncherButton } from "./provision-launcher-button";
 
@@ -93,6 +95,29 @@ export type ProspectFicheViewProps = {
    * when omitted, the block renders its loading shell (no layout shift).
    */
   contracts?: Doc<"contracts">[] | undefined;
+  /**
+   * F-CONTRATS slice 3/4 (#174) — success callback for the
+   * `GenerateContractLauncher`. The page owns the « last generated
+   * contract id » state and uses it to drive the
+   * `ContractIframe` hydration via
+   * `useQuery(api.lib.admin.contracts.getContract, ...)`. Optional so
+   * existing callers (and the rest of the test matrix) stay compatible:
+   * when omitted, the launcher trigger is NOT mounted at all (no
+   * regression for surfaces that don't want generation, e.g. an
+   * un-admin shadow).
+   */
+  onGenerated?: (contractId: Id<"contracts">) => void;
+  /**
+   * F-CONTRATS slice 3/4 (#174) — the HTML of the most-recently-
+   * generated contract (page-owned via
+   * `useQuery(api.lib.admin.contracts.getContract, ...)`). When present,
+   * the iframe (slice 2/4) is rendered DIRECTLY UNDER the
+   * `ContractsBlock` — issue AC : « affiche le HTML dans une
+   * `ContractIframe` dans la page de la fiche prospect, sous le bloc
+   * Contrats ». Tri-state convex value : `undefined` (in-flight) |
+   * `null` (no row / no generation yet) | `string` (hydrated).
+   */
+  generatedContractHtml?: string | null | undefined;
 };
 
 /**
@@ -113,6 +138,8 @@ export function ProspectFicheView({
   prospect,
   tenant,
   contracts,
+  onGenerated,
+  generatedContractHtml,
 }: ProspectFicheViewProps) {
   const decision = decideProspectFiche({ session, prospect });
 
@@ -188,10 +215,39 @@ export function ProspectFicheView({
        *  decideProspectFiche refuses non-admin callers before getting here).
        *  Lives BEFORE the F-PIPELINE-CRM placeholder so the section orders
        *  «header → contrats → reste» on the fiche.
+       *
+       *  F-CONTRATS slice 3/4 (#174) — the « Générer contrat » trigger is
+       *  mounted as the block's `headerAction` ONLY when the page wires
+       *  `onGenerated` (i.e. only on a hydrated supervision route). The
+       *  launcher carries the modal + the mutation wiring; the block stays
+       *  pure-presentational (the slice-1 « V1 read-only when no
+       *  headerAction is passed » contract is preserved).
        */}
       <div className="px-4 lg:px-6">
-        <ContractsBlock contracts={contracts} />
+        <ContractsBlock
+          contracts={contracts}
+          headerAction={
+            onGenerated !== undefined ? (
+              <GenerateContractLauncher
+                prospect={p}
+                onGenerated={onGenerated}
+              />
+            ) : undefined
+          }
+        />
       </div>
+      {/* F-CONTRATS slice 3/4 (#174) — iframe rendered below the block
+       *  once a contract has been generated in this session. The page
+       *  drives the HTML via a `useQuery(getContract)` against the latest
+       *  contractId captured by `onGenerated`. The iframe itself owns the
+       *  « no content » fallback (slice 2 — `contract-iframe.tsx`) so the
+       *  fiche stays declarative.
+       */}
+      {generatedContractHtml !== undefined ? (
+        <div className="px-4 lg:px-6">
+          <ContractIframe html={generatedContractHtml} />
+        </div>
+      ) : null}
       <div className="px-4 lg:px-6">
         <div className="rounded-lg border border-dashed p-8 text-center">
           <p className="text-muted-foreground text-sm">
