@@ -176,6 +176,10 @@ function defaults(orders: Doc<"orders">[] | undefined) {
     // handler to `OrdersTable`. Test branches that don't exercise the
     // click reuse a no-op here.
     onOrderClick: NOOP,
+    // F-COMMANDES-CSV-EXPORT (#244) — the view now mounts an « Exporter
+    // CSV » button in the header. Test branches that don't exercise the
+    // export reuse a no-op here.
+    onExportCsv: NOOP,
   };
 }
 
@@ -367,6 +371,7 @@ describe("CommandesView — F-COMMANDES-DETAIL-MODAL (#239)", () => {
         onDateRangeChange: NOOP,
         onStatusesChange: NOOP,
         onOrderClick: (id) => calls.push(String(id)),
+        onExportCsv: NOOP,
       }),
     );
     const row = flatten(tree).find(
@@ -380,5 +385,113 @@ describe("CommandesView — F-COMMANDES-DETAIL-MODAL (#239)", () => {
     expect(typeof click).toBe("function");
     click?.();
     expect(calls).toEqual(["orders_x"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// F-COMMANDES-CSV-EXPORT (#244) — the view now mounts an « Exporter CSV »
+// button in the page header. The page owns the click handler (it knows the
+// filtered orders + the tenant slug). The view stays pure — it forwards the
+// click and disables the button when there are no orders to export.
+// ---------------------------------------------------------------------------
+describe("CommandesView — F-COMMANDES-CSV-EXPORT (#244)", () => {
+  it("mounts the `ExportCsvButton` in the header on every branch", () => {
+    // Loading branch — the button is visible (disabled) so the page chrome
+    // doesn't flash when the data lands (same discipline as the filters).
+    const loadingSlots = dataSlots(
+      serialize(CommandesView(defaults(undefined))),
+    );
+    expect(loadingSlots).toContain("export-csv-button");
+
+    // Empty branch — the button is visible (disabled — no orders to export).
+    const emptySlots = dataSlots(serialize(CommandesView(defaults([]))));
+    expect(emptySlots).toContain("export-csv-button");
+
+    // Populated branch — the button is visible (enabled).
+    const populated = [
+      order({
+        _id: "orders_x",
+        createdAt: Date.UTC(2026, 4, 29, 14, 30),
+        pricingSnapshot: { subtotal: 1800, deliveryFee: 200, total: 2000 },
+      }),
+    ];
+    const populatedSlots = dataSlots(
+      serialize(CommandesView(defaults(populated))),
+    );
+    expect(populatedSlots).toContain("export-csv-button");
+  });
+
+  it("disables the button when `orders` is undefined (loading) or empty (no data to export)", () => {
+    function findExportButton(orders: Doc<"orders">[] | undefined) {
+      const tree = serialize(CommandesView(defaults(orders)));
+      return flatten(tree).find(
+        (x) =>
+          x !== null &&
+          !("text" in x) &&
+          x.props["data-slot"] === "export-csv-button",
+      );
+    }
+
+    const loading = findExportButton(undefined);
+    if (!loading || "text" in loading)
+      throw new Error("export button missing in loading branch");
+    expect(loading.props.disabled).toBe(true);
+
+    const empty = findExportButton([]);
+    if (!empty || "text" in empty)
+      throw new Error("export button missing in empty branch");
+    expect(empty.props.disabled).toBe(true);
+  });
+
+  it("enables the button when there are filtered orders to export", () => {
+    const populated = [
+      order({
+        _id: "orders_x",
+        createdAt: Date.UTC(2026, 4, 29, 14, 30),
+        pricingSnapshot: { subtotal: 1800, deliveryFee: 200, total: 2000 },
+      }),
+    ];
+    const tree = serialize(CommandesView(defaults(populated)));
+    const node = flatten(tree).find(
+      (x) =>
+        x !== null &&
+        !("text" in x) &&
+        x.props["data-slot"] === "export-csv-button",
+    );
+    if (!node || "text" in node)
+      throw new Error("export button missing in populated branch");
+    expect(node.props.disabled).toBe(false);
+  });
+
+  it("forwards `onExportCsv` to the button — clicking it invokes the page-owned handler", () => {
+    const populated = [
+      order({
+        _id: "orders_x",
+        createdAt: Date.UTC(2026, 4, 29, 14, 30),
+        pricingSnapshot: { subtotal: 1800, deliveryFee: 200, total: 2000 },
+      }),
+    ];
+    const calls: number[] = [];
+    const tree = serialize(
+      CommandesView({
+        orders: populated,
+        filter: { dateRange: "tout", statuses: [] },
+        onDateRangeChange: NOOP,
+        onStatusesChange: NOOP,
+        onOrderClick: NOOP,
+        onExportCsv: () => calls.push(1),
+      }),
+    );
+    const node = flatten(tree).find(
+      (x) =>
+        x !== null &&
+        !("text" in x) &&
+        x.props["data-slot"] === "export-csv-button",
+    );
+    if (!node || "text" in node) throw new Error("export button missing");
+    const click = node.props.onClick as (() => void) | undefined;
+    expect(typeof click).toBe("function");
+    click?.();
+    expect(calls).toEqual([1]);
   });
 });
