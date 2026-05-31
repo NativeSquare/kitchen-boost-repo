@@ -1,10 +1,19 @@
 /**
- * F-WIZARD [1/10] (#265) — Step{N}Form placeholders test matrix.
+ * F-WIZARD [1/10] (#265) + [3/10] (#267) — Step{N}Form placeholders test matrix.
  *
- * Each step renders a placeholder « TODO Step N » + Prev/Next nav buttons.
- * Pinned at the source-file level (same React-tree serializer pattern as
- * the other view tests). Future slices replace these placeholders with the
- * real form per step — the file location + nav contract stay stable.
+ * Each step renders a placeholder « TODO Step N » + Prev/Next nav buttons,
+ * EXCEPT Step 1 which #267 replaces with the real `Step1ProvisioningForm`
+ * (pinned by `step1-provisioning-form.test.tsx`). The placeholder slots for
+ * steps 2..8 stay stable so each follow-up wizard slice can replace its own
+ * Step{N}Form without touching the wizard shell.
+ *
+ * Why Step 1 is excluded from the placeholder iterations:
+ * ------------------------------------------------------
+ * Step 1 (« Compte resto ») is the SLICE CHARNIÈRE — without the provisioned
+ * tenant, no subsequent step has an object to operate on. The placeholder
+ * iterations therefore start at step 2; Step 1's own contract (6 fields,
+ * validation, submit, read-only mode after creation) is pinned in
+ * `step1-provisioning-form.test.tsx`.
  */
 import { describe, expect, it, vi } from "vitest";
 import type { ReactElement, ReactNode } from "react";
@@ -163,9 +172,11 @@ describe("STEP_FORMS — F-WIZARD [1/10] (#265)", () => {
     ]);
   });
 
-  it("each form renders a placeholder mentioning its own step number (« Step N » or « Étape N »)", () => {
-    for (let n = 1; n <= 8; n++) {
-      const Form = STEP_FORMS[n as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8];
+  it("each placeholder form (steps 2..8) renders a placeholder mentioning its own step number (« Step N » or « Étape N »)", () => {
+    // Step 1 is now the real `Step1ProvisioningForm` (#267) — its surface is
+    // pinned by `step1-provisioning-form.test.tsx`, not this placeholder loop.
+    for (let n = 2; n <= 8; n++) {
+      const Form = STEP_FORMS[n as 2 | 3 | 4 | 5 | 6 | 7 | 8];
       const tree = serialize(Form({ onPrev: () => {}, onNext: () => {} }));
       const text = allText(tree);
       // Either « Step N » or « Étape N » is acceptable; pinning either form
@@ -187,9 +198,11 @@ describe("STEP_FORMS — F-WIZARD [1/10] (#265)", () => {
     }
   });
 
-  it("each form (except step 8) renders a « Suivant » button that triggers onNext", () => {
-    for (let n = 1; n <= 7; n++) {
-      const Form = STEP_FORMS[n as 1 | 2 | 3 | 4 | 5 | 6 | 7];
+  it("each placeholder form (steps 2..7) renders a « Suivant » button that triggers onNext", () => {
+    // Step 1's « Suivant »-like affordance is the « Créer le tenant » submit
+    // (real form, #267) — pinned separately by `step1-provisioning-form.test.tsx`.
+    for (let n = 2; n <= 7; n++) {
+      const Form = STEP_FORMS[n as 2 | 3 | 4 | 5 | 6 | 7];
       const onNext = vi.fn();
       const tree = serialize(Form({ onPrev: () => {}, onNext }));
       const nextBtn = findByText(tree, /Suivant/i);
