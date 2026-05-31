@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * F-MENU-05 (#219) + F-MENU-06 (#226) — `ItemModal`, the load-bearing CRUD
- * surface for menu items.
+ * F-MENU-05 (#219) + F-MENU-06 (#226) + F-MENU-09 (#246) — `ItemModal`, the
+ * load-bearing CRUD surface for menu items.
  *
  * Two modes, ONE component (DRY — same form, same validation, same fields):
  *   - `mode === "create"` — opened by the « + Item » CTA per category. One
@@ -47,14 +47,33 @@
  * ancien blob »); the front never explicitly calls `removePhoto` before
  * an attach.
  *
- * Scope discipline (#219 / #226 hard constraint): this file lives under
- * `apps/admin/src/app/(app)/t/[tenantId]/menu/` — zero touch to `apps/web`,
- * `apps/native`, or `packages/backend/convex/`.
+ * Personnalisations — F-MENU-09 (#246): the edit-mode form layers an opt-in
+ * `ModifiersSection` (rendered only when the page passes the three handlers
+ * `onAttachGroup` / `onDetachGroup` / `onCreateInlineGroup`) carrying:
+ *   (a) the list of REUSABLE modifier groups attached to the item (name +
+ *       min/max badge + options summary + « Détacher »),
+ *   (b) a picker over the tenant's full `availableGroups` MINUS the already-
+ *       attached set (idempotent backend = safety net, filter = UX clarity),
+ *   (c) a « Créer un nouveau groupe » button that fires
+ *       `onCreateInlineGroup(itemId)` — the page stacks the
+ *       `ModifierGroupModal` over the item modal and chains
+ *       `attachGroupToItem({ itemId, modifierGroupId: newId })` on save.
+ *
+ * Scope discipline (#219 / #226 / #246 hard constraint): this file lives
+ * under `apps/admin/src/app/(app)/t/[tenantId]/menu/` — zero touch to
+ * `apps/web`, `apps/native`, or `packages/backend/convex/`.
  */
 
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "convex/react";
-import { IconPhoto, IconTrash, IconUpload } from "@tabler/icons-react";
+import {
+  IconLink,
+  IconLinkOff,
+  IconPhoto,
+  IconPlus,
+  IconTrash,
+  IconUpload,
+} from "@tabler/icons-react";
 
 import { api } from "@packages/backend/convex/_generated/api";
 import {
@@ -158,6 +177,58 @@ export type ItemModalProps = {
    * `useTenantMutation(api.lib.menu.photos.removePhoto)`.
    */
   onRemovePhoto?: (itemId: Id<"menuItems">) => void;
+  /**
+   * F-MENU-09 (#246) — REUSABLE modifier groups currently attached to this
+   * item. Resolved page-side via
+   * `useTenantQuery(api.lib.menu.modifiers.listItemGroups, { itemId })` and
+   * threaded down (same pattern as `impactItems` on `ModifierGroupModal`).
+   * `undefined` = loading sentinel (the modal renders a small skeleton);
+   * `[]` = item has no group yet (the modal renders the empty-state copy).
+   * The modal does NOT call any Convex query itself — keeps it testable
+   * under the lean `node` env (the photo section is the lone exception, an
+   * inherited pattern from F-MENU-06).
+   */
+  attachedGroups?: Doc<"modifierGroups">[];
+  /**
+   * F-MENU-09 (#246) — full tenant set of REUSABLE modifier groups
+   * (`useTenantQuery(api.lib.menu.modifiers.listGroups)`). The picker
+   * filters out groups already in `attachedGroups` to avoid offering an
+   * obvious no-op affordance (the backend `attachGroupToItem` is idempotent,
+   * which is the SAFETY net — the picker filter is the UX-clarity layer).
+   */
+  availableGroups?: Doc<"modifierGroups">[];
+  /**
+   * F-MENU-09 (#246) — fired when the gérant picks a group from the picker.
+   * Idempotent backend (re-attach = no-op, issue body « ré-attacher = no-op,
+   * pas besoin de tracker côté front »); the modal does not track an
+   * « already attached » set — it just filters the picker source.
+   */
+  onAttachGroup?: (
+    itemId: Id<"menuItems">,
+    modifierGroupId: Id<"modifierGroups">,
+  ) => void;
+  /**
+   * F-MENU-09 (#246) — fired when the gérant clicks « Détacher » on an
+   * attached row. The backend `detachGroupFromItem` removes ONE edge
+   * (siblings + group untouched, issue body « ne le supprime PAS et n affecte
+   * PAS les autres items qui l utilisent »); the page just wires the call.
+   */
+  onDetachGroup?: (
+    itemId: Id<"menuItems">,
+    modifierGroupId: Id<"modifierGroups">,
+  ) => void;
+  /**
+   * F-MENU-09 (#246) — fired when the gérant clicks « Créer un nouveau
+   * groupe ». The page handles stacking the `ModifierGroupModal` over the
+   * item modal (issue body « ouvre la modale groupe (F-MENU-08) par-dessus
+   * la modale item ») AND chaining `attachGroupToItem({ itemId, modifierGroupId })`
+   * once `createGroup` resolves (« à la confirmation, attache automatiquement
+   * le nouveau groupe à l item courant »). The modal here just fires the
+   * open intent — keeping the cross-modal state on the page is what makes
+   * the stacking robust to a successful create (the page closes the group
+   * modal but keeps the item modal open).
+   */
+  onCreateInlineGroup?: (itemId: Id<"menuItems">) => void;
 };
 
 export function ItemModal(props: ItemModalProps) {
@@ -192,6 +263,11 @@ function ItemModalForm({
   onDelete,
   onUploadPhoto,
   onRemovePhoto,
+  attachedGroups,
+  availableGroups,
+  onAttachGroup,
+  onDetachGroup,
+  onCreateInlineGroup,
 }: ItemModalProps) {
   // -- Local form state ------------------------------------------------------
   // Edit mode: pre-fill from the item doc. Create mode: empty defaults.
@@ -474,6 +550,33 @@ function ItemModalForm({
         />
       ) : null}
 
+      {/* Personnalisations — F-MENU-09 (#246). Edit mode only AND wired only
+          when the page passes the three Personnalisations handlers (slice
+          OPT-IN to preserve the F-MENU-05/06/08 contracts: callers from the
+          previous slices don't pass these). The section surfaces three
+          affordances on the issue body's (a/b/c):
+            (a) the list of REUSABLE groups currently attached to the item
+                (name + min/max + options summary + « Détacher »);
+            (b) a picker over the tenant's full `availableGroups` MINUS the
+                already-attached set — selecting one fires `onAttachGroup`;
+            (c) a « Créer un nouveau groupe » button that fires
+                `onCreateInlineGroup(itemId)` — the page handles stacking
+                the modifier-group modal on top + auto-attaching on save. */}
+      {mode === "edit" &&
+      item !== undefined &&
+      onAttachGroup !== undefined &&
+      onDetachGroup !== undefined &&
+      onCreateInlineGroup !== undefined ? (
+        <ModifiersSection
+          item={item}
+          attachedGroups={attachedGroups}
+          availableGroups={availableGroups}
+          onAttachGroup={onAttachGroup}
+          onDetachGroup={onDetachGroup}
+          onCreateInlineGroup={onCreateInlineGroup}
+        />
+      ) : null}
+
       {/* Allergens — closed multi-select on the 14 frozen UE 1169/2011 literals */}
       <div className="flex flex-col gap-2">
         <Label>Allergènes</Label>
@@ -688,4 +791,244 @@ function ItemPhotoSection({
       </div>
     </div>
   );
+}
+
+/**
+ * F-MENU-09 (#246) — Personnalisations section: the attach / detach / create-
+ * inline surface for REUSABLE modifier groups on ONE item.
+ *
+ * Three affordances mirror the issue body:
+ *   (a) `attachedGroups` rows — each row carries the group name, a min/max
+ *       badge (« 1/1 », « 0/3 »…), a short option summary, and a « Détacher »
+ *       button that fires `onDetachGroup(itemId, groupId)`. The backend
+ *       `detachGroupFromItem` removes ONE edge (siblings + group untouched —
+ *       issue body « n affecte ni le groupe ni les autres items »).
+ *   (b) a picker built over `availableGroups MINUS attachedGroups`: each
+ *       remaining group is exposed as a clickable row that fires
+ *       `onAttachGroup(itemId, groupId)`. Idempotency is the SAFETY net
+ *       (re-attach = no-op backend-side); the filter keeps the affordance
+ *       from offering an obvious no-op. We use a plain text-input filter
+ *       (no Base UI / Radix Combobox) so the testable surface stays a flat
+ *       React tree under the lean `node` test env.
+ *   (c) a « Créer un nouveau groupe » button that fires
+ *       `onCreateInlineGroup(itemId)`. The page handles stacking the
+ *       `ModifierGroupModal` over the item modal AND auto-attaching the
+ *       newly-created group to the originating item (pinned by `page.test.ts`).
+ *
+ * Layout: a single section after the photo block and before the allergens
+ * checkboxes — same data-slot discipline as the rest of the modal.
+ */
+function ModifiersSection({
+  item,
+  attachedGroups,
+  availableGroups,
+  onAttachGroup,
+  onDetachGroup,
+  onCreateInlineGroup,
+}: {
+  item: Doc<"menuItems">;
+  attachedGroups: Doc<"modifierGroups">[] | undefined;
+  availableGroups: Doc<"modifierGroups">[] | undefined;
+  onAttachGroup: (
+    itemId: Id<"menuItems">,
+    modifierGroupId: Id<"modifierGroups">,
+  ) => void;
+  onDetachGroup: (
+    itemId: Id<"menuItems">,
+    modifierGroupId: Id<"modifierGroups">,
+  ) => void;
+  onCreateInlineGroup: (itemId: Id<"menuItems">) => void;
+}) {
+  const [pickerQuery, setPickerQuery] = useState("");
+
+  // Filter the picker source: full available set MINUS already-attached ids.
+  // Idempotent backend (issue body « ré-attacher = no-op ») — this filter
+  // is the UX-clarity layer, not the safety net.
+  const attachedIds = useMemo(
+    () => new Set((attachedGroups ?? []).map((g) => g._id)),
+    [attachedGroups],
+  );
+  const pickerSource = useMemo(() => {
+    const candidates = (availableGroups ?? []).filter(
+      (g) => !attachedIds.has(g._id),
+    );
+    const q = pickerQuery.trim().toLowerCase();
+    if (q === "") return candidates;
+    return candidates.filter((g) => g.name.toLowerCase().includes(q));
+  }, [availableGroups, attachedIds, pickerQuery]);
+
+  const hasAttached =
+    Array.isArray(attachedGroups) && attachedGroups.length > 0;
+
+  return (
+    <div
+      data-slot="menu-item-modal-modifiers-section"
+      className="flex flex-col gap-3"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <Label>Personnalisations</Label>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          data-slot="menu-item-modal-modifier-create-inline"
+          onClick={() => onCreateInlineGroup(item._id)}
+        >
+          <IconPlus className="mr-1.5 size-4" aria-hidden="true" />
+          Créer un nouveau groupe
+        </Button>
+      </div>
+      <p className="text-muted-foreground text-xs">
+        Groupes d&apos;options réutilisables attachés à cet item (édité une
+        fois, répercuté partout).
+      </p>
+
+      {/* (a) Attached rows OR empty state. */}
+      {hasAttached ? (
+        <div className="flex flex-col gap-2">
+          {(attachedGroups ?? []).map((group) => (
+            <AttachedGroupRow
+              key={group._id}
+              group={group}
+              onDetach={() => onDetachGroup(item._id, group._id)}
+            />
+          ))}
+        </div>
+      ) : attachedGroups === undefined ? (
+        // Loading sentinel — Convex returns undefined while listItemGroups
+        // is in flight. Keep the layout stable so the section doesn't pop.
+        <p
+          data-slot="menu-item-modal-modifiers-loading"
+          className="text-muted-foreground text-xs"
+        >
+          Chargement…
+        </p>
+      ) : (
+        <div
+          data-slot="menu-item-modal-modifiers-empty"
+          className="text-muted-foreground rounded-md border border-dashed p-3 text-center text-xs"
+        >
+          Aucun groupe attaché à cet item pour le moment.
+        </div>
+      )}
+
+      {/* (b) Picker — autocomplete on availableGroups MINUS attached. */}
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`menu-item-modal-modifier-picker-${item._id}`}>
+          Ajouter un groupe existant
+        </Label>
+        <Input
+          id={`menu-item-modal-modifier-picker-${item._id}`}
+          data-slot="menu-item-modal-modifier-picker-input"
+          value={pickerQuery}
+          onChange={(e) => setPickerQuery(e.target.value)}
+          placeholder="Rechercher un groupe…"
+        />
+        {pickerSource.length > 0 ? (
+          <div
+            data-slot="menu-item-modal-modifier-picker-list"
+            className="max-h-48 overflow-y-auto rounded-md border"
+          >
+            {pickerSource.map((group) => (
+              <button
+                type="button"
+                key={group._id}
+                data-slot="menu-item-modal-modifier-picker-option"
+                data-group-id={group._id as unknown as string}
+                className="hover:bg-accent flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm"
+                onClick={() => onAttachGroup(item._id, group._id)}
+              >
+                <span className="flex flex-col">
+                  <span className="font-medium">{group.name}</span>
+                  <span className="text-muted-foreground text-xs">
+                    {summariseBoundsBadge(group.minSelect, group.maxSelect)} ·{" "}
+                    {group.options.length} option
+                    {group.options.length > 1 ? "s" : ""}
+                  </span>
+                </span>
+                <IconLink className="size-4" aria-hidden="true" />
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p
+            data-slot="menu-item-modal-modifier-picker-empty"
+            className="text-muted-foreground text-xs"
+          >
+            {(availableGroups ?? []).length === attachedIds.size
+              ? "Tous les groupes du tenant sont déjà attachés."
+              : "Aucun groupe ne correspond à la recherche."}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Mini-row for an attached group — name + min/max badge + options summary + Détacher. */
+function AttachedGroupRow({
+  group,
+  onDetach,
+}: {
+  group: Doc<"modifierGroups">;
+  onDetach: () => void;
+}) {
+  return (
+    <div
+      data-slot="menu-item-modal-modifier-attached-row"
+      data-group-id={group._id as unknown as string}
+      className="flex items-center justify-between gap-2 rounded-md border p-2"
+    >
+      <div className="flex min-w-0 flex-col">
+        <span className="flex items-center gap-2 text-sm font-medium">
+          <span className="truncate">{group.name}</span>
+          <span
+            data-slot="menu-item-modal-modifier-attached-bounds"
+            className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[10px] font-semibold tracking-wide"
+          >
+            {group.minSelect}/{group.maxSelect}
+          </span>
+        </span>
+        <span className="text-muted-foreground truncate text-xs">
+          {summariseOptions(group.options)}
+        </span>
+      </div>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        data-slot="menu-item-modal-modifier-detach"
+        onClick={onDetach}
+        className="text-muted-foreground hover:text-destructive"
+        aria-label={`Détacher le groupe ${group.name}`}
+      >
+        <IconLinkOff className="mr-1.5 size-4" aria-hidden="true" />
+        Détacher
+      </Button>
+    </div>
+  );
+}
+
+/**
+ * Same heuristic as `modifier-groups-section.tsx::summariseBounds`, but kept
+ * short for the per-row badge in the item modal. We KEEP both numbers visible
+ * (« 1/1 » badge) AND a textual paraphrase next to it for accessibility —
+ * tested by `item-modal.test.tsx` which accepts either form.
+ */
+function summariseBoundsBadge(minSelect: number, maxSelect: number): string {
+  if (minSelect === 0 && maxSelect === 1) return "choix unique optionnel";
+  if (minSelect === 0) return `jusqu'à ${maxSelect} (optionnel)`;
+  if (minSelect === maxSelect && minSelect === 1)
+    return "choix unique obligatoire";
+  if (minSelect === maxSelect) return `exactement ${minSelect}`;
+  return `entre ${minSelect} et ${maxSelect}`;
+}
+
+/** Compact options summary — first 2 labels + « +N » when there are more. */
+function summariseOptions(options: Doc<"modifierGroups">["options"]): string {
+  if (options.length === 0) return "Aucune option";
+  const labels = options.map((o) => o.label).filter((l) => l.trim() !== "");
+  if (labels.length === 0) return `${options.length} option(s)`;
+  if (labels.length <= 2) return labels.join(", ");
+  return `${labels.slice(0, 2).join(", ")} +${labels.length - 2}`;
 }

@@ -858,6 +858,343 @@ describe("ItemModal — F-MENU-05 (#219)", () => {
     });
   });
 
+  // ---------------------------------------------------------------------------
+  // F-MENU-09 (#246) — Personnalisations: attach / detach / create-inline
+  // ---------------------------------------------------------------------------
+  // The modal exposes a Personnalisations section (edit mode only — an item
+  // must exist before `attachGroupToItem` can target it). Three affordances:
+  //   (a) list of REUSABLE groups currently attached to the item (data threaded
+  //       in as `attachedGroups` — the page resolves it via
+  //       `useTenantQuery(api.lib.menu.modifiers.listItemGroups, {itemId})`),
+  //       each row showing name, bounds summary, option count, and a « Détacher »
+  //       button that fires `onDetachGroup(itemId, groupId)` exactly once;
+  //   (b) picker over the available groups (the tenant's full `listGroups` set
+  //       MINUS the already-attached ones) — selecting one fires
+  //       `onAttachGroup(itemId, groupId)`. Idempotent backend (issue body
+  //       « ré-attacher = no-op ») — the picker just filters out already-attached
+  //       groups so the affordance never offers an obvious no-op.
+  //   (c) a « Créer un nouveau groupe » button that fires
+  //       `onCreateInlineGroup(itemId)` — the page handles opening the modifier
+  //       group modal stacked over the item modal and auto-attaching on save.
+  //
+  // Scope contract: the wiring is OPT-IN — when neither `onAttachGroup` nor
+  // `onDetachGroup` nor `onCreateInlineGroup` are passed, NO Personnalisations
+  // section renders (preserves the F-MENU-05/06/08 contracts — siblings tests
+  // that construct the modal without these callbacks must keep working).
+  describe("F-MENU-09 (#246) — Personnalisations: attach / detach / create-inline", () => {
+    // Local helper — build a `Doc<"modifierGroups">` shape for the test fixture.
+    const makeGroup = (
+      name: string,
+      partial: Partial<Doc<"modifierGroups">> = {},
+    ): Doc<"modifierGroups"> => ({
+      _id: `mg_${name}` as Doc<"modifierGroups">["_id"],
+      _creationTime: 0,
+      tenantId: "tenant_test" as Doc<"modifierGroups">["tenantId"],
+      name,
+      minSelect: partial.minSelect ?? 0,
+      maxSelect: partial.maxSelect ?? 1,
+      options: partial.options ?? [
+        { label: "Ketchup", priceDelta: 0 },
+        { label: "Bacon", priceDelta: 150 },
+      ],
+      createdAt: 0,
+    });
+
+    const ATTACHED_A = makeGroup("Sauce", { minSelect: 1, maxSelect: 1 });
+    const ATTACHED_B = makeGroup("Suppléments", {
+      minSelect: 0,
+      maxSelect: 3,
+      options: [
+        { label: "Bacon", priceDelta: 150 },
+        { label: "Œuf", priceDelta: 100 },
+      ],
+    });
+    const AVAILABLE_C = makeGroup("Cuisson", { minSelect: 1, maxSelect: 1 });
+
+    it("CREATE mode — does NOT surface a Personnalisations section (no item id to attach to yet)", () => {
+      // `attachGroupToItem` requires an `itemId` — pre-create, we have none.
+      // The story body scopes attach/detach to the EDIT modal (after the item
+      // exists). Symmetric with the F-MENU-06 photo section.
+      const tree = serialize(
+        ItemModal({
+          mode: "create",
+          open: true,
+          categories: CATEGORIES,
+          categoryId: CATEGORIES[1]._id,
+          onOpenChange: vi.fn(),
+          onCreate: vi.fn(),
+          onUpdate: vi.fn(),
+          onDelete: vi.fn(),
+          attachedGroups: [],
+          availableGroups: [AVAILABLE_C],
+          onAttachGroup: vi.fn(),
+          onDetachGroup: vi.fn(),
+          onCreateInlineGroup: vi.fn(),
+        }),
+      );
+      expect(
+        findBySlot(tree, "menu-item-modal-modifiers-section"),
+      ).toHaveLength(0);
+    });
+
+    it("EDIT mode — when none of the modifier callbacks are wired, NO section renders (preserves the F-MENU-05 contract)", () => {
+      // Slice contract: the wiring is OPT-IN. Previous slices' tests construct
+      // the modal without these callbacks; they MUST keep working.
+      const tree = serialize(
+        ItemModal({
+          mode: "edit",
+          open: true,
+          categories: CATEGORIES,
+          categoryId: EXISTING_ITEM.categoryId,
+          item: EXISTING_ITEM,
+          onOpenChange: vi.fn(),
+          onCreate: vi.fn(),
+          onUpdate: vi.fn(),
+          onDelete: vi.fn(),
+        }),
+      );
+      expect(
+        findBySlot(tree, "menu-item-modal-modifiers-section"),
+      ).toHaveLength(0);
+    });
+
+    it("EDIT mode — surfaces the section header + the create-inline button when wired", () => {
+      const tree = serialize(
+        ItemModal({
+          mode: "edit",
+          open: true,
+          categories: CATEGORIES,
+          categoryId: EXISTING_ITEM.categoryId,
+          item: EXISTING_ITEM,
+          onOpenChange: vi.fn(),
+          onCreate: vi.fn(),
+          onUpdate: vi.fn(),
+          onDelete: vi.fn(),
+          attachedGroups: [],
+          availableGroups: [AVAILABLE_C],
+          onAttachGroup: vi.fn(),
+          onDetachGroup: vi.fn(),
+          onCreateInlineGroup: vi.fn(),
+        }),
+      );
+      expect(
+        findBySlot(tree, "menu-item-modal-modifiers-section"),
+      ).toHaveLength(1);
+      expect(
+        findBySlot(tree, "menu-item-modal-modifier-create-inline"),
+      ).toHaveLength(1);
+    });
+
+    it("EDIT mode — lists every attached group with name + min/max badge + options summary + detach button", () => {
+      // (a) of the issue body: « pour chaque groupe, afficher nom + badge min/max
+      // + résumé options + bouton « Détacher » ».
+      const tree = serialize(
+        ItemModal({
+          mode: "edit",
+          open: true,
+          categories: CATEGORIES,
+          categoryId: EXISTING_ITEM.categoryId,
+          item: EXISTING_ITEM,
+          onOpenChange: vi.fn(),
+          onCreate: vi.fn(),
+          onUpdate: vi.fn(),
+          onDelete: vi.fn(),
+          attachedGroups: [ATTACHED_A, ATTACHED_B],
+          availableGroups: [AVAILABLE_C],
+          onAttachGroup: vi.fn(),
+          onDetachGroup: vi.fn(),
+          onCreateInlineGroup: vi.fn(),
+        }),
+      );
+      const rows = findBySlot(tree, "menu-item-modal-modifier-attached-row");
+      expect(rows).toHaveLength(2);
+      // Every row exposes a detach button.
+      const detachButtons = findBySlot(tree, "menu-item-modal-modifier-detach");
+      expect(detachButtons).toHaveLength(2);
+      // The serialized text mentions both groups' names + the bounds summary
+      // (« choix unique obligatoire » for A: min=1/max=1, etc.).
+      const text = allText(tree);
+      expect(text).toContain("Sauce");
+      expect(text).toContain("Suppléments");
+      // Either a digit-pair badge (1/1, 0/3) OR a textual summary is acceptable —
+      // we pin the LOAD-BEARING name + a min/max digit appearance.
+      expect(text).toMatch(/1\s*\/\s*1|choix unique/i);
+      expect(text).toMatch(/0\s*\/\s*3|jusqu/i);
+    });
+
+    it("EDIT mode — surfaces an empty-state when no group is attached (the gérant sees the section but knows it's empty)", () => {
+      const tree = serialize(
+        ItemModal({
+          mode: "edit",
+          open: true,
+          categories: CATEGORIES,
+          categoryId: EXISTING_ITEM.categoryId,
+          item: EXISTING_ITEM,
+          onOpenChange: vi.fn(),
+          onCreate: vi.fn(),
+          onUpdate: vi.fn(),
+          onDelete: vi.fn(),
+          attachedGroups: [],
+          availableGroups: [AVAILABLE_C],
+          onAttachGroup: vi.fn(),
+          onDetachGroup: vi.fn(),
+          onCreateInlineGroup: vi.fn(),
+        }),
+      );
+      const rows = findBySlot(tree, "menu-item-modal-modifier-attached-row");
+      expect(rows).toHaveLength(0);
+      expect(findBySlot(tree, "menu-item-modal-modifiers-empty")).toHaveLength(
+        1,
+      );
+    });
+
+    it("EDIT mode — clicking « Détacher » fires `onDetachGroup(itemId, groupId)` exactly once", () => {
+      const onDetachGroup = vi.fn();
+      const tree = serialize(
+        ItemModal({
+          mode: "edit",
+          open: true,
+          categories: CATEGORIES,
+          categoryId: EXISTING_ITEM.categoryId,
+          item: EXISTING_ITEM,
+          onOpenChange: vi.fn(),
+          onCreate: vi.fn(),
+          onUpdate: vi.fn(),
+          onDelete: vi.fn(),
+          attachedGroups: [ATTACHED_A],
+          availableGroups: [AVAILABLE_C],
+          onAttachGroup: vi.fn(),
+          onDetachGroup,
+          onCreateInlineGroup: vi.fn(),
+        }),
+      );
+      const detach = findBySlot(tree, "menu-item-modal-modifier-detach")[0];
+      expect(detach).toBeDefined();
+      const onClick = detach.props["onClick"] as (() => void) | undefined;
+      expect(typeof onClick).toBe("function");
+      onClick?.();
+      expect(onDetachGroup).toHaveBeenCalledTimes(1);
+      expect(onDetachGroup).toHaveBeenCalledWith(
+        EXISTING_ITEM._id,
+        ATTACHED_A._id,
+      );
+    });
+
+    it("EDIT mode — the picker exposes ONLY non-attached groups as options (avoids obvious no-ops, even though the backend is idempotent)", () => {
+      // (b) of the issue body: « Picker « Ajouter un groupe existant » : autocomplete
+      // sur listGroups, sélection → attachGroupToItem (idempotent, re-attacher = no-op) ».
+      // The picker filters out groups already attached so the affordance never
+      // offers a no-op. Idempotency is the SAFETY NET, not the UX.
+      const tree = serialize(
+        ItemModal({
+          mode: "edit",
+          open: true,
+          categories: CATEGORIES,
+          categoryId: EXISTING_ITEM.categoryId,
+          item: EXISTING_ITEM,
+          onOpenChange: vi.fn(),
+          onCreate: vi.fn(),
+          onUpdate: vi.fn(),
+          onDelete: vi.fn(),
+          attachedGroups: [ATTACHED_A],
+          availableGroups: [ATTACHED_A, AVAILABLE_C], // full tenant list
+          onAttachGroup: vi.fn(),
+          onDetachGroup: vi.fn(),
+          onCreateInlineGroup: vi.fn(),
+        }),
+      );
+      const options = findBySlot(
+        tree,
+        "menu-item-modal-modifier-picker-option",
+      );
+      // Only AVAILABLE_C (Cuisson) is selectable — ATTACHED_A (Sauce) is filtered.
+      expect(options).toHaveLength(1);
+      const optGroupIds = options
+        .map((o) => o.props["data-group-id"])
+        .filter((v): v is string => typeof v === "string");
+      expect(new Set(optGroupIds)).toEqual(
+        new Set([AVAILABLE_C._id as unknown as string]),
+      );
+    });
+
+    it("EDIT mode — clicking a picker option fires `onAttachGroup(itemId, groupId)` exactly once with that group", () => {
+      const onAttachGroup = vi.fn();
+      const tree = serialize(
+        ItemModal({
+          mode: "edit",
+          open: true,
+          categories: CATEGORIES,
+          categoryId: EXISTING_ITEM.categoryId,
+          item: EXISTING_ITEM,
+          onOpenChange: vi.fn(),
+          onCreate: vi.fn(),
+          onUpdate: vi.fn(),
+          onDelete: vi.fn(),
+          attachedGroups: [],
+          availableGroups: [ATTACHED_A, AVAILABLE_C],
+          onAttachGroup,
+          onDetachGroup: vi.fn(),
+          onCreateInlineGroup: vi.fn(),
+        }),
+      );
+      const options = findBySlot(
+        tree,
+        "menu-item-modal-modifier-picker-option",
+      );
+      // Click the first option.
+      const onClick = options[0].props["onClick"] as (() => void) | undefined;
+      expect(typeof onClick).toBe("function");
+      onClick?.();
+      expect(onAttachGroup).toHaveBeenCalledTimes(1);
+      const [calledItemId, calledGroupId] = onAttachGroup.mock.calls[0] as [
+        unknown,
+        unknown,
+      ];
+      expect(calledItemId).toBe(EXISTING_ITEM._id);
+      // The clicked option's group id is one of the AVAILABLE pool.
+      expect(
+        [ATTACHED_A._id, AVAILABLE_C._id].some((id) => id === calledGroupId),
+      ).toBe(true);
+    });
+
+    it("EDIT mode — clicking « Créer un nouveau groupe » fires `onCreateInlineGroup(itemId)` exactly once", () => {
+      // (c) of the issue body: « Bouton « Créer un nouveau groupe » : ouvre la
+      // modale groupe (F-MENU-08) par-dessus la modale item ; à la confirmation,
+      // attache automatiquement le nouveau groupe à l item courant ». The
+      // modal HERE just fires the open intent; the page owns the stacking +
+      // the auto-attach (pinned by page.test.ts).
+      const onCreateInlineGroup = vi.fn();
+      const tree = serialize(
+        ItemModal({
+          mode: "edit",
+          open: true,
+          categories: CATEGORIES,
+          categoryId: EXISTING_ITEM.categoryId,
+          item: EXISTING_ITEM,
+          onOpenChange: vi.fn(),
+          onCreate: vi.fn(),
+          onUpdate: vi.fn(),
+          onDelete: vi.fn(),
+          attachedGroups: [],
+          availableGroups: [],
+          onAttachGroup: vi.fn(),
+          onDetachGroup: vi.fn(),
+          onCreateInlineGroup,
+        }),
+      );
+      const create = findBySlot(
+        tree,
+        "menu-item-modal-modifier-create-inline",
+      )[0];
+      expect(create).toBeDefined();
+      const onClick = create.props["onClick"] as (() => void) | undefined;
+      expect(typeof onClick).toBe("function");
+      onClick?.();
+      expect(onCreateInlineGroup).toHaveBeenCalledTimes(1);
+      expect(onCreateInlineGroup).toHaveBeenCalledWith(EXISTING_ITEM._id);
+    });
+  });
+
   describe("Validation — local price guard (before mutation)", () => {
     it("AC6 — surfaces a visible error message when the price input is negative (parsed from the UI)", () => {
       // The schema requires `basePrice >= 0` (`assertNonNegativePrice`,

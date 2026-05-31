@@ -2,7 +2,8 @@
 
 /**
  * F-MENU-01 (#187) + F-MENU-02 (#200) + F-MENU-03 (#206) + F-MENU-04 (#211)
- * + F-MENU-05 (#219) + F-MENU-06 (#226) — Route `/t/[tenantId]/menu/`.
+ * + F-MENU-05 (#219) + F-MENU-06 (#226) + F-MENU-07 (#237) + F-MENU-08 (#242)
+ * + F-MENU-09 (#246) — Route `/t/[tenantId]/menu/`.
  *
  * Slice 1 (#187) wired the read-only categories list via `useTenantQuery`.
  * Slice 2 (#200) layered category CRUD on top via `useTenantMutation`. Slice 3
@@ -79,18 +80,27 @@ type ItemModalState =
   | { kind: "edit"; itemId: Id<"menuItems"> };
 
 /**
- * F-MENU-08 (#242) — Modifier-group modal state. Three branches mirror the
- * item modal:
- *   - `null`                          → closed.
- *   - `{ kind: "create" }`            → create modal opened from the
- *     « + Personnalisation » CTA.
- *   - `{ kind: "edit", groupId }`     → edit modal opened from a row's
+ * F-MENU-08 (#242) + F-MENU-09 (#246) — Modifier-group modal state. Four
+ * branches:
+ *   - `null`                            → closed.
+ *   - `{ kind: "create" }`              → create modal opened from the
+ *     « + Personnalisation » CTA in the standalone section.
+ *   - `{ kind: "edit", groupId }`       → edit modal opened from a row's
  *     « Éditer » button.
+ *   - `{ kind: "inline-from-item", itemId }` (F-MENU-09 / #246) → create
+ *     modal opened from INSIDE the item modal's Personnalisations section.
+ *     On a successful create, the page chains
+ *     `attachGroupToItem({ itemId, modifierGroupId: newId })` BEFORE closing
+ *     the modifier-group modal — the item modal stays open behind it. This
+ *     is the « par-dessus la modale item / à la confirmation attache
+ *     automatiquement le nouveau groupe à l item courant » contract of the
+ *     issue body (c).
  */
 type ModifierGroupModalState =
   | null
   | { kind: "create" }
-  | { kind: "edit"; groupId: Id<"modifierGroups"> };
+  | { kind: "edit"; groupId: Id<"modifierGroups"> }
+  | { kind: "inline-from-item"; itemId: Id<"menuItems"> };
 
 export default function MenuPage() {
   // `useTenantQuery` / `useTenantMutation` read `tenantId` from
@@ -151,6 +161,18 @@ export default function MenuPage() {
     api.lib.menu.modifiers.removeGroup,
   );
 
+  // F-MENU-09 (#246) — N-N attach/detach for the Personnalisations section
+  // inside the item modal. The backend `attachGroupToItem` is idempotent
+  // (re-attach = no-op, ADR 0010 cross-tenant safety surfaces as NOT_FOUND);
+  // `detachGroupFromItem` removes ONE edge (siblings + group intact). Both
+  // are tenant-scoped via `useTenantMutation` (ADR 0014 §4 / #183).
+  const attachGroupToItem = useTenantMutation(
+    api.lib.menu.modifiers.attachGroupToItem,
+  );
+  const detachGroupFromItem = useTenantMutation(
+    api.lib.menu.modifiers.detachGroupFromItem,
+  );
+
   const [modalState, setModalState] = useState<ItemModalState>(null);
   const [modifierGroupModalState, setModifierGroupModalState] =
     useState<ModifierGroupModalState>(null);
@@ -165,6 +187,19 @@ export default function MenuPage() {
     api.lib.menu.modifiers.listGroupItems,
     modifierGroupModalState !== null && modifierGroupModalState.kind === "edit"
       ? { modifierGroupId: modifierGroupModalState.groupId }
+      : "skip",
+  );
+
+  // F-MENU-09 (#246) — Attached groups query: resolved ON DEMAND when the item
+  // modal is open in edit mode (the only mode where attach/detach makes sense
+  // — pre-create we have no itemId). Skipped otherwise so we don't pay the
+  // round-trip while the modal is closed. Convex reactivity keeps the section
+  // fresh on attach/detach: the mutation invalidates the query and the list
+  // re-renders without explicit refetch — same pattern as `impactItems`.
+  const attachedGroups = useTenantQuery(
+    api.lib.menu.modifiers.listItemGroups,
+    modalState !== null && modalState.kind === "edit"
+      ? { itemId: modalState.itemId }
       : "skip",
   );
 
@@ -350,7 +385,24 @@ export default function MenuPage() {
     payload: ModifierGroupCreatePayload,
   ) => {
     try {
-      await createModifierGroup(payload);
+      const newGroupId = await createModifierGroup(payload);
+      // F-MENU-09 (#246) — inline-from-item branch: when the modifier-group
+      // modal was opened from inside the item modal (via
+      // `onCreateInlineGroup`), chain `attachGroupToItem` AFTER the create
+      // resolves so the new group is auto-attached to the originating item
+      // (issue body « à la confirmation, attache automatiquement le nouveau
+      // groupe à l item courant »). The standalone « + Personnalisation »
+      // create path skips this branch (no originating item).
+      if (
+        modifierGroupModalState !== null &&
+        modifierGroupModalState.kind === "inline-from-item" &&
+        newGroupId !== undefined
+      ) {
+        await attachGroupToItem({
+          itemId: modifierGroupModalState.itemId,
+          modifierGroupId: newGroupId,
+        });
+      }
       setModifierGroupModalState(null);
     } catch (error) {
       toast.error("Impossible de créer la personnalisation", {
@@ -380,6 +432,44 @@ export default function MenuPage() {
         description: getConvexErrorMessage(error),
       });
     }
+  };
+
+  // F-MENU-09 (#246) — Attach / detach handlers for the Personnalisations
+  // section inside the item modal. Same toast.error discipline as the rest
+  // of the CRUD (NOT_FOUND for cross-tenant probes etc. surface as a visible
+  // toast — never silently swallowed).
+  const handleAttachGroupToItem = async (
+    itemId: Id<"menuItems">,
+    modifierGroupId: Id<"modifierGroups">,
+  ) => {
+    try {
+      await attachGroupToItem({ itemId, modifierGroupId });
+    } catch (error) {
+      toast.error("Impossible d'attacher le groupe", {
+        description: getConvexErrorMessage(error),
+      });
+    }
+  };
+  const handleDetachGroupFromItem = async (
+    itemId: Id<"menuItems">,
+    modifierGroupId: Id<"modifierGroups">,
+  ) => {
+    try {
+      await detachGroupFromItem({ itemId, modifierGroupId });
+    } catch (error) {
+      toast.error("Impossible de détacher le groupe", {
+        description: getConvexErrorMessage(error),
+      });
+    }
+  };
+  // F-MENU-09 (#246) — Opens the modifier-group modal STACKED over the item
+  // modal, in « inline-from-item » mode. The item modal stays mounted behind
+  // it (page-level state — survives the group modal lifecycle); on a
+  // successful `createGroup`, `handleCreateModifierGroup` chains
+  // `attachGroupToItem({ itemId, modifierGroupId: newId })` BEFORE closing
+  // the group modal — see the inline-from-item branch above.
+  const handleOpenInlineModifierGroup = (itemId: Id<"menuItems">) => {
+    setModifierGroupModalState({ kind: "inline-from-item", itemId });
   };
 
   const itemsByCategory = bucketItemsByCategory(items);
@@ -437,9 +527,14 @@ export default function MenuPage() {
       </div>
       {modifierGroupModalState !== null ? (
         <ModifierGroupModal
-          mode={modifierGroupModalState.kind}
+          // F-MENU-09 (#246): both « create » (standalone) and « inline-from-item »
+          // render the modal in CREATE mode. The page tracks WHICH branch via
+          // `modifierGroupModalState.kind` so `handleCreateModifierGroup` can
+          // chain the auto-attach in the inline branch only.
+          mode={modifierGroupModalState.kind === "edit" ? "edit" : "create"}
           open={
             modifierGroupModalState.kind === "create" ||
+            modifierGroupModalState.kind === "inline-from-item" ||
             (modifierGroupModalState.kind === "edit" &&
               editingModifierGroup !== undefined)
           }
@@ -482,6 +577,17 @@ export default function MenuPage() {
           onDelete={handleRemoveItem}
           onUploadPhoto={handleUploadPhoto}
           onRemovePhoto={handleRemovePhoto}
+          // F-MENU-09 (#246) — Personnalisations: list/attach/detach/create-inline
+          // surface for REUSABLE modifier groups. The page resolves the attached
+          // set (`listItemGroups`, scoped to the open item) + threads the full
+          // tenant set down so the picker can filter out already-attached groups.
+          attachedGroups={
+            modalState.kind === "edit" ? attachedGroups : undefined
+          }
+          availableGroups={modifierGroups}
+          onAttachGroup={handleAttachGroupToItem}
+          onDetachGroup={handleDetachGroupFromItem}
+          onCreateInlineGroup={handleOpenInlineModifierGroup}
         />
       ) : null}
     </>

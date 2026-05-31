@@ -281,13 +281,13 @@ describe("page.tsx — F-MENU-01 (#187) wiring contract", () => {
     const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
     // The handler references items.reorder (`reorderItems` local) AND has a
     // toast.error within a handler-sized window. The window is wide enough
-    // (3500) to absorb intermediate mutation declarations the page accumulates
-    // as later slices land (#242 added the modifier-group block between the
-    // `items.reorder` mutation and the `reorderItems` handler — pure decl
-    // ordering, the actual `await reorderItems(...) → toast.error` pairing
-    // is intact).
+    // (5500) to absorb intermediate mutation declarations the page accumulates
+    // as later slices land (#242 added the modifier-group block; #246 added
+    // the N-N attach/detach block between the `items.reorder` mutation and
+    // the `reorderItems` handler — pure decl ordering, the actual
+    // `await reorderItems(...) → toast.error` pairing is intact).
     expect(collapsed).toMatch(
-      /api\.lib\.menu\.items\.reorder[\s\S]{0,3500}toast\.error/,
+      /api\.lib\.menu\.items\.reorder[\s\S]{0,5500}toast\.error/,
     );
   });
 
@@ -345,9 +345,75 @@ describe("page.tsx — F-MENU-01 (#187) wiring contract", () => {
     // NOT_FOUND for cross-tenant probes, etc.) surface as a visible toast —
     // never silently swallowed.
     const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
-    expect(collapsed).toMatch(/createGroup[\s\S]{0,1200}toast\.error/);
-    expect(collapsed).toMatch(/updateGroup[\s\S]{0,1200}toast\.error/);
-    expect(collapsed).toMatch(/removeGroup[\s\S]{0,1200}toast\.error/);
+    // Window widened to 3500 (#246 inserted the attach/detach mutation
+    // declarations + handlers between the first `createGroup` mention — in
+    // the mutation declaration block — and the first downstream
+    // `toast.error` in the categories CRUD handlers). Pairing is intact: each
+    // handler still wraps its own mutation in try/catch + toast.error.
+    expect(collapsed).toMatch(/createGroup[\s\S]{0,3500}toast\.error/);
+    expect(collapsed).toMatch(/updateGroup[\s\S]{0,3500}toast\.error/);
+    expect(collapsed).toMatch(/removeGroup[\s\S]{0,3500}toast\.error/);
+  });
+
+  // ---------------------------------------------------------------------------
+  // F-MENU-09 (#246) — Personnalisations attach / detach / create-inline wiring
+  // ---------------------------------------------------------------------------
+
+  it("F-MENU-09 — wires `modifiers.listItemGroups` via `useTenantQuery` (attached groups for the open item)", () => {
+    // The « Personnalisations » section inside the item modal lists the groups
+    // attached to the OPEN item — resolved through `listItemGroups` (tenant-scoped,
+    // ADR 0014 §4 / #183, ADR 0010). Skipped when no item modal is open.
+    const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
+    expect(collapsed).toMatch(
+      /useTenantQuery\([^)]*api\.lib\.menu\.modifiers\.listItemGroups[^)]*\)/,
+    );
+  });
+
+  it("F-MENU-09 — wires `modifiers.attachGroupToItem` + `modifiers.detachGroupFromItem` via `useTenantMutation`", () => {
+    // The attach/detach handlers go through tenantMutations (ADR 0014 §4 /
+    // #183, ADR 0010). The backend is idempotent on attach (re-attach = no-op)
+    // and is the safety net for cross-tenant ids (NOT_FOUND).
+    const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
+    expect(collapsed).toMatch(
+      /useTenantMutation\([^)]*api\.lib\.menu\.modifiers\.attachGroupToItem[^)]*\)/,
+    );
+    expect(collapsed).toMatch(
+      /useTenantMutation\([^)]*api\.lib\.menu\.modifiers\.detachGroupFromItem[^)]*\)/,
+    );
+  });
+
+  it("F-MENU-09 — passes `onAttachGroup` / `onDetachGroup` / `onCreateInlineGroup` down to the ItemModal", () => {
+    // Wiring contract: the page exposes the three Personnalisations callbacks
+    // via the dedicated props the modal accepts (callable when in edit mode,
+    // where an item id exists to attach to).
+    expect(PAGE_SOURCE).toMatch(/onAttachGroup/);
+    expect(PAGE_SOURCE).toMatch(/onDetachGroup/);
+    expect(PAGE_SOURCE).toMatch(/onCreateInlineGroup/);
+  });
+
+  it("F-MENU-09 — attach / detach handlers wrap mutations in try/catch + toast.error + getConvexErrorMessage", () => {
+    // Same discipline as F-MENU-02/05/08: backend errors (NOT_FOUND for
+    // cross-tenant probes, etc.) surface as a user-visible toast — never
+    // silently swallowed.
+    const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
+    expect(collapsed).toMatch(/attachGroupToItem[\s\S]{0,1200}toast\.error/);
+    expect(collapsed).toMatch(/detachGroupFromItem[\s\S]{0,1200}toast\.error/);
+  });
+
+  it("F-MENU-09 — inline-from-item create branch attaches the new group to the originating item after successful createGroup", () => {
+    // Issue body (c): « à la confirmation, attache automatiquement le nouveau
+    // groupe à l item courant ». The page extends `modifierGroupModalState`
+    // with an « inline-from-item » variant carrying the originating item id;
+    // when `createModifierGroup` resolves with the new id, the handler chains
+    // an `attachGroupToItem({ itemId, modifierGroupId: newId })` BEFORE
+    // closing the modal. Source-level pin: both calls coexist within a
+    // handler-sized window in `page.tsx`.
+    const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
+    expect(collapsed).toMatch(
+      /createModifierGroup[\s\S]{0,1500}attachGroupToItem/,
+    );
+    // The branch is named so future agents can grep for it.
+    expect(PAGE_SOURCE).toMatch(/inline-from-item/);
   });
 
   it("F-MENU-02 — surfaces errors via `toast.error` + `getConvexErrorMessage` (no raw alert / console.error)", () => {
