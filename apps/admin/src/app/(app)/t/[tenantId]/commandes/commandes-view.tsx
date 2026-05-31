@@ -30,7 +30,7 @@
  * `packages/backend/convex/`.
  */
 
-import type { Doc } from "@packages/backend/convex/_generated/dataModel";
+import type { Doc, Id } from "@packages/backend/convex/_generated/dataModel";
 
 import { OrdersFilters } from "./orders-filters";
 import { OrdersTable } from "./orders-table";
@@ -59,6 +59,13 @@ export type CommandesViewProps = {
   onDateRangeChange: (next: DateRangeKey) => void;
   /** F-COMMANDES-FILTERS (#238) — fired when a status toggles in the multi-select. */
   onStatusesChange: (next: OrderStatus[]) => void;
+  /**
+   * F-COMMANDES-DETAIL-MODAL (#239) — fired when the gérant clicks a row.
+   * The view forwards it as-is to `OrdersTable.onRowClick`; the page uses
+   * it to open the detail modal (sets the selected orderId, which triggers
+   * the `getOrder` subscription via `useTenantQuery`).
+   */
+  onOrderClick: (orderId: Id<"orders">) => void;
 };
 
 export function CommandesView({
@@ -66,6 +73,7 @@ export function CommandesView({
   filter,
   onDateRangeChange,
   onStatusesChange,
+  onOrderClick,
 }: CommandesViewProps) {
   return (
     <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
@@ -76,7 +84,7 @@ export function CommandesView({
           onDateRangeChange={onDateRangeChange}
           onStatusesChange={onStatusesChange}
         />
-        <OrdersTable orders={orders} />
+        <OrdersTable orders={orders} onRowClick={onOrderClick} />
       </div>
     </div>
   );
