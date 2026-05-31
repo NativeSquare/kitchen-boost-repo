@@ -73,6 +73,19 @@ function typeName(t: unknown): string {
   return String(t);
 }
 
+const FORWARD_REF_TYPE = Symbol.for("react.forward_ref");
+
+/** Whether `t` is a React `forwardRef` value (true for `next/link`'s
+ *  `Link`). We don't invoke `Link.render(...)` because it uses hooks
+ *  internally — instead we shim it to its public anchor shape. */
+function isLinkLikeForwardRef(t: unknown): boolean {
+  return (
+    typeof t === "object" &&
+    t !== null &&
+    (t as { $$typeof?: symbol }).$$typeof === FORWARD_REF_TYPE
+  );
+}
+
 function serialize(node: ReactNode): SerializedNode {
   if (node === null || node === undefined || node === false || node === true) {
     return null;
@@ -97,6 +110,28 @@ function serialize(node: ReactNode): SerializedNode {
       } catch {
         return { type: typeName(node.type), props: {}, children: [] };
       }
+    }
+    // `next/link`'s `Link` is a `forwardRef` whose `.render()` uses React
+    // hooks internally — invoking it outside a real React render throws
+    // « Invalid hook call ». But the public contract Link expresses IS a
+    // `<a href>`, so we shim it: treat any forwardRef element with an
+    // `href` prop as if it had rendered `<a href={...}>{children}</a>`.
+    if (
+      isLinkLikeForwardRef(node.type) &&
+      "href" in (node.props as Record<string, unknown>)
+    ) {
+      const props = { ...(node.props as Record<string, unknown>) };
+      const rawChildren = props.children as ReactNode | undefined;
+      delete props.children;
+      const children: SerializedNode[] = [];
+      if (rawChildren !== undefined) {
+        const list = Array.isArray(rawChildren) ? rawChildren : [rawChildren];
+        for (const c of list) {
+          const s = serialize(c);
+          if (s !== null) children.push(s);
+        }
+      }
+      return { type: "a", props, children };
     }
     const props = { ...(node.props as Record<string, unknown>) };
     const rawChildren = props.children as ReactNode | undefined;
