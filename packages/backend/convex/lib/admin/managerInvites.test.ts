@@ -132,10 +132,53 @@ describe("B-AUTH-4 inviteManager — happy path (root-only)", () => {
     );
   });
 
-  it("does NOT schedule an email (B-AUTH-5 wires sendManagerInviteEmail)", async () => {
+  it("schedules sendManagerInviteEmail with { to, name, token, tenantName } (B-AUTH-5)", async () => {
     const asAdmin = t.withIdentity({ subject: seed.adminId });
 
-    // No scheduled function should be queued by this mutation.
+    // Read the tenant's name so we can assert the snapshot matches what's
+    // passed to the scheduled email action (B-AUTH-5 acceptance criterion:
+    // tenantName is read from the tenants row at invite time).
+    const tenantDoc = await t.run((ctx) => ctx.db.get(seed.tenantA.tenantId));
+    expect(tenantDoc).not.toBeNull();
+    const expectedTenantName = tenantDoc!.name;
+
+    const inviteId = await asAdmin.mutation(
+      api.lib.admin.managerInvites.inviteManager,
+      {
+        tenantId: seed.tenantA.tenantId,
+        email: "khan@example.fr",
+        name: "Khan Diallo",
+      },
+    );
+    const row = await t.run((ctx) => ctx.db.get(inviteId));
+    expect(row).not.toBeNull();
+
+    const scheduled = await t.run((ctx) =>
+      ctx.db.system.query("_scheduled_functions").collect(),
+    );
+    // Exactly one scheduled job — the manager invite email.
+    expect(scheduled).toHaveLength(1);
+    const job = scheduled[0]!;
+    // Convex stores the FunctionReference path as a "/"-separated string with
+    // the export name as the last segment (e.g. "emails:sendManagerInviteEmail").
+    // Match loosely on the trailing segment so this doesn't depend on the exact
+    // serialised shape.
+    expect(JSON.stringify(job)).toContain("sendManagerInviteEmail");
+    // The scheduler payload (`args` is an ARRAY of positional args, the first
+    // of which is the named-args object passed to the internalAction).
+    const argsArray = job.args as unknown as Array<Record<string, unknown>>;
+    expect(Array.isArray(argsArray)).toBe(true);
+    expect(argsArray.length).toBeGreaterThanOrEqual(1);
+    const payload = argsArray[0]!;
+    expect(payload.to).toBe("khan@example.fr");
+    expect(payload.name).toBe("Khan Diallo");
+    expect(payload.token).toBe(row!.token);
+    expect(payload.tenantName).toBe(expectedTenantName);
+  });
+
+  it("scheduled email's name defaults to the email prefix when name is omitted", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+
     await asAdmin.mutation(api.lib.admin.managerInvites.inviteManager, {
       tenantId: seed.tenantA.tenantId,
       email: "noemail@example.fr",
@@ -144,7 +187,12 @@ describe("B-AUTH-4 inviteManager — happy path (root-only)", () => {
     const scheduled = await t.run((ctx) =>
       ctx.db.system.query("_scheduled_functions").collect(),
     );
-    expect(scheduled).toHaveLength(0);
+    expect(scheduled).toHaveLength(1);
+    const argsArray = scheduled[0]!.args as unknown as Array<
+      Record<string, unknown>
+    >;
+    const payload = argsArray[0]!;
+    expect(payload.name).toBe("noemail");
   });
 });
 
