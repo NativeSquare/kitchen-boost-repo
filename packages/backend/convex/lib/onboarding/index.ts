@@ -53,12 +53,14 @@ export { CRM_PROSPECTS_CSV, bundledSeedProspects } from "./seedData";
 export { missingMilestonesForPhase } from "./gates";
 export {
   type ClosingEvaluation,
+  type ClosingMilestoneKey,
   PHASE_ORDER,
   applyClosing,
   assertLegalPhaseTransition,
   evaluateClosing,
   isLegalPhaseTransition,
 } from "./pipeline";
+export { setMilestone } from "./milestones";
 export {
   generateSlug,
   provisionTenant,
