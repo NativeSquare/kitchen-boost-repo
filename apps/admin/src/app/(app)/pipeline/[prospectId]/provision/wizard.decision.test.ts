@@ -344,6 +344,75 @@ describe("computeWizardState — F-WIZARD [1/10] (#265) step heuristic", () => {
     expect(state.isStepComplete(9)).toBe(false);
     expect(state.isStepComplete(-1)).toBe(false);
   });
+
+  // -------------------------------------------------------------------------
+  // F-WIZARD [4/10] (#268) — step 2 (domaine personnalisé optionnel) is
+  // complete iff `tenant.customDomain` is set OR the user has explicitly
+  // skipped (local-only flag — skipping is persisted by the form's
+  // « Skip » button; never round-tripped to the backend).
+  //
+  // The previous heuristic returned `step2Complete = step1Complete` (always
+  // complete the moment a tenant exists), which would mislead the stepper
+  // ticking step 2 green before the operator has ever seen the form. Per
+  // issue spec verbatim: « le hook useWizardState traite step 2 comme
+  // complete si customDomain est posé OU si l'user a explicitement skip ».
+  // -------------------------------------------------------------------------
+  it("F-WIZARD [4/10] (#268): step 2 incomplete by default once tenant exists (operator must visit it)", () => {
+    const tenant = makeTenant({ customDomain: undefined });
+    const state = computeWizardState({
+      prospect: makeProspect({ tenantId: TENANT_ID }),
+      tenant,
+      publishedMenu: undefined,
+      managerInvite: undefined,
+    });
+    expect(state.isStepComplete(1)).toBe(true);
+    expect(state.isStepComplete(2)).toBe(false);
+  });
+
+  it("F-WIZARD [4/10] (#268): step 2 complete when tenant.customDomain is set", () => {
+    const tenant = makeTenant({
+      customDomain: "commander.le-petit-bistrot.fr",
+    });
+    const state = computeWizardState({
+      prospect: makeProspect({ tenantId: TENANT_ID }),
+      tenant,
+      publishedMenu: undefined,
+      managerInvite: undefined,
+    });
+    expect(state.isStepComplete(2)).toBe(true);
+  });
+
+  it("F-WIZARD [4/10] (#268): step 2 complete when the operator has explicitly skipped (local flag)", () => {
+    const tenant = makeTenant({ customDomain: undefined });
+    const state = computeWizardState({
+      prospect: makeProspect({ tenantId: TENANT_ID }),
+      tenant,
+      publishedMenu: undefined,
+      managerInvite: undefined,
+      step2Skipped: true,
+    });
+    expect(state.isStepComplete(2)).toBe(true);
+  });
+
+  it("F-WIZARD [4/10] (#268): step 2 stays SKIPPED by the cursor (cursor still jumps to step 4 / branding even when step 2 is incomplete — optional step, never pulls cursor)", () => {
+    // Even with step 2 unticked, the cursor heuristic must NOT park on step 2
+    // (it's the « always navigable, skip = OK » optional step per the spec).
+    // The cursor still goes to step 4 when branding is the first MANDATORY
+    // step left. Step 2 being green/orange in the stepper is purely visual;
+    // it never gates progression.
+    const tenant = makeTenant({
+      customDomain: undefined,
+      branding: undefined,
+    });
+    const state = computeWizardState({
+      prospect: makeProspect({ tenantId: TENANT_ID }),
+      tenant,
+      publishedMenu: undefined,
+      managerInvite: undefined,
+    });
+    expect(state.isStepComplete(2)).toBe(false);
+    expect(state.currentStep).toBe(4);
+  });
 });
 
 // ---------------------------------------------------------------------------

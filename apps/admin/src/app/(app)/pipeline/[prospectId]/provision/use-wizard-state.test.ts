@@ -72,4 +72,17 @@ describe("use-wizard-state.ts — F-WIZARD [1/10] (#265) wiring contract", () =>
     // `managerInvite` to `undefined`).
     expect(code).not.toMatch(/managerInvite[^=]*=\s*undefined\s*;/);
   });
+
+  // F-WIZARD [4/10] (#268) — local-only « step 2 skipped » flag.
+  it("F-WIZARD [4/10] — owns + exposes a `step2Skipped` flag (local state, never round-tripped)", () => {
+    const code = stripNonCode(HOOK_SOURCE);
+    // The hook must maintain a React state for step2Skipped (the operator's
+    // explicit Skip click flips it true; never persisted to the backend).
+    expect(code).toMatch(/step2Skipped/);
+    // The setter the caller wires to the form's Skip button.
+    expect(code).toMatch(/markStep2Skipped\b/);
+    // The flag is passed to computeWizardState (so step 2 ticks green once
+    // the operator clicked Skip).
+    expect(code).toMatch(/step2Skipped\s*[,:]/);
+  });
 });
