@@ -136,7 +136,7 @@ function makeTemplate(
     label,
     body: `Body for ${label}`,
     variables: [],
-    deepLinkTarget: "menu",
+    deepLinkTarget: "catalogue",
     language: "fr",
     maxDiscountPercent: 0,
     containsAlcohol: false,
