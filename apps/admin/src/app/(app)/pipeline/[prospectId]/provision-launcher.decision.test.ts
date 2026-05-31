@@ -79,6 +79,7 @@ function makeTenant(overrides: Partial<Doc<"tenants">> = {}): Doc<"tenants"> {
     name: "L'Artisan",
     siret: "12345678900012",
     status: "pending",
+    createdAt: 1_700_000_000_000,
     ...overrides,
   };
 }

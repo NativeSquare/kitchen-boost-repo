@@ -327,6 +327,7 @@ describe("ProspectFicheView — F-SHELL-10 (#233)", () => {
       name: "L'Artisan",
       siret: "12345678900012",
       status: "active",
+      createdAt: 1_700_000_000_000,
     };
     const tree = serialize(
       ProspectFicheView({ session: adminSession(), prospect, tenant }),
