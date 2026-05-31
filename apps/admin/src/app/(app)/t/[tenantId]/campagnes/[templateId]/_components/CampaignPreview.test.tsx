@@ -230,8 +230,8 @@ describe("CampaignPreview — AC4 character counter < 200", () => {
       />,
     );
     const text = allText(tree);
-    // "Bonjour Sophie, -20% chez Buns & Bao !" = 39 chars
-    expect(text).toMatch(/39\s*\/\s*200/);
+    // "Bonjour Sophie, -20% chez Buns & Bao !" = 38 chars
+    expect(text).toMatch(/38\s*\/\s*200/);
   });
 
   it("flips the counter to a destructive color when the rendered message reaches 200 chars", () => {

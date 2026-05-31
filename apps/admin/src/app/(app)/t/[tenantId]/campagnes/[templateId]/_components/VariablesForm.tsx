@@ -1,6 +1,6 @@
 /**
- * F-CAMPAGNES [3/7] (#205) — `VariablesForm`, the dynamic per-template
- * variable form (parent EPIC #145, ADR 0006 / PRD 80 §4).
+ * F-CAMPAGNES [3/7] (#205) + [4/7] (#215) — `VariablesForm`, the dynamic
+ * per-template variable form (parent EPIC #145, ADR 0006 / PRD 80 §4).
  *
  * Issue body verbatim:
  *   - generates fields dynamically from the variable constraints declared
@@ -17,10 +17,15 @@
  *     (`templateBounds.ts`): `discount ≤ 50 %` (impossible côté slider),
  *     longueur raisonnable (cap final 200 chars rendu sliced [4/7]),
  *     FR uniquement (refus mention alcool dans les champs libres).
- *   - bouton « Envoyer maintenant » présent mais désactivé (slice [4/7]
- *     enables it).
  *
- * Scope (#205 hard constraint): under
+ * Slice [4/7] (#215) integration: the « Envoyer maintenant » button no
+ * longer lives here — it moved into `<CampaignPreview/>`, which is rendered
+ * inline below the fields by the shell. The shell threads its `values` state
+ * into both the fields AND the preview, so the live preview + bound-aware
+ * button update in real time as the gérant types. The pure `VariablesFormView`
+ * remains an input-only surface (test-callable under `environment: "node"`).
+ *
+ * Scope (#205 / #215 hard constraint): under
  * `apps/admin/src/app/(app)/t/[tenantId]/campagnes/[templateId]/`. Zero
  * touch to `apps/web`, `apps/native`, or `packages/backend/convex/`.
  *
@@ -28,13 +33,9 @@
  * `page.tsx`:
  *   - `VariablesForm` (this file's public export): the THIN stateful
  *     shell. Owns the per-field local state (one `useState` map seeded
- *     from `initialValues`); wires `onChange` per field; delegates the
- *     whole render to `VariablesFormView`. The test does NOT use this
- *     shell directly (it would hit the hook-call rule under
- *     `environment: "node"`) — the test asserts the controlled-prop
- *     branch by passing `initialValues` to the shell and walking the
- *     serialized tree, which falls back to surfacing the inner view via
- *     the controlled `values`.
+ *     from `initialValues`); wires `onChange` per field; renders the
+ *     pure `VariablesFormView` for the inputs + the `CampaignPreview` for
+ *     the live preview surface and the bound-aware submit button.
  *   - `VariablesFormView`: PURE presentational. Receives the values + the
  *     onChange callback. Computes per-field violations from
  *     `validateVariableValue` and paints them inline. Callable as a plain
@@ -57,10 +58,10 @@ import {
 import type { TenantTemplateSummary } from "@packages/backend/convex/lib/notifications/campaigns";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
 
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
+import { CampaignPreview } from "./CampaignPreview";
 import {
   type VariableValidationViolation,
   MAX_INPUT_LENGTH,
@@ -129,14 +130,26 @@ export function VariablesForm({
   >(() => ({ ...(initialValues ?? {}) }));
 
   return (
-    <VariablesFormView
-      tenantId={tenantId}
-      template={template}
-      values={values}
-      onChange={(name, next) =>
-        setValues((prev) => ({ ...prev, [name]: next }))
-      }
-    />
+    <div className="flex flex-col gap-6">
+      <VariablesFormView
+        tenantId={tenantId}
+        template={template}
+        values={values}
+        onChange={(name, next) =>
+          setValues((prev) => ({ ...prev, [name]: next }))
+        }
+      />
+      <CampaignPreview
+        template={template}
+        values={values}
+        onSubmit={() => {
+          // Slice [5/7] (#192 send wiring) plugs the Convex
+          // `sendTenantCampaign` mutation in here. For now the click is
+          // a no-op so the disabled-vs-enabled UX is testable end-to-end
+          // without a backend dependency in this slice.
+        }}
+      />
+    </div>
   );
 }
 
@@ -185,22 +198,12 @@ export function VariablesFormView({
           />
         ))}
       </div>
-
-      <div className="flex justify-end">
-        {/*
-         * Issue body: « Bouton « Envoyer maintenant » présent mais
-         * désactivé ». Slice [4/7] (#192) will enable it once the send
-         * wiring + preview-bound check land.
-         */}
-        <Button
-          type="submit"
-          disabled
-          data-slot="button"
-          className="bg-[#1B7A3D] hover:bg-[#1B7A3D]"
-        >
-          Envoyer maintenant
-        </Button>
-      </div>
+      {/*
+       * Slice [4/7] (#215): the « Envoyer maintenant » button + the live
+       * preview surface no longer live here — they moved into
+       * `<CampaignPreview/>`, rendered by the stateful `VariablesForm`
+       * shell alongside this view so both share the same `values` state.
+       */}
     </form>
   );
 }
