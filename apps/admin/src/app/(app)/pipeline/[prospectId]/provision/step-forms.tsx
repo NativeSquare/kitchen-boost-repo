@@ -675,7 +675,14 @@ function Step5Form({ onPrev, onNext }: StepFormProps): React.JSX.Element {
   const setItemAvailability = useMutation(
     api.lib.menu.availability.setItemAvailability,
   );
-  const createModifierGroup = useMutation(api.lib.menu.modifiers.createGroup);
+  // NOTE: `createModifierGroup` + `updateGroup` mutations are intentionally
+  // NOT bound here — the wizard's modifier-group create / edit affordances
+  // surface a hint toast directing the operator to the standalone Menu page
+  // (the dedicated UX mounts the full `ModifierGroupModal`, which the wizard
+  // would need a `<TenantProvider/>` ancestor to host — out of scope for
+  // this slice, see the head comment). `removeGroup` IS bound: a future
+  // slice mounting the modal here can use the delete callback as-is from
+  // inside the modal's confirmation panel.
   const removeModifierGroup = useMutation(api.lib.menu.modifiers.removeGroup);
   const publishMenu = useMutation(api.lib.menu.publication.publishMenu);
 
@@ -851,12 +858,6 @@ function Step5Form({ onPrev, onNext }: StepFormProps): React.JSX.Element {
       setPublishLoading(false);
     }
   };
-
-  // Use category-level create for the inline modifier group when needed; for
-  // the V1 wizard we only thread the delete path live (see above). The
-  // unused create mutation is intentionally referenced via the void-cast so
-  // we keep the surface ready for the next slice without a lint warning.
-  void createModifierGroup;
 
   return (
     <Step5MenuForm
