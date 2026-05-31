@@ -712,8 +712,11 @@ describe("RuleBuilderModal — F-PRICING-2 (#245)", () => {
         "pricing-rule-builder-action-frais_livraison_part_resto_fixe-euros",
       )[0];
       expect(eurosInput).toBeDefined();
-      // 250 cents → « 2,50 » FR display (centsToEuroDisplay uses comma).
-      expect(String(eurosInput.props["value"])).toBe("2,50");
+      // 250 cents → « 2,5 » FR display (centsToEuroDisplay drops trailing
+      // zeros — same helper used by the create-mode test, which also produced
+      // « 25 » for 2500 cents). The pinned point is « cents → € for UI », not
+      // a specific trailing-zero policy.
+      expect(String(eurosInput.props["value"])).toBe("2,5");
     });
 
     it("AC — `existingRule` with action `frais_livraison_part_resto_pourcentage_panier percent=30` pre-fills the percent input with « 30 »", () => {

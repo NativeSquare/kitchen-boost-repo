@@ -1,24 +1,41 @@
 "use client";
 
 /**
- * F-PRICING-1 (#241) + F-PRICING-2 (#245) — Route `/t/[tenantId]/pricing`.
+ * F-PRICING-1 (#241) + F-PRICING-2 (#245) + F-PRICING-3 (#248) — Route
+ * `/t/[tenantId]/pricing`.
  *
  * Slice 1 (#241) wired the read-only list via `useTenantQuery`. Slice 2 (#245)
- * layers CREATE on top: a « + Nouvelle règle » CTA on the list opens the
+ * layered CREATE on top: a « + Nouvelle règle » CTA on the list opens the
  * `RuleBuilderModal`; on submit the page calls
  * `useTenantMutation(api.lib.pricing.rules.create)` (which auto-injects
  * `tenantId` from `<TenantProvider/>`, ADR 0014 §4 / #183).
+ *
+ * Slice 3 (#248) — F-PRICING-3 — adds EDIT by REUSING the same modal:
+ *   - The list-row « Éditer » button is now wired via `onEditRule(rule)` on
+ *     `PricingView`, which stores the rule in local state (`editingRule`).
+ *   - When `editingRule` is set, the modal is mounted in EDIT mode by passing
+ *     `existingRule={editingRule}`. The modal's `useState` initialiser
+ *     hydrates conditions + action from the persisted row (no duplicated
+ *     component, no separate form — issue body « Pas de duplication »).
+ *   - The submit handler branches: if `editingRule` is set, calls
+ *     `update({ ruleId: editingRule._id, conditions, action })`; otherwise
+ *     `create({ conditions, action })`. Same `CONTRADICTORY_CONDITIONS` /
+ *     `ConvexError` error UX in both modes — the inline `submitError` prop
+ *     surfaces the server-rédigé FR message; no toast.
+ *   - The modal is keyed on `editingRule?._id ?? "create"` so switching from
+ *     create to edit (or from one rule to another) RE-MOUNTS the form and
+ *     re-runs the `useState` initialiser with the new prefill. Without the
+ *     key, React would keep the previous form's state and the prefill would
+ *     silently no-op.
  *
  * Error discipline (issue body « Pas de toast technique. »):
  *   - The mutation throws a typed `ConvexError` whose `data.code` is
  *     `CONTRADICTORY_CONDITIONS` when the rule's bounds are unsatisfiable.
  *     We catch, branch on the code, and surface `data.message` INLINE inside
  *     the modal via its `submitError` prop. The modal stays open so the
- *     gérant can correct without re-typing.
+ *     gérant can correct without re-typing. Identical for create AND update.
  *   - Any OTHER error (network, NOT_FOUND, schema mismatch) also flows
- *     through `submitError` — the modal is the single error surface for the
- *     create path. We deliberately do NOT use `toast.error` here (departure
- *     from F-MENU-05's discipline, explicit issue requirement).
+ *     through `submitError` — the modal is the single error surface.
  *   - On success: clear `submitError` AND close the modal. The list refresh
  *     happens via Convex reactivity (no manual refetch).
  *
@@ -27,16 +44,17 @@
  * `useQuery` / `useMutation`, no `evaluate` import, no dnd-kit) are pinned
  * by `page.test.ts` + `guardrails.test.ts`.
  *
- * Scope discipline (#241/#245 hard constraint): this file (and its siblings
- * under `apps/admin/src/app/(app)/t/[tenantId]/pricing/`) is the ONLY surface
- * touched by this story. Zero touch to `apps/web`, `apps/native`, or
- * `packages/backend/convex/`.
+ * Scope discipline (#241/#245/#248 hard constraint): this file (and its
+ * siblings under `apps/admin/src/app/(app)/t/[tenantId]/pricing/`) is the
+ * ONLY surface touched by this story. Zero touch to `apps/web`, `apps/native`,
+ * or `packages/backend/convex/`.
  */
 
 import { useState } from "react";
 import { ConvexError } from "convex/values";
 
 import { api } from "@packages/backend/convex/_generated/api";
+import type { Doc } from "@packages/backend/convex/_generated/dataModel";
 
 import { useTenantMutation, useTenantQuery } from "@/hooks";
 
@@ -53,13 +71,32 @@ export default function PricingPage() {
   // gate on `tenantMutation` enforces a `kb_manager` (or `kb_admin` via
   // root override).
   const createRule = useTenantMutation(api.lib.pricing.rules.create);
+  // F-PRICING-3 (#248) — update binding. Same auto-tenantId discipline;
+  // takes a `ruleId` from the rule being edited.
+  const updateRule = useTenantMutation(api.lib.pricing.rules.update);
 
   // Modal lifecycle + inline error state (NOT a toast — issue body).
   const [modalOpen, setModalOpen] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // F-PRICING-3 (#248) — when non-null, the modal opens in EDIT mode with
+  // this rule pre-filled. Null = CREATE mode.
+  const [editingRule, setEditingRule] = useState<Doc<"pricingRules"> | null>(
+    null,
+  );
 
   const handleOpenBuilder = () => {
     setSubmitError(null);
+    setEditingRule(null);
+    setModalOpen(true);
+  };
+
+  // F-PRICING-3 (#248) — row « Éditer » handler. We clear any stale error
+  // from a previous attempt, stash the rule, then open the modal. The modal
+  // is keyed on `editingRule?._id ?? "create"` so React re-mounts it with the
+  // new initial state.
+  const handleEditRule = (rule: Doc<"pricingRules">) => {
+    setSubmitError(null);
+    setEditingRule(rule);
     setModalOpen(true);
   };
 
@@ -68,26 +105,39 @@ export default function PricingPage() {
     if (!open) {
       // Reset the error on close so a fresh open doesn't carry over the
       // previous attempt's message (it would be lying — the new form may
-      // not be contradictory at all).
+      // not be contradictory at all). Also drop the editingRule so the
+      // NEXT « + Nouvelle règle » click opens in CREATE mode.
       setSubmitError(null);
+      setEditingRule(null);
     }
   };
 
   const handleSubmitBuilder = async (payload: RuleBuilderSubmitPayload) => {
     try {
-      await createRule({
-        conditions: payload.conditions,
-        action: payload.action,
-      });
+      if (editingRule !== null) {
+        // EDIT path — same payload shape, with the persisted `ruleId`.
+        await updateRule({
+          ruleId: editingRule._id,
+          conditions: payload.conditions,
+          action: payload.action,
+        });
+      } else {
+        // CREATE path — no ruleId, the backend allocates it.
+        await createRule({
+          conditions: payload.conditions,
+          action: payload.action,
+        });
+      }
       // Success: clear the error AND close the modal. The list will
       // re-render via Convex reactivity.
       setSubmitError(null);
       setModalOpen(false);
+      setEditingRule(null);
     } catch (error) {
       // The backend rule contract throws `ConvexError({ code, message })`.
       // For `CONTRADICTORY_CONDITIONS` (and any other coded error) we use
       // the server-rédigé FR message verbatim — that's the « zone d'erreur
-      // inline » contract.
+      // inline » contract. Identical for create AND update.
       if (error instanceof ConvexError) {
         const data = error.data as { code?: string; message?: string };
         // Defensive default — the backend ALWAYS includes a message, but if
@@ -110,12 +160,23 @@ export default function PricingPage() {
 
   return (
     <>
-      <PricingView rules={rules} onNewRule={handleOpenBuilder} />
+      <PricingView
+        rules={rules}
+        onNewRule={handleOpenBuilder}
+        onEditRule={handleEditRule}
+      />
       <RuleBuilderModal
+        // KEY discipline — re-mount when the target rule changes (or when
+        // flipping create ↔ edit) so the form's `useState` initialiser
+        // re-runs with the new prefill. Without this key, React would keep
+        // the previous form state across opens and the edit prefill would
+        // be silently lost.
+        key={editingRule?._id ?? "create"}
         open={modalOpen}
         onOpenChange={handleCloseBuilder}
         onSubmit={handleSubmitBuilder}
         submitError={submitError}
+        existingRule={editingRule ?? undefined}
       />
     </>
   );

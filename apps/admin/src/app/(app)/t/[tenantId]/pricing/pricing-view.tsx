@@ -62,9 +62,23 @@ export type PricingViewProps = {
    * without supplying a handler — defaults to a no-op.
    */
   onNewRule?: () => void;
+  /**
+   * F-PRICING-3 (#248) — fires when the gérant clicks « Éditer » on a row.
+   * The page passes the rule under edit down to `RuleBuilderModal` via its
+   * `existingRule` prop, switching the modal to edit mode (same builder, just
+   * pre-filled — no duplicated component). Optional so the F-PRICING-1
+   * isolated callers (and the « placeholders disabled » test) keep working
+   * without supplying a handler: when omitted, the row's Éditer button STAYS
+   * disabled (slice 1's contract — no-op, no misclick risk).
+   */
+  onEditRule?: (rule: Doc<"pricingRules">) => void;
 };
 
-export function PricingView({ rules, onNewRule }: PricingViewProps) {
+export function PricingView({
+  rules,
+  onNewRule,
+  onEditRule,
+}: PricingViewProps) {
   // Default the click handler so the button is always present (issue body:
   // « Bouton « + Nouvelle règle » sur la page liste »). The page wires the
   // real opener via the prop; tests that don't care about the click pass
@@ -87,7 +101,7 @@ export function PricingView({ rules, onNewRule }: PricingViewProps) {
         <AutoPriorityBanner />
       </div>
       <div className="px-4 lg:px-6">
-        <PricingBody rules={rules} />
+        <PricingBody rules={rules} onEditRule={onEditRule} />
       </div>
     </div>
   );
@@ -107,7 +121,13 @@ function AutoPriorityBanner() {
   );
 }
 
-function PricingBody({ rules }: { rules: Doc<"pricingRules">[] | undefined }) {
+function PricingBody({
+  rules,
+  onEditRule,
+}: {
+  rules: Doc<"pricingRules">[] | undefined;
+  onEditRule?: (rule: Doc<"pricingRules">) => void;
+}) {
   if (rules === undefined) {
     return <RulesSkeleton />;
   }
@@ -118,7 +138,7 @@ function PricingBody({ rules }: { rules: Doc<"pricingRules">[] | undefined }) {
     <ul className="flex flex-col gap-3">
       {rules.map((rule) => (
         <li key={rule._id}>
-          <RuleRow rule={rule} />
+          <RuleRow rule={rule} onEditRule={onEditRule} />
         </li>
       ))}
     </ul>
@@ -136,7 +156,13 @@ function PricingEmptyState() {
   );
 }
 
-function RuleRow({ rule }: { rule: Doc<"pricingRules"> }) {
+function RuleRow({
+  rule,
+  onEditRule,
+}: {
+  rule: Doc<"pricingRules">;
+  onEditRule?: (rule: Doc<"pricingRules">) => void;
+}) {
   const conditionsSummary = formatConditionsSummary(rule.conditions);
   const actionSummary = formatActionSummary(rule.action);
   const isActive = rule.active;
@@ -144,6 +170,14 @@ function RuleRow({ rule }: { rule: Doc<"pricingRules"> }) {
   // body. The `Inactive` label below is the explicit textual signal — opacity
   // alone wouldn't be accessible.
   const rowClass = isActive ? "" : "opacity-60";
+  // F-PRICING-3 (#248) — « Éditer » becomes active when the page wires
+  // `onEditRule`. Backward compat (slice 1's isolated callers + the
+  // « placeholders disabled » test): if `onEditRule` is omitted, the button
+  // stays disabled — same DOM shape, no row-mutation risk.
+  const editEnabled = onEditRule !== undefined;
+  const handleEdit = () => {
+    onEditRule?.(rule);
+  };
   return (
     <Card className={rowClass}>
       <CardContent className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
@@ -156,12 +190,17 @@ function RuleRow({ rule }: { rule: Doc<"pricingRules"> }) {
             {isActive ? "Active" : "Inactive"}
           </Badge>
           {/*
-            Placeholders disabled in slice 1 (issue body): the slices 2-3 will
-            wire « Éditer » to the builder modal and « Supprimer » to the CRUD
-            mutation. Disabling them now avoids any chance of a misclick
-            mutating the wrong row before the handlers exist.
+            F-PRICING-3 (#248) wires « Éditer » via `onEditRule` (per-row
+            binding — clicking emits THIS row's rule). « Supprimer » remains a
+            disabled placeholder (slice 5 will wire it to the CRUD remove
+            mutation).
           */}
-          <Button variant="outline" size="sm" disabled>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!editEnabled}
+            onClick={editEnabled ? handleEdit : undefined}
+          >
             Éditer
           </Button>
           <Button variant="outline" size="sm" disabled>
