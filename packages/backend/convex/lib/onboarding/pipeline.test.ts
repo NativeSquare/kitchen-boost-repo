@@ -10,6 +10,7 @@ import {
   assertLegalPhaseTransition,
   evaluateClosing,
   isLegalPhaseTransition,
+  maybeAutoBascule,
 } from "./pipeline";
 
 // convex-test needs the function modules; array-negation glob form is required —
@@ -391,6 +392,133 @@ describe("2.9-C auto-bascule — applyClosing kbAdminMutation (root, audited)", 
       prospectId: id,
     });
     expect(p?.phase).toBe("preparation");
+  });
+});
+
+describe("B-ONBOARDING-MILESTONES slice 2 — maybeAutoBascule helper enriched shape (#172)", () => {
+  // The helper is the SHARED engine that slices 3 (setMilestone) and 4
+  // (recordIntegrationStatus) will reuse to chain a milestone write with the
+  // auto-bascule decision. Its enriched return — `{basculed, phase, closing:
+  // {complete, missing}}` — exposes the FULL Closing verdict so the calling
+  // mutation can report `closing.complete` to the UI WITHOUT a second
+  // `evaluateClosing` round-trip. `applyClosing` (public mutation) still flattens
+  // it to the legacy `{basculed, phase, missing}` shape for backward compat.
+
+  let t: ReturnType<typeof convexTest>;
+  let seed: Seed;
+  beforeEach(async () => {
+    t = convexTest(schema, modules);
+    seed = await seedTwoTenantsAllRoles(t);
+  });
+
+  it("returns closing.complete=true + basculed=true when Closing is complete on an acquisition prospect", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    const id = await asAdmin.mutation(api.lib.onboarding.crm.createProspect, {
+      name: "Helper Complete",
+      phone: "0600000010",
+      source: "cold_call",
+    });
+    const now = Date.now();
+    await asAdmin.mutation(api.lib.onboarding.crm.editProspect, {
+      prospectId: id,
+      patch: {
+        milestones: {
+          contratSigne: now,
+          kbisRecu: now,
+          pieceIdentiteRecue: now,
+          ribRecu: now,
+        },
+      },
+    });
+
+    const result = await t.run(async (ctx) =>
+      // Synthesise the wrapper-injected ctx shape: the helper only reads `db` and
+      // `actor` (for the audit row), so a minimal stand-in is enough.
+      maybeAutoBascule(
+        {
+          ...ctx,
+          actor: {
+            userId: seed.adminId,
+            role: "kb_admin",
+            effectiveRole: "kb_admin",
+          },
+        } as Parameters<typeof maybeAutoBascule>[0],
+        id,
+      ),
+    );
+
+    expect(result.basculed).toBe(true);
+    expect(result.phase).toBe("preparation");
+    expect(result.closing.complete).toBe(true);
+    expect(result.closing.missing).toEqual([]);
+  });
+
+  it("returns closing.complete=false + basculed=false + listed missing milestones when Closing is incomplete", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    const id = await asAdmin.mutation(api.lib.onboarding.crm.createProspect, {
+      name: "Helper Incomplete",
+      phone: "0600000011",
+      source: "cold_call",
+    });
+    const now = Date.now();
+    await asAdmin.mutation(api.lib.onboarding.crm.editProspect, {
+      prospectId: id,
+      patch: {
+        milestones: {
+          contratSigne: now,
+          kbisRecu: now,
+          // pieceIdentiteRecue + ribRecu missing
+        },
+      },
+    });
+
+    const result = await t.run(async (ctx) =>
+      maybeAutoBascule(
+        {
+          ...ctx,
+          actor: {
+            userId: seed.adminId,
+            role: "kb_admin",
+            effectiveRole: "kb_admin",
+          },
+        } as Parameters<typeof maybeAutoBascule>[0],
+        id,
+      ),
+    );
+
+    expect(result.basculed).toBe(false);
+    expect(result.phase).toBe("acquisition");
+    expect(result.closing.complete).toBe(false);
+    expect(result.closing.missing).toEqual(
+      expect.arrayContaining(["pieceIdentiteRecue", "ribRecu"]),
+    );
+  });
+
+  it("throws NOT_FOUND when the prospect vanished", async () => {
+    // Create + delete a prospect to get a fresh, no-longer-resolvable id.
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    const id = await asAdmin.mutation(api.lib.onboarding.crm.createProspect, {
+      name: "Ghost",
+      phone: "0600000012",
+      source: "cold_call",
+    });
+    await t.run(async (ctx) => ctx.db.delete(id));
+
+    await expect(
+      t.run(async (ctx) =>
+        maybeAutoBascule(
+          {
+            ...ctx,
+            actor: {
+              userId: seed.adminId,
+              role: "kb_admin",
+              effectiveRole: "kb_admin",
+            },
+          } as Parameters<typeof maybeAutoBascule>[0],
+          id,
+        ),
+      ),
+    ).rejects.toThrow(ConvexError);
   });
 });
 
