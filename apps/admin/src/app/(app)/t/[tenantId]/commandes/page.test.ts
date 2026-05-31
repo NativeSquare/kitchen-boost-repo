@@ -100,13 +100,37 @@ describe("page.tsx — F-COMMANDES-LIVE-TABLE (#227) wiring contract", () => {
     );
   });
 
-  it("AC1 — does NOT use a raw `useQuery` (bypasses tenantId injection — ADR 0014 §4)", () => {
+  it("AC1 — does NOT use raw `useQuery` for any tenantQuery (would bypass tenantId injection — ADR 0014 §4)", () => {
     // Same discipline as menu/page.test.ts: raw `useQuery` from convex/react
     // auto-injects nothing; using it for a tenantQuery either fails at
     // runtime (Forbidden / missing tenantId) or silently leaks the wrong
     // tenant's data (ADR 0010).
+    //
+    // EXCEPTION (F-COMMANDES-CSV-EXPORT #244, mirrors QR page #198): a raw
+    // `useQuery` IS allowed against the EXISTING root-only kbAdminQuery
+    // `api.lib.stripe.account.loadTenantForStripe` (the same primitive the
+    // F-SHELL-04 layout uses to resolve a tenant slug for KB Admin
+    // impersonation — root-only, takes `tenantId` as an explicit arg, no
+    // tenant-injection needed). Every tenantQuery (`listOrders`,
+    // `getOrder`) MUST still go through `useTenantQuery`.
     const code = stripNonCode(PAGE_SOURCE);
-    expect(code).not.toMatch(/\buseQuery\b/);
+    // Strip the legitimate exception first: the import line + any
+    // `useQuery(api.lib.stripe.account.loadTenantForStripe, ...)` call.
+    // What remains must not contain `useQuery` — proof every OTHER use
+    // would be a regression that bypassed `useTenantQuery`.
+    const stripped = code
+      // Allowed import: `import { useQuery } from "convex/react";` (the
+      // hook is needed for the root-only `loadTenantForStripe` probe).
+      .replace(
+        /import\s*\{[^}]*useQuery[^}]*\}\s*from\s*["']convex\/react["'];?/g,
+        "",
+      )
+      // Allowed call: against the EXISTING kbAdminQuery primitive only.
+      .replace(
+        /useQuery\s*\([^)]*api\.lib\.stripe\.account\.loadTenantForStripe[^)]*\)/g,
+        "",
+      );
+    expect(stripped).not.toMatch(/\buseQuery\b/);
   });
 
   it("AC1 (no N+1) — calls `useTenantQuery` exactly ONCE on `listOrders` (single subscription per page mount)", () => {

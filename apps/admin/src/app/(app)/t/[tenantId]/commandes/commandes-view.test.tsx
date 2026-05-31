@@ -309,6 +309,7 @@ describe("CommandesView — F-COMMANDES-FILTERS (#238)", () => {
         onDateRangeChange: NOOP,
         onStatusesChange: NOOP,
         onOrderClick: NOOP,
+        onExportCsv: NOOP,
       }),
     );
     // We assert that the 7d date button surfaces data-active="true" — proof

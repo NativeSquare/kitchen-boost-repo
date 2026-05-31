@@ -3,7 +3,8 @@
 /**
  * F-COMMANDES-PAGE-SHELL (#222) + F-COMMANDES-LIVE-TABLE (#227) +
  * F-COMMANDES-FILTERS (#238) + F-COMMANDES-DETAIL-MODAL (#239) +
- * F-COMMANDES-REFUND (#243) — Route `/t/[tenantId]/commandes/`.
+ * F-COMMANDES-REFUND (#243) + F-COMMANDES-CSV-EXPORT (#244) —
+ * Route `/t/[tenantId]/commandes/`.
  *
  * Slice 1 (#222) shipped a scaffold-only page (no data wired). Slice 2 (#227)
  * wired the live orders table. Slice 3 (#238) added the filter state +
@@ -90,7 +91,28 @@
  *     message (same discipline as the menu CRUD page). The modal stays
  *     open so the gérant keeps the context.
  *
- * Out of scope this slice (later slice of EPIC #141): export CSV.
+ * F-COMMANDES-CSV-EXPORT (#244) wires the « Exporter CSV » button in the
+ * page header:
+ *   - The button is mounted by `CommandesView` (single source of truth for
+ *     the label / slot / disabled state); the page owns the click handler
+ *     because IT knows the FILTERED orders + the tenant slug + the canonical
+ *     filename builder.
+ *   - The handler hands `filtered` (NOT raw `orders`) to `ordersToCsv` —
+ *     issue body « Le CSV genere reflete la liste FILTREE » (the gérant
+ *     expects their date/status filter to be respected in the export).
+ *   - The filename uses `buildCsvFilename(slug, Date.now())` →
+ *     `commandes_<tenantSlug>_<YYYYMMDD>.csv` per issue body.
+ *   - Slug resolution mirrors the QR page (#198): KB Manager reads it from
+ *     `session.tenants[*].slug`; KB Admin under root-override reads the full
+ *     tenant doc via the existing `kbAdminQuery`
+ *     `api.lib.stripe.account.loadTenantForStripe` (no new endpoint — issue
+ *     body « Aucun endpoint backend »). When neither source resolves a slug
+ *     (transient race during impersonation), the button stays mounted but
+ *     the click no-ops — same defensive pattern as the QR page's `null`
+ *     guard.
+ *   - Zero new Convex query / mutation / action for the CSV — the export is
+ *     fully front-side (EPIC #141 decision; `useQuery` for the admin slug
+ *     reuses the EXISTING root-only entrypoint, doesn't introduce one).
  *
  * Scope discipline (#239 hard constraint, mirrors menu/page.tsx,
  * mes-clients/page.tsx, parametres/page.tsx, qr/page.tsx): this file (and
@@ -100,17 +122,20 @@
  */
 
 import { useMemo, useState } from "react";
+import { useQuery } from "convex/react";
 import { toast } from "sonner";
 
 import { api } from "@packages/backend/convex/_generated/api";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
 
+import { useCurrentTenantId } from "@/components/app/tenant-context";
 import { useTenantAction, useTenantQuery } from "@/hooks";
 import { useSession } from "@/lib/session";
 import { getConvexErrorMessage } from "@/utils/getConvexErrorMessage";
 
 import { CommandesView } from "./commandes-view";
 import { OrderDetailModal } from "./order-detail-modal";
+import { buildCsvFilename, downloadCsv, ordersToCsv } from "./orders-csv";
 import {
   filterOrders,
   type DateRangeKey,
@@ -242,6 +267,40 @@ export default function CommandesPage() {
     [orders, filter],
   );
 
+  // F-COMMANDES-CSV-EXPORT (#244) — resolve the tenant slug for the export
+  // filename. Mirror of the QR page pattern (#198): KB Manager reads it from
+  // `session.tenants` (`SessionTenant.slug`); KB Admin under root-override
+  // reads the full tenant doc via the EXISTING root-only kbAdminQuery
+  // `loadTenantForStripe` (incidentally named — re-used by the F-SHELL-04
+  // layout for the same purpose). No new endpoint introduced.
+  const tenantId = useCurrentTenantId();
+  const isAdmin =
+    session.status === "ready" && session.session.isAdmin === true;
+  const adminTenantDoc = useQuery(
+    api.lib.stripe.account.loadTenantForStripe,
+    isAdmin ? { tenantId } : "skip",
+  );
+  const sessionTenant =
+    session.status === "ready"
+      ? (session.session.tenants.find((t) => t.tenantId === tenantId) ?? null)
+      : null;
+  // Admin doc wins when available (it has the canonical `slug` for an
+  // impersonation case where the admin isn't a member of the tenant).
+  const tenantSlug = adminTenantDoc?.slug ?? sessionTenant?.slug ?? null;
+
+  const handleExportCsv = (): void => {
+    // Defensive: filtered must be ready AND non-empty, AND we must have
+    // resolved a tenant slug. The view's button is already disabled when
+    // `orders === undefined || orders.length === 0`; this guard covers
+    // the transient impersonation race where the admin tenant doc is in
+    // flight (the button is enabled by the filtered data, but the slug
+    // isn't ready yet).
+    if (filtered === undefined || filtered.length === 0) return;
+    if (tenantSlug === null) return;
+    const filename = buildCsvFilename(tenantSlug);
+    downloadCsv(filename, ordersToCsv(filtered));
+  };
+
   return (
     <>
       <CommandesView
@@ -250,6 +309,7 @@ export default function CommandesPage() {
         onDateRangeChange={handleDateRangeChange}
         onStatusesChange={handleStatusesChange}
         onOrderClick={handleOrderClick}
+        onExportCsv={handleExportCsv}
       />
       <OrderDetailModal
         open={selectedOrderId !== null}
