@@ -198,24 +198,28 @@ describe("ContractIframe — F-CONTRATS slice 2/4 (#165)", () => {
     const html = "<html><body><h1>Contrat A</h1></body></html>";
     const tree = serialize(ContractIframe({ html }));
     const iframe = findFirstByType(tree, "iframe");
-    expect(iframe).toBeDefined();
+    if (iframe === undefined) {
+      throw new Error("expected an iframe to be rendered");
+    }
     // The sandbox attribute MUST be present. It is rendered as a string
     // attribute on the iframe — React passes it straight through. The
     // attribute can be empty-string (`sandbox=""`) which is the most
     // restrictive setting, or a space-separated allow-list.
-    expect(iframe!.props.sandbox).toBeDefined();
-    expect(typeof iframe!.props.sandbox).toBe("string");
+    expect(iframe.props.sandbox).toBeDefined();
+    expect(typeof iframe.props.sandbox).toBe("string");
   });
 
   it("AC — the iframe sandbox MUST NOT include `allow-scripts` (PRD §3.5 — static HTML, no JS needed)", () => {
     const html = "<html><body><h1>Contrat A</h1></body></html>";
     const tree = serialize(ContractIframe({ html }));
     const iframe = findFirstByType(tree, "iframe");
-    expect(iframe).toBeDefined();
+    if (iframe === undefined) {
+      throw new Error("expected an iframe to be rendered");
+    }
     // Pin the security invariant : NEVER `allow-scripts`. The HTML is
     // generated from a markdown template upstream, no script execution
     // is needed inside the preview iframe.
-    const sandbox = iframe!.props.sandbox as string;
+    const sandbox = iframe.props.sandbox as string;
     expect(sandbox).not.toMatch(/allow-scripts/);
   });
 
@@ -224,12 +228,14 @@ describe("ContractIframe — F-CONTRATS slice 2/4 (#165)", () => {
       "<html><body><h1>Contrat A&B — Restaurant Le Test</h1><p>Article 1…</p></body></html>";
     const tree = serialize(ContractIframe({ html }));
     const iframe = findFirstByType(tree, "iframe");
-    expect(iframe).toBeDefined();
+    if (iframe === undefined) {
+      throw new Error("expected an iframe to be rendered");
+    }
     // React's lowercase DOM attribute is `srcDoc` (it maps to the HTML
     // `srcdoc` attribute). The component MUST pass the prop through
     // verbatim — no rewriting, no sanitising (the template upstream
     // is trusted, this iframe is the security boundary).
-    expect(iframe!.props.srcDoc).toBe(html);
+    expect(iframe.props.srcDoc).toBe(html);
   });
 
   it("AC — renders a « Télécharger HTML » button when html is provided", () => {
@@ -263,12 +269,15 @@ describe("ContractIframe — F-CONTRATS slice 2/4 (#165)", () => {
       originalDocument = globalThis.document;
 
       // Replace just the static methods we need ; keep the rest of `URL`.
-      // @ts-expect-error — partial mock of the global URL object.
+      // The cast goes via `unknown` because we are assembling an object
+      // literal that doesn't carry the `URL` constructor signature ; we
+      // only need the two static methods the component invokes
+      // (`createObjectURL` / `revokeObjectURL`).
       globalThis.URL = {
         ...originalURL,
         createObjectURL: createObjectURLSpy,
         revokeObjectURL: revokeObjectURLSpy,
-      };
+      } as unknown as typeof globalThis.URL;
 
       appended = [];
       clicked = [];
@@ -277,7 +286,6 @@ describe("ContractIframe — F-CONTRATS slice 2/4 (#165)", () => {
       // records `click()` calls and the `download` / `href` assigned to it.
       // The component appends to `document.body` ; we record those calls
       // too so the test can assert the lifecycle (append → click → remove).
-      // @ts-expect-error — partial mock of the global document object.
       globalThis.document = {
         createElement: (tag: string) => {
           const fake = {
@@ -332,7 +340,10 @@ describe("ContractIframe — F-CONTRATS slice 2/4 (#165)", () => {
       };
       const onClick = button.props.onClick as (() => void) | undefined;
       expect(typeof onClick).toBe("function");
-      onClick!();
+      if (onClick === undefined) {
+        throw new Error("expected an onClick handler on the download button");
+      }
+      onClick();
 
       // The handler MUST have created a blob URL.
       expect(createObjectURLSpy).toHaveBeenCalledTimes(1);
@@ -375,8 +386,8 @@ describe("ContractIframe — F-CONTRATS slice 2/4 (#165)", () => {
   });
 
   it("AC — renders a clear error message when html is null (no silent blank iframe)", () => {
-    // @ts-expect-error — exercise the runtime guard against null (the
-    // upstream Convex query can return null between mutation roundtrips).
+    // The prop type accepts `string | null | undefined` (Convex tri-state)
+    // — null is the « no row » case the upstream caller may forward as-is.
     const tree = serialize(ContractIframe({ html: null }));
     const text = allText(tree);
     expect(text).toMatch(/erreur|aucun|impossible|indisponible/i);
@@ -384,7 +395,9 @@ describe("ContractIframe — F-CONTRATS slice 2/4 (#165)", () => {
   });
 
   it("AC — renders a clear error message when html is undefined (no silent blank iframe)", () => {
-    // @ts-expect-error — exercise the runtime guard against undefined.
+    // The prop type accepts `string | null | undefined` (Convex tri-state)
+    // — undefined is the « in-flight » case the upstream caller may
+    // forward as-is.
     const tree = serialize(ContractIframe({ html: undefined }));
     const text = allText(tree);
     expect(text).toMatch(/erreur|aucun|impossible|indisponible/i);
