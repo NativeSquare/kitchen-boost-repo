@@ -1,29 +1,30 @@
 /**
- * F-COMMANDES-PAGE-SHELL (#222) + F-COMMANDES-LIVE-TABLE (#227) —
- * `CommandesView`, presentational shell of the tenant Commandes page.
+ * F-COMMANDES-PAGE-SHELL (#222) + F-COMMANDES-LIVE-TABLE (#227) +
+ * F-COMMANDES-FILTERS (#238) — `CommandesView`, presentational shell of the
+ * tenant Commandes page.
  *
  * Slice 1 (#222) shipped only the header + a placeholder card. Slice 2 (#227)
- * replaces the placeholder with a live `OrdersTable` branched on the result
- * of `useTenantQuery(api.lib.orders.orders.listOrders)` (which the page
- * owns). The view stays a pure function of its props: it takes
- * `orders: Doc<"orders">[] | undefined` and forwards it to the table — the
- * three branches (loading / empty / populated) live in `OrdersTable` and
- * are pinned by `orders-table.test.tsx`.
+ * replaced the placeholder with a live `OrdersTable` branched on the result
+ * of `useTenantQuery(api.lib.orders.orders.listOrders)`. Slice 3 (#238) mounts
+ * the `OrdersFilters` controlled component ABOVE the table — the filter
+ * `value` is owned by the page (`useState`, EPIC #141 decision), the view
+ * stays a pure function of its props, and `filterOrders` is applied at the
+ * page level so the `orders` prop here is already filtered.
  *
- * The header (« Commandes ») is ALWAYS rendered, regardless of the data
- * branch — same chrome-doesn't-flash discipline as `MenuView` /
- * `MesClientsView` (the page title is the operator's anchor across the
- * loading → populated transition).
+ * The view keeps the same chrome-doesn't-flash discipline as `MenuView` /
+ * `MesClientsView`: the header (« Commandes ») AND the filters render on
+ * every branch (loading / empty / populated), so the gérant can set a filter
+ * while the initial fetch is in flight without the filters appearing AFTER
+ * the data lands.
  *
  * Future slices of EPIC F-COMMANDES #141 will layer (in their own files,
  * here only forwarded as additional props as they land):
- *   - filtres date / statut (slice 3),
  *   - modal détail commande (`api.lib.orders.orders.getOrder`),
  *   - action « Rembourser intégralement » (option A: a `tenantAction`
  *     public `refundOrder`),
  *   - export CSV front-side (no backend).
  *
- * Scope discipline (#227 hard constraint): this file (and its siblings under
+ * Scope discipline (#238 hard constraint): this file (and its siblings under
  * `apps/admin/src/app/(app)/t/[tenantId]/commandes/`) is the ONLY surface
  * touched by this story. Zero touch to `apps/web`, `apps/native`, or
  * `packages/backend/convex/`.
@@ -31,25 +32,50 @@
 
 import type { Doc } from "@packages/backend/convex/_generated/dataModel";
 
+import { OrdersFilters } from "./orders-filters";
 import { OrdersTable } from "./orders-table";
+import type {
+  DateRangeKey,
+  OrderStatus,
+  OrdersFilter,
+} from "./orders-filtering";
 
 export type CommandesViewProps = {
   /**
-   * Orders payload from `useTenantQuery(api.lib.orders.orders.listOrders)`.
+   * Orders payload from `useTenantQuery(api.lib.orders.orders.listOrders)`,
+   * ALREADY filtered by the page via `filterOrders(...)` (the view never
+   * re-filters — keeps the filter logic in one tested seam).
    *   - `undefined` → query in flight (Convex's loading sentinel; the
    *     table renders its skeleton).
-   *   - `[]`        → tenant has no orders yet (empty state).
+   *   - `[]`        → tenant has no orders yet OR the filter excluded all
+   *                   results (the table's empty branch).
    *   - else        → list to render (backend guarantees DESC by createdAt
    *     through `listTenantOrders` reading `by_tenant` in reverse).
    */
   orders: Doc<"orders">[] | undefined;
+  /** F-COMMANDES-FILTERS (#238) — controlled filter value, page-owned. */
+  filter: OrdersFilter;
+  /** F-COMMANDES-FILTERS (#238) — fired when the gérant picks a date preset. */
+  onDateRangeChange: (next: DateRangeKey) => void;
+  /** F-COMMANDES-FILTERS (#238) — fired when a status toggles in the multi-select. */
+  onStatusesChange: (next: OrderStatus[]) => void;
 };
 
-export function CommandesView({ orders }: CommandesViewProps) {
+export function CommandesView({
+  orders,
+  filter,
+  onDateRangeChange,
+  onStatusesChange,
+}: CommandesViewProps) {
   return (
     <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
       <CommandesHeader />
       <div className="flex flex-col gap-4 px-4 md:gap-6 lg:px-6">
+        <OrdersFilters
+          value={filter}
+          onDateRangeChange={onDateRangeChange}
+          onStatusesChange={onStatusesChange}
+        />
         <OrdersTable orders={orders} />
       </div>
     </div>
