@@ -1,15 +1,27 @@
 "use client";
 
 /**
- * F-COMMANDES-PAGE-SHELL (#222) + F-COMMANDES-LIVE-TABLE (#227) —
- * Route `/t/[tenantId]/commandes/`.
+ * F-COMMANDES-PAGE-SHELL (#222) + F-COMMANDES-LIVE-TABLE (#227) +
+ * F-COMMANDES-FILTERS (#238) — Route `/t/[tenantId]/commandes/`.
  *
- * Slice 1 (#222) shipped a scaffold-only page (no data wired). Slice 2 (#227,
- * THIS file's contract) wires the live orders table to the canonical Convex
- * read:
+ * Slice 1 (#222) shipped a scaffold-only page (no data wired). Slice 2 (#227)
+ * wired the live orders table to the canonical Convex read. Slice 3 (#238,
+ * THIS file's current contract) holds the filter state on the page (per
+ * EPIC #141 « état local `useState` sur la page, pas d'URL query params V1 »)
+ * and applies the pure `filterOrders(orders, filter)` to the live payload
+ * before passing it to the view:
  *
  *   const orders = useTenantQuery(api.lib.orders.orders.listOrders);
- *   return <CommandesView orders={orders} />;
+ *   const [filter, setFilter] = useState<OrdersFilter>(DEFAULT_FILTER);
+ *   const filtered = orders === undefined ? undefined : filterOrders(orders, filter);
+ *   return (
+ *     <CommandesView
+ *       orders={filtered}
+ *       filter={filter}
+ *       onDateRangeChange={…}
+ *       onStatusesChange={…}
+ *     />
+ *   );
  *
  * Why this shape:
  *   - `useTenantQuery` (ADR 0014 paragraph 4 / #183) reads `tenantId` from
@@ -24,13 +36,16 @@
  *     workflow + staff visibility are honoured by the wrapper; the page
  *     mounts under the `(app)/t/[tenantId]` layout that gates access.
  *   - One single subscription per page mount (no N+1): we ONLY call
- *     `useTenantQuery` once, on `listOrders`. The detail modal (`getOrder`),
- *     the refund action, and the filters land in subsequent slices of EPIC
- *     #141.
- *   - The view is a pure function of the prop; the three branches
- *     (loading / empty / populated) live in `CommandesView` → `OrdersTable`
- *     and are pinned by their respective tests under the lean `node`
- *     vitest env.
+ *     `useTenantQuery` once, on `listOrders`. The filter is a CLIENT-SIDE
+ *     concern — no extra backend round-trip when the gérant picks a date
+ *     preset or toggles a status pill (AC: « re-render local, pas de
+ *     nouveau fetch backend »).
+ *   - `filterOrders` is pure and re-runs on every render — a live Convex
+ *     push that lands while a filter is active produces a fresh `orders`
+ *     payload, the filter re-applies, and the table includes/hides the new
+ *     line according to the current selection (AC8 « le filtre s'applique
+ *     au résultat live, pas a un snapshot »). No `useEffect`, no derived
+ *     state, no race against a snapshot.
  *
  * Reactivity (EPIC #141 decision, 2026-05-29): Convex's WebSocket transport
  * pushes a fresh result whenever any backend mutation touches the tenant's
@@ -51,26 +66,69 @@
  * sidebar by F-SHELL-06 (#196); its contract is re-pinned from
  * `sidebar-entry.test.ts`.
  *
- * Out of scope this slice (later slices of EPIC #141): filtres date/statut,
- * modal détail, action remboursement, export CSV. The page therefore does
- * NOT call `useTenantMutation` / `useTenantAction` / a refund entrypoint,
- * and does NOT reference `getOrder` — see `page.test.ts` for the negative
- * pins.
+ * Out of scope this slice (later slices of EPIC #141): modal détail, action
+ * remboursement, export CSV. The page therefore does NOT call
+ * `useTenantMutation` / `useTenantAction` / a refund entrypoint, and does
+ * NOT reference `getOrder` — see `page.test.ts` for the negative pins.
  *
- * Scope discipline (#227 hard constraint, mirrors menu/page.tsx,
+ * Scope discipline (#238 hard constraint, mirrors menu/page.tsx,
  * mes-clients/page.tsx, parametres/page.tsx, qr/page.tsx): this file (and
  * its siblings under `apps/admin/src/app/(app)/t/[tenantId]/commandes/`) is
  * the ONLY surface touched by this story. Zero touch to `apps/web`,
  * `apps/native`, `packages/backend/convex/`, or the shared admin sidebar.
  */
 
+import { useMemo, useState } from "react";
+
 import { api } from "@packages/backend/convex/_generated/api";
 
 import { useTenantQuery } from "@/hooks";
 
 import { CommandesView } from "./commandes-view";
+import {
+  filterOrders,
+  type DateRangeKey,
+  type OrderStatus,
+  type OrdersFilter,
+} from "./orders-filtering";
+
+/**
+ * Initial filter state on first mount: « tout » date range + no status
+ * filter (the gérant sees everything, then narrows down). EPIC #141 actes
+ * this as the default — they want to scan all recent activity by default,
+ * not be greeted with an empty table because of an implicit filter.
+ */
+const DEFAULT_FILTER: OrdersFilter = {
+  dateRange: "tout",
+  statuses: [],
+};
 
 export default function CommandesPage() {
   const orders = useTenantQuery(api.lib.orders.orders.listOrders, {});
-  return <CommandesView orders={orders} />;
+  const [filter, setFilter] = useState<OrdersFilter>(DEFAULT_FILTER);
+
+  const handleDateRangeChange = (next: DateRangeKey) => {
+    setFilter((prev) => ({ ...prev, dateRange: next }));
+  };
+  const handleStatusesChange = (next: OrderStatus[]) => {
+    setFilter((prev) => ({ ...prev, statuses: next }));
+  };
+
+  // Apply the pure predicate to the live payload — re-runs on every Convex
+  // push because the `orders` reference changes when the wrapper re-fires
+  // (AC8 « le filtre s'applique au resultat live »). Memoised on
+  // (orders, filter) to avoid re-filtering on unrelated re-renders.
+  const filtered = useMemo(
+    () => (orders === undefined ? undefined : filterOrders(orders, filter)),
+    [orders, filter],
+  );
+
+  return (
+    <CommandesView
+      orders={filtered}
+      filter={filter}
+      onDateRangeChange={handleDateRangeChange}
+      onStatusesChange={handleStatusesChange}
+    />
+  );
 }
