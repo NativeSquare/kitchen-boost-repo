@@ -1,4 +1,5 @@
 import { ConvexError, v } from "convex/values";
+import { internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 import {
   deleteAdminInvite,
@@ -45,9 +46,18 @@ import {
  * `acceptedAt`. The same email may be invited on N DIFFERENT tenants in
  * parallel (cas Walid Thai Street — the `by_email_tenant` index is the key).
  *
- * NO email scheduling here — B-AUTH-5 wires `sendManagerInviteEmail`. Between
- * the two slices the invite exists but is not consumable; `acceptInvite` is
- * extended in B-AUTH-6.
+ * B-AUTH-5 wires the magic-link email: after the row is inserted, this
+ * mutation schedules `internal.emails.sendManagerInviteEmail` with the
+ * recipient (`to`), display `name` (resolved from `args.name` or the email
+ * prefix), the freshly-minted `token`, and a `tenantName` SNAPSHOT read from
+ * the `tenants` doc already loaded at step 1 (acceptance criterion: a later
+ * tenant rename does NOT mutate emails already sent — the snapshot semantic is
+ * intentional). The link in the email points at the same
+ * `${ADMIN_URL}/accept-invite?token=…` endpoint as admin invites — the
+ * `acceptInvite` mutation extended in B-AUTH-6 discriminates the two flows by
+ * reading the invite row's `targetRole`. Scheduling via `runAfter(0, …)` keeps
+ * the mutation transactional: a thrown error AFTER the schedule call rolls
+ * the scheduled job back along with the insert.
  *
  * Convex registers this by module PATH, so callers invoke
  * `api.lib.admin.managerInvites.inviteManager`.
@@ -138,13 +148,29 @@ export const inviteManager = kbAdminMutation({
     }
 
     // 4. Insert the fresh manager invite via the sanctioned seam.
-    return insertManagerInvite(ctx, {
+    const resolvedName = args.name ?? defaultNameFromEmail(args.email);
+    const token = generateToken();
+    const inviteId = await insertManagerInvite(ctx, {
       email: args.email,
-      name: args.name ?? defaultNameFromEmail(args.email),
-      token: generateToken(),
+      name: resolvedName,
+      token,
       invitedBy: ctx.actor.userId,
       expiresAt: Date.now() + SEVEN_DAYS_MS,
       tenantId: args.tenantId,
     });
+
+    // 5. B-AUTH-5 — schedule the magic-link email. `tenantName` is a SNAPSHOT
+    //    of the tenant doc read at step 1: a later rename does NOT mutate
+    //    emails already sent. The scheduled action runs after the mutation
+    //    commits; a throw between here and return would roll BOTH the
+    //    insert AND the scheduled job back (same transaction).
+    await ctx.scheduler.runAfter(0, internal.emails.sendManagerInviteEmail, {
+      to: args.email,
+      name: resolvedName,
+      token,
+      tenantName: tenant.name,
+    });
+
+    return inviteId;
   },
 });
