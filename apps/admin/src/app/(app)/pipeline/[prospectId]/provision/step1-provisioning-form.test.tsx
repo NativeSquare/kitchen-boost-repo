@@ -27,11 +27,38 @@ import { describe, expect, it, vi } from "vitest";
 import type { ReactElement, ReactNode } from "react";
 import type { Doc, Id } from "@packages/backend/convex/_generated/dataModel";
 
-import {
-  Step1ProvisioningForm,
-  type Step1ProvisioningFormProps,
-  type Step1ProvisioningPayload,
-} from "./step1-provisioning-form";
+// ---------------------------------------------------------------------------
+// React hooks shim — mirror of `item-modal.test.tsx`. Walks the FIRST render
+// only, no state-transition simulation. `useState` returns the initial value
+// + a no-op setter; `useMemo` calls its factory. Both are sufficient to
+// assert on the rendered tree (initial values + derived predicates from
+// initial values).
+//
+// Why a shim and not jsdom + RTL: `apps/admin` uses `environment: "node"`
+// (see `vitest.config.ts`) so every test runs under the lean node env. The
+// shim lets us exercise stateful function components (Step1ProvisioningForm
+// uses `useState` + `useMemo` for the controlled inputs + the validity
+// gate) without paying the jsdom installation tax.
+// ---------------------------------------------------------------------------
+vi.mock("react", async () => {
+  const actual = await vi.importActual<typeof import("react")>("react");
+  return {
+    ...actual,
+    useState: <T,>(initial: T | (() => T)) => {
+      const v =
+        typeof initial === "function" ? (initial as () => T)() : initial;
+      return [v, () => {}];
+    },
+    useEffect: () => {},
+    useMemo: <T,>(factory: () => T) => factory(),
+  };
+});
+
+const { Step1ProvisioningForm } = await import("./step1-provisioning-form");
+type Step1ProvisioningFormProps =
+  import("./step1-provisioning-form").Step1ProvisioningFormProps;
+type Step1ProvisioningPayload =
+  import("./step1-provisioning-form").Step1ProvisioningPayload;
 
 // ---------------------------------------------------------------------------
 // React-tree serializer — same shape as wizard-view.test.tsx.
@@ -461,14 +488,20 @@ describe("Step1ProvisioningForm — F-WIZARD [3/10] (#267)", () => {
     expect(onNext).toHaveBeenCalledTimes(1);
   });
 
-  it("scope discipline: the form module does not import from `apps/web` or `apps/native`", async () => {
+  it("scope discipline: the form module does not import from `apps/web` or `apps/native` (the issue's STRICT scope guard)", async () => {
     const { readFileSync } = await import("node:fs");
     const path = await import("node:path");
     const source = readFileSync(
       path.resolve(__dirname, "./step1-provisioning-form.tsx"),
       "utf8",
     );
-    expect(source).not.toMatch(/apps\/web/);
-    expect(source).not.toMatch(/apps\/native/);
+    // Strip block + line comments so prose mentions of the forbidden paths
+    // (in the module header) don't trip the guard — we want to forbid actual
+    // imports / requires, not documentation about the constraint itself.
+    const code = source
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "");
+    expect(code).not.toMatch(/apps\/web/);
+    expect(code).not.toMatch(/apps\/native/);
   });
 });
