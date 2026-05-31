@@ -68,6 +68,7 @@ import { useSession } from "@/lib/session";
 import { getConvexErrorMessage } from "@/utils/getConvexErrorMessage";
 
 import type { BrandingPatch, BrandingValue } from "./branding-editor";
+import type { CoordonneesPatch, CoordonneesValue } from "./coordonnees-editor";
 import { ParametresView } from "./parametres-view";
 
 export default function ParametresPage() {
@@ -109,6 +110,18 @@ export default function ParametresPage() {
   );
   const branding: BrandingValue | undefined = isAdmin
     ? adminTenantDoc?.branding
+    : undefined;
+
+  // F-PARAMETRES-03 (#231) — Coordonnées seed follows the SAME degradation
+  // rule as branding: KB Manager has no manager-accessible read yet (a
+  // follow-up slice will expose one), so we feed `undefined` and the editor
+  // treats it as an empty `{}`. KB Admin gets the real `{ address, phone }`
+  // from `loadTenantForStripe` (already loaded above for branding — same
+  // query, zero extra read).
+  const coordonnees: CoordonneesValue | undefined = isAdmin
+    ? adminTenantDoc !== undefined && adminTenantDoc !== null
+      ? { address: adminTenantDoc.address, phone: adminTenantDoc.phone }
+      : undefined
     : undefined;
 
   // Save handler — wraps the mutation in try/catch + toast.error, same
@@ -162,12 +175,34 @@ export default function ParametresPage() {
     return publicUrl;
   };
 
+  // F-PARAMETRES-03 (#231) — Coordonnées save handler. Same pattern as
+  // `handleSaveBranding`: wraps the SHARED `updateSettings` mutation
+  // (ONE backend brick across all sections), forwards the `{ address?,
+  // phone? }` patch as-is (the backend's `normalisePhone` /
+  // `assertNonEmptyString` is the single source of truth for canonical
+  // form). Re-throws so the editor surfaces the inline error too.
+  const handleSaveCoordonnees = async (
+    patch: CoordonneesPatch,
+  ): Promise<void> => {
+    try {
+      await updateSettings({ patch });
+      toast.success("Coordonnées enregistrées.");
+    } catch (error) {
+      toast.error("Impossible d'enregistrer les coordonnées", {
+        description: getConvexErrorMessage(error),
+      });
+      throw error;
+    }
+  };
+
   return (
     <ParametresView
       serviceHours={serviceHours}
       branding={branding}
       onSaveBranding={handleSaveBranding}
       onUploadLogo={handleUploadLogo}
+      coordonnees={coordonnees}
+      onSaveCoordonnees={handleSaveCoordonnees}
     />
   );
 }

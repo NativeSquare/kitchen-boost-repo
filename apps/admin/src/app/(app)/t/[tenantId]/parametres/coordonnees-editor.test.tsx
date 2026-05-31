@@ -371,48 +371,50 @@ describe("CoordonneesEditor — rendering branches", () => {
   });
 
   it("surfaces inline phone-format error when the current phone is invalid (AC: « Erreur inline si format invalide »)", () => {
-    // Seed an invalid phone into the form-mock; the editor's render-time
-    // validation must surface the inline error message.
-    formMock.values = { address: "", phone: "abcd" };
-    const tree = serialize(CoordonneesEditor(makeProps()));
+    // Seed via the `value` prop so the mocked `useForm` initializes its
+    // values record from it (the form's defaultValues come from `value` in
+    // the editor; the mock then reads back via `watch`).
+    const tree = serialize(
+      CoordonneesEditor(makeProps({ value: { address: "", phone: "abcd" } })),
+    );
     const text = allText(tree);
-    // Some « format invalide » copy must be present.
     expect(text.toLowerCase()).toMatch(/invalide|format/);
     expect(dataSlots(tree)).toContain("parametres-coordonnees-phone-error");
-    formMock.values = {};
   });
 
   it("disables the Save button when the current phone is invalid (AC: « bouton Enregistrer désactivé »)", () => {
-    formMock.values = { address: "", phone: "abcd" };
-    const tree = serialize(CoordonneesEditor(makeProps()));
+    const tree = serialize(
+      CoordonneesEditor(makeProps({ value: { address: "", phone: "abcd" } })),
+    );
     const saveBtn = findBySlot(tree, "parametres-coordonnees-save");
     expect(saveBtn).not.toBeNull();
     if (saveBtn !== null && !("text" in saveBtn)) {
       expect(saveBtn.props["disabled"]).toBe(true);
     }
-    formMock.values = {};
   });
 
   it("does NOT disable the Save button when the phone is empty (untouched = no error to display) — empty phone is allowed (the field is optional)", () => {
-    formMock.values = { address: "", phone: "" };
-    const tree = serialize(CoordonneesEditor(makeProps()));
+    const tree = serialize(
+      CoordonneesEditor(makeProps({ value: { address: "", phone: "" } })),
+    );
     const saveBtn = findBySlot(tree, "parametres-coordonnees-save");
     expect(saveBtn).not.toBeNull();
     if (saveBtn !== null && !("text" in saveBtn)) {
       expect(saveBtn.props["disabled"]).not.toBe(true);
     }
-    formMock.values = {};
   });
 
   it("does NOT disable the Save button when the phone is a valid FR number", () => {
-    formMock.values = { address: "1 rue X", phone: "06 12 34 56 78" };
-    const tree = serialize(CoordonneesEditor(makeProps()));
+    const tree = serialize(
+      CoordonneesEditor(
+        makeProps({ value: { address: "1 rue X", phone: "06 12 34 56 78" } }),
+      ),
+    );
     const saveBtn = findBySlot(tree, "parametres-coordonnees-save");
     expect(saveBtn).not.toBeNull();
     if (saveBtn !== null && !("text" in saveBtn)) {
       expect(saveBtn.props["disabled"]).not.toBe(true);
     }
-    formMock.values = {};
   });
 });
 
