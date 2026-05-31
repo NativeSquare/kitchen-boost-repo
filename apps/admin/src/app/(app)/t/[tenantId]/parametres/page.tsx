@@ -71,6 +71,7 @@ import type { BrandingPatch, BrandingValue } from "./branding-editor";
 import type { CoordonneesPatch, CoordonneesValue } from "./coordonnees-editor";
 import type { AcceptedModesPatch, ModesValue } from "./modes-editor";
 import { ParametresView } from "./parametres-view";
+import type { ServiceWindow } from "./service-hours-editor";
 
 export default function ParametresPage() {
   // `useTenantQuery` reads `tenantId` from `<TenantProvider/>` (mounted by
@@ -90,6 +91,15 @@ export default function ParametresPage() {
   const generateUploadUrl = useTenantMutation(
     api.lib.menu.photos.generateUploadUrl,
   );
+  // F-PARAMETRES-05 (#236) — Horaires de service mutation. SEPARATE from
+  // `tenant.updateSettings` (D5 élargi covers branding / address / phone /
+  // acceptedModes — but NOT service hours, which live in their own
+  // `serviceHours` table cf. `convex/table/serviceHours.ts` and have their
+  // own tenant-scoped mutation `serviceHours.set` cf.
+  // `convex/lib/menu/serviceHours.ts`). One row per tenant carries the
+  // FULL windows list; the mutation is an UPSERT atomic replace, so we
+  // forward the whole array (no patch shape).
+  const setServiceHours = useTenantMutation(api.lib.menu.serviceHours.set);
   // `useConvex()` exposes the live Convex client so we can call the storage
   // URL resolver imperatively from an event handler — `useQuery` is a hook
   // and can't run inside `handleUploadLogo` (rules of hooks). Same pattern
@@ -235,6 +245,26 @@ export default function ParametresPage() {
     }
   };
 
+  // F-PARAMETRES-05 (#236) — Horaires de service save handler. The
+  // editor hands us the ENTIRE windows array (the backend mutation is an
+  // UPSERT atomic replace, not a patch). Same try/catch + toast +
+  // re-throw discipline as siblings — the editor's inline error surface
+  // catches the re-throw via its own try/catch and renders it under the
+  // form, while the toast at this layer notifies the gérant immediately.
+  const handleSaveServiceHours = async (
+    windows: ServiceWindow[],
+  ): Promise<void> => {
+    try {
+      await setServiceHours({ windows });
+      toast.success("Horaires de service enregistrés.");
+    } catch (error) {
+      toast.error("Impossible d'enregistrer les horaires", {
+        description: getConvexErrorMessage(error),
+      });
+      throw error;
+    }
+  };
+
   return (
     <ParametresView
       serviceHours={serviceHours}
@@ -245,6 +275,7 @@ export default function ParametresPage() {
       onSaveCoordonnees={handleSaveCoordonnees}
       acceptedModes={acceptedModes}
       onSaveAcceptedModes={handleSaveAcceptedModes}
+      onSaveServiceHours={handleSaveServiceHours}
     />
   );
 }

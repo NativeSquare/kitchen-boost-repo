@@ -60,6 +60,7 @@ import {
   type AcceptedModesPatch,
   type ModesValue,
 } from "./modes-editor";
+import { ServiceHoursEditor, type ServiceWindow } from "./service-hours-editor";
 
 export type ParametresViewProps = {
   /**
@@ -130,9 +131,26 @@ export type ParametresViewProps = {
    */
   acceptedModes: ModesValue | undefined;
   onSaveAcceptedModes: (patch: AcceptedModesPatch) => Promise<void>;
+  /**
+   * F-PARAMETRES-05 (#236) — Horaires de service section.
+   *
+   * `onSaveServiceHours`: page-wired handler for the section's
+   *   « Enregistrer » button. Receives the ENTIRE current windows array
+   *   (the backend `serviceHours.set({ windows })` mutation is an UPSERT
+   *   atomic replace — one row per tenant carries the full list, cf.
+   *   `convex/lib/menu/serviceHours.ts`). Page wires it to
+   *   `useTenantMutation(api.lib.menu.serviceHours.set)`.
+   *
+   * The current windows are read from the existing `serviceHours` prop
+   * above (slice 1 already wired the read query) — the editor seeds its
+   * local state from `serviceHours?.windows ?? []` (an empty list is a
+   * legitimate state — « fermé toute la semaine » or a fresh tenant).
+   */
+  onSaveServiceHours: (windows: ServiceWindow[]) => Promise<void>;
 };
 
 export function ParametresView({
+  serviceHours,
   branding,
   onSaveBranding,
   onUploadLogo,
@@ -140,6 +158,7 @@ export function ParametresView({
   onSaveCoordonnees,
   acceptedModes,
   onSaveAcceptedModes,
+  onSaveServiceHours,
 }: ParametresViewProps): React.ReactElement {
   return (
     <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
@@ -158,7 +177,10 @@ export function ParametresView({
           value={acceptedModes ?? {}}
           onSave={onSaveAcceptedModes}
         />
-        <SectionHorairesService />
+        <SectionHorairesService
+          value={serviceHours?.windows ?? []}
+          onSave={onSaveServiceHours}
+        />
         <Separator className="my-2" />
         <UberDirectReadOnlyBlock />
       </div>
@@ -301,13 +323,39 @@ function SectionModesAcceptes({
   );
 }
 
-function SectionHorairesService() {
+/**
+ * F-PARAMETRES-05 (#236) — wired Horaires de service section. Wraps the
+ * reusable `ServiceHoursEditor` (signature `{ value, onSave }`) inside
+ * the canonical Section card so the visual rhythm with the sibling wired
+ * sections stays consistent. The card's `data-slot` is preserved from
+ * slice 1 (#193) so consumers and tests that target the section by slot
+ * don't need to know whether it's a placeholder or a live editor.
+ *
+ * `value` is the windows array from `serviceHours?.windows ?? []`
+ * (treated as empty when the Convex query is still loading — the editor
+ * handles `[]` gracefully and re-seeds via React's `key` invalidation
+ * once the real list arrives, or stays stable if it doesn't change).
+ */
+function SectionHorairesService({
+  value,
+  onSave,
+}: {
+  value: ServiceWindow[];
+  onSave: (windows: ServiceWindow[]) => Promise<void>;
+}) {
   return (
-    <SectionPlaceholder
-      slot="parametres-section-horaires"
-      title="Horaires de service"
-      description="Grille hebdomadaire des créneaux d'ouverture."
-    />
+    <Card data-slot="parametres-section-horaires">
+      <CardHeader>
+        <CardTitle>Horaires de service</CardTitle>
+        <CardDescription>
+          Grille hebdomadaire des créneaux d&apos;ouverture (livraison + click
+          &amp; collect).
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ServiceHoursEditor value={value} onSave={onSave} />
+      </CardContent>
+    </Card>
   );
 }
 
