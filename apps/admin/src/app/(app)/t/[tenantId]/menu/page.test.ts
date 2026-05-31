@@ -281,13 +281,13 @@ describe("page.tsx — F-MENU-01 (#187) wiring contract", () => {
     const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
     // The handler references items.reorder (`reorderItems` local) AND has a
     // toast.error within a handler-sized window. The window is wide enough
-    // (3500) to absorb intermediate mutation declarations the page accumulates
-    // as later slices land (#242 added the modifier-group block between the
-    // `items.reorder` mutation and the `reorderItems` handler — pure decl
-    // ordering, the actual `await reorderItems(...) → toast.error` pairing
-    // is intact).
+    // (5500) to absorb intermediate mutation declarations the page accumulates
+    // as later slices land (#242 added the modifier-group block; #246 added
+    // the N-N attach/detach block between the `items.reorder` mutation and
+    // the `reorderItems` handler — pure decl ordering, the actual
+    // `await reorderItems(...) → toast.error` pairing is intact).
     expect(collapsed).toMatch(
-      /api\.lib\.menu\.items\.reorder[\s\S]{0,3500}toast\.error/,
+      /api\.lib\.menu\.items\.reorder[\s\S]{0,5500}toast\.error/,
     );
   });
 
@@ -345,9 +345,14 @@ describe("page.tsx — F-MENU-01 (#187) wiring contract", () => {
     // NOT_FOUND for cross-tenant probes, etc.) surface as a visible toast —
     // never silently swallowed.
     const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
-    expect(collapsed).toMatch(/createGroup[\s\S]{0,1200}toast\.error/);
-    expect(collapsed).toMatch(/updateGroup[\s\S]{0,1200}toast\.error/);
-    expect(collapsed).toMatch(/removeGroup[\s\S]{0,1200}toast\.error/);
+    // Window widened to 3500 (#246 inserted the attach/detach mutation
+    // declarations + handlers between the first `createGroup` mention — in
+    // the mutation declaration block — and the first downstream
+    // `toast.error` in the categories CRUD handlers). Pairing is intact: each
+    // handler still wraps its own mutation in try/catch + toast.error.
+    expect(collapsed).toMatch(/createGroup[\s\S]{0,3500}toast\.error/);
+    expect(collapsed).toMatch(/updateGroup[\s\S]{0,3500}toast\.error/);
+    expect(collapsed).toMatch(/removeGroup[\s\S]{0,3500}toast\.error/);
   });
 
   // ---------------------------------------------------------------------------
