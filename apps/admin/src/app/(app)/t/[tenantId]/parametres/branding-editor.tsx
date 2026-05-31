@@ -169,6 +169,15 @@ export function BrandingEditor({
   // Diff helper: only fields whose current form value differs from the
   // persisted `value` land in the patch. Avoids round-trips when nothing
   // changed (empty patch = no `onSave` call, no network).
+  //
+  // Color rule: emit when the form value differs from the persisted one.
+  // When `value.primaryColor` is undefined (never set) and the user clicks
+  // save without touching the picker, the form holds DEFAULT_BRAND_COLOR
+  // and DOES land in the patch — interpreting "first save" as "accept
+  // the brand default". The user can change it later. This is simpler
+  // than tracking « touched » state (which doesn't survive the mocked
+  // setState in `environment: "node"` tests anyway) and matches the
+  // « click Enregistrer = commit current visible state » mental model.
   const buildPatch = (fields: {
     uploadedLogoUrl: string | undefined;
     primaryColor: string;
@@ -180,20 +189,7 @@ export function BrandingEditor({
     ) {
       branding.logoUrl = fields.uploadedLogoUrl;
     }
-    const colorChanged =
-      fields.primaryColor !== (value.primaryColor ?? DEFAULT_BRAND_COLOR) ||
-      value.primaryColor === undefined; // first save of color from default
-    // We don't emit the color if it never moved from the prop value; the
-    // default-from-prop covers the « first save » case (color was unset →
-    // user clicks save without touching → emit nothing).
-    if (
-      fields.primaryColor !== (value.primaryColor ?? "") &&
-      colorChanged &&
-      // Only count it as a change when the user actually picked something
-      // different from what was persisted (treating "no persisted color"
-      // as the implicit no-op — the user has to actively pick a color).
-      fields.primaryColor !== value.primaryColor
-    ) {
+    if (fields.primaryColor !== value.primaryColor) {
       branding.primaryColor = fields.primaryColor;
     }
     if (Object.keys(branding).length === 0) return null;
