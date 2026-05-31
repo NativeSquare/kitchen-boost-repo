@@ -126,12 +126,40 @@ describe("page.tsx — F-COMMANDES-LIVE-TABLE (#227) wiring contract", () => {
     expect(code).not.toMatch(/\bgetOrder\b/);
   });
 
-  it("slice discipline — does NOT call `useTenantMutation` / `useTenantAction` / `useMutation` / `useAction` (refund + filters land in later slices)", () => {
+  it("slice discipline — does NOT call `useTenantMutation` / `useTenantAction` / `useMutation` / `useAction` (refund lands in a later slice; filters are pure client state)", () => {
     const code = stripNonCode(PAGE_SOURCE);
     expect(code).not.toMatch(/\buseTenantMutation\b/);
     expect(code).not.toMatch(/\buseTenantAction\b/);
     expect(code).not.toMatch(/\buseMutation\b/);
     expect(code).not.toMatch(/\buseAction\b/);
+  });
+
+  // -------------------------------------------------------------------------
+  // F-COMMANDES-FILTERS (#238) — filter state lives on the page (EPIC #141
+  // decision: `useState` on the page, no URL query params V1). The pure
+  // `filterOrders(orders, {dateRange, statuses})` is applied before passing
+  // the result down to the view — proof the filter re-applies on every Convex
+  // push without any extra useEffect plumbing (AC: « le filtre s'applique au
+  // resultat live, pas a un snapshot »).
+  // -------------------------------------------------------------------------
+  it("AC #238 — holds the filter state on the page via `useState`", () => {
+    const code = stripNonCode(PAGE_SOURCE);
+    expect(code).toMatch(/\buseState\b/);
+  });
+
+  it("AC #238 — applies the pure `filterOrders` to the live orders payload before rendering", () => {
+    const code = stripNonCode(PAGE_SOURCE);
+    expect(code).toMatch(/\bfilterOrders\b/);
+  });
+
+  it("AC #238 — does NOT add URL query params (V1 decision: no router/searchParams plumbing)", () => {
+    // EPIC #141 explicitly defers URL-shareable filters to V2. We pin that
+    // the page does NOT pull `useSearchParams` / `useRouter` to thread the
+    // filter into the URL — any such call would mean a slice drifted from
+    // the decision.
+    const code = stripNonCode(PAGE_SOURCE);
+    expect(code).not.toMatch(/\buseSearchParams\b/);
+    expect(code).not.toMatch(/\buseRouter\b/);
   });
 
   it("slice discipline — does NOT reference the refund entrypoints `refundOrder` / `refundOnRefusal` (refund flow lands in a later slice of EPIC #141)", () => {

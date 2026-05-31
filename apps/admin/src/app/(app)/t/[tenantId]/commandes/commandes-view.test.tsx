@@ -36,6 +36,7 @@ import type { ReactElement, ReactNode } from "react";
 import type { Doc, Id } from "@packages/backend/convex/_generated/dataModel";
 
 import { CommandesView } from "./commandes-view";
+import { ALL_ORDER_STATUSES } from "./orders-filtering";
 
 // ---------------------------------------------------------------------------
 // Tiny React-tree serializer — same shape as the sibling view tests.
@@ -159,14 +160,29 @@ function order(
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Default props builder — slice 3 (#238) added the filter props; sibling
+// branches of the test suite that only care about the data branches reuse
+// this so they don't have to repeat the four filter-related fields.
+// ---------------------------------------------------------------------------
+const NOOP = () => {};
+function defaults(orders: Doc<"orders">[] | undefined) {
+  return {
+    orders,
+    filter: { dateRange: "tout" as const, statuses: [] },
+    onDateRangeChange: NOOP,
+    onStatusesChange: NOOP,
+  };
+}
+
 describe("CommandesView — F-COMMANDES-LIVE-TABLE (#227)", () => {
   it("AC — surfaces the page title « Commandes » on every branch (header doesn't flash)", () => {
     // Loading branch
-    expect(allText(serialize(CommandesView({ orders: undefined })))).toMatch(
+    expect(allText(serialize(CommandesView(defaults(undefined))))).toMatch(
       /Commandes/,
     );
     // Empty branch
-    expect(allText(serialize(CommandesView({ orders: [] })))).toMatch(
+    expect(allText(serialize(CommandesView(defaults([]))))).toMatch(
       /Commandes/,
     );
     // Populated branch
@@ -177,7 +193,7 @@ describe("CommandesView — F-COMMANDES-LIVE-TABLE (#227)", () => {
         pricingSnapshot: { subtotal: 1800, deliveryFee: 200, total: 2000 },
       }),
     ];
-    expect(allText(serialize(CommandesView({ orders: populated })))).toMatch(
+    expect(allText(serialize(CommandesView(defaults(populated))))).toMatch(
       /Commandes/,
     );
   });
@@ -194,13 +210,13 @@ describe("CommandesView — F-COMMANDES-LIVE-TABLE (#227)", () => {
         pricingSnapshot: { subtotal: 1800, deliveryFee: 200, total: 2000 },
       }),
     ];
-    const text = allText(serialize(CommandesView({ orders: populated })));
+    const text = allText(serialize(CommandesView(defaults(populated))));
     expect(text).not.toMatch(/La liste arrive dans le prochain slice/);
     expect(text).not.toMatch(/commandes-page-placeholder/);
   });
 
   it("AC1 — delegates rendering to `OrdersTable` (the loading branch surfaces the table skeleton)", () => {
-    const tree = serialize(CommandesView({ orders: undefined }));
+    const tree = serialize(CommandesView(defaults(undefined)));
     const slots = dataSlots(tree);
     expect(slots).toContain("orders-table-skeleton");
   });
@@ -218,7 +234,7 @@ describe("CommandesView — F-COMMANDES-LIVE-TABLE (#227)", () => {
         pricingSnapshot: { subtotal: 1250, deliveryFee: 0, total: 1250 },
       }),
     ];
-    const tree = serialize(CommandesView({ orders: populated }));
+    const tree = serialize(CommandesView(defaults(populated)));
     const rowCount = dataSlots(tree).filter(
       (s) => s === "orders-table-row",
     ).length;
@@ -226,17 +242,17 @@ describe("CommandesView — F-COMMANDES-LIVE-TABLE (#227)", () => {
   });
 
   it("AC1 — empty branch surfaces the empty-state copy from `OrdersTable`", () => {
-    const text = allText(serialize(CommandesView({ orders: [] })));
+    const text = allText(serialize(CommandesView(defaults([]))));
     expect(text).toMatch(/Aucune commande pour le moment/);
   });
 
   it("renders without crashing on every branch (pure function of props)", () => {
-    expect(serialize(CommandesView({ orders: undefined }))).not.toBeNull();
-    expect(serialize(CommandesView({ orders: [] }))).not.toBeNull();
+    expect(serialize(CommandesView(defaults(undefined)))).not.toBeNull();
+    expect(serialize(CommandesView(defaults([])))).not.toBeNull();
     expect(
       serialize(
-        CommandesView({
-          orders: [
+        CommandesView(
+          defaults([
             order({
               _id: "orders_x",
               createdAt: Date.UTC(2026, 4, 29, 14, 30),
@@ -246,9 +262,79 @@ describe("CommandesView — F-COMMANDES-LIVE-TABLE (#227)", () => {
                 total: 2000,
               },
             }),
-          ],
-        }),
+          ]),
+        ),
       ),
     ).not.toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// F-COMMANDES-FILTERS (#238) — the view now mounts `OrdersFilters` above the
+// table and forwards the controlled filter props. The view stays pure —
+// `filterOrders` is applied at the page level so the `orders` prop here is
+// already filtered. The view's job is to mount the filters component, render
+// the table on the filtered payload, and keep the page-level filter state
+// the single source of truth.
+// ---------------------------------------------------------------------------
+describe("CommandesView — F-COMMANDES-FILTERS (#238)", () => {
+  it("renders the `OrdersFilters` controlled component above the table", () => {
+    const tree = serialize(CommandesView(defaults([])));
+    const slots = dataSlots(tree);
+    // The filters component renders the 4 date buttons and the 8 status
+    // multi-select items; we pin one slot per group so a regression that
+    // accidentally removes the component fires here.
+    expect(slots).toContain("orders-filters-date-today");
+    expect(slots).toContain("orders-filters-date-7d");
+    expect(slots).toContain("orders-filters-date-30d");
+    expect(slots).toContain("orders-filters-date-tout");
+    const statusItems = slots.filter((s) => s === "orders-filters-status-item");
+    expect(statusItems.length).toBe(ALL_ORDER_STATUSES.length);
+    expect(statusItems.length).toBe(8);
+  });
+
+  it("threads the controlled `filter` value into the filters component (active state visible)", () => {
+    const tree = serialize(
+      CommandesView({
+        orders: [],
+        filter: { dateRange: "7d", statuses: ["nouvelle"] },
+        onDateRangeChange: NOOP,
+        onStatusesChange: NOOP,
+      }),
+    );
+    // We assert that the 7d date button surfaces data-active="true" — proof
+    // the filter value propagates through.
+    const sevenDay = flatten(tree).find(
+      (x) =>
+        x !== null &&
+        !("text" in x) &&
+        x.props["data-slot"] === "orders-filters-date-7d",
+    );
+    if (!sevenDay || "text" in sevenDay)
+      throw new Error("7d button missing in tree");
+    expect(sevenDay.props["data-active"]).toBe("true");
+
+    // And one status (nouvelle) is active.
+    const nouvelleItem = flatten(tree).find(
+      (x) =>
+        x !== null &&
+        !("text" in x) &&
+        x.props["data-slot"] === "orders-filters-status-item" &&
+        x.props["data-status"] === "nouvelle",
+    );
+    if (!nouvelleItem || "text" in nouvelleItem)
+      throw new Error("nouvelle status item missing in tree");
+    expect(nouvelleItem.props["data-active"]).toBe("true");
+  });
+
+  it("threads the filter even on the loading branch (filters render before data lands)", () => {
+    // The gérant must be able to set a filter while the initial fetch is in
+    // flight (the table renders the skeleton; the filters are usable
+    // immediately). The slice-2 « no shell shift » discipline extends to
+    // filters: they don't appear AFTER the data lands.
+    const tree = serialize(CommandesView(defaults(undefined)));
+    const slots = dataSlots(tree);
+    expect(slots).toContain("orders-filters-date-tout");
+    expect(slots).toContain("orders-table-skeleton");
   });
 });
