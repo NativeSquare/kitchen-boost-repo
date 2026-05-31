@@ -390,10 +390,18 @@ describe("VariablesForm — AC5 validation errors surface on bad controlled valu
 });
 
 // ---------------------------------------------------------------------------
-// Tests — AC6 submit button disabled
+// Tests — AC6 submit button moved into `<CampaignPreview/>` (slice [4/7] #215)
+//
+// Slice [3/7] originally pinned a disabled « Envoyer maintenant » button on
+// `<VariablesFormView/>`. Slice [4/7] (#215) replaced that placeholder with
+// the bound-aware button inside `<CampaignPreview/>` — the preview surface
+// owns both the live render and the send button now, and the form view is
+// input-only. Detailed enable/disable + tooltip semantics are pinned in
+// `CampaignPreview.test.tsx`; here we pin the structural invariant that the
+// form view no longer carries its own submit button.
 // ---------------------------------------------------------------------------
-describe("VariablesForm — AC6 « Envoyer maintenant » button is present but disabled (slice [4/7] activates it)", () => {
-  it("surfaces the « Envoyer maintenant » button label", () => {
+describe("VariablesForm — AC6 send button moved into <CampaignPreview/> (slice [4/7] #215)", () => {
+  it('the view no longer surfaces a `data-slot="button"` submit (the button moved into <CampaignPreview/>)', () => {
     const tree = serialize(
       <VariablesFormView
         tenantId={TENANT_ID}
@@ -402,28 +410,23 @@ describe("VariablesForm — AC6 « Envoyer maintenant » button is present but d
         onChange={NOOP}
       />,
     );
-    const text = allText(tree);
-    expect(text).toMatch(/Envoyer maintenant/);
-  });
-
-  it("the button is rendered as disabled (slice [4/7] flips it once send wiring lands)", () => {
-    const tree = serialize(
-      <VariablesFormView
-        tenantId={TENANT_ID}
-        template={TEMPLATE_TEXT_ONLY}
-        values={{}}
-        onChange={NOOP}
-      />,
-    );
-    // Find the button — `data-slot="button"` is the shadcn marker.
     const buttons = findAll(tree, (n) => {
       if (n === null || "text" in n) return false;
       return (n.props as Record<string, unknown>)["data-slot"] === "button";
     });
-    // Exactly one button on the form for the V1 surface.
-    expect(buttons.length).toBeGreaterThanOrEqual(1);
-    const submit = buttons[0] as { props: Record<string, unknown> };
-    expect(submit.props["disabled"]).toBe(true);
+    expect(buttons).toHaveLength(0);
+  });
+
+  it("the view no longer surfaces the « Envoyer maintenant » label (moved into <CampaignPreview/>)", () => {
+    const tree = serialize(
+      <VariablesFormView
+        tenantId={TENANT_ID}
+        template={TEMPLATE_TEXT_ONLY}
+        values={{}}
+        onChange={NOOP}
+      />,
+    );
+    expect(allText(tree)).not.toMatch(/Envoyer maintenant/);
   });
 });
 
