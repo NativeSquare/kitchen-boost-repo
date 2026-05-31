@@ -2,12 +2,13 @@
 
 /**
  * F-WIZARD [1/10] (#265) + [3/10] (#267) + [5/10] (#269) + [6/10] (#270) +
- * [7/10] (#271) + [9/10] (#273) — Step{N}Form dispatch map.
+ * [7/10] (#271) + [9/10] (#273) + [10/10] (#274) — Step{N}Form dispatch map.
  *
- * Steps still using a placeholder (« TODO Step N — <title> » + Prev/Next nav
- * buttons): 2 and 8. Each follow-up wizard slice swaps its own placeholder
+ * Step still using a placeholder (« TODO Step N — <title> » + Prev/Next nav
+ * buttons): step 2 only. Each follow-up wizard slice swaps its own placeholder
  * for a real form WITHOUT touching the wizard shell. The shell hands
- * `onPrev` / `onNext` to whatever form lives at the slot.
+ * `onPrev` / `onNext` (and optionally `onStepChange` for non-adjacent
+ * navigation) to whatever form lives at the slot.
  *
  * Step 1 (« Compte resto ») is the SLICE CHARNIÈRE: #267 replaces its
  * placeholder with the real provisioning form (`Step1ProvisioningForm`) and a
@@ -42,8 +43,9 @@
  * `step3-stripe-kyc-form.test.tsx`) and directly through CI runtime + E2E.
  *
  * Step 1 has no « Précédent » target (it's the entry point); step 8 has no
- * « Suivant » target (it's the activation — the real form lands in its own
- * slice with a 2-step confirmation UX). All other steps render both buttons.
+ * « Suivant » target (it's the terminal activation step — its own form ships
+ * the « Mettre en production » CTA + 2-step confirmation dialog). All other
+ * steps render both buttons.
  *
  * The placeholders are EXPLICITLY un-styled flair-wise: they MUST look
  * obviously-placeholder so an operator never confuses them for a usable
