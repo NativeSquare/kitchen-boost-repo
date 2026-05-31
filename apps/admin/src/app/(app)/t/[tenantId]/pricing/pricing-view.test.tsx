@@ -352,6 +352,108 @@ describe("PricingView — F-PRICING-1 (#241)", () => {
     );
   });
 
+  describe("F-PRICING-3 (#248) — « Éditer » becomes active when `onEditRule` is wired", () => {
+    // Slice 1 left « Éditer » as a disabled placeholder. Slice 3 (#248) wires
+    // it via a new `onEditRule(rule)` prop owned by `page.tsx`: when provided,
+    // each row's Éditer button is enabled and clicking it fires the handler
+    // with THIS row's rule. Backward compat: when the prop is omitted (the
+    // F-PRICING-1 isolated callers + the existing « placeholders disabled »
+    // test), the button stays disabled — same shape, no regression.
+
+    it("AC — when `onEditRule` is passed, every row's « Éditer » button is ENABLED", () => {
+      const tree = serialize(
+        PricingView({
+          rules: [ACTIVE_RULE, INACTIVE_RULE],
+          onEditRule: () => {},
+        }),
+      );
+      const buttons: { text: string; disabled: boolean }[] = [];
+      function walk(n: SerializedNode) {
+        if (n === null || "text" in n) return;
+        if (typeof n.type === "string" && n.type.toLowerCase() === "button") {
+          const t = allText(n);
+          const disabled =
+            n.props["disabled"] === true ||
+            n.props["disabled"] === "" ||
+            n.props["aria-disabled"] === true ||
+            n.props["aria-disabled"] === "true";
+          buttons.push({ text: t, disabled });
+        }
+        for (const c of n.children) walk(c);
+      }
+      walk(tree);
+      const editBtns = buttons.filter((b) => /^\s*Éditer\s*$/.test(b.text));
+      // 2 rules → 2 « Éditer » buttons.
+      expect(editBtns).toHaveLength(2);
+      // ALL enabled (none disabled) — the wiring is row-agnostic.
+      for (const b of editBtns) {
+        expect(
+          b.disabled,
+          "Éditer must be enabled when onEditRule is wired",
+        ).toBe(false);
+      }
+    });
+
+    it("AC — clicking « Éditer » on a row fires `onEditRule` with THAT row's rule", () => {
+      const captured: unknown[] = [];
+      const tree = serialize(
+        PricingView({
+          rules: [ACTIVE_RULE, INACTIVE_RULE],
+          onEditRule: (rule) => captured.push(rule),
+        }),
+      );
+      // Walk and collect every « Éditer » button's onClick handler in render order.
+      const handlers: Array<() => void> = [];
+      function walk(n: SerializedNode) {
+        if (n === null || "text" in n) return;
+        if (typeof n.type === "string" && n.type.toLowerCase() === "button") {
+          const t = allText(n);
+          if (/^\s*Éditer\s*$/.test(t)) {
+            const h = n.props["onClick"];
+            if (typeof h === "function") handlers.push(h as () => void);
+          }
+        }
+        for (const c of n.children) walk(c);
+      }
+      walk(tree);
+      expect(handlers).toHaveLength(2);
+      // Click the FIRST (= ACTIVE_RULE) → captures it.
+      handlers[0]?.();
+      expect(captured).toHaveLength(1);
+      expect((captured[0] as { _id: unknown })._id).toBe(ACTIVE_RULE._id);
+      // Click the SECOND (= INACTIVE_RULE) → captures it (per-row binding,
+      // not a shared closure).
+      handlers[1]?.();
+      expect(captured).toHaveLength(2);
+      expect((captured[1] as { _id: unknown })._id).toBe(INACTIVE_RULE._id);
+    });
+
+    it("AC — when `onEditRule` is OMITTED (F-PRICING-1 isolated caller), « Éditer » stays disabled (backward compat)", () => {
+      // The existing « placeholders disabled » test above already pins this
+      // implicitly. We re-pin it from the slice-3 vantage point so a future
+      // contributor who tries to drop the disabled-when-omitted fallback
+      // sees the explicit slice-3 reason.
+      const tree = serialize(PricingView({ rules: [ACTIVE_RULE] }));
+      const buttons: { text: string; disabled: boolean }[] = [];
+      function walk(n: SerializedNode) {
+        if (n === null || "text" in n) return;
+        if (typeof n.type === "string" && n.type.toLowerCase() === "button") {
+          const t = allText(n);
+          const disabled =
+            n.props["disabled"] === true ||
+            n.props["disabled"] === "" ||
+            n.props["aria-disabled"] === true ||
+            n.props["aria-disabled"] === "true";
+          buttons.push({ text: t, disabled });
+        }
+        for (const c of n.children) walk(c);
+      }
+      walk(tree);
+      const editBtn = buttons.find((b) => /^\s*Éditer\s*$/.test(b.text));
+      expect(editBtn?.disabled).toBe(true);
+    });
+  });
+
   it("GUARDRAIL — NO `[draggable]` attribute anywhere in the rendered tree (auto-priority, no manual order)", () => {
     // Issue body: « Pas de drag-handle DOM : aucun élément draggable ».
     const tree = serialize(

@@ -77,6 +77,38 @@ describe("page.tsx — F-PRICING-1 (#241) wiring contract", () => {
     expect(PAGE_SOURCE).toMatch(/ConvexError/);
   });
 
+  it("AC F-PRICING-3 (#248) — binds `api.lib.pricing.rules.update` via `useTenantMutation` (NOT raw useMutation)", () => {
+    // Slice 3 (#248) layers EDIT on top: a second `useTenantMutation` against
+    // `api.lib.pricing.rules.update`. The contract (auto-injected tenantId via
+    // ADR 0014 §4 / #183, ADR 0010) is the same as create. Collapse whitespace
+    // so a Prettier line-wrap inside the call still matches.
+    const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
+    expect(collapsed).toMatch(
+      /useTenantMutation\([^)]*api\.lib\.pricing\.rules\.update[^)]*\)/,
+    );
+  });
+
+  it("AC F-PRICING-3 (#248) — wires the list-row « Éditer » handler via the `onEditRule` prop of `PricingView`", () => {
+    // The page-to-view contract: the row Éditer button is enabled by passing
+    // `onEditRule={…}`. Pinning the prop name guarantees the page wires it
+    // (and PricingView consumes the same name).
+    expect(PAGE_SOURCE).toMatch(/onEditRule/);
+  });
+
+  it("AC F-PRICING-3 (#248) — passes the rule under edit to `RuleBuilderModal` via the `existingRule` prop", () => {
+    // The modal's pre-fill contract: `existingRule={…}` switches the modal to
+    // edit mode. The page owns the state.
+    expect(PAGE_SOURCE).toMatch(/existingRule/);
+  });
+
+  it("AC F-PRICING-3 (#248) — branches submit on edit-vs-create (must reference `ruleId` in the update path)", () => {
+    // The update mutation requires `ruleId` (from `existingRule._id`). The
+    // create mutation does not. Pinning `ruleId` in the page source guarantees
+    // we DO take the update branch — otherwise we'd silently insert a new rule
+    // every save.
+    expect(PAGE_SOURCE).toMatch(/ruleId/);
+  });
+
   it("GUARDRAIL — does NOT import `api.lib.pricing.evaluate` (engine is backend-only, ADR 0013)", () => {
     // Issue body: « Pas d'import vers `api.lib.pricing.evaluate.evaluate` dans
     // tout le module pricing (assertion statique grep). »

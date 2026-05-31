@@ -569,6 +569,273 @@ describe("RuleBuilderModal — F-PRICING-2 (#245)", () => {
     });
   });
 
+  describe("F-PRICING-3 (#248) — edit mode (existingRule pre-fill + update)", () => {
+    // The builder is REUSED for edit by passing the persisted rule via the
+    // `existingRule` prop. The `useState` initializer hydrates from it (the
+    // test's `useState` mock honours the function-initializer branch when no
+    // override is set — see top of file). Cents/percent stay in their schema
+    // units inside state; the per-kind input converts to UI representation at
+    // render time (centsToEuroDisplay / String(percent)). What we pin here:
+    //   - the modal title flips to « Modifier la règle » in edit mode,
+    //   - the conditions list reflects the persisted shape (1 row per
+    //     persisted condition, EACH with the right `data-slot` fields-for-kind
+    //     and the persisted operator/value),
+    //   - the action picker reflects the persisted kind and renders the
+    //     matching per-kind field,
+    //   - clicking « Enregistrer » forwards the SAME conditions+action shape
+    //     the page will hand to `api.lib.pricing.rules.update`.
+    // The page wires `existingRule` and decides update-vs-create — but the
+    // modal is one component, no duplication (issue body « Pas de duplication
+    // de composant »).
+
+    /** Minimal fixture: a persisted rule with 2 conditions and 1 fixed-€ action. */
+    function makeExistingRule() {
+      return {
+        _id: "rule_to_edit" as unknown as import("@packages/backend/convex/_generated/dataModel").Id<"pricingRules">,
+        _creationTime: 0,
+        tenantId:
+          "tenant_test" as unknown as import("@packages/backend/convex/_generated/dataModel").Id<"tenants">,
+        conditions: [
+          {
+            kind: "total_panier" as const,
+            operator: "gte" as const,
+            valueCents: 2500,
+          },
+          { kind: "premiere_cmd_client" as const, value: true },
+        ],
+        action: {
+          kind: "frais_livraison_part_resto_fixe" as const,
+          valueCents: 250,
+        },
+        active: true,
+        createdAt: 0,
+        updatedAt: 0,
+      };
+    }
+
+    it("AC — when `existingRule` is provided, title becomes « Modifier la règle »", () => {
+      resetStateMock();
+      const tree = serialize(
+        RuleBuilderModal({
+          ...defaultProps(),
+          existingRule: makeExistingRule(),
+        }),
+      );
+      const text = allText(tree);
+      expect(text).toMatch(/Modifier la règle/i);
+      // Sanity: the create-mode title MUST NOT also appear in the same render
+      // (the modal is one or the other — not both).
+      expect(text).not.toMatch(/Nouvelle règle de pricing/i);
+    });
+
+    it("AC — without `existingRule`, the create-mode title « Nouvelle règle de pricing » still renders (backward compat with F-PRICING-2)", () => {
+      resetStateMock();
+      const tree = serialize(RuleBuilderModal(defaultProps()));
+      const text = allText(tree);
+      expect(text).toMatch(/Nouvelle règle de pricing/i);
+    });
+
+    it("AC — `existingRule` with 2 conditions hydrates 2 rows, each with the right per-kind fields", () => {
+      resetStateMock();
+      const tree = serialize(
+        RuleBuilderModal({
+          ...defaultProps(),
+          existingRule: makeExistingRule(),
+        }),
+      );
+      // 2 persisted conditions → 2 rendered rows.
+      const rows = findBySlot(tree, "pricing-rule-builder-condition-row");
+      expect(rows).toHaveLength(2);
+      // First row was `total_panier` → operator picker + euros input slots are present.
+      expect(
+        findBySlot(tree, "pricing-rule-builder-condition-fields-total_panier"),
+      ).toHaveLength(1);
+      expect(
+        findBySlot(
+          tree,
+          "pricing-rule-builder-condition-total_panier-operator",
+        ),
+      ).toHaveLength(1);
+      expect(
+        findBySlot(tree, "pricing-rule-builder-condition-total_panier-euros"),
+      ).toHaveLength(1);
+      // Second row was `premiere_cmd_client` → toggle slot is present.
+      expect(
+        findBySlot(
+          tree,
+          "pricing-rule-builder-condition-fields-premiere_cmd_client",
+        ),
+      ).toHaveLength(1);
+      expect(
+        findBySlot(
+          tree,
+          "pricing-rule-builder-condition-premiere_cmd_client-toggle",
+        ),
+      ).toHaveLength(1);
+    });
+
+    it("AC — `existingRule` with `total_panier valueCents=2500` pre-fills the euros input with « 25 » (cents → € for UI)", () => {
+      resetStateMock();
+      const tree = serialize(
+        RuleBuilderModal({
+          ...defaultProps(),
+          existingRule: makeExistingRule(),
+        }),
+      );
+      const eurosInput = findBySlot(
+        tree,
+        "pricing-rule-builder-condition-total_panier-euros",
+      )[0];
+      expect(eurosInput).toBeDefined();
+      // The input's `value` prop is the FR-formatted euros (2500 cents → "25").
+      // Pinned via `value` prop (the input is a controlled React `<Input>`).
+      expect(String(eurosInput.props["value"])).toBe("25");
+    });
+
+    it("AC — `existingRule` with action `frais_livraison_part_resto_fixe valueCents=250` pre-fills euros input with « 2,50 » (cents → €,UI)", () => {
+      resetStateMock();
+      const tree = serialize(
+        RuleBuilderModal({
+          ...defaultProps(),
+          existingRule: makeExistingRule(),
+        }),
+      );
+      // Action picker reflects the persisted kind.
+      expect(
+        findBySlot(
+          tree,
+          "pricing-rule-builder-action-fields-frais_livraison_part_resto_fixe",
+        ),
+      ).toHaveLength(1);
+      const eurosInput = findBySlot(
+        tree,
+        "pricing-rule-builder-action-frais_livraison_part_resto_fixe-euros",
+      )[0];
+      expect(eurosInput).toBeDefined();
+      // 250 cents → « 2,50 » FR display (centsToEuroDisplay uses comma).
+      expect(String(eurosInput.props["value"])).toBe("2,50");
+    });
+
+    it("AC — `existingRule` with action `frais_livraison_part_resto_pourcentage_panier percent=30` pre-fills the percent input with « 30 »", () => {
+      resetStateMock();
+      const existing = makeExistingRule();
+      const tree = serialize(
+        RuleBuilderModal({
+          ...defaultProps(),
+          existingRule: {
+            ...existing,
+            action: {
+              kind: "frais_livraison_part_resto_pourcentage_panier",
+              percent: 30,
+            },
+          },
+        }),
+      );
+      expect(
+        findBySlot(
+          tree,
+          "pricing-rule-builder-action-fields-frais_livraison_part_resto_pourcentage_panier",
+        ),
+      ).toHaveLength(1);
+      const percentInput = findBySlot(
+        tree,
+        "pricing-rule-builder-action-frais_livraison_part_resto_pourcentage_panier-percent",
+      )[0];
+      expect(percentInput).toBeDefined();
+      expect(String(percentInput.props["value"])).toBe("30");
+    });
+
+    it("AC — `existingRule` pre-fills the action select with the persisted action kind", () => {
+      resetStateMock();
+      const tree = serialize(
+        RuleBuilderModal({
+          ...defaultProps(),
+          existingRule: makeExistingRule(),
+        }),
+      );
+      const actionSelect = findBySlot(
+        tree,
+        "pricing-rule-builder-action-kind",
+      )[0];
+      expect(actionSelect).toBeDefined();
+      // The select's controlled `value` prop is the persisted kind literal.
+      expect(actionSelect.props["value"]).toBe(
+        "frais_livraison_part_resto_fixe",
+      );
+    });
+
+    it("AC — clicking « Enregistrer » in edit mode forwards the unchanged persisted shape to onSubmit (cents stay cents, percent stays percent)", () => {
+      resetStateMock();
+      const existing = makeExistingRule();
+      const onSubmit = vi.fn();
+      const tree = serialize(
+        RuleBuilderModal({
+          ...defaultProps(),
+          onSubmit,
+          existingRule: existing,
+        }),
+      );
+      const submit = findBySlot(tree, "pricing-rule-builder-submit")[0];
+      expect(submit).toBeDefined();
+      const handler = submit.props["onClick"] as undefined | (() => void);
+      expect(typeof handler).toBe("function");
+      handler?.();
+      expect(onSubmit).toHaveBeenCalledTimes(1);
+      // Payload mirrors the persisted rule's conditions + action — the page
+      // adds `ruleId` from `existingRule._id` before calling `update`.
+      expect(onSubmit).toHaveBeenCalledWith({
+        conditions: existing.conditions,
+        action: existing.action,
+      });
+    });
+
+    it("AC — in edit mode the submit button label flips to « Enregistrer les modifications »", () => {
+      // Distinguishes the two modes visibly so the gérant knows what they
+      // are doing. The page-level mutation choice (create vs update) is the
+      // load-bearing branch — this is the visible UX echo.
+      resetStateMock();
+      const tree = serialize(
+        RuleBuilderModal({
+          ...defaultProps(),
+          existingRule: makeExistingRule(),
+        }),
+      );
+      const submit = findBySlot(tree, "pricing-rule-builder-submit")[0];
+      expect(submit).toBeDefined();
+      expect(allText(submit)).toMatch(/Enregistrer les modifications/i);
+    });
+
+    it("AC — create mode keeps the « Enregistrer » label (no « modifications » leak)", () => {
+      resetStateMock();
+      const tree = serialize(RuleBuilderModal(defaultProps()));
+      const submit = findBySlot(tree, "pricing-rule-builder-submit")[0];
+      expect(submit).toBeDefined();
+      const txt = allText(submit);
+      expect(txt).toMatch(/Enregistrer/);
+      expect(txt).not.toMatch(/modifications/i);
+    });
+
+    it("AC — `submitError` prop also surfaces inline in edit mode (same CONTRADICTORY_CONDITIONS UX as create)", () => {
+      resetStateMock();
+      const tree = serialize(
+        RuleBuilderModal({
+          ...defaultProps(),
+          existingRule: makeExistingRule(),
+          submitError:
+            "Conditions contradictoires sur total_panier : minimum (5000) supérieur au maximum (3000).",
+        }),
+      );
+      const errorZone = findBySlot(
+        tree,
+        "pricing-rule-builder-submit-error",
+      )[0];
+      expect(errorZone).toBeDefined();
+      expect(allText(errorZone)).toMatch(
+        /Conditions contradictoires sur total_panier/i,
+      );
+    });
+  });
+
   describe("Guardrails — closed list, no `evaluate`, no drag", () => {
     it("GUARDRAIL — no `draggable=true` element anywhere", () => {
       resetStateMock();
