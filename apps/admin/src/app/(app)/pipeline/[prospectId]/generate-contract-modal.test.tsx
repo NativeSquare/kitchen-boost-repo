@@ -306,14 +306,18 @@ describe("GenerateContractModal — F-CONTRATS slice 3/4 (#174)", () => {
     // Submit button MUST be disabled.
     const submit = findAllBySlot(tree, "generate-contract-submit");
     expect(submit.length).toBe(1);
-    expect(submit[0]!.props.disabled).toBe(true);
+    const submitNode = submit[0];
+    if (submitNode === undefined) throw new Error("expected submit");
+    expect(submitNode.props.disabled).toBe(true);
   });
 
   it("AC — submit is ENABLED when every juridical field is present + a prestation is selected (default A)", () => {
     const tree = serialize(GenerateContractModal(baseProps()));
     const submit = findAllBySlot(tree, "generate-contract-submit");
     expect(submit.length).toBe(1);
-    expect(submit[0]!.props.disabled).toBe(false);
+    const submitNode = submit[0];
+    if (submitNode === undefined) throw new Error("expected submit");
+    expect(submitNode.props.disabled).toBe(false);
   });
 
   it("AC — `isSubmitting` disables the submit button + surfaces a loading label", () => {
@@ -322,7 +326,9 @@ describe("GenerateContractModal — F-CONTRATS slice 3/4 (#174)", () => {
     );
     const submit = findAllBySlot(tree, "generate-contract-submit");
     expect(submit.length).toBe(1);
-    expect(submit[0]!.props.disabled).toBe(true);
+    const submitNode = submit[0];
+    if (submitNode === undefined) throw new Error("expected submit");
+    expect(submitNode.props.disabled).toBe(true);
     const text = allText(tree);
     expect(text).toMatch(/G[ée]n[ée]ration…|G[ée]n[ée]ration\.{3}/);
   });
