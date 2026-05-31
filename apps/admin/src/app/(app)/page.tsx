@@ -1,60 +1,71 @@
 "use client";
 
 /**
- * Root entry — role-aware redirect under the (app) shell.
+ * F-SHELL-09 — root entry. Role-aware redirect under the (app) shell.
  *
- * Lives under `(app)/` so it inherits `SessionLoader` + `SessionGuard`
- * (apps/admin/src/app/(app)/layout.tsx). When this component renders we are
- * GUARANTEED that `session.status === "ready"` AND (`isAdmin` ||
- * `tenants.length > 0`) — the no-tenant case is intercepted upstream by the
- * guard and replaced with `<NoTenantEmptyState/>`, so the redirect logic
- * below only ever runs for a usable actor.
+ * Mounted under `(app)/layout.tsx` (`SessionLoader` + `SessionGuard`,
+ * apps/admin/src/app/(app)/layout.tsx), so by the time this component
+ * renders we are GUARANTEED that `session.status === "ready"` AND
+ * (`isAdmin` || `tenants.length > 0`) — the no-tenant case is intercepted
+ * upstream with `NoTenantEmptyState`. The redirect logic below therefore
+ * only ever runs for a usable actor.
  *
- * Routing matrix (ADR 0014 §5):
- *   - KB Admin   → `/monitoring` (supervision space).
- *     The intended landing is `/pipeline` (ADR 0014 §5 — the Kanban is the
- *     KB Admin home), but that page is a separate epic still in the
- *     backlog. `/monitoring` is the only live supervision route today and
- *     is in the sidebar, so the redirect doesn't strand the user on a 404.
- *     When `/pipeline` ships, change the line below — the contract stays.
- *   - KB Manager → `/t/<firstTenantId>/menu` (operational space, default
- *     resto = first own tenant). Matches the sidebar fallback in
- *     `decideSidebarNav` so the chrome and the URL agree.
+ * Routing matrix (ADR 0014 §5 + issue #223) lives in `decideRootEntry`
+ * — see `root-entry.decision.ts` for the full docblock and the test
+ * matrix in `root-entry.decision.test.ts`. This file is the thin
+ * `"use client"` adapter: read the session via `useSession`, read the
+ * `kb_current_tenant` cookie via `document.cookie`, call the pure
+ * decision, and `router.replace(href)`. The branching has zero presence
+ * here so the React shell stays trivially correct as long as the pure
+ * function is.
  *
- * Replaces the legacy `apps/admin/src/app/page.tsx` (`redirect("/team")`)
- * which pointed at the now-deleted scaffold `(app)/team/` page — a route
- * that was NOT in the new sidebar (ADR 0014 §1 + §56 removed Users/Team
- * entirely). That redirect was dead code surviving the F-SHELL-06 sidebar
- * swap; it's gone with this slice.
+ * Cookie source — `document.cookie` (client). The cookie was written on
+ * the previous tenant entry by the `[tenantId]/layout.tsx` `allow` branch
+ * using `formatTenantCookie` from `components/app/tenant-context.tsx`;
+ * we read it back here with `parseTenantCookie` (the only sanctioned
+ * parser, ADR 0014 §4 — the cookie name & serialisation live in ONE
+ * place). On SSR there's no `document` — we pass `undefined` (which the
+ * pure function treats as "no hint" and falls back to the first tenant);
+ * the first client-side render then re-evaluates with the real cookie and
+ * the redirect goes to the right URL. No flash because the page only
+ * renders a spinner until the redirect fires.
+ *
+ * History — the previous version of this file hardcoded the matrix in a
+ * `useEffect` (KB Admin → /monitoring, manager → /t/<first>/menu) and did
+ * NOT honour the `kb_current_tenant` cookie at all, so a multi-tenant
+ * manager always landed on their first resto regardless of where they had
+ * left the previous session. F-SHELL-09 closes that gap by extracting
+ * the decision to a pure function and wiring the cookie read.
  */
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Spinner } from "@/components/ui/spinner";
 import { useSession } from "@/lib/session";
+import { parseTenantCookie } from "@/components/app/tenant-context";
+import { decideRootEntry } from "./root-entry.decision";
 
 export default function RootHome() {
   const session = useSession();
   const router = useRouter();
 
   React.useEffect(() => {
-    // SessionGuard renders a spinner / NoTenantEmptyState upstream when the
-    // session isn't ready / has no actor — but the effect deps still need to
-    // narrow defensively (no redirect if the guard somehow lets us through
-    // before resolution).
-    if (session.status !== "ready") return;
-    const { isAdmin, tenants } = session.session;
-    if (isAdmin) {
-      router.replace("/monitoring");
-      return;
+    // `document` is client-only — guarded so a future SSR pass doesn't
+    // throw; on the server we treat the cookie as absent and the manager
+    // falls back to first-tenant (same shape as a fresh session).
+    const cookieTenantId =
+      typeof document !== "undefined"
+        ? parseTenantCookie(document.cookie)
+        : undefined;
+
+    const decision = decideRootEntry({ session, cookieTenantId });
+    if (decision.kind === "redirect") {
+      router.replace(decision.href);
     }
-    if (tenants.length > 0) {
-      router.replace(`/t/${tenants[0].tenantId}/menu`);
-    }
-    // The third case (non-admin + no tenants) is handled by SessionGuard's
-    // `no-tenant` branch — we never reach this code path for it.
+    // `wait` → leave the spinner up; the next session state change
+    // re-runs this effect and picks the redirect.
   }, [session, router]);
 
-  // Brief spinner while `useEffect` schedules the navigation. Matches the
+  // Brief spinner while the effect schedules the navigation. Matches the
   // visual the guard uses, so the user never sees a flash of empty content.
   return (
     <div className="flex h-screen w-screen items-center justify-center">
