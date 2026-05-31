@@ -1,41 +1,44 @@
 /**
- * F-COMMANDES-PAGE-SHELL (#222) — `CommandesView`, pure presentational shell of
- * the tenant Commandes page (header + placeholder, first tracer-bullet of EPIC
- * F-COMMANDES #141).
+ * F-COMMANDES-PAGE-SHELL (#222) + F-COMMANDES-LIVE-TABLE (#227) —
+ * `CommandesView`, the presentational shell of the tenant Commandes page.
  *
- * Slice 1 (this issue) ships ONLY the scaffold (issue body « pas de données
- * encore — juste le scaffold prouvant que la route est joignable, le tenant
- * context est résolu via le segment `[tenantId]`, et la page hérite du layout
- * chrome-less »). The live orders table, filters, detail modal, refund flow,
- * and CSV export land in subsequent slices of EPIC #141; this view stays
- * deliberately dumb and renders the « La liste arrive dans le prochain slice »
- * placeholder so the navigation surface is in place from day one without
- * misleading the gérant into believing the data is wired.
+ * Slice 1 (#222) shipped only the header + a placeholder card. Slice 2 (#227,
+ * THIS file's contract) replaces the placeholder with a live `OrdersTable`
+ * branched on the result of `useTenantQuery(api.lib.orders.orders.listOrders)`
+ * (which the page owns). The view stays a pure function of its props: it
+ * takes `orders: Doc<"orders">[] | undefined` and forwards it to the table —
+ * the three branches (loading / empty / populated) live in `OrdersTable` and
+ * are pinned by `orders-table.test.tsx`.
  *
- * What this test pins (acceptance criteria #222) :
- *   - AC3 « Le header "Commandes" est affiché » → the page title surfaces on
- *     every render branch.
- *   - The placeholder copy explicitly signals the slice-1 intent (« la liste
- *     arrive dans le prochain slice ») so future agents and Alex can grep for
- *     it when wiring the table.
- *   - A stable `data-slot="commandes-page-placeholder"` marker is exposed so
- *     subsequent slices (and tests) can target the placeholder without
- *     scraping copy.
+ * The header (« Commandes ») is ALWAYS rendered, regardless of the data
+ * branch — same chrome-doesn't-flash discipline as `MenuView` /
+ * `MesClientsView` (the page title is the operator's anchor across the
+ * loading → populated transition).
  *
- * Split out of `page.tsx` (which is a thin wrapper around the view, matching
- * the menu / mes-clients / parametres pattern) so vitest can pin every branch
- * under `environment: "node"` — same React-tree-serializer pattern as
- * `parametres-view.test.tsx`. Scope is `apps/admin/src/app/(app)/t/[tenantId]/
- * commandes/` only (issue #222 hard constraint).
+ * The slice-1 « La liste arrive dans le prochain slice » placeholder is
+ * GONE — the table is now wired. We pin its absence so a future regression
+ * (e.g. an accidental revert of `commandes-view.tsx`) fails loudly inside
+ * this slice's suite.
+ *
+ * Acceptance criteria pinned here (#227):
+ *   - AC1 « Module `orders-table` rend une table HTML sémantique avec les 4
+ *     colonnes » → the view delegates to `OrdersTable` (pinned via a slot
+ *     marker) and the table's contract is pinned by `orders-table.test.tsx`.
+ *   - The header « Commandes » still surfaces on every render branch.
+ *
+ * Same React-tree-serializer pattern as `menu-view.test.tsx` /
+ * `mes-clients-view.test.tsx`. `apps/admin/vitest.config.ts` runs in
+ * `environment: "node"`.
  */
 import { describe, expect, it } from "vitest";
 import type { ReactElement, ReactNode } from "react";
 
+import type { Doc, Id } from "@packages/backend/convex/_generated/dataModel";
+
 import { CommandesView } from "./commandes-view";
 
 // ---------------------------------------------------------------------------
-// Tiny React-tree serializer — same shape as parametres-view.test.tsx,
-// trimmed to what we need here.
+// Tiny React-tree serializer — same shape as the sibling view tests.
 // ---------------------------------------------------------------------------
 type SerializedNode =
   | { type: string; props: Record<string, unknown>; children: SerializedNode[] }
@@ -128,33 +131,120 @@ function dataSlots(n: SerializedNode): string[] {
 }
 
 // ---------------------------------------------------------------------------
+// Fixtures
+// ---------------------------------------------------------------------------
+const TENANT = "tenants_fixture" as unknown as Id<"tenants">;
+const CUSTOMER = "customers_fixture" as unknown as Id<"customers">;
+
+function order(
+  partial: Partial<Doc<"orders">> & { _id: string; createdAt: number },
+): Doc<"orders"> {
+  return {
+    _id: partial._id as unknown as Id<"orders">,
+    _creationTime: partial.createdAt,
+    tenantId: TENANT,
+    customerId: CUSTOMER,
+    status: "nouvelle",
+    mode: "delivery",
+    source: "direct",
+    createdAt: partial.createdAt,
+    ...partial,
+  } as Doc<"orders">;
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
-describe("CommandesView — F-COMMANDES-PAGE-SHELL (#222)", () => {
-  it("AC3 — surfaces the page title « Commandes »", () => {
-    const text = allText(serialize(CommandesView()));
-    expect(text).toMatch(/Commandes/);
+describe("CommandesView — F-COMMANDES-LIVE-TABLE (#227)", () => {
+  it("AC — surfaces the page title « Commandes » on every branch (header doesn't flash)", () => {
+    // Loading branch
+    expect(allText(serialize(CommandesView({ orders: undefined })))).toMatch(
+      /Commandes/,
+    );
+    // Empty branch
+    expect(allText(serialize(CommandesView({ orders: [] })))).toMatch(
+      /Commandes/,
+    );
+    // Populated branch
+    const populated = [
+      order({
+        _id: "orders_x",
+        createdAt: Date.UTC(2026, 4, 29, 14, 30),
+        pricingSnapshot: { subtotal: 1800, deliveryFee: 200, total: 2000 },
+      }),
+    ];
+    expect(allText(serialize(CommandesView({ orders: populated })))).toMatch(
+      /Commandes/,
+    );
   });
 
-  it("AC1 — renders the slice-1 placeholder copy (« La liste arrive dans le prochain slice »)", () => {
-    // The placeholder is the explicit slice-1 signal — it tells the gérant
-    // (and any future agent picking up the next F-COMMANDES slice) that the
-    // table is not yet wired. Pinning the copy keeps the intent visible.
-    const text = allText(serialize(CommandesView()));
-    expect(text).toMatch(/La liste arrive dans le prochain slice/);
+  it("AC — the slice-1 placeholder « La liste arrive dans le prochain slice » is GONE (live table replaces it)", () => {
+    // Slice 1 (#222) shipped a placeholder copy; slice 2 (#227) wires the
+    // real table — the placeholder must not survive a revert that brought it
+    // back. We assert on the populated branch (where the table is fully
+    // rendered) so a regression cannot hide.
+    const populated = [
+      order({
+        _id: "orders_x",
+        createdAt: Date.UTC(2026, 4, 29, 14, 30),
+        pricingSnapshot: { subtotal: 1800, deliveryFee: 200, total: 2000 },
+      }),
+    ];
+    const text = allText(serialize(CommandesView({ orders: populated })));
+    expect(text).not.toMatch(/La liste arrive dans le prochain slice/);
+    expect(text).not.toMatch(/commandes-page-placeholder/);
   });
 
-  it("AC1 — placeholder carries a stable `data-slot` marker so subsequent slices can target it", () => {
-    const slots = dataSlots(serialize(CommandesView()));
-    expect(slots).toContain("commandes-page-placeholder");
+  it("AC1 — delegates rendering to `OrdersTable` (the loading branch surfaces the table skeleton)", () => {
+    const tree = serialize(CommandesView({ orders: undefined }));
+    const slots = dataSlots(tree);
+    expect(slots).toContain("orders-table-skeleton");
   });
 
-  it("AC7 — the view renders without crashing (no props required this slice — scaffold only)", () => {
-    // The view is a pure function with no props in slice 1 (no data wired
-    // yet). It must serialise to a non-null tree on a bare call — this is
-    // the minimal « render the skeleton without crash » test demanded by the
-    // issue body.
-    const tree = serialize(CommandesView());
-    expect(tree).not.toBeNull();
+  it("AC1 — populated branch renders a row per order via `OrdersTable`", () => {
+    const populated = [
+      order({
+        _id: "orders_a",
+        createdAt: Date.UTC(2026, 4, 29, 14, 30),
+        pricingSnapshot: { subtotal: 1800, deliveryFee: 200, total: 2000 },
+      }),
+      order({
+        _id: "orders_b",
+        createdAt: Date.UTC(2026, 4, 29, 13, 15),
+        pricingSnapshot: { subtotal: 1250, deliveryFee: 0, total: 1250 },
+      }),
+    ];
+    const tree = serialize(CommandesView({ orders: populated }));
+    const rowCount = dataSlots(tree).filter(
+      (s) => s === "orders-table-row",
+    ).length;
+    expect(rowCount).toBe(2);
+  });
+
+  it("AC1 — empty branch surfaces the empty-state copy from `OrdersTable`", () => {
+    const text = allText(serialize(CommandesView({ orders: [] })));
+    expect(text).toMatch(/Aucune commande pour le moment/);
+  });
+
+  it("renders without crashing on every branch (pure function of props)", () => {
+    expect(serialize(CommandesView({ orders: undefined }))).not.toBeNull();
+    expect(serialize(CommandesView({ orders: [] }))).not.toBeNull();
+    expect(
+      serialize(
+        CommandesView({
+          orders: [
+            order({
+              _id: "orders_x",
+              createdAt: Date.UTC(2026, 4, 29, 14, 30),
+              pricingSnapshot: {
+                subtotal: 1800,
+                deliveryFee: 200,
+                total: 2000,
+              },
+            }),
+          ],
+        }),
+      ),
+    ).not.toBeNull();
   });
 });
