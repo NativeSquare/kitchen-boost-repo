@@ -20,7 +20,8 @@
  *     tenant doc (step 4 / branding, slice 4/10) wires the real query.
  *   - `api.lib.menu.publication.*` — exists, but we don't read it here in
  *     this skeleton slice (slice 5/10 owns the menu step).
- *   - `api.lib.admin.managerInvites.*` — exists, but slice 7/10 owns it.
+ *   - `api.lib.admin.managerInvites.*` — exists; slice 9/10 (#273) wires
+ *     `getLatestManagerInviteForTenant` to drive step 7's completion gate.
  *
  * Each follow-up wizard slice swaps its own stub for the real `useQuery`
  * call — the hook's public surface (`{ tenantId, currentStep, isStepComplete,
@@ -42,11 +43,13 @@ import { computeWizardState } from "./wizard.decision";
 import type { WizardStepNumber } from "./wizard-stepper";
 
 /**
- * Manager invite for a tenant — currently lives in the shared `adminInvites`
- * table (legacy + manager invites cohabit per `convex/table/adminInvites.ts`
- * comments). The hook surfaces it as a tri-state Convex result so a follow-up
- * slice can swap the STUB for the live `useQuery` call against the new
- * `api.lib.admin.managerInvites.*` once it's exposed at the read seam.
+ * Manager invite for a tenant — lives in the shared `adminInvites` table
+ * (legacy + manager invites cohabit per `convex/table/adminInvites.ts`
+ * comments). The hook surfaces it as a tri-state Convex result fed by
+ * `api.lib.admin.managerInvites.getLatestManagerInviteForTenant` (shipped by
+ * slice 9/10 #273). `null` = no invite has been emitted yet for this tenant;
+ * any non-null row (regardless of `acceptedAt`) counts as « step 7 complete »
+ * per the issue spec.
  */
 type ManagerInviteDoc = Doc<"adminInvites">;
 
@@ -117,7 +120,18 @@ export function useWizardState(
   // satisfies the contract without piggy-backing on the actual snapshot
   // payload (which we don't need at the wizard level).
   //
-  // managerInvite remains a STUB — slice 9/10 owns it.
+  // managerInvite is now LIVE (F-WIZARD [9/10] #273): step 7's completion
+  // gate (`step7Complete` in `wizard.decision.ts`) needs to know whether a
+  // manager invite has ever been emitted for this tenant. The canonical
+  // signal is the existence of a `managerInvites` row, regardless of
+  // `acceptedAt` — the invite can be accepted before OR after step 8's
+  // activation. The hook reads via the new kbAdminQuery
+  // `api.lib.admin.managerInvites.getLatestManagerInviteForTenant` (B-AUTH
+  // adjacency, slice 9/10 ships the query + this wiring).
+  // Skip the network round-trip when there is no tenantId back-link yet
+  // (step 1 hasn't run); `useQuery(skip)` returns `undefined`, which
+  // `computeWizardState` interprets as « invite in flight » and behaves
+  // conservatively (step 7 stays incomplete until the query resolves).
   const prospect = useQuery(
     api.lib.onboarding.crm.getProspect,
     prospectId !== undefined ? { prospectId } : "skip",
@@ -150,7 +164,10 @@ export function useWizardState(
             publishedAt: publicationStatus.lastPublishedAt,
             payload: { categories: [] },
           } as unknown as Doc<"publishedMenus">);
-  const managerInvite: ManagerInviteDoc | null | undefined = undefined; // STUB
+  const managerInvite: ManagerInviteDoc | null | undefined = useQuery(
+    api.lib.admin.managerInvites.getLatestManagerInviteForTenant,
+    tenantBackLink !== undefined ? { tenantId: tenantBackLink } : "skip",
+  );
 
   // Cursor state.
   //

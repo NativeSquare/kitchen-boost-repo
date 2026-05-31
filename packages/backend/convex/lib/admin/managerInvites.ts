@@ -1,14 +1,16 @@
 import { ConvexError, v } from "convex/values";
 import { internal } from "../../_generated/api";
-import type { Id } from "../../_generated/dataModel";
+import type { Doc, Id } from "../../_generated/dataModel";
 import {
   deleteAdminInvite,
   getActiveUserTenant,
+  getLatestManagerInviteForTenant as readLatestManagerInviteForTenant,
   getManagerInviteForTenant,
   getTenantById,
   getUserByEmail,
   insertManagerInvite,
   kbAdminMutation,
+  kbAdminQuery,
 } from "../tenancy";
 
 /**
@@ -173,4 +175,29 @@ export const inviteManager = kbAdminMutation({
 
     return inviteId;
   },
+});
+
+/**
+ * F-WIZARD [9/10] (#273) — `getLatestManagerInviteForTenant(tenantId)`,
+ * root-only read used by the wizard's Step 7 + `useWizardState`.
+ *
+ * Wrapper: `kbAdminQuery` — V1 strict, only KB Admin can introspect a tenant's
+ * manager invite history. Reads via the sanctioned `lib/tenancy/adminInvitesStore`
+ * seam (ADR 0010 / `no-untenanted-query`).
+ *
+ * Returns the most recently created `kb_manager` invite row for `tenantId`
+ * (any `acceptedAt`, any `expiresAt`) or `null` if none has ever been emitted
+ * for the tenant. The wizard uses this for two things:
+ *   1. `useWizardState` step-7 completion gate (issue AC: « marque step 7
+ *      complete si une ligne managerInvites existe pour le tenant »).
+ *   2. The Step 7 form surfaces the « envoyée le DD/MM HH:MM » badge + the
+ *      « Renvoyer » affordance when this returns a row.
+ *
+ * Convex registers this by module path, so callers invoke
+ * `api.lib.admin.managerInvites.getLatestManagerInviteForTenant`.
+ */
+export const getLatestManagerInviteForTenant = kbAdminQuery({
+  args: { tenantId: v.id("tenants") },
+  handler: async (ctx, args): Promise<Doc<"adminInvites"> | null> =>
+    readLatestManagerInviteForTenant(ctx, args.tenantId),
 });

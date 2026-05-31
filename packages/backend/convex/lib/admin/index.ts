@@ -85,7 +85,15 @@ export {
 // `lib/tenancy/adminInvitesStore` seam (ADR 0010 / `no-untenanted-query`).
 // Convex registers it by module path, so callers invoke
 // `api.lib.admin.managerInvites.inviteManager`.
-export { inviteManager } from "./managerInvites";
+// F-WIZARD [9/10] (#273) — `getLatestManagerInviteForTenant` root-only read
+// used by the wizard's Step 7 + `useWizardState` (canonical step-7 completion
+// gate per the issue spec: « marque step 7 complete si une ligne managerInvites
+// existe pour le tenant, peu importe acceptedAt »). Same sanctioned store seam
+// as `inviteManager` (ADR 0010 / `no-untenanted-query`).
+export {
+  getLatestManagerInviteForTenant,
+  inviteManager,
+} from "./managerInvites";
 export {
   type CourseScanDelivery,
   type Incident,

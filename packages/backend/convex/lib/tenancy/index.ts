@@ -163,6 +163,7 @@ export { attachUserToTenant, getActiveUserTenant } from "./userTenantsStore";
 export {
   type NewManagerInvite,
   deleteAdminInvite,
+  getLatestManagerInviteForTenant,
   getManagerInviteForTenant,
   insertManagerInvite,
 } from "./adminInvitesStore";

@@ -60,4 +60,16 @@ describe("use-wizard-state.ts — F-WIZARD [1/10] (#265) wiring contract", () =>
   it('hook module is marked `"use client"` (uses React state + Convex hooks)', () => {
     expect(HOOK_SOURCE).toMatch(/^["']use client["']/m);
   });
+
+  // F-WIZARD [9/10] (#273) — slice 9/10 wires the managerInvite query.
+  it("F-WIZARD [9/10] — wires `getLatestManagerInviteForTenant` (no longer stubbed)", () => {
+    const code = stripNonCode(HOOK_SOURCE);
+    // The hook must reference the new kbAdminQuery exposed by
+    // `lib/admin/managerInvites.ts` so step 7's completion gate flips when
+    // a row exists.
+    expect(code).toMatch(/getLatestManagerInviteForTenant/);
+    // The previous STUB sentinel must be gone (we no longer hard-set
+    // `managerInvite` to `undefined`).
+    expect(code).not.toMatch(/managerInvite[^=]*=\s*undefined\s*;/);
+  });
 });
