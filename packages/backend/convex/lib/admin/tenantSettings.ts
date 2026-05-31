@@ -10,6 +10,7 @@ import {
 import { assertLegalTenantTransition } from "./tenantLifecycle";
 import {
   assertNonEmptyString,
+  isValidCustomDomain,
   isValidHexColor,
   normalisePhone,
 } from "./tenantSettingsValidation";
@@ -71,12 +72,20 @@ const acceptedModesPatch = v.object({
  * The settings-side patch. Every field is OPTIONAL — callers may patch any
  * subset. `branding` is deep-merged in the store; the other top-level fields
  * are shallow-merged via `ctx.db.patch` semantics. An empty patch is a no-op.
+ *
+ * F-WIZARD [4/10] (#268) — `customDomain` is exposed on this very surface so
+ * the wizard's step 2 form (« domaine personnalisé optionnel », modèle
+ * Owner.com) reuses the SAME mutation. Validated via `isValidCustomDomain`
+ * with the SAME regex the front uses (`^[a-z0-9.-]+\.[a-z]{2,}$`) — single
+ * source of validation shape, no FE/BE drift. Throws `INVALID_CUSTOM_DOMAIN`
+ * on a bad shape.
  */
 const settingsPatch = v.object({
   branding: v.optional(brandingPatch),
   address: v.optional(v.string()),
   phone: v.optional(v.string()),
   acceptedModes: v.optional(acceptedModesPatch),
+  customDomain: v.optional(v.string()),
 });
 
 export const updateSettings = tenantMutation({ allow: ["kb_manager"] })({
@@ -93,6 +102,7 @@ export const updateSettings = tenantMutation({ allow: ["kb_manager"] })({
       address?: string;
       phone?: string;
       acceptedModes?: { delivery: boolean; clickAndCollect: boolean };
+      customDomain?: string;
     } = {};
 
     if (patch.branding !== undefined) {
@@ -128,6 +138,22 @@ export const updateSettings = tenantMutation({ allow: ["kb_manager"] })({
 
     if (patch.acceptedModes !== undefined) {
       normalised.acceptedModes = patch.acceptedModes;
+    }
+
+    // F-WIZARD [4/10] (#268) — `customDomain` (optional, modèle Owner.com).
+    // Trim first (the wizard form already lowercases + trims on submit, but
+    // the backend re-trims defensively — the only normalisation; the regex
+    // shape check is otherwise pure). Reject empty / whitespace-only OR a
+    // value that doesn't match the FQDN regex with `INVALID_CUSTOM_DOMAIN`.
+    if (patch.customDomain !== undefined) {
+      const trimmed = patch.customDomain.trim();
+      if (!isValidCustomDomain(trimmed)) {
+        throw new ConvexError({
+          code: "INVALID_CUSTOM_DOMAIN",
+          message: `Custom domain "${patch.customDomain}" is not a valid FQDN (expected pattern: ^[a-z0-9.-]+\\.[a-z]{2,}$, e.g. commander.le-petit-bistrot.fr).`,
+        });
+      }
+      normalised.customDomain = trimmed;
     }
 
     // ── Persistence — delegate to the sanctioned store seam (deep-merge on

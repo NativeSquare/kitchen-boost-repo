@@ -127,6 +127,17 @@ export type WizardStateInput = {
    * invites cohabit per `convex/table/adminInvites.ts`).
    */
   managerInvite: Doc<"adminInvites"> | null | undefined;
+  /**
+   * F-WIZARD [4/10] (#268) — local-only « step 2 explicitly skipped » flag.
+   * Issue spec verbatim: « le hook useWizardState traite step 2 comme
+   * complete si customDomain est posé OU si l'user a explicitement skip
+   * (skip = mark complete localement, suffit pour la nav) ».
+   *
+   * NEVER round-tripped to the backend — the wizard front owns it as
+   * React state inside `useWizardState`. Default `false` (operator hasn't
+   * seen the form yet → step 2 stays unticked).
+   */
+  step2Skipped?: boolean;
 };
 
 export type WizardState = {
@@ -167,18 +178,40 @@ function isBrandingComplete(tenant: Doc<"tenants">): boolean {
 }
 
 export function computeWizardState(input: WizardStateInput): WizardState {
-  const { prospect, tenant, publishedMenu, managerInvite } = input;
+  const {
+    prospect,
+    tenant,
+    publishedMenu,
+    managerInvite,
+    step2Skipped = false,
+  } = input;
 
   const tenantId: Id<"tenants"> | null = prospect.tenantId ?? null;
 
   // Step 1 = provisioning. Complete iff the back-link is set on the prospect.
   const step1Complete = tenantId !== null;
 
-  // Steps 2 (domain) and 3 (Stripe) are always treated as "navigable" but
-  // their completion is not blocking (issue spec: « step 2 optionnel — skip =
-  // "complete" » ; « step 3 toujours navigable, V1 pas de tracking »). The
-  // cursor logic below skips them when looking for the next incomplete step.
-  const step2Complete = step1Complete;
+  // Step 2 (domaine personnalisé) — F-WIZARD [4/10] (#268).
+  //
+  // Complete iff EITHER `tenant.customDomain` is set on the persisted row OR
+  // the operator has explicitly clicked « Skip » in the form (local-only
+  // `step2Skipped` flag, owned by `useWizardState`). The step is OPTIONAL
+  // (modèle Owner.com) and STILL « always navigable, never pulls the
+  // cursor » per the original spec: the cursor heuristic below does NOT
+  // include step 2 in `STEPS_THAT_PULL_CURSOR`, so an unticked step 2 never
+  // blocks progression.
+  const step2Complete =
+    step1Complete &&
+    (step2Skipped ||
+      (tenant !== undefined &&
+        tenant !== null &&
+        typeof tenant.customDomain === "string" &&
+        tenant.customDomain.length > 0));
+
+  // Step 3 (Stripe KYC) is always treated as "navigable" but its completion
+  // is not blocking (issue spec: « step 3 toujours navigable, V1 pas de
+  // tracking »). The cursor logic below skips it when looking for the next
+  // incomplete step.
   const step3Complete = step1Complete;
 
   // Step 4 = branding. Needs the tenant doc + branding fields populated.

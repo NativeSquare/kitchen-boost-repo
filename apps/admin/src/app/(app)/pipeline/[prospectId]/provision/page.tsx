@@ -53,6 +53,7 @@ export default function ProvisionWizardPage() {
       currentStep={wizard.currentStep}
       onStepChange={wizard.goToStep}
       isStepComplete={wizard.isStepComplete}
+      markStep2Skipped={wizard.markStep2Skipped}
     />
   );
 }

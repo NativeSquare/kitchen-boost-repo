@@ -75,6 +75,14 @@ export type UseWizardStateResult = {
    */
   goToStep: (n: WizardStepNumber) => void;
   /**
+   * F-WIZARD [4/10] (#268) — flip the local-only « step 2 skipped » flag.
+   * Threaded down to `Step2Form`'s Skip button. NEVER round-tripped to the
+   * backend (the spec: « skip = mark complete localement, suffit pour la
+   * nav »). Once set, `computeWizardState` treats step 2 as complete even
+   * without a persisted `tenant.customDomain`.
+   */
+  markStep2Skipped: () => void;
+  /**
    * The hydrated dependencies, surfaced for the wizard view's debug header
    * AND for the (future) Step{N}Form components that need them (e.g. step 4
    * pre-fills branding fields from `tenant.branding`).
@@ -181,9 +189,25 @@ export function useWizardState(
   // tracks the derived step automatically.
   const [override, setOverride] = useState<WizardStepNumber | null>(null);
 
+  // F-WIZARD [4/10] (#268) — local-only « step 2 skipped » flag.
+  //
+  // Owned here (single source) so a re-render of Step2Form doesn't lose
+  // it. Never round-tripped to the backend — `Step2Form`'s « Skip » CTA
+  // flips it true via `markStep2Skipped`; `computeWizardState` then
+  // reports step 2 as complete even without a persisted
+  // `tenant.customDomain`. The flag is page-scoped (a fresh page nav
+  // resets it to false — desired UX: a reload « forgets » the skip and
+  // re-shows step 2 as unticked, which is fine since the skip is
+  // cosmetic, not load-bearing).
+  const [step2Skipped, setStep2Skipped] = useState<boolean>(false);
+
   const goToStep = useCallback((n: WizardStepNumber) => {
     if (n < 1 || n > 8) return;
     setOverride(n);
+  }, []);
+
+  const markStep2Skipped = useCallback(() => {
+    setStep2Skipped(true);
   }, []);
 
   // The completion check + tenantId always reflect the LIVE snapshot (so
@@ -197,6 +221,7 @@ export function useWizardState(
         tenant,
         publishedMenu,
         managerInvite,
+        step2Skipped,
       })
     : null;
 
@@ -207,6 +232,7 @@ export function useWizardState(
     currentStep,
     isStepComplete: liveState?.isStepComplete ?? (() => false),
     goToStep,
+    markStep2Skipped,
     prospect,
     tenant,
     publishedMenu,

@@ -21,6 +21,33 @@ export function isValidHexColor(value: string): boolean {
 }
 
 /**
+ * F-WIZARD [4/10] (#268) — shape check for the optional `customDomain` field
+ * exposed by the wizard's step 2 (« domaine personnalisé optionnel », modèle
+ * Owner.com) and persisted on the tenant via `tenant.updateSettings`.
+ *
+ * Regex VERBATIM from the issue body so the FRONT and the BACK share the
+ * exact same validation shape — a value the form lets through MUST be a value
+ * the backend accepts (single source of validation shape; the wizard form
+ * `step2-domain-form` re-exports the same predicate so a drift surfaces at
+ * compile time).
+ *
+ *   pattern: `^[a-z0-9.-]+\.[a-z]{2,}$`
+ *
+ * Intentionally strict — no scheme (`https://`), no path / port / query
+ * string, no uppercase, no underscores. The PWA cliente lives at a bare
+ * FQDN; anything else fails downstream (DNS / TLS provisioning) so the
+ * backend never persists an unusable value. The wizard step 2 trims the
+ * input before calling `isValidCustomDomain` (no leading / trailing space).
+ *
+ * Idempotent: returns `false` on empty / whitespace-only input. Trimming is
+ * the CALLER's responsibility (mirrors `isValidHexColor` / `isValidSiret` —
+ * pure shape check, no normalisation side-effect).
+ */
+export function isValidCustomDomain(value: string): boolean {
+  return /^[a-z0-9.-]+\.[a-z]{2,}$/.test(value);
+}
+
+/**
  * Strip whitespace from a phone number, preserving an optional leading `+`.
  * Throws `INVALID_PHONE` on empty / whitespace-only input, on any non-numeric
  * content (other than the optional single leading `+`), and on a lone `+`.

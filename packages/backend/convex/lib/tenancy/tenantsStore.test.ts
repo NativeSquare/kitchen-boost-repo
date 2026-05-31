@@ -181,6 +181,51 @@ describe("B-TENANT-LIFECYCLE slice 1 — tenantsStore seam (ADR 0010)", () => {
     expect(got?.branding).toEqual({ primaryColor: "#000000" });
   });
 
+  // ── customDomain — top-level shallow merge (F-WIZARD [4/10] #268) ──────────
+
+  it("F-WIZARD [4/10] (#268): updateTenantSettings persists customDomain (shallow merge)", async () => {
+    await t.run((ctx) =>
+      updateTenantSettings(ctx, seed.tenantA.tenantId, {
+        customDomain: "artisan.fr",
+      }),
+    );
+    const got = await t.run((ctx) => getTenantById(ctx, seed.tenantA.tenantId));
+    expect(got?.customDomain).toBe("artisan.fr");
+  });
+
+  it("F-WIZARD [4/10] (#268): patching customDomain alone leaves other settings intact", async () => {
+    await t.run((ctx) =>
+      updateTenantSettings(ctx, seed.tenantA.tenantId, {
+        address: "Existing",
+        branding: { primaryColor: "#1B7A3D" },
+      }),
+    );
+    await t.run((ctx) =>
+      updateTenantSettings(ctx, seed.tenantA.tenantId, {
+        customDomain: "artisan.fr",
+      }),
+    );
+    const got = await t.run((ctx) => getTenantById(ctx, seed.tenantA.tenantId));
+    expect(got?.customDomain).toBe("artisan.fr");
+    expect(got?.address).toBe("Existing");
+    expect(got?.branding).toEqual({ primaryColor: "#1B7A3D" });
+  });
+
+  it("F-WIZARD [4/10] (#268): re-patching customDomain overwrites the previous value", async () => {
+    await t.run((ctx) =>
+      updateTenantSettings(ctx, seed.tenantA.tenantId, {
+        customDomain: "first.fr",
+      }),
+    );
+    await t.run((ctx) =>
+      updateTenantSettings(ctx, seed.tenantA.tenantId, {
+        customDomain: "second.fr",
+      }),
+    );
+    const got = await t.run((ctx) => getTenantById(ctx, seed.tenantA.tenantId));
+    expect(got?.customDomain).toBe("second.fr");
+  });
+
   // ── activateTenant ──────────────────────────────────────────────────────────
 
   it("activateTenant flips status from pending to active", async () => {

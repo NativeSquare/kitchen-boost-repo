@@ -62,7 +62,6 @@ import type { Id } from "@packages/backend/convex/_generated/dataModel";
 import type { BrandingPatch } from "@/app/(app)/t/[tenantId]/parametres/branding-editor";
 import type { CoordonneesPatch } from "@/app/(app)/t/[tenantId]/parametres/coordonnees-editor";
 import type { AcceptedModesPatch } from "@/app/(app)/t/[tenantId]/parametres/modes-editor";
-import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { tenantPwaUrl } from "@/lib/tenant-url";
 import { getConvexErrorMessage } from "@/utils/getConvexErrorMessage";
@@ -73,6 +72,7 @@ import {
   Step1ProvisioningForm,
   type Step1ProvisioningPayload,
 } from "./step1-provisioning-form";
+import { Step2DomainForm, type Step2DomainPayload } from "./step2-domain-form";
 import { Step3StripeKycForm } from "./step3-stripe-kyc-form";
 import { Step4BrandingForm } from "./step4-branding-form";
 import { Step5MenuForm } from "./step5-menu-form";
@@ -82,7 +82,7 @@ import {
   type ExistingManagerInvite,
 } from "./step7-manager-invite-form";
 import { Step8ActivationForm, type Step8Recap } from "./step8-activation-form";
-import { WIZARD_STEPS, type WizardStepNumber } from "./wizard-stepper";
+import type { WizardStepNumber } from "./wizard-stepper";
 
 export type StepFormProps = {
   onPrev: () => void;
@@ -95,62 +95,25 @@ export type StepFormProps = {
    * only need Prev/Next don't need to wire it.
    */
   onStepChange?: (n: WizardStepNumber) => void;
+  /**
+   * F-WIZARD [4/10] (#268) — local-only « mark step 2 as skipped » setter.
+   * Threaded by the wizard view from the parent's `useWizardState` so that
+   * Step2Form's « Skip » button can flip the local flag without piggy-
+   * backing on a backend round-trip (the spec says skip = mark complete
+   * localement, never persisted).
+   *
+   * Optional so legacy / non-step-2 forms don't need to wire it. Only the
+   * Step2Form wrapper consumes it.
+   */
+  markStep2Skipped?: () => void;
 };
 
-function placeholderBody(step: WizardStepNumber) {
-  const meta = WIZARD_STEPS.find((s) => s.number === step);
-  const title = meta?.title ?? "?";
-  return (
-    <div
-      className="rounded-lg border border-dashed p-8 text-center"
-      data-slot="wizard-step-placeholder"
-      data-step={step}
-    >
-      <p className="text-muted-foreground text-sm">
-        TODO Step {step} — {title} (placeholder, livré par la slice F-WIZARD [
-        {step + 1}/10]).
-      </p>
-    </div>
-  );
-}
-
-function NavButtons({
-  onPrev,
-  onNext,
-  hidePrev,
-  hideNext,
-}: StepFormProps & { hidePrev?: boolean; hideNext?: boolean }) {
-  return (
-    <div className="mt-4 flex items-center justify-between gap-2 px-4 lg:px-6">
-      {hidePrev ? (
-        <span />
-      ) : (
-        <Button variant="outline" onClick={onPrev}>
-          Précédent
-        </Button>
-      )}
-      {hideNext ? <span /> : <Button onClick={onNext}>Suivant</Button>}
-    </div>
-  );
-}
-
-function makeStepForm(
-  step: Exclude<WizardStepNumber, 1 | 3 | 4 | 5 | 6 | 7 | 8>,
-) {
-  function StepForm({ onPrev, onNext }: StepFormProps) {
-    return (
-      <div className="flex flex-col gap-4 px-4 py-2 lg:px-6">
-        {placeholderBody(step)}
-        {/* Steps 1, 3, 4, 5, 6, 7, 8 are real forms and own their own nav UX;
-            the only remaining placeholder step is step 2 (« Domaine ») which
-            renders the default Prev/Next nav strip. */}
-        <NavButtons onPrev={onPrev} onNext={onNext} />
-      </div>
-    );
-  }
-  StepForm.displayName = `Step${step}Form`;
-  return StepForm;
-}
+// F-WIZARD [4/10] (#268) — the placeholder helpers (`placeholderBody`,
+// `NavButtons`, `makeStepForm`) are gone now that every step ships a real
+// form. The pre-#268 « TODO Step N — <title> » placeholder + Prev/Next nav
+// strip is no longer mounted by any slot in `STEP_FORMS`. If a future
+// wizard slice ever needs a temporary placeholder again, re-introduce it
+// inline in the relevant slot rather than resurrecting the generic factory.
 
 /**
  * F-WIZARD [3/10] (#267) — Step1Form: thin Convex-wiring wrapper around the
@@ -1203,7 +1166,173 @@ function Step7Form({ onPrev, onNext }: StepFormProps): React.JSX.Element {
   );
 }
 
-export const Step2Form = makeStepForm(2);
+/**
+ * F-WIZARD [4/10] (#268) — Step2Form: thin Convex-wiring wrapper around the
+ * pure `Step2DomainForm` (« domaine personnalisé optionnel », modèle
+ * Owner.com). Owns:
+ *   - the prospect read (`useQuery(api.lib.onboarding.crm.getProspect)`) for
+ *     the `tenantId` back-link;
+ *   - the tenant read via `loadTenantForStripe` (`kbAdminQuery`) — same
+ *     primitive the sibling Step{4,6,7,8}Form wrappers use; returns the full
+ *     `Doc<"tenants">` with `slug` (for the bootstrap host) and
+ *     `customDomain` (for the initial value).
+ *   - the `tenant.updateSettings` mutation (`api.lib.admin.tenantSettings
+ *     .updateSettings`) — extended in #268 to accept `customDomain` in
+ *     the patch. Same root override on `tenantMutation` lets a KB Admin call
+ *     the `kb_manager`-allow-listed mutation directly.
+ *   - the in-flight + error state surfaced to the form.
+ *   - the skip handler: flips the local `markStep2Skipped` flag (threaded
+ *     from the wizard view's `useWizardState`) and advances to step 3.
+ *
+ * The bootstrap host is derived from `tenantDoc.slug` (single source: the
+ * persisted slug); the operator's wizard always runs as KB Admin (chrome-
+ * less layout under /pipeline/...), so the kbAdminQuery is the authorised
+ * seed source — NO new backend endpoint needed (the schema field
+ * `customDomain` already exists on the tenant doc).
+ *
+ * Mirror of Step{3,4,5,6,7,8}Form's discipline: the lean `node` vitest env
+ * doesn't execute these hooks (the serializer's try/catch swallows the
+ * « invalid hook call » when invoking the wrapper outside a React render);
+ * the wrapper's behaviour is pinned indirectly through the pure form tests
+ * (`step2-domain-form.test.tsx`) and directly through CI runtime + E2E.
+ */
+function Step2Form({
+  onPrev,
+  onNext,
+  markStep2Skipped,
+}: StepFormProps): React.JSX.Element {
+  const params = useParams<{ prospectId: string }>();
+  const prospectId = params?.prospectId as unknown as
+    | Id<"prospects">
+    | undefined;
+
+  const prospect = useQuery(
+    api.lib.onboarding.crm.getProspect,
+    prospectId !== undefined ? { prospectId } : "skip",
+  );
+
+  const tenantId = prospect?.tenantId;
+  const tenantDoc = useQuery(
+    api.lib.stripe.account.loadTenantForStripe,
+    tenantId !== undefined ? { tenantId } : "skip",
+  );
+
+  const updateSettings = useMutation(
+    api.lib.admin.tenantSettings.updateSettings,
+  );
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // Defensive loading / not-found — outer `decideWizardShell` + the wizard
+  // cursor normally gate these (same defence as the sibling Step{N}Form
+  // wrappers).
+  if (prospect === undefined) {
+    return (
+      <div
+        className="flex items-center justify-center px-4 py-12 lg:px-6"
+        data-slot="wizard-step2-loading"
+      >
+        <Spinner className="h-6 w-6" />
+      </div>
+    );
+  }
+  if (prospect === null) {
+    return (
+      <div
+        className="px-4 py-6 text-sm text-destructive lg:px-6"
+        data-slot="wizard-step2-not-found"
+      >
+        Prospect introuvable. Impossible de configurer le domaine.
+      </div>
+    );
+  }
+  if (tenantId === undefined) {
+    // Hard gate: customDomain lives on the tenant — step 1 must run first.
+    return (
+      <div
+        className="px-4 py-6 text-sm text-destructive lg:px-6"
+        data-slot="wizard-step2-no-tenant"
+      >
+        Le tenant doit être créé (Step 1) avant de configurer le domaine.
+      </div>
+    );
+  }
+  if (tenantDoc === undefined) {
+    // Tenant query in flight — render a spinner rather than the form
+    // (we'd briefly flash a bogus bootstrap host like ".kitchen-boost.fr").
+    return (
+      <div
+        className="flex items-center justify-center px-4 py-12 lg:px-6"
+        data-slot="wizard-step2-loading-tenant"
+      >
+        <Spinner className="h-6 w-6" />
+      </div>
+    );
+  }
+  if (tenantDoc === null) {
+    // Defensive: should be unreachable (the prospect carries tenantId, which
+    // by construction matches a row in `tenants`). Render a flat error
+    // rather than crashing the wizard.
+    return (
+      <div
+        className="px-4 py-6 text-sm text-destructive lg:px-6"
+        data-slot="wizard-step2-tenant-not-found"
+      >
+        Tenant introuvable. Impossible de configurer le domaine.
+      </div>
+    );
+  }
+
+  const bootstrapHost = `${tenantDoc.slug}.kitchen-boost.fr`;
+
+  const handleSave = async (payload: Step2DomainPayload) => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    setSubmitError(null);
+    try {
+      // Empty input = explicit clear request? V1: forward the trimmed value
+      // as-is to the backend; the regex validator on the backend rejects
+      // empty input with INVALID_CUSTOM_DOMAIN, which surfaces inline. The
+      // operator who wants to keep the bootstrap host uses « Skip ».
+      await updateSettings({
+        tenantId,
+        patch: { customDomain: payload.customDomain },
+      });
+      toast.success("Domaine personnalisé enregistré.");
+      onNext();
+    } catch (error) {
+      const message = getConvexErrorMessage(error);
+      setSubmitError(message);
+      toast.error("Impossible d'enregistrer le domaine", {
+        description: message,
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSkip = () => {
+    // Mark the step as locally-complete (the wizard hook owns the flag —
+    // never persisted to the backend; the spec says « skip = mark complete
+    // localement, suffit pour la nav »). Then advance to step 3.
+    markStep2Skipped?.();
+    onNext();
+  };
+
+  return (
+    <Step2DomainForm
+      initialCustomDomain={tenantDoc.customDomain}
+      bootstrapHost={bootstrapHost}
+      onSave={handleSave}
+      onSkip={handleSkip}
+      isSubmitting={isSubmitting}
+      submitError={submitError}
+      onPrev={onPrev}
+      onNext={onNext}
+    />
+  );
+}
 
 /**
  * F-WIZARD [10/10] (#274) — Step8Form: thin Convex-wiring wrapper around the

@@ -39,12 +39,19 @@ export type NewTenant = {
  * DEEP-MERGED here (passing `{ branding: { logoUrl } }` does NOT erase an
  * existing `primaryColor`); the other top-level fields are shallow-merged
  * via `ctx.db.patch` semantics.
+ *
+ * F-WIZARD [4/10] (#268) — `customDomain` lives on the same patch surface:
+ * the wizard's step 2 form (« domaine personnalisé optionnel », modèle
+ * Owner.com) reuses the SAME mutation. The field is shallow-merged like the
+ * other top-level fields. The mutation layer owns the regex validation; the
+ * store stays dumb (write-through to `ctx.db.patch`).
  */
 export type TenantSettingsPatch = {
   address?: string;
   phone?: string;
   acceptedModes?: { delivery: boolean; clickAndCollect: boolean };
   branding?: { logoUrl?: string; primaryColor?: string };
+  customDomain?: string;
 };
 
 /** The tenant whose `slug` equals `slug` (or `null`). Keyed on `by_slug`. */
@@ -140,12 +147,15 @@ export async function updateTenantSettings(
     phone?: string;
     acceptedModes?: { delivery: boolean; clickAndCollect: boolean };
     branding?: { logoUrl?: string; primaryColor?: string };
+    customDomain?: string;
   } = {};
 
   if (patch.address !== undefined) next.address = patch.address;
   if (patch.phone !== undefined) next.phone = patch.phone;
   if (patch.acceptedModes !== undefined)
     next.acceptedModes = patch.acceptedModes;
+  // F-WIZARD [4/10] (#268) — shallow merge like the other top-level fields.
+  if (patch.customDomain !== undefined) next.customDomain = patch.customDomain;
 
   if (patch.branding !== undefined) {
     const current = await ctx.db.get(tenantId);

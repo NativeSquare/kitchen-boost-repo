@@ -1,12 +1,12 @@
 /**
- * F-WIZARD [1/10] (#265) + [3/10] (#267) + [5/10] (#269) + [6/10] (#270) +
- * [7/10] (#271) + [8/10] (#272) + [9/10] (#273) + [10/10] (#274) — Step{N}Form
- * placeholders test matrix.
+ * F-WIZARD [1/10] (#265) + [3/10] (#267) + [4/10] (#268) + [5/10] (#269) +
+ * [6/10] (#270) + [7/10] (#271) + [8/10] (#272) + [9/10] (#273) + [10/10]
+ * (#274) — Step{N}Form dispatch-map test.
  *
- * Only Step 2 (« Domaine ») still renders a placeholder « TODO Step N » +
- * Prev/Next nav buttons; every other step ships its own real form pinned by a
- * dedicated test file:
+ * Every step now ships its own real form; the map is exhaustive, indexed
+ * 1..8. Each form's behaviour is pinned in a dedicated test file:
  *   - Step 1 (#267) — `step1-provisioning-form.test.tsx`
+ *   - Step 2 (#268) — `step2-domain-form.test.tsx`
  *   - Step 3 (#269) — `step3-stripe-kyc-form.test.tsx`
  *   - Step 4 (#270) — `step4-branding-form.test.tsx`
  *   - Step 5 (#271) — `step5-menu-form.test.tsx`
@@ -14,27 +14,9 @@
  *   - Step 7 (#273) — `step7-manager-invite-form.test.tsx`
  *   - Step 8 (#274) — `step8-activation-form.test.tsx`
  *
- * The placeholder slot for step 2 stays stable so the follow-up F-WIZARD
- * [11/10+] slice (if/when ordered) can replace its own Step2Form without
- * touching the wizard shell.
- *
- * Why Step 1 / Step 3 / Step 4 / Step 5 / Step 6 / Step 7 / Step 8 are excluded from the placeholder iterations:
- * ---------------------------------------------------------------------------
- * Step 1 (« Compte resto ») is the SLICE CHARNIÈRE — without the provisioned
- * tenant, no subsequent step has an object to operate on. Step 3 (« Stripe
- * KYC ») is non-blocking but ships its own real form (generate / regenerate
- * link, copy-to-clipboard, continue). Step 4 (« Branding ») composes the
- * three reusable F-PARAMETRES editors (BrandingEditor + CoordonneesEditor +
- * ModesEditor) — its surface doesn't fit the « TODO Step N » placeholder
- * shape either. Step 5 (« Menu ») reuses the F-MENU editor surface
- * (categories + items + modifier groups CRUD) and layers a publish + gate UX
- * — also unfit for the « TODO Step N » shape. Step 6 (« QR sticker PDF »)
- * reuses the F-QR `QrGeneratorView` (#182) — same shape constraint. Step 7
- * (« Invitation gérant ») wires the `inviteManager` mutation + the
- * `getLatestManagerInviteForTenant` query (envoyée badge + Renvoyer). Step 8
- * (« Activer ») renders the récap + the 2-step confirmation dialog and wires
- * `tenant.activate` — also unfit for the « TODO Step N » shape. Each form's
- * contract is pinned in its own test file.
+ * This file's role shrinks to ONE invariant: the `STEP_FORMS` map exposes
+ * exactly 8 entries keyed `1..8`. Anything finer-grained belongs in a
+ * step-specific test file.
  */
 import { describe, expect, it, vi } from "vitest";
 import type { ReactElement, ReactNode } from "react";
@@ -179,7 +161,7 @@ function findByText(n: SerializedNode, label: RegExp): SerializedNode | null {
   return candidates[candidates.length - 1] ?? null;
 }
 
-describe("STEP_FORMS — F-WIZARD [1/10] (#265)", () => {
+describe("STEP_FORMS — F-WIZARD [1/10] (#265) + [4/10] (#268)", () => {
   it("exposes exactly 8 step form components, indexed 1..8", () => {
     expect(Object.keys(STEP_FORMS).sort()).toEqual([
       "1",
@@ -193,43 +175,35 @@ describe("STEP_FORMS — F-WIZARD [1/10] (#265)", () => {
     ]);
   });
 
-  it("the step 2 placeholder form renders a placeholder mentioning its own step number (« Step 2 » or « Étape 2 »)", () => {
-    // Step 1 (#267), Step 3 (#269), Step 4 (#270), Step 5 (#271), Step 6
-    // (#272), Step 7 (#273) and Step 8 (#274) are real forms — pinned by
-    // their own test files, not by this placeholder loop.
+  it("F-WIZARD [4/10] (#268): step 2 is no longer a placeholder — the map binds the real Step2Form wrapper", () => {
+    // The wrapper has its own `useQuery` calls so we can't render it under
+    // the lean `node` env; the serializer's try/catch swallows the « invalid
+    // hook call » and yields a typed stub. We only assert that the map slot
+    // is now wired to a SEPARATE component (not the previous placeholder
+    // factory `makeStepForm(2)`). The pure form's behaviour is pinned by
+    // `step2-domain-form.test.tsx`.
     const Form = STEP_FORMS[2];
-    const tree = serialize(Form({ onPrev: () => {}, onNext: () => {} }));
-    const text = allText(tree);
-    // Either « Step 2 » or « Étape 2 » is acceptable; pinning either form
-    // keeps the placeholder explicit but lets the FR copy improve later.
-    expect(text).toMatch(/(Step|[ÉE]tape)\s*2/i);
-  });
-
-  it("the step 2 placeholder renders a « Précédent » button that triggers onPrev", () => {
-    const Form = STEP_FORMS[2];
-    const onPrev = vi.fn();
-    const tree = serialize(Form({ onPrev, onNext: () => {} }));
-    const prevBtn = findByText(tree, /Pr[ée]c[ée]dent/i);
-    expect(prevBtn).not.toBeNull();
-    const btn = prevBtn as { props: { onClick?: () => void } };
-    btn.props.onClick?.();
-    expect(onPrev).toHaveBeenCalledTimes(1);
-  });
-
-  it("step 2 (placeholder) renders a « Suivant » button that triggers onNext", () => {
-    // Step 1 (« Créer le tenant » submit), Step 3 (« Continuer »), Step 4
-    // (« Suivant » via composite nav strip), Step 5 (« Continuer » with
-    // publication gate), Step 6 (« Continuer » non-bloquant after the QR
-    // PDF preview), Step 7 (« Continuer » non-bloquant after the invite
-    // CTA) and Step 8 (« Mettre en production » + 2-step confirm dialog)
-    // own their own next-button UX — pinned in their respective test files.
-    const Form = STEP_FORMS[2];
-    const onNext = vi.fn();
-    const tree = serialize(Form({ onPrev: () => {}, onNext }));
-    const nextBtn = findByText(tree, /Suivant/i);
-    expect(nextBtn).not.toBeNull();
-    const btn = nextBtn as { props: { onClick?: () => void } };
-    btn.props.onClick?.();
-    expect(onNext).toHaveBeenCalledTimes(1);
+    expect(typeof Form).toBe("function");
+    // The previous placeholder was named `Step2Form` via `makeStepForm(2)`'s
+    // displayName. The new wrapper is also a function component named
+    // `Step2Form`, so we just check it doesn't render the placeholder marker
+    // « TODO Step 2 — Domaine » (the old placeholder body).
+    let text = "";
+    try {
+      const tree = serialize(Form({ onPrev: () => {}, onNext: () => {} }));
+      text = allText(tree);
+    } catch {
+      // Serializer threw — that's fine, the wrapper uses hooks. The mere
+      // fact it threw confirms it's NOT the placeholder (the placeholder
+      // returned plain JSX with no hooks).
+      text = "";
+    }
+    expect(text).not.toMatch(/TODO\s+Step\s+2/i);
   });
 });
+
+// `findByText` was previously consumed by the placeholder tests removed
+// above; kept here as a reference for future cross-step tests. Silence
+// unused-import lint until then.
+void findByText;
+void vi;
