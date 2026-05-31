@@ -93,20 +93,31 @@ export function OrdersTable({ orders }: OrdersTableProps) {
   }
   return (
     <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Date</TableHead>
-          <TableHead>Statut</TableHead>
-          <TableHead>Mode</TableHead>
-          <TableHead className="text-right">Total</TableHead>
-        </TableRow>
-      </TableHeader>
+      <OrdersTableHeader />
       <TableBody>
         {orders.map((order) => (
-          <OrderRow key={order._id as unknown as string} order={order} />
+          <OrderRow key={String(order._id)} order={order} />
         ))}
       </TableBody>
     </Table>
+  );
+}
+
+/**
+ * The shared 4-column header — single source of truth so the populated and
+ * the skeleton branches stay in lock-step (a regression on one column would
+ * otherwise quietly drift the shells apart).
+ */
+function OrdersTableHeader() {
+  return (
+    <TableHeader>
+      <TableRow>
+        <TableHead>Date</TableHead>
+        <TableHead>Statut</TableHead>
+        <TableHead>Mode</TableHead>
+        <TableHead className="text-right">Total</TableHead>
+      </TableRow>
+    </TableHeader>
   );
 }
 
@@ -116,10 +127,7 @@ function OrderRow({ order }: { order: Doc<"orders"> }) {
       ? TOTAL_PLACEHOLDER
       : formatPriceCentimes(order.pricingSnapshot.total);
   return (
-    <TableRow
-      data-slot="orders-table-row"
-      data-order-id={order._id as unknown as string}
-    >
+    <TableRow data-slot="orders-table-row" data-order-id={String(order._id)}>
       <TableCell className="tabular-nums">
         {formatOrderDate(order.createdAt)}
       </TableCell>
@@ -155,14 +163,7 @@ function OrdersTableSkeleton() {
   return (
     <div data-slot="orders-table-skeleton">
       <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Date</TableHead>
-            <TableHead>Statut</TableHead>
-            <TableHead>Mode</TableHead>
-            <TableHead className="text-right">Total</TableHead>
-          </TableRow>
-        </TableHeader>
+        <OrdersTableHeader />
         <TableBody>
           {Array.from({ length: 5 }).map((_, index) => (
             <TableRow key={index} data-slot="orders-table-skeleton-row">
