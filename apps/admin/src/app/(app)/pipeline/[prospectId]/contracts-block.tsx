@@ -54,9 +54,10 @@
  *   - `Doc[]`     → resolved, hydrated (one row per contract)
  */
 import type { ReactNode } from "react";
-import type { Doc } from "@packages/backend/convex/_generated/dataModel";
+import type { Doc, Id } from "@packages/backend/convex/_generated/dataModel";
 
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 /**
  * Human-readable label for the canonical contract `prestation` (from
@@ -130,11 +131,30 @@ export type ContractsBlockProps = {
    * action button (the slice-1 « zero `<button>` » pin still holds).
    */
   headerAction?: ReactNode;
+  /**
+   * F-CONTRATS slice 4/4 (#185) — when wired, each contract row becomes
+   * clickable; clicking calls back with that row's id so the parent can
+   * re-hydrate the `ContractIframe` below the block with the chosen
+   * contract's HTML. When omitted, rows stay non-interactive (the
+   * slice-1 « V1 read-only » contract holds : zero `<button>` elements).
+   */
+  onSelectContract?: (contractId: Id<"contracts">) => void;
+  /**
+   * F-CONTRATS slice 4/4 (#185) — id of the contract currently displayed
+   * in the `ContractIframe` below the block. The matching row carries
+   * `data-active="true"` so the operator knows which version is being
+   * previewed. When `undefined`, every row is `data-active="false"`
+   * (« nothing selected yet » — e.g. just after page load, before any
+   * generation or row click).
+   */
+  selectedContractId?: Id<"contracts"> | null;
 };
 
 export function ContractsBlock({
   contracts,
   headerAction,
+  onSelectContract,
+  selectedContractId,
 }: ContractsBlockProps) {
   // The wrapper is shared across all three tri-state branches so the block
   // keeps a stable visual footprint in the fiche (no layout shift between
@@ -161,24 +181,79 @@ export function ContractsBlock({
         </p>
       ) : (
         <ul className="flex flex-col divide-y">
-          {contracts.map((c) => (
-            <li
-              key={c._id as unknown as string}
-              className="flex items-center justify-between gap-4 py-2 text-sm"
-            >
-              <div className="flex flex-col gap-0.5">
-                <span className="font-medium">
-                  Prestation {PRESTATION_LABEL[c.prestation]}
-                </span>
-                <span className="text-muted-foreground text-xs">
-                  Généré le {formatGenerationDate(c.createdAt)}
-                </span>
-              </div>
-              <Badge variant={STATUS_BADGE_VARIANT[c.status]}>
-                {STATUS_LABEL[c.status]}
-              </Badge>
-            </li>
-          ))}
+          {contracts.map((c) => {
+            // F-CONTRATS slice 4/4 (#185) — content shared between the
+            // non-interactive (slice 1) and interactive (slice 4) branches
+            // so the visual layout stays identical (the active state is
+            // ONLY a background tint + data-active hook, never a layout
+            // shift). Pulled out so the test matrix's « rows in the
+            // non-interactive branch render no <button> » pin still holds
+            // when this branch is the `<li>` path.
+            const rowContent = (
+              <>
+                <div className="flex flex-col gap-0.5">
+                  <span className="font-medium">
+                    Prestation {PRESTATION_LABEL[c.prestation]}
+                  </span>
+                  <span className="text-muted-foreground text-xs">
+                    Généré le {formatGenerationDate(c.createdAt)}
+                  </span>
+                </div>
+                <Badge variant={STATUS_BADGE_VARIANT[c.status]}>
+                  {STATUS_LABEL[c.status]}
+                </Badge>
+              </>
+            );
+
+            if (onSelectContract === undefined) {
+              // Slice-1 « V1 read-only » branch — rows are inert. Pinned
+              // by `contracts-block.test.tsx` AC « never renders any
+              // action button » (the test counts `<button>` AND looks for
+              // `data-slot="contracts-block-row"`).
+              return (
+                <li
+                  key={c._id as unknown as string}
+                  className="flex items-center justify-between gap-4 py-2 text-sm"
+                >
+                  {rowContent}
+                </li>
+              );
+            }
+
+            // Slice-4 « clickable rows » branch — render the `<li>` as a
+            // flex container holding a full-width `<button>` so the entire
+            // row surface (text + badge) becomes the click target. The
+            // button carries `type="button"` (HTML default would be
+            // `submit` — would break the day this block is nested in a
+            // form), the `data-slot="contracts-block-row"` marker the
+            // test pin looks for, the `data-contract-id` for locating
+            // specific rows, and the `data-active` flag for the active
+            // state.
+            const isActive =
+              selectedContractId !== undefined &&
+              selectedContractId !== null &&
+              (selectedContractId as unknown as string) ===
+                (c._id as unknown as string);
+            return (
+              <li key={c._id as unknown as string} className="flex">
+                <button
+                  type="button"
+                  data-slot="contracts-block-row"
+                  data-contract-id={c._id as unknown as string}
+                  data-active={isActive ? "true" : "false"}
+                  aria-pressed={isActive}
+                  onClick={() => onSelectContract(c._id)}
+                  className={cn(
+                    "flex w-full items-center justify-between gap-4 rounded-sm px-2 py-2 text-left text-sm transition-colors",
+                    "hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                    isActive && "bg-muted",
+                  )}
+                >
+                  {rowContent}
+                </button>
+              </li>
+            );
+          })}
         </ul>
       )}
     </section>

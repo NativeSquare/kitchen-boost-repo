@@ -507,10 +507,13 @@ describe("ContractsBlock — F-CONTRATS slice 1/4 (#158)", () => {
           (r.props as Record<string, unknown>)["data-contract-id"] ===
           (c2._id as unknown as string),
       );
-      expect(rowA).toBeDefined();
-      expect(rowB).toBeDefined();
-      const onClickA = (rowA!.props as { onClick: () => void }).onClick;
-      const onClickB = (rowB!.props as { onClick: () => void }).onClick;
+      if (rowA === undefined || rowB === undefined) {
+        throw new Error(
+          "Test setup invariant violated — expected both rows to be located",
+        );
+      }
+      const onClickA = (rowA.props as { onClick: () => void }).onClick;
+      const onClickB = (rowB.props as { onClick: () => void }).onClick;
       onClickA();
       onClickB();
       onClickA();
