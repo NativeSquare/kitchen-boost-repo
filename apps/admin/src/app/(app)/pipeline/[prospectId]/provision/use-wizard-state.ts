@@ -92,14 +92,29 @@ export function useWizardState(
   // wizard shell could land independently of `api.lib.onboarding.crm
   // .getProspect`; #267 swaps it in.
   //
-  // Tenant / publishedMenu / managerInvite remain STUBs — each follow-up
-  // wizard slice swaps its own ones (4/10 = tenant + branding, 5/10 = menu,
-  // 7/10 = manager invite).
+  // Tenant is now LIVE (F-WIZARD [6/10] #270): step 4's completion gate
+  // (`isBrandingComplete` in `wizard.decision.ts`) needs the tenant doc to
+  // detect when both `branding.logoUrl` AND `branding.primaryColor` are
+  // posed. The wizard runs as KB Admin (chrome-less layout under
+  // /pipeline/...), so we use the root `loadTenantForStripe` query — same
+  // primitive already reused by `qr/page.tsx` and `parametres/page.tsx`
+  // (cf. ADR : « éviter de dupliquer une query tenant root »). Skip the
+  // network round-trip when there is no tenantId back-link yet (step 1
+  // hasn't run); `useQuery(skip)` returns `undefined`, which
+  // `computeWizardState` interprets as « tenant in flight » and parks the
+  // cursor on step 2 (the safe non-blocking step).
+  //
+  // publishedMenu / managerInvite remain STUBs — each follow-up wizard
+  // slice swaps its own ones (5/10 = menu, 7/10 = manager invite).
   const prospect = useQuery(
     api.lib.onboarding.crm.getProspect,
     prospectId !== undefined ? { prospectId } : "skip",
   );
-  const tenant: Doc<"tenants"> | null | undefined = undefined; // STUB
+  const tenantBackLink = prospect?.tenantId;
+  const tenant = useQuery(
+    api.lib.stripe.account.loadTenantForStripe,
+    tenantBackLink !== undefined ? { tenantId: tenantBackLink } : "skip",
+  );
   const publishedMenu: Doc<"publishedMenus"> | null | undefined = undefined; // STUB
   const managerInvite: ManagerInviteDoc | null | undefined = undefined; // STUB
 
