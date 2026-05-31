@@ -1,5 +1,7 @@
 import { ConvexError, type Infer, v } from "convex/values";
-import type { Doc } from "../../_generated/dataModel";
+import type { Doc, Id } from "../../_generated/dataModel";
+import type { MutationCtx } from "../../_generated/server";
+import type { Actor } from "../auth";
 import type { prospectPhase } from "../../table/prospects";
 import {
   getProspect as getProspectRow,
@@ -153,7 +155,7 @@ export function assertLegalPhaseTransition(
   }
 }
 
-/** Outcome of an `applyClosing` attempt. */
+/** Outcome of an `applyClosing` attempt — preserved verbatim (backward compat). */
 type ApplyClosingResult = {
   /** Whether the auto-bascule actually fired (Acquisition → Préparation). */
   basculed: boolean;
@@ -162,6 +164,101 @@ type ApplyClosingResult = {
   /** Closing milestones still missing (empty when Closing is complete). */
   missing: ClosingMilestoneKey[];
 };
+
+/**
+ * The mutation ctx flavour every `kbAdminMutation` handler receives — the raw
+ * MutationCtx enriched with the resolved Actor by the wrapper. Spelled here so
+ * the private helper can be called from any business mutation in this module
+ * (slices 3 & 4 of B-ONBOARDING-MILESTONES will chain it onto a granular
+ * milestone write) without leaking through the public `kbAdminMutation` shape.
+ */
+type KbAdminMutationCtx = MutationCtx & { actor: Actor };
+
+/**
+ * B-ONBOARDING-MILESTONES slice 2 (#172) — outcome of one auto-bascule decision.
+ * The enriched twin of `ApplyClosingResult`: it surfaces the FULL Closing verdict
+ * (`closing.complete` + `closing.missing`) so a calling mutation can report it to
+ * the UI without a second `evaluateClosing` round-trip. `applyClosing` flattens
+ * this to the legacy shape (`{basculed, phase, missing}`) for its callers, while
+ * slices 3 & 4 (granular milestone writes) will consume the enriched shape.
+ */
+type AutoBasculeResult = {
+  /** Whether the auto-bascule actually fired (Acquisition → Préparation). */
+  basculed: boolean;
+  /** The prospect's phase AFTER the attempt. */
+  phase: ProspectPhase;
+  /** The full Closing verdict (composite of all applicable milestones). */
+  closing: ClosingEvaluation;
+};
+
+/**
+ * B-ONBOARDING-MILESTONES slice 2 (#172) — PRIVATE helper extracted from
+ * `applyClosing`. The shared engine of the composite Closing auto-bascule, so the
+ * granular milestone mutations of slices 3 (`setMilestone`) and 4
+ * (`recordIntegrationStatus`) can chain "write one milestone, then maybe
+ * bascule" atomically without duplicating the decision.
+ *
+ * Behaviour STRICTLY identical to the inline block it replaced in `applyClosing`:
+ *  - reload the prospect via the `getProspect` store seam; absent → NOT_FOUND
+ *    `ConvexError`;
+ *  - `evaluateClosing(prospect)` for the Closing verdict;
+ *  - IF complete AND `phase === "acquisition"`:
+ *      `assertLegalPhaseTransition("acquisition", "preparation")`,
+ *      `setProspectPhase(... "preparation")`,
+ *      `logAudit("prospect.closing.autoBascule", {fromPhase, toPhase})`.
+ *
+ * NOT exported by the `lib/onboarding/index.ts` barrel — strictly private to this
+ * module (BMAD locale). Slices 3 & 4 will import it directly from `./pipeline`.
+ */
+async function maybeAutoBascule(
+  ctx: KbAdminMutationCtx,
+  prospectId: Id<"prospects">,
+): Promise<AutoBasculeResult> {
+  const prospect = await getProspectRow(ctx, prospectId);
+  if (prospect === null) {
+    throw new ConvexError({
+      code: "NOT_FOUND",
+      message: "Prospect not found.",
+    });
+  }
+
+  const closing = evaluateClosing(prospect);
+
+  // The auto-bascule fires ONLY from Acquisition, and only when Closing is
+  // complete. Any other current phase = no-op (the single auto edge does not
+  // apply); a manual move elsewhere is the slice-B path, untouched here.
+  if (!closing.complete || prospect.phase !== "acquisition") {
+    return { basculed: false, phase: prospect.phase, closing };
+  }
+
+  const to: ProspectPhase = "preparation";
+  assertLegalPhaseTransition(prospect.phase, to);
+  await setProspectPhase(ctx, prospectId, to);
+
+  await logAudit(ctx, {
+    actorUserId: ctx.actor.userId,
+    actorRole: ctx.actor.role,
+    action: "prospect.closing.autoBascule",
+    targetType: "prospect",
+    targetId: prospectId,
+    metadata: { fromPhase: prospect.phase, toPhase: to },
+  });
+
+  return {
+    basculed: true,
+    phase: to,
+    // The bascule only fires when closing is complete, so the verdict shipped to
+    // the caller after a successful bascule is necessarily complete + empty.
+    closing: { complete: true, missing: [] },
+  };
+}
+
+// Test-only export of the private helper. The runtime contract is "private to
+// this module"; slice 3/4 mutations live in the SAME module file so they get the
+// helper via direct symbol access. Vitest specs need the symbol via the module
+// surface to assert the enriched shape directly — exporting under a `_internal`
+// alias keeps it OFF the public `lib/onboarding/index.ts` barrel.
+export { maybeAutoBascule };
 
 /**
  * Evaluate the composite Closing event and, IF it is complete AND the prospect is
@@ -175,41 +272,20 @@ type ApplyClosingResult = {
  * the edge is always `acquisition → preparation`, a legal single step) and the
  * actual bascule is recorded with an explicit `prospect.closing.autoBascule`
  * audit row (on top of the wrapper's automatic root-mutation audit).
+ *
+ * B-ONBOARDING-MILESTONES slice 2 (#172) — the decision body is now the private
+ * `maybeAutoBascule` helper (shared with slices 3 & 4); this mutation maps the
+ * helper's enriched `closing.missing` to the legacy root-level `missing` field so
+ * the public `ApplyClosingResult` shape is STRICTLY unchanged.
  */
 export const applyClosing = kbAdminMutation({
   args: { prospectId: v.id("prospects") },
   action: "prospect.closing.evaluate",
   handler: async (ctx, args): Promise<ApplyClosingResult> => {
-    const prospect = await getProspectRow(ctx, args.prospectId);
-    if (prospect === null) {
-      throw new ConvexError({
-        code: "NOT_FOUND",
-        message: "Prospect not found.",
-      });
-    }
-
-    const { complete, missing } = evaluateClosing(prospect);
-
-    // The auto-bascule fires ONLY from Acquisition, and only when Closing is
-    // complete. Any other current phase = no-op (the single auto edge does not
-    // apply); a manual move elsewhere is the slice-B path, untouched here.
-    if (!complete || prospect.phase !== "acquisition") {
-      return { basculed: false, phase: prospect.phase, missing };
-    }
-
-    const to: ProspectPhase = "preparation";
-    assertLegalPhaseTransition(prospect.phase, to);
-    await setProspectPhase(ctx, args.prospectId, to);
-
-    await logAudit(ctx, {
-      actorUserId: ctx.actor.userId,
-      actorRole: ctx.actor.role,
-      action: "prospect.closing.autoBascule",
-      targetType: "prospect",
-      targetId: args.prospectId,
-      metadata: { fromPhase: prospect.phase, toPhase: to },
-    });
-
-    return { basculed: true, phase: to, missing: [] };
+    const { basculed, phase, closing } = await maybeAutoBascule(
+      ctx,
+      args.prospectId,
+    );
+    return { basculed, phase, missing: closing.missing };
   },
 });
