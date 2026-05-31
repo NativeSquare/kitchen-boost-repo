@@ -347,4 +347,73 @@ describe("ContractsBlock — F-CONTRATS slice 1/4 (#158)", () => {
     const text = allText(tree);
     expect(text).toMatch(/Contrats/);
   });
+
+  /**
+   * F-CONTRATS slice 3/4 (#174) extension — the block exposes an OPTIONAL
+   * `headerAction` slot. When the parent (`prospect-fiche-view.tsx`) passes
+   * the `GenerateContractLauncher` trigger, the block mounts it next to the
+   * « Contrats » heading. When the prop is omitted, the slice-1 « V1 read-
+   * only » contract still holds (no button surface — tests above pin it).
+   */
+  describe("headerAction slot — F-CONTRATS slice 3/4 (#174)", () => {
+    it("renders the headerAction node when provided (locates by data-slot)", () => {
+      const tree = serialize(
+        ContractsBlock({
+          contracts: [],
+          headerAction: {
+            type: "button",
+            props: { "data-slot": "fake-generate-trigger", children: "X" },
+          } as unknown as React.ReactElement,
+        }),
+      );
+      const slot = flatten(tree).filter(
+        (
+          x,
+        ): x is {
+          type: string;
+          props: Record<string, unknown>;
+          children: SerializedNode[];
+        } =>
+          x !== null &&
+          "type" in x &&
+          (x.props as Record<string, unknown>)["data-slot"] ===
+            "contracts-block-header-action",
+      );
+      expect(slot.length).toBe(1);
+      // The wrapping slot must contain the passed node — pinned by the
+      // inner fake trigger's data-slot.
+      const inner = flatten(tree).filter(
+        (
+          x,
+        ): x is {
+          type: string;
+          props: Record<string, unknown>;
+          children: SerializedNode[];
+        } =>
+          x !== null &&
+          "type" in x &&
+          (x.props as Record<string, unknown>)["data-slot"] ===
+            "fake-generate-trigger",
+      );
+      expect(inner.length).toBe(1);
+    });
+
+    it("does NOT render the headerAction wrapper when the prop is omitted (slice-1 read-only contract preserved)", () => {
+      const tree = serialize(ContractsBlock({ contracts: [] }));
+      const slot = flatten(tree).filter(
+        (
+          x,
+        ): x is {
+          type: string;
+          props: Record<string, unknown>;
+          children: SerializedNode[];
+        } =>
+          x !== null &&
+          "type" in x &&
+          (x.props as Record<string, unknown>)["data-slot"] ===
+            "contracts-block-header-action",
+      );
+      expect(slot.length).toBe(0);
+    });
+  });
 });
