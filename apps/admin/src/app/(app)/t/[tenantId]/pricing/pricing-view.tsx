@@ -27,12 +27,13 @@
  */
 import { IconPlus } from "@tabler/icons-react";
 
-import type { Doc } from "@packages/backend/convex/_generated/dataModel";
+import type { Doc, Id } from "@packages/backend/convex/_generated/dataModel";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 
 import { formatActionSummary, formatConditionsSummary } from "./format-rule";
 
@@ -72,12 +73,28 @@ export type PricingViewProps = {
    * disabled (slice 1's contract — no-op, no misclick risk).
    */
   onEditRule?: (rule: Doc<"pricingRules">) => void;
+  /**
+   * F-PRICING-4 (#249) — fires when the gérant flips a row's Active/Inactive
+   * toggle. The page bridges this to `api.lib.pricing.rules.setActive` via
+   * `useTenantMutation` (auto-injected `tenantId`, ADR 0014 §4 / #183, ADR
+   * 0010). Optional so F-PRICING-1 isolated callers (and the « placeholders
+   * disabled » test) keep working without supplying a handler: when omitted,
+   * the row's toggle is rendered but `disabled` (no-op, no row-mutation risk).
+   *
+   * Contract: the toggle is the ONLY thing the gérant flips here — it must
+   * never be wired to a `remove` or `update` mutation. The rule's definition
+   * (conditions + action) stays intact across activate / deactivate cycles
+   * (« pas un delete déguisé », issue body), pinned at the page-source level
+   * in `page.test.ts`.
+   */
+  onToggleActive?: (ruleId: Id<"pricingRules">, active: boolean) => void;
 };
 
 export function PricingView({
   rules,
   onNewRule,
   onEditRule,
+  onToggleActive,
 }: PricingViewProps) {
   // Default the click handler so the button is always present (issue body:
   // « Bouton « + Nouvelle règle » sur la page liste »). The page wires the
@@ -101,7 +118,11 @@ export function PricingView({
         <AutoPriorityBanner />
       </div>
       <div className="px-4 lg:px-6">
-        <PricingBody rules={rules} onEditRule={onEditRule} />
+        <PricingBody
+          rules={rules}
+          onEditRule={onEditRule}
+          onToggleActive={onToggleActive}
+        />
       </div>
     </div>
   );
@@ -124,9 +145,11 @@ function AutoPriorityBanner() {
 function PricingBody({
   rules,
   onEditRule,
+  onToggleActive,
 }: {
   rules: Doc<"pricingRules">[] | undefined;
   onEditRule?: (rule: Doc<"pricingRules">) => void;
+  onToggleActive?: (ruleId: Id<"pricingRules">, active: boolean) => void;
 }) {
   if (rules === undefined) {
     return <RulesSkeleton />;
@@ -138,7 +161,11 @@ function PricingBody({
     <ul className="flex flex-col gap-3">
       {rules.map((rule) => (
         <li key={rule._id}>
-          <RuleRow rule={rule} onEditRule={onEditRule} />
+          <RuleRow
+            rule={rule}
+            onEditRule={onEditRule}
+            onToggleActive={onToggleActive}
+          />
         </li>
       ))}
     </ul>
@@ -159,9 +186,11 @@ function PricingEmptyState() {
 function RuleRow({
   rule,
   onEditRule,
+  onToggleActive,
 }: {
   rule: Doc<"pricingRules">;
   onEditRule?: (rule: Doc<"pricingRules">) => void;
+  onToggleActive?: (ruleId: Id<"pricingRules">, active: boolean) => void;
 }) {
   const conditionsSummary = formatConditionsSummary(rule.conditions);
   const actionSummary = formatActionSummary(rule.action);
@@ -178,6 +207,17 @@ function RuleRow({
   const handleEdit = () => {
     onEditRule?.(rule);
   };
+  // F-PRICING-4 (#249) — same backward-compat discipline as `onEditRule`:
+  // when the page omits `onToggleActive`, the Switch is rendered but stays
+  // `disabled` (slice-1 placeholder shape). When wired, Radix Switch hands
+  // us the FLIPPED value via `onCheckedChange`, which we forward verbatim to
+  // the page's `setActive` bridge. We intentionally do NOT compute `!isActive`
+  // here — the toggle is the source of truth for the next state and Radix
+  // already gives it to us, so re-deriving would be redundant + fragile.
+  const toggleEnabled = onToggleActive !== undefined;
+  const handleToggle = (next: boolean) => {
+    onToggleActive?.(rule._id, next);
+  };
   return (
     <Card className={rowClass}>
       <CardContent className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
@@ -186,6 +226,21 @@ function RuleRow({
           <p className="text-muted-foreground text-sm">{actionSummary}</p>
         </div>
         <div className="flex items-center gap-2">
+          {/*
+            F-PRICING-4 (#249) — per-row Active/Inactive Switch. `checked`
+            mirrors `rule.active`; flipping it fires `onToggleActive` with
+            the NEW value, which the page bridges to
+            `api.lib.pricing.rules.setActive`. The Badge below stays as the
+            redundant textual signal (accessibility — opacity alone doesn't
+            carry meaning for screen readers).
+          */}
+          <Switch
+            data-slot="pricing-rule-active-toggle"
+            checked={isActive}
+            disabled={!toggleEnabled}
+            onCheckedChange={toggleEnabled ? handleToggle : undefined}
+            aria-label={`Activer ou désactiver la règle ${String(rule._id)}`}
+          />
           <Badge variant={isActive ? "default" : "secondary"}>
             {isActive ? "Active" : "Inactive"}
           </Badge>

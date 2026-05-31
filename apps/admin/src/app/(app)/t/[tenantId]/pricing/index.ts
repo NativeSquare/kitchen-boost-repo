@@ -1,7 +1,7 @@
 /**
- * F-PRICING-1 (#241) + F-PRICING-2 (#245) + F-PRICING-3 (#248) — public module
- * API of the admin pricing surface (front equivalent of a
- * `convex/lib/<feature>/index.ts` barrel).
+ * F-PRICING-1 (#241) + F-PRICING-2 (#245) + F-PRICING-3 (#248) +
+ * F-PRICING-4 (#249) — public module API of the admin pricing surface (front
+ * equivalent of a `convex/lib/<feature>/index.ts` barrel).
  *
  * Slice 1 exposes:
  *   - `PricingView`                       — the pure presentational shell.
@@ -31,6 +31,14 @@
  *     no duplicate).
  * The page owns the create-vs-update branching at submit time
  * (`api.lib.pricing.rules.update` vs `.create`).
+ *
+ * Slice 4 (F-PRICING-4 / #249) also adds no new exports — it extends the
+ * existing `PricingViewProps` with an optional `onToggleActive(ruleId, active)`
+ * callback that bridges the per-row Switch toggle to
+ * `api.lib.pricing.rules.setActive`. The toggle is the ONLY user affordance
+ * here — flipping `active` never mutates `conditions` / `action` (« pas un
+ * delete déguisé », issue body), pinned at the page-source level in
+ * `page.test.ts`.
  *
  * Page default export (`./page`) is consumed by Next.js routing directly and
  * does not need to be re-exported here.
