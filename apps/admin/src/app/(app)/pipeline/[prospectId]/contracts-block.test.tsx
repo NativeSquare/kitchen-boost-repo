@@ -416,4 +416,194 @@ describe("ContractsBlock — F-CONTRATS slice 1/4 (#158)", () => {
       expect(slot.length).toBe(0);
     });
   });
+
+  /**
+   * F-CONTRATS slice 4/4 (#185) — clickable rows + active state.
+   *
+   * Each row of the contracts list becomes clickable when the parent wires
+   * `onSelectContract`. Clicking a row signals the chosen `contractId` to
+   * the parent (so the parent can re-hydrate the `ContractIframe` below
+   * the block with that contract's HTML). The currently-selected row gets
+   * a distinct visual state (`data-active="true"`) so the operator knows
+   * which version is being previewed.
+   *
+   * Backward compatibility: when `onSelectContract` is omitted, rows stay
+   * non-interactive — the slice-1 « V1 read-only » contract still holds
+   * (the negative test above still passes — no `<button>` surfaces in the
+   * rendered tree).
+   */
+  describe("clickable rows + active state — F-CONTRATS slice 4/4 (#185)", () => {
+    function findRowButtons(tree: SerializedNode) {
+      return flatten(tree).filter(
+        (
+          x,
+        ): x is {
+          type: string;
+          props: Record<string, unknown>;
+          children: SerializedNode[];
+        } =>
+          x !== null &&
+          "type" in x &&
+          (x.props as Record<string, unknown>)["data-slot"] ===
+            "contracts-block-row",
+      );
+    }
+
+    it("AC — when `onSelectContract` is wired, each row is interactive (rendered as a button-role element, one per contract) — slice-1 « V1 read-only » bypass is OPT-IN", () => {
+      const contracts = [
+        makeContract({
+          _id: "contracts_001" as unknown as Id<"contracts">,
+          prestation: "A",
+        }),
+        makeContract({
+          _id: "contracts_002" as unknown as Id<"contracts">,
+          prestation: "B",
+        }),
+      ];
+      const tree = serialize(
+        ContractsBlock({
+          contracts,
+          onSelectContract: () => {},
+        }),
+      );
+      const rows = findRowButtons(tree);
+      expect(rows.length).toBe(2);
+      // Each interactive row exposes a callable onClick handler (Convex
+      // mutation will fire from the parent via onSelectContract).
+      for (const row of rows) {
+        expect(typeof (row.props as { onClick?: unknown }).onClick).toBe(
+          "function",
+        );
+      }
+    });
+
+    it("AC — clicking a row calls `onSelectContract` with that row's contractId (loop closed: parent re-hydrates the iframe with the chosen contract)", () => {
+      const c1 = makeContract({
+        _id: "contracts_aaa" as unknown as Id<"contracts">,
+        prestation: "A",
+      });
+      const c2 = makeContract({
+        _id: "contracts_bbb" as unknown as Id<"contracts">,
+        prestation: "B",
+      });
+      const calls: Id<"contracts">[] = [];
+      const tree = serialize(
+        ContractsBlock({
+          contracts: [c1, c2],
+          onSelectContract: (id) => calls.push(id),
+        }),
+      );
+      const rows = findRowButtons(tree);
+      expect(rows.length).toBe(2);
+      // Locate rows by data-contract-id so the test does not depend on
+      // render order.
+      const rowA = rows.find(
+        (r) =>
+          (r.props as Record<string, unknown>)["data-contract-id"] ===
+          (c1._id as unknown as string),
+      );
+      const rowB = rows.find(
+        (r) =>
+          (r.props as Record<string, unknown>)["data-contract-id"] ===
+          (c2._id as unknown as string),
+      );
+      if (rowA === undefined || rowB === undefined) {
+        throw new Error(
+          "Test setup invariant violated — expected both rows to be located",
+        );
+      }
+      const onClickA = (rowA.props as { onClick: () => void }).onClick;
+      const onClickB = (rowB.props as { onClick: () => void }).onClick;
+      onClickA();
+      onClickB();
+      onClickA();
+      expect(calls).toEqual([c1._id, c2._id, c1._id]);
+    });
+
+    it('AC — the row whose id matches `selectedContractId` is marked active (data-active="true"), every other row is data-active="false"', () => {
+      const c1 = makeContract({
+        _id: "contracts_aaa" as unknown as Id<"contracts">,
+      });
+      const c2 = makeContract({
+        _id: "contracts_bbb" as unknown as Id<"contracts">,
+      });
+      const c3 = makeContract({
+        _id: "contracts_ccc" as unknown as Id<"contracts">,
+      });
+      const tree = serialize(
+        ContractsBlock({
+          contracts: [c1, c2, c3],
+          onSelectContract: () => {},
+          selectedContractId: c2._id,
+        }),
+      );
+      const rows = findRowButtons(tree);
+      expect(rows.length).toBe(3);
+      const activeFlags = rows.map((r) => ({
+        id: (r.props as Record<string, unknown>)["data-contract-id"],
+        active: (r.props as Record<string, unknown>)["data-active"],
+      }));
+      expect(activeFlags).toEqual(
+        expect.arrayContaining([
+          { id: c1._id as unknown as string, active: "false" },
+          { id: c2._id as unknown as string, active: "true" },
+          { id: c3._id as unknown as string, active: "false" },
+        ]),
+      );
+      // Exactly one row is active at a time — no duplication.
+      const activeCount = activeFlags.filter((f) => f.active === "true").length;
+      expect(activeCount).toBe(1);
+    });
+
+    it('AC — when `selectedContractId` is undefined (nothing selected yet), every row is data-active="false" — the iframe is not driven by the list, no row is highlighted spuriously', () => {
+      const c1 = makeContract({
+        _id: "contracts_aaa" as unknown as Id<"contracts">,
+      });
+      const c2 = makeContract({
+        _id: "contracts_bbb" as unknown as Id<"contracts">,
+      });
+      const tree = serialize(
+        ContractsBlock({
+          contracts: [c1, c2],
+          onSelectContract: () => {},
+          // selectedContractId omitted
+        }),
+      );
+      const rows = findRowButtons(tree);
+      for (const r of rows) {
+        expect((r.props as Record<string, unknown>)["data-active"]).toBe(
+          "false",
+        );
+      }
+    });
+
+    it("slice-1 contract preserved — when `onSelectContract` is OMITTED, NO `<button>` element is rendered (negative test from slice 1/4 still holds)", () => {
+      const contracts = [
+        makeContract({ status: "draft" }),
+        makeContract({ status: "sent" }),
+      ];
+      const tree = serialize(ContractsBlock({ contracts }));
+      expect(findAllByType(tree, "button").length).toBe(0);
+      // The row containers exist but are NOT marked as interactive rows
+      // (data-slot="contracts-block-row" is the interactive opt-in
+      // marker; in the non-interactive branch, rows render as plain `li`).
+      const rows = findRowButtons(tree);
+      expect(rows.length).toBe(0);
+    });
+
+    it('a11y — the interactive row carries `type="button"` (HTML default for <button> would otherwise be `submit` inside a form, breaking accidental form submits in the future)', () => {
+      const c1 = makeContract({
+        _id: "contracts_aaa" as unknown as Id<"contracts">,
+      });
+      const tree = serialize(
+        ContractsBlock({
+          contracts: [c1],
+          onSelectContract: () => {},
+        }),
+      );
+      const rows = findRowButtons(tree);
+      expect(rows.length).toBe(1);
+      expect((rows[0].props as { type?: unknown }).type).toBe("button");
+    });
+  });
 });

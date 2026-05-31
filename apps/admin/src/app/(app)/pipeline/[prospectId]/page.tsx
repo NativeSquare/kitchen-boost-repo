@@ -121,35 +121,40 @@ export default function ProspectFichePage() {
       : "skip",
   );
 
-  // F-CONTRATS slice 3/4 (#174) — the page owns the « last generated
-  // contract id this session ». The launcher (mounted inside the
-  // `ContractsBlock` header by `ProspectFicheView`) calls `onGenerated`
-  // with the new id once the mutation resolves; we use that id to fire a
-  // `useQuery(getContract, ...)` so the iframe (slice 2/4) below the
-  // block hydrates reactively with the generated HTML. The id is reset
-  // only on full page reload — re-generating overwrites it with the new
-  // id (issue AC : « la nouvelle entrée apparaît », the iframe follows
-  // the latest).
-  const [generatedContractId, setGeneratedContractId] =
+  // F-CONTRATS slice 3/4 (#174) + slice 4/4 (#185) — the page owns the
+  // « currently previewed contract id this session ». Two events flip
+  // this state to a fresh id :
+  //   1. Slice 3/4 — the `GenerateContractLauncher` (mounted inside the
+  //      `ContractsBlock` header by `ProspectFicheView`) calls
+  //      `onGenerated(newId)` after a successful mutation; the iframe
+  //      below the block re-renders with the freshly-generated HTML.
+  //   2. Slice 4/4 — a click on a row of the contracts list calls
+  //      `onSelectContract(rowId)`; the iframe re-renders with that
+  //      contract's HTML (loop closed : the operator can re-read any
+  //      version after generating multiple).
+  // Both events share the SAME `useQuery(getContract, { contractId })`
+  // (no new backend dependency — AC «pas de nouvelle dépendance
+  // backend» of slice 4/4). The id is reset only on full page reload.
+  const [selectedContractId, setSelectedContractId] =
     useState<Id<"contracts"> | null>(null);
-  const generatedContract = useQuery(
+  const selectedContract = useQuery(
     api.lib.admin.contracts.getContract,
-    isAdminReady && generatedContractId !== null
-      ? { contractId: generatedContractId }
+    isAdminReady && selectedContractId !== null
+      ? { contractId: selectedContractId }
       : "skip",
   );
   // The view's `generatedContractHtml` prop is tri-state:
-  //   - `undefined` → no contract id yet (no iframe rendered at all)
+  //   - `undefined` → no contract id selected yet (no iframe rendered at all)
   //   - `null`       → contract row resolved-but-no-html (iframe's
   //                    error branch surfaces a clear message)
   //   - `string`     → hydrated HTML (iframe renders the sandboxed
   //                    preview + the « Télécharger HTML » action)
   const generatedContractHtml: string | null | undefined =
-    generatedContractId === null
+    selectedContractId === null
       ? undefined
-      : generatedContract === undefined
+      : selectedContract === undefined
         ? undefined
-        : (generatedContract?.htmlContent ?? null);
+        : (selectedContract?.htmlContent ?? null);
 
   return (
     <ProspectFicheView
@@ -157,8 +162,10 @@ export default function ProspectFichePage() {
       prospect={prospect}
       tenant={tenant}
       contracts={contracts}
-      onGenerated={setGeneratedContractId}
+      onGenerated={setSelectedContractId}
       generatedContractHtml={generatedContractHtml}
+      onSelectContract={setSelectedContractId}
+      selectedContractId={selectedContractId}
     />
   );
 }

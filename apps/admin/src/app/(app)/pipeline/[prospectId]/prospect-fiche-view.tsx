@@ -116,8 +116,29 @@ export type ProspectFicheViewProps = {
    * `ContractIframe` dans la page de la fiche prospect, sous le bloc
    * Contrats ». Tri-state convex value : `undefined` (in-flight) |
    * `null` (no row / no generation yet) | `string` (hydrated).
+   *
+   * F-CONTRATS slice 4/4 (#185) — re-purposed : this prop is now driven
+   * by the SELECTED contract id (which is set either by a freshly-
+   * generated contract or by a click on a row in the list). The iframe
+   * re-renders whenever the selection changes; no row click → no
+   * iframe (until the operator either generates or selects a row).
    */
   generatedContractHtml?: string | null | undefined;
+  /**
+   * F-CONTRATS slice 4/4 (#185) — row-click callback. The page lifts the
+   * clicked contract id into state, then drives the same
+   * `useQuery(getContract, { contractId })` it already uses for fresh
+   * generations (no new backend dependency — AC «pas de nouvelle
+   * dépendance backend»). Optional so the slice-1 « V1 read-only »
+   * matrix stays green for callers that don't want selection.
+   */
+  onSelectContract?: (contractId: Id<"contracts">) => void;
+  /**
+   * F-CONTRATS slice 4/4 (#185) — id of the contract currently
+   * previewed in the iframe. Threaded to `ContractsBlock` so the
+   * matching row carries `data-active="true"`. Page-owned state.
+   */
+  selectedContractId?: Id<"contracts"> | null;
 };
 
 /**
@@ -140,6 +161,8 @@ export function ProspectFicheView({
   contracts,
   onGenerated,
   generatedContractHtml,
+  onSelectContract,
+  selectedContractId,
 }: ProspectFicheViewProps) {
   const decision = decideProspectFiche({ session, prospect });
 
@@ -234,6 +257,8 @@ export function ProspectFicheView({
               />
             ) : undefined
           }
+          onSelectContract={onSelectContract}
+          selectedContractId={selectedContractId}
         />
       </div>
       {/* F-CONTRATS slice 3/4 (#174) — iframe rendered below the block
