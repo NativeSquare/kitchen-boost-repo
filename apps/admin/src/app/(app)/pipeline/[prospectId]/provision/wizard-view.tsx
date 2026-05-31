@@ -70,6 +70,13 @@ export type WizardViewProps = {
    * the canonical `isStepComplete` from `computeWizardState`.
    */
   isStepComplete?: (n: number) => boolean;
+  /**
+   * F-WIZARD [4/10] (#268) — flip the local « step 2 skipped » flag.
+   * Threaded down to Step2Form's « Skip » button. Optional so test
+   * fixtures don't have to wire it (the wizard will simply not tick
+   * step 2 green when the operator clicks Skip — non-breaking).
+   */
+  markStep2Skipped?: () => void;
 };
 
 function ProspectHeader({
@@ -101,6 +108,7 @@ export function WizardView({
   currentStep,
   onStepChange,
   isStepComplete,
+  markStep2Skipped,
 }: WizardViewProps) {
   const decision = decideWizardShell({ session, prospect });
 
@@ -203,6 +211,7 @@ export function WizardView({
         onPrev={handlePrev}
         onNext={handleNext}
         onStepChange={onStepChange}
+        markStep2Skipped={markStep2Skipped}
       />
     </div>
   );
