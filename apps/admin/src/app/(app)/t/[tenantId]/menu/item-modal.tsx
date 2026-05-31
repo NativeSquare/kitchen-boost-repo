@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * F-MENU-05 (#219) + F-MENU-06 (#226) — `ItemModal`, the load-bearing CRUD
- * surface for menu items.
+ * F-MENU-05 (#219) + F-MENU-06 (#226) + F-MENU-09 (#246) — `ItemModal`, the
+ * load-bearing CRUD surface for menu items.
  *
  * Two modes, ONE component (DRY — same form, same validation, same fields):
  *   - `mode === "create"` — opened by the « + Item » CTA per category. One
@@ -47,9 +47,21 @@
  * ancien blob »); the front never explicitly calls `removePhoto` before
  * an attach.
  *
- * Scope discipline (#219 / #226 hard constraint): this file lives under
- * `apps/admin/src/app/(app)/t/[tenantId]/menu/` — zero touch to `apps/web`,
- * `apps/native`, or `packages/backend/convex/`.
+ * Personnalisations — F-MENU-09 (#246): the edit-mode form layers an opt-in
+ * `ModifiersSection` (rendered only when the page passes the three handlers
+ * `onAttachGroup` / `onDetachGroup` / `onCreateInlineGroup`) carrying:
+ *   (a) the list of REUSABLE modifier groups attached to the item (name +
+ *       min/max badge + options summary + « Détacher »),
+ *   (b) a picker over the tenant's full `availableGroups` MINUS the already-
+ *       attached set (idempotent backend = safety net, filter = UX clarity),
+ *   (c) a « Créer un nouveau groupe » button that fires
+ *       `onCreateInlineGroup(itemId)` — the page stacks the
+ *       `ModifierGroupModal` over the item modal and chains
+ *       `attachGroupToItem({ itemId, modifierGroupId: newId })` on save.
+ *
+ * Scope discipline (#219 / #226 / #246 hard constraint): this file lives
+ * under `apps/admin/src/app/(app)/t/[tenantId]/menu/` — zero touch to
+ * `apps/web`, `apps/native`, or `packages/backend/convex/`.
  */
 
 import { useEffect, useMemo, useState } from "react";

@@ -2,7 +2,8 @@
 
 /**
  * F-MENU-01 (#187) + F-MENU-02 (#200) + F-MENU-03 (#206) + F-MENU-04 (#211)
- * + F-MENU-05 (#219) + F-MENU-06 (#226) — Route `/t/[tenantId]/menu/`.
+ * + F-MENU-05 (#219) + F-MENU-06 (#226) + F-MENU-07 (#237) + F-MENU-08 (#242)
+ * + F-MENU-09 (#246) — Route `/t/[tenantId]/menu/`.
  *
  * Slice 1 (#187) wired the read-only categories list via `useTenantQuery`.
  * Slice 2 (#200) layered category CRUD on top via `useTenantMutation`. Slice 3
