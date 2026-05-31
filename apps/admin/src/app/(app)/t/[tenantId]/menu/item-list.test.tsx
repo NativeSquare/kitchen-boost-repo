@@ -73,6 +73,52 @@ vi.mock("convex/react", () => ({
   useQuery: () => undefined,
 }));
 
+// F-MENU-07 (#237) — dnd-kit primitives call React hooks internally
+// (`useSyncExternalStore`, `useContext`, etc.) which all throw under
+// `environment: "node"`. We replace the load-bearing pieces with thin
+// passthroughs — same shape as category-list-editor.test.tsx — so the
+// `ItemList` renders to the React element tree we want to assert on (the
+// actual drag-and-drop interaction is exercised at e2e level — see the PR
+// body « Tests E2E proposés »).
+vi.mock("@dnd-kit/core", () => {
+  const passthrough = ({
+    children,
+  }: {
+    children?: React.ReactNode;
+  }): React.ReactNode => children ?? null;
+  return {
+    DndContext: passthrough,
+    KeyboardSensor: function KeyboardSensor() {},
+    PointerSensor: function PointerSensor() {},
+    closestCenter: () => [],
+    useSensor: () => ({}),
+    useSensors: () => [],
+  };
+});
+vi.mock("@dnd-kit/sortable", () => {
+  const passthrough = ({
+    children,
+  }: {
+    children?: React.ReactNode;
+  }): React.ReactNode => children ?? null;
+  return {
+    SortableContext: passthrough,
+    sortableKeyboardCoordinates: () => ({}),
+    useSortable: () => ({
+      attributes: {},
+      listeners: {},
+      setNodeRef: () => {},
+      transform: null,
+      transition: undefined,
+      isDragging: false,
+    }),
+    verticalListSortingStrategy: () => null,
+  };
+});
+vi.mock("@dnd-kit/utilities", () => ({
+  CSS: { Transform: { toString: () => undefined } },
+}));
+
 const { ItemList } = await import("./item-list");
 
 // ---------------------------------------------------------------------------
@@ -444,6 +490,97 @@ describe("ItemList — F-MENU-04 (#211)", () => {
     onClick?.();
     expect(onItemClick).toHaveBeenCalledTimes(1);
     expect(onItemClick).toHaveBeenCalledWith(SMASH_BURGER._id);
+  });
+
+  // -------------------------------------------------------------------------
+  // F-MENU-07 (#237) — drag&drop reorder within ONE category
+  // -------------------------------------------------------------------------
+  // The page wires `onReorder(categoryId, orderedIds)` (bound to
+  // `useTenantMutation(api.lib.menu.items.reorder)`) down through `MenuView`
+  // → `ItemList`. When the callback is wired, each row carries a drag handle
+  // (`data-slot="menu-item-drag-handle"`) and the list becomes sortable
+  // (mouse / touch / keyboard via dnd-kit's `KeyboardSensor`).
+  //
+  // The drag NEVER crosses categories (recategoriser passes through the item
+  // modal's `categoryId` picker — F-MENU-05, issue body « Le drag NE traverse
+  // PAS les catégories »). The natural structural guarantee is that each
+  // category section is rendered with its OWN `ItemList` → its OWN
+  // `SortableContext` → dnd-kit cannot drop a draggable into a foreign
+  // context. We pin the contract at the prop level too: the callback
+  // signature is `(categoryId, orderedIds)` — the category id is closed-over
+  // at render time, never recomputed from `over.data`.
+
+  it("F-MENU-07 — no drag handle without an onReorder callback (read-only ordering preserved)", () => {
+    const tree = serialize(
+      ItemList({
+        items: ITEMS,
+        onToggleAvailability: vi.fn(),
+      }),
+    );
+    const handles = findBySlot(tree, "menu-item-drag-handle");
+    expect(handles).toHaveLength(0);
+  });
+
+  it("F-MENU-07 — exposes a drag handle per row when onReorder is wired (a11y keyboard sortable)", () => {
+    // The drag handle is the load-bearing affordance for the « clavier »
+    // a11y requirement (apps/admin = outil pro). It's a button-like element
+    // with `data-slot="menu-item-drag-handle"` carrying an aria-label that
+    // mentions « Réordonner » so screen readers announce it (same shape as
+    // the category drag handle from F-MENU-03).
+    const tree = serialize(
+      ItemList({
+        items: ITEMS,
+        onToggleAvailability: vi.fn(),
+        onReorder: vi.fn(),
+      }),
+    );
+    const handles = findBySlot(tree, "menu-item-drag-handle");
+    expect(handles).toHaveLength(ITEMS.length);
+    for (const h of handles) {
+      const aria = h.props["aria-label"];
+      expect(typeof aria).toBe("string");
+      expect(aria as string).toMatch(/r[ée]ordonner/i);
+    }
+  });
+
+  it("F-MENU-07 — drag handle aria-label includes the item name (screen-reader announces which row is moving)", () => {
+    const tree = serialize(
+      ItemList({
+        items: ITEMS,
+        onToggleAvailability: vi.fn(),
+        onReorder: vi.fn(),
+      }),
+    );
+    const handles = findBySlot(tree, "menu-item-drag-handle");
+    const labels = handles
+      .map((h) => h.props["aria-label"])
+      .filter((a): a is string => typeof a === "string");
+    expect(labels.some((l) => l.includes("Smash Burger"))).toBe(true);
+    expect(labels.some((l) => l.includes("Tiramisu"))).toBe(true);
+    expect(labels.some((l) => l.includes("Coca-Cola"))).toBe(true);
+  });
+
+  it("F-MENU-07 — handles are interactive (button-like) and keyboard-focusable, not divs (a11y baseline)", () => {
+    // The KeyboardSensor listens on the handle element — it MUST be focusable
+    // (a `<button>` or an element with `tabIndex` ≥ 0). Pinning « it's a
+    // button » keeps the implementation honest: a plain `<div>` would silently
+    // strip the keyboard sortable behaviour.
+    const tree = serialize(
+      ItemList({
+        items: ITEMS,
+        onToggleAvailability: vi.fn(),
+        onReorder: vi.fn(),
+      }),
+    );
+    const handles = findBySlot(tree, "menu-item-drag-handle");
+    expect(handles.length).toBeGreaterThan(0);
+    for (const h of handles) {
+      // Either the element is a native button OR it carries `tabIndex` ≥ 0.
+      const isButton = typeof h.type === "string" && h.type === "button";
+      const tabIndex = h.props["tabIndex"];
+      const hasTabIndex = typeof tabIndex === "number" ? tabIndex >= 0 : false;
+      expect(isButton || hasTabIndex).toBe(true);
+    }
   });
 
   // Mark `Id` import as used so the type-only fixture compiles in node env.

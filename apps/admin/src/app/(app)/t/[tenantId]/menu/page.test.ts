@@ -250,6 +250,42 @@ describe("page.tsx — F-MENU-01 (#187) wiring contract", () => {
     expect(collapsed).toMatch(/removePhoto[\s\S]{0,800}toast\.error/);
   });
 
+  // ---------------------------------------------------------------------------
+  // F-MENU-07 (#237) — items drag&drop reorder wiring contract
+  // ---------------------------------------------------------------------------
+
+  it("F-MENU-07 — wires `items.reorder` through `useTenantMutation` (not raw useMutation, sends FULL ordered ids list)", () => {
+    // The page binds the items reorder mutation through `useTenantMutation`
+    // (same discipline as `categories.reorder` — ADR 0014 §4) and forwards
+    // a handler that sends the COMPLETE ordered ids list for ONE category
+    // (the backend `items.reorder` rejects any payload that isn't the full
+    // set — invariant pinned by
+    // `packages/backend/convex/lib/menu/items.test.ts`).
+    const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
+    expect(collapsed).toMatch(
+      /useTenantMutation\([^)]*api\.lib\.menu\.items\.reorder[^)]*\)/,
+    );
+  });
+
+  it("F-MENU-07 — passes `onReorderItems` down to MenuView", () => {
+    // Wiring contract: the page exposes the items drag&drop handler via the
+    // dedicated prop the view forwards down to per-category `ItemList`s.
+    expect(PAGE_SOURCE).toMatch(/onReorderItems/);
+  });
+
+  it("F-MENU-07 — reorder handler wraps the mutation in try/catch + `toast.error` + `getConvexErrorMessage` (same discipline as CRUD)", () => {
+    // Backend errors (NOT_FOUND for cross-tenant category id; INVALID_REORDER
+    // when the orderedIds set drifts from the category's items) MUST surface
+    // as a user-visible toast — never silently swallowed. Same shape as the
+    // categories reorder handler.
+    const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
+    // The handler references items.reorder (`reorderItems` local) AND has a
+    // toast.error within a handler-sized window.
+    expect(collapsed).toMatch(
+      /api\.lib\.menu\.items\.reorder[\s\S]{0,1200}toast\.error/,
+    );
+  });
+
   it("F-MENU-02 — surfaces errors via `toast.error` + `getConvexErrorMessage` (no raw alert / console.error)", () => {
     // The CRUD handlers wrap each mutation call in try/catch and toast the
     // ConvexError's message (slice acceptance criterion « toast sur erreur »

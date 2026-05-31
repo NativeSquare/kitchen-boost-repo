@@ -646,6 +646,93 @@ describe("MenuView — F-MENU-01 (#187)", () => {
     ).toContain(arg);
   });
 
+  // -------------------------------------------------------------------------
+  // F-MENU-07 (#237) — items drag&drop reorder forwarded through MenuView
+  // -------------------------------------------------------------------------
+  // The page passes `onReorderItems(categoryId, orderedIds)` (bound to
+  // `useTenantMutation(api.lib.menu.items.reorder)`) down through `MenuView`
+  // to each per-category `ItemList`. When the prop is wired, each item row
+  // gets a drag handle (`data-slot="menu-item-drag-handle"`); when it isn't,
+  // the items stay read-only-ordering (preserves slice-4 contract).
+
+  it("F-MENU-07 — without onReorderItems, no item drag handle surfaces (read-only ordering)", () => {
+    type Item = Doc<"menuItems">;
+    const cat0 = UNORDERED_CATEGORIES[0]._id as string;
+    const makeItem = (name: string, order: number): Item =>
+      ({
+        _id: `item_${name}` as Item["_id"],
+        _creationTime: 0,
+        tenantId: "tenant_test" as Item["tenantId"],
+        categoryId: cat0 as Item["categoryId"],
+        name,
+        description: "",
+        basePrice: 0,
+        allergens: [],
+        available: true,
+        order,
+        createdAt: 0,
+      }) as Item;
+    const itemsByCategory: Record<string, Item[]> = {
+      [cat0]: [makeItem("Tiramisu", 0), makeItem("Brownie", 1)],
+    };
+    const tree = serialize(
+      MenuView({
+        categories: UNORDERED_CATEGORIES,
+        onCreateCategory: () => {},
+        onRenameCategory: () => {},
+        onDeleteCategory: () => {},
+        itemsByCategory,
+        onToggleItemAvailability: () => {},
+      }),
+    );
+    const handles = flatten(tree).filter((n) => {
+      if (n === null || "text" in n) return false;
+      return n.props["data-slot"] === "menu-item-drag-handle";
+    });
+    expect(handles).toHaveLength(0);
+  });
+
+  it("F-MENU-07 — with onReorderItems, surfaces an item drag handle on every item row", () => {
+    type Item = Doc<"menuItems">;
+    const cat0 = UNORDERED_CATEGORIES[0]._id as string; // Desserts
+    const cat1 = UNORDERED_CATEGORIES[1]._id as string; // Entrées
+    const makeItem = (name: string, catId: string, order: number): Item =>
+      ({
+        _id: `item_${name}` as Item["_id"],
+        _creationTime: 0,
+        tenantId: "tenant_test" as Item["tenantId"],
+        categoryId: catId as Item["categoryId"],
+        name,
+        description: "",
+        basePrice: 0,
+        allergens: [],
+        available: true,
+        order,
+        createdAt: 0,
+      }) as Item;
+    const itemsByCategory: Record<string, Item[]> = {
+      [cat0]: [makeItem("Tiramisu", cat0, 0)],
+      [cat1]: [makeItem("Salade", cat1, 0), makeItem("Soupe", cat1, 1)],
+    };
+    const tree = serialize(
+      MenuView({
+        categories: UNORDERED_CATEGORIES,
+        onCreateCategory: () => {},
+        onRenameCategory: () => {},
+        onDeleteCategory: () => {},
+        itemsByCategory,
+        onToggleItemAvailability: () => {},
+        onReorderItems: () => {},
+      }),
+    );
+    const handles = flatten(tree).filter((n) => {
+      if (n === null || "text" in n) return false;
+      return n.props["data-slot"] === "menu-item-drag-handle";
+    });
+    // 1 (Desserts) + 2 (Entrées) = 3 handles total.
+    expect(handles).toHaveLength(3);
+  });
+
   it("AC3 — renders one category per row (count matches input length)", () => {
     // Pin the row count, so a future refactor that flattens children into
     // a single string (or duplicates them) fails. The rows are pinned by
