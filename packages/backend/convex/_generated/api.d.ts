@@ -74,6 +74,7 @@ import type * as lib_onboarding_crm from "../lib/onboarding/crm.js";
 import type * as lib_onboarding_csv from "../lib/onboarding/csv.js";
 import type * as lib_onboarding_gates from "../lib/onboarding/gates.js";
 import type * as lib_onboarding_index from "../lib/onboarding/index.js";
+import type * as lib_onboarding_milestones from "../lib/onboarding/milestones.js";
 import type * as lib_onboarding_pipeline from "../lib/onboarding/pipeline.js";
 import type * as lib_onboarding_provisioning from "../lib/onboarding/provisioning.js";
 import type * as lib_onboarding_seedData from "../lib/onboarding/seedData.js";
@@ -253,6 +254,7 @@ declare const fullApi: ApiFromModules<{
   "lib/onboarding/csv": typeof lib_onboarding_csv;
   "lib/onboarding/gates": typeof lib_onboarding_gates;
   "lib/onboarding/index": typeof lib_onboarding_index;
+  "lib/onboarding/milestones": typeof lib_onboarding_milestones;
   "lib/onboarding/pipeline": typeof lib_onboarding_pipeline;
   "lib/onboarding/provisioning": typeof lib_onboarding_provisioning;
   "lib/onboarding/seedData": typeof lib_onboarding_seedData;

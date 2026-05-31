@@ -68,22 +68,25 @@ type MilestoneKey = Infer<typeof milestoneKey>;
 
 /**
  * Compile-time guard — fails the build if the validator drifts from the
- * schema's set of binary milestones. If a new binary milestone is added to
- * `table/prospects.ts → milestones`, this assertion errors until the new
- * literal is added to `milestoneKey` above (and vice versa). Single source of
- * truth: `BinaryMilestoneKey` is itself derived from `Doc<"prospects">["milestones"]`.
+ * schema's set of binary milestones. The two `extends` checks are MUTUAL: each
+ * side must assign to the other, so adding a binary milestone to
+ * `table/prospects.ts → milestones` (which widens `BinaryMilestoneKey`) without
+ * extending `milestoneKey` above ERRORS the build — and vice versa. Single
+ * source of truth: `BinaryMilestoneKey` is itself derived from
+ * `Doc<"prospects">["milestones"]`.
+ *
+ * Implemented as a `satisfies` round-trip on a runtime object whose keys are
+ * the two sides of the equality: lints clean (no unused-type rule needed) and
+ * the `satisfies` does the type-level work.
  */
-type Assert<A, _B extends A> = true;
-type AssertEqual<A, B> = [A] extends [B]
-  ? [B] extends [A]
-    ? true
-    : false
-  : false;
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-type _MilestoneKeyMatchesSchema = Assert<
-  true,
-  AssertEqual<MilestoneKey, BinaryMilestoneKey>
->;
+const _MILESTONE_KEY_MATCHES_SCHEMA = {
+  schemaKeyIsRuntimeKey:
+    null as unknown as BinaryMilestoneKey satisfies MilestoneKey,
+  runtimeKeyIsSchemaKey:
+    null as unknown as MilestoneKey satisfies BinaryMilestoneKey,
+} as const;
+// Referenced once so it cannot be tree-shaken (no-op at runtime).
+void _MILESTONE_KEY_MATCHES_SCHEMA;
 
 /**
  * The enriched outcome of one `setMilestone` call — the SAME shape as
