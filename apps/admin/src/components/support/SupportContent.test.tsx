@@ -13,16 +13,21 @@
  * pattern verbatim so the tests stay lean + portable across the same
  * environment as everything else in `apps/admin`.
  *
+ * The serializer recursively expands user-defined function components (and
+ * shadcn `Card`/`Avatar` primitives) down to plain DOM tags. We therefore
+ * assert on primitive tags + `data-slot` attributes (the shadcn convention
+ * used across the codebase) rather than on component identity.
+ *
  * Acceptance criteria covered (#210):
  *   - Renders the CSM block (name, email, phone when present, availability).
  *   - Email anchor uses `mailto:${csm.email}`; phone anchor uses
  *     `tel:${csm.phone}` (no wrapper).
- *   - Avatar renders `<img>` (AvatarImage) with the right `src` when
- *     `photoUrl` is provided; otherwise renders the initials fallback.
+ *   - Avatar slot renders an `<img>` (avatar-image) with the right `src`
+ *     when `photoUrl` is provided; otherwise the avatar-fallback slot is
+ *     populated with the initials.
  *   - Renders one card per entry in `resources`, with the entry's `href`,
  *     `target="_blank"`, and `rel="noopener noreferrer"`.
- *   - Each resource card carries an `ExternalLink` icon with
- *     `aria-hidden="true"` (lucide icon, accessibility hygiene).
+ *   - Each resource card carries an icon marked `aria-hidden` (decorative).
  */
 import { describe, expect, it } from "vitest";
 import type { ReactElement, ReactNode } from "react";
@@ -55,7 +60,33 @@ function typeName(t: unknown): string {
       "Anonymous"
     );
   }
+  if (typeof t === "object" && t !== null) {
+    const obj = t as { displayName?: string; render?: { name?: string } };
+    return obj.displayName ?? obj.render?.name ?? "ForwardRef";
+  }
   return String(t);
+}
+
+function unwrap(type: unknown): { fn: (props: unknown) => ReactNode } | null {
+  if (typeof type === "function") {
+    return { fn: type as (p: unknown) => ReactNode };
+  }
+  if (typeof type === "object" && type !== null) {
+    // forwardRef: { $$typeof, render: (props, ref) => ReactNode }
+    const obj = type as {
+      render?: (props: unknown, ref: unknown) => ReactNode;
+    };
+    if (typeof obj.render === "function") {
+      const render = obj.render;
+      return { fn: (props) => render(props, null) };
+    }
+    // memo: { $$typeof, type: ComponentType }
+    const memo = type as { type?: unknown };
+    if (memo.type !== undefined) {
+      return unwrap(memo.type);
+    }
+  }
+  return null;
 }
 
 function serialize(node: ReactNode): SerializedNode {
@@ -75,9 +106,26 @@ function serialize(node: ReactNode): SerializedNode {
     };
   }
   if (isReactElement(node)) {
-    if (typeof node.type === "function") {
-      const fn = node.type as (p: unknown) => ReactNode;
-      return serialize(fn(node.props));
+    const unwrapped = unwrap(node.type);
+    if (unwrapped !== null) {
+      try {
+        return serialize(unwrapped.fn(node.props));
+      } catch {
+        // Radix primitives may use hooks that need a renderer; treat them as
+        // opaque and surface their type name so we can still find them.
+        const props = { ...(node.props as Record<string, unknown>) };
+        const rawChildren = props.children as ReactNode | undefined;
+        delete props.children;
+        const children: SerializedNode[] = [];
+        if (rawChildren !== undefined) {
+          const list = Array.isArray(rawChildren) ? rawChildren : [rawChildren];
+          for (const c of list) {
+            const s = serialize(c);
+            if (s !== null) children.push(s);
+          }
+        }
+        return { type: typeName(node.type), props, children };
+      }
     }
     const props = { ...(node.props as Record<string, unknown>) };
     const rawChildren = props.children as ReactNode | undefined;
@@ -120,6 +168,22 @@ function findAllByType(n: SerializedNode, type: string): SerializedNode[] {
   );
 }
 
+/** Find every node whose `data-slot` prop equals `slot`. */
+function findAllBySlot(n: SerializedNode, slot: string): SerializedNode[] {
+  return flatten(n).filter(
+    (
+      x,
+    ): x is {
+      type: string;
+      props: Record<string, unknown>;
+      children: SerializedNode[];
+    } =>
+      x !== null &&
+      "props" in x &&
+      (x.props as Record<string, unknown>)["data-slot"] === slot,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
@@ -158,16 +222,16 @@ const RESOURCES_THREE: SupportConfig["resources"] = [
 // Tests
 // ---------------------------------------------------------------------------
 describe("SupportContent — F-SUPPORT/1 (#210)", () => {
-  it("renders one Card per resource entry (parametrised on `resources`)", () => {
+  it("renders one card per resource entry (parametrised on `resources`)", () => {
     const tree = serialize(
       SupportContent({
         csm: CSM_WITH_EVERYTHING,
         resources: RESOURCES_THREE,
       }),
     );
-    const cards = findAllByType(tree, "Card");
-    // 1 CSM card + 3 resource cards = 4 (or N+1 resources)
-    expect(cards.length).toBeGreaterThanOrEqual(RESOURCES_THREE.length);
+    const cards = findAllBySlot(tree, "card");
+    // 1 CSM card + 3 resource cards = 4 (N+1 resources).
+    expect(cards.length).toBe(RESOURCES_THREE.length + 1);
     const text = allText(tree);
     for (const r of RESOURCES_THREE) {
       expect(text).toContain(r.title);
@@ -200,21 +264,31 @@ describe("SupportContent — F-SUPPORT/1 (#210)", () => {
     }
   });
 
-  it("each resource card carries an ExternalLink icon with aria-hidden", () => {
+  it("each resource card carries an icon marked aria-hidden (decorative)", () => {
     const tree = serialize(
       SupportContent({
         csm: CSM_WITH_EVERYTHING,
         resources: RESOURCES_THREE,
       }),
     );
-    const icons = findAllByType(tree, "ExternalLink") as Array<{
-      props: Record<string, unknown>;
-    }>;
-    expect(icons.length).toBeGreaterThanOrEqual(RESOURCES_THREE.length);
-    for (const icon of icons) {
-      // lucide icons accept aria-hidden as a boolean prop in React (rendered
-      // as `aria-hidden="true"` on the underlying <svg>). Accept either form.
-      const ariaHidden = icon.props["aria-hidden"];
+    // lucide icons render an <svg> with `aria-hidden` forwarded. Collect every
+    // svg in the tree and assert: at least one decorative one per resource
+    // card, all of them marked aria-hidden (no svg should be announced to a
+    // screen reader).
+    const svgs = flatten(tree).filter(
+      (
+        x,
+      ): x is {
+        type: string;
+        props: Record<string, unknown>;
+        children: SerializedNode[];
+      } => x !== null && "type" in x && x.type === "svg",
+    );
+    // ≥ 1 svg per resource (the ExternalLink icon).
+    expect(svgs.length).toBeGreaterThanOrEqual(RESOURCES_THREE.length);
+    for (const svg of svgs) {
+      const ariaHidden = svg.props["aria-hidden"];
+      // React accepts both boolean `true` and string `"true"`.
       expect(ariaHidden === true || ariaHidden === "true").toBe(true);
     }
   });
@@ -257,36 +331,35 @@ describe("SupportContent — F-SUPPORT/1 (#210)", () => {
     expect(hrefs.some((h) => h.startsWith("tel:"))).toBe(false);
   });
 
-  it("Avatar renders an AvatarImage with the right src when photoUrl is set", () => {
+  it("Avatar renders an <img> (avatar-image slot) with the right src + alt when photoUrl is set", () => {
     const tree = serialize(
       SupportContent({
         csm: CSM_WITH_EVERYTHING,
         resources: [],
       }),
     );
-    const images = findAllByType(tree, "AvatarImage") as Array<{
+    const avatarImages = findAllBySlot(tree, "avatar-image") as Array<{
       props: { src?: string; alt?: string };
     }>;
-    expect(images.length).toBeGreaterThanOrEqual(1);
-    expect(images[0].props.src).toBe(CSM_WITH_EVERYTHING.photoUrl);
-    // Accessibility: a non-empty alt that mentions the CSM name.
-    expect(images[0].props.alt).toBeDefined();
-    expect(String(images[0].props.alt)).toMatch(/Alex Michelet/);
+    expect(avatarImages.length).toBeGreaterThanOrEqual(1);
+    expect(avatarImages[0].props.src).toBe(CSM_WITH_EVERYTHING.photoUrl);
+    expect(avatarImages[0].props.alt).toBeDefined();
+    expect(String(avatarImages[0].props.alt)).toMatch(/Alex Michelet/);
   });
 
-  it("Avatar falls back to initials when photoUrl is absent", () => {
+  it("Avatar falls back to initials (avatar-fallback slot, no avatar-image) when photoUrl is absent", () => {
     const tree = serialize(
       SupportContent({
         csm: CSM_NO_PHONE_NO_PHOTO,
         resources: [],
       }),
     );
-    const images = findAllByType(tree, "AvatarImage");
-    expect(images).toHaveLength(0);
-    const fallbacks = findAllByType(tree, "AvatarFallback");
+    const avatarImages = findAllBySlot(tree, "avatar-image");
+    expect(avatarImages).toHaveLength(0);
+    const fallbacks = findAllBySlot(tree, "avatar-fallback");
     expect(fallbacks.length).toBeGreaterThanOrEqual(1);
-    // Initials = first letter of first word + first letter of last word of name.
-    // "Alex Michelet" → "AM"
+    // Initials = first letter of first word + first letter of last word.
+    // "Alex Michelet" → "AM".
     const fallbackText = allText(fallbacks[0]);
     expect(fallbackText).toContain("AM");
   });
@@ -305,5 +378,8 @@ describe("SupportContent — F-SUPPORT/1 (#210)", () => {
         typeof a.props.href === "string" && a.props.href.startsWith("http"),
     );
     expect(externalAnchors).toHaveLength(0);
+    // Only the CSM card remains.
+    const cards = findAllBySlot(tree, "card");
+    expect(cards).toHaveLength(1);
   });
 });
