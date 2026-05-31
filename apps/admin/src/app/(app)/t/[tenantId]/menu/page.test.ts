@@ -416,6 +416,60 @@ describe("page.tsx — F-MENU-01 (#187) wiring contract", () => {
     expect(PAGE_SOURCE).toMatch(/inline-from-item/);
   });
 
+  // ---------------------------------------------------------------------------
+  // F-MENU-10 (#254) — Publier + badge + Aperçu wiring contract
+  // ---------------------------------------------------------------------------
+
+  it("F-MENU-10 — wires `publication.publishMenu` via `useTenantMutation` (not raw useMutation)", () => {
+    // The « Publier » button binds the global atomic mutation through
+    // `useTenantMutation` (ADR 0014 §4 / #183) — never raw `useMutation`
+    // (which would bypass tenantId auto-injection, ADR 0010). The mutation
+    // is the canonical entry of the publication flow (ADR 0015).
+    const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
+    expect(collapsed).toMatch(
+      /useTenantMutation\([^)]*api\.lib\.menu\.publication\.publishMenu[^)]*\)/,
+    );
+  });
+
+  it("F-MENU-10 — wires `publication.hasUnpublishedChanges` via `useTenantQuery` (badge indicator)", () => {
+    // The « modifications non publiées » badge is driven by the publication
+    // indicator (ADR 0015) — read through the canonical tenantQuery so the
+    // tenantId injection is automatic + cross-tenant probes are refused.
+    const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
+    expect(collapsed).toMatch(
+      /useTenantQuery\([^)]*api\.lib\.menu\.publication\.hasUnpublishedChanges[^)]*\)/,
+    );
+  });
+
+  it("F-MENU-10 — passes `onPublish`, `hasUnpublishedChanges`, `previewHref` down to MenuView", () => {
+    // Wiring contract: the page exposes the three new props the view forwards
+    // to the header (publish button, badge, preview link).
+    expect(PAGE_SOURCE).toMatch(/onPublish/);
+    expect(PAGE_SOURCE).toMatch(/hasUnpublishedChanges/);
+    expect(PAGE_SOURCE).toMatch(/previewHref/);
+  });
+
+  it("F-MENU-10 — publish handler wraps `publishMenu` in try/catch with `toast.success` + `toast.error` + `getConvexErrorMessage`", () => {
+    // Same discipline as the rest of the CRUD: backend errors (a publish on
+    // a tenant whose menuStore seam rejects, etc.) surface as a visible
+    // toast — never silently swallowed. The success path ALSO surfaces a
+    // toast (« publication réussie ») — the issue body's « success toast »
+    // requirement.
+    const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
+    expect(collapsed).toMatch(/publishMenu[\s\S]{0,1500}toast\.success/);
+    expect(collapsed).toMatch(/publishMenu[\s\S]{0,1500}toast\.error/);
+  });
+
+  it("F-MENU-10 — previewHref points at the draft-preview surface under the menu route (NOT at the published PWA)", () => {
+    // Acceptance criterion: « j'édite un prix sans publier, Aperçu montre le
+    // NOUVEAU prix, getPublicMenu (PWA réelle) montre l'ANCIEN ». The
+    // preview URL therefore CANNOT be the snapshot-sourced public PWA —
+    // it must point at a draft-sourced rendering. We pin the URL shape so a
+    // future refactor that accidentally swaps it for the public PWA host
+    // fails loudly.
+    expect(PAGE_SOURCE).toMatch(/menu\/preview/);
+  });
+
   it("F-MENU-02 — surfaces errors via `toast.error` + `getConvexErrorMessage` (no raw alert / console.error)", () => {
     // The CRUD handlers wrap each mutation call in try/catch and toast the
     // ConvexError's message (slice acceptance criterion « toast sur erreur »
