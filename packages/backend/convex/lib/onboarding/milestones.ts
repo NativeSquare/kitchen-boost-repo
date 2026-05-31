@@ -191,14 +191,29 @@ export const setMilestone = kbAdminMutation({
  * full `milestones` object would race two concurrent operator clicks. This slice
  * is the granular write the UI calls.
  *
- * Status validator: a DISCRIMINATED `v.union` of `v.object`s, one per
- * integration. Each `v.object` literally pins `integration` to its own value and
- * REUSES the per-integration status union from `table/prospects.ts`
- * (`stripeConnectStatus` / `uberDirectStatus` / `hubriseStatus`) — never a
- * duplicated string-literal union. The runtime rejects ANY cross-integration
- * payload (`integration: "stripeConnect"` + `status: "active"` is not a member
- * of the union); the compile-time narrowing of `IntegrationStatusMap`
- * additionally refuses it at TypeScript level (slice 1 seam).
+ * Per-integration status discrimination (the acceptance criterion: "validator
+ * union discriminé OU pattern équivalent garantissant que `status` valide pour
+ * `stripeConnect` ne peut pas être passé avec `integration: 'uberDirect'`") is
+ * a TWO-STAGE check, both grounded in the per-integration `*Status` unions of
+ * `table/prospects.ts` (the schema source of truth — NEVER duplicated here):
+ *
+ *  1. Convex boundary: the `status` arg is `v.union(stripeConnectStatus,
+ *     uberDirectStatus, hubriseStatus)` — accepts ANY of the 3 sets. This stage
+ *     refuses an unknown status literal (e.g. `"totally_made_up"`) before the
+ *     handler runs.
+ *  2. Handler boundary: `assertIntegrationStatusMatches(integration, status)`
+ *     pins `status` to the SPECIFIC integration's set (the sets are themselves
+ *     DERIVED from each `*Status` validator via `literalSet`, so adding a
+ *     status in `table/prospects.ts` propagates here for free). A cross-
+ *     integration payload (e.g. `integration: "stripeConnect", status: "active"`,
+ *     a legal `uberDirect` status that has no meaning for Stripe) throws
+ *     `INVALID_ARGUMENT`, the same contract as a missing required field at the
+ *     Convex boundary.
+ *
+ * Compile-time TypeScript narrowing through `IntegrationStatusMap` (slice 1
+ * seam) catches it one extra layer earlier — a `uberDirect` status literal
+ * passed to the `stripeConnect` branch of the discriminated dispatch below is
+ * a TS error.
  *
  * Closing semantics: the 3 integrations are NOT Closing milestones (PRD 70
  * §3.3 / `evaluateClosing`), so `basculed` is always `false` for THIS slice. We
@@ -304,13 +319,14 @@ type RecordIntegrationStatusResult = {
  * call; subsequent calls append to its `history[]` (append-only) and update
  * `current`.
  *
- * Cross-integration safety: the `{integration, status}` pair goes through the
- * discriminated `v.union` validator — a `uberDirect` status with
- * `integration: "stripeConnect"` is rejected at the runtime boundary BEFORE the
- * handler runs (and at compile time by `IntegrationStatusMap` inside the store
- * seam). The integration list itself is exhaustive (the 3 composite keys of
+ * Cross-integration safety: a `uberDirect` status with
+ * `integration: "stripeConnect"` is rejected — at compile time by
+ * `IntegrationStatusMap` (slice-1 seam), and at runtime by
+ * `assertIntegrationStatusMatches` (this module) BEFORE the store seam is
+ * reached. The integration list itself is exhaustive (the 3 composite keys of
  * `table/prospects.ts → milestones`); adding a 4th would require extending the
- * `v.union` here AND `IntegrationStatusMap` in the slice-1 seam.
+ * `integration` `v.union` here, `INTEGRATION_STATUS_BY_KEY`, the discriminated
+ * dispatch in the handler, AND `IntegrationStatusMap` in the slice-1 seam.
  *
  * Throws `NOT_FOUND` `ConvexError` if the prospect vanished between the call
  * and the read (defensive — the `kbAdminMutation` gate has already passed).
