@@ -198,6 +198,10 @@ Les stories vertes ont **déjà été mergées par l'agent pendant la nuit** (CI
    gh pr list --state merged --search "merged:>=YESTERDAY" --json number,title
 2. Tests end-to-end : lancer l'app sur le preview/dev deployment et valider les
    parcours critiques (commande, paiement sandbox, KB Orders, etc.).
+   **Checklist canonique** : [`docs/tests/E2E-checklist.md`](../../tests/E2E-checklist.md)
+   — 13 groupes (A auth, MC mes clients, QR, MO monitoring, T tenants,
+   P paramètres, AC auth core, M menu, CMD commandes, PR pricing, SUP support,
+   W wizard). Chaque parcours = acteur + pré-requis + étapes + attendu observable.
 3. Spot-check qualité du code mergé (optionnel, échantillon) :
    - L'ordre TDD est respecté dans les commits ?
    - withTenant + fuzz cross-tenant présents sur les modules tenant ?
