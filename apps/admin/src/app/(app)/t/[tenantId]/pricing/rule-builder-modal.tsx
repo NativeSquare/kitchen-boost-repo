@@ -49,6 +49,7 @@
 import { useState } from "react";
 import { IconPlus, IconTrash } from "@tabler/icons-react";
 
+import type { Doc } from "@packages/backend/convex/_generated/dataModel";
 import type {
   PricingAction,
   PricingCondition,
@@ -96,6 +97,26 @@ export type RuleBuilderModalProps = {
    * the error zone. NO toast (issue body forbids « toast technique »).
    */
   submitError: string | null;
+  /**
+   * F-PRICING-3 (#248) — when defined, switches the modal to EDIT mode:
+   *   - The form's initial state hydrates from this rule's `conditions` +
+   *     `action` (no duplicate component, no separate "edit form" — same
+   *     builder, just pre-filled). The page picks up the persisted shape from
+   *     `useTenantQuery(api.lib.pricing.rules.list)` and threads it down.
+   *   - The dialog title flips to « Modifier la règle » and the submit button
+   *     label flips to « Enregistrer les modifications » so the gérant sees
+   *     immediately which mode they are in.
+   *   - The page is responsible for branching the network call: edit fires
+   *     `api.lib.pricing.rules.update({ ruleId: existingRule._id, … })`
+   *     (NOT `create`). The modal stays mode-agnostic on the wire — it just
+   *     emits the typed payload via `onSubmit`.
+   * When `undefined`, the modal is in CREATE mode (F-PRICING-2 behaviour,
+   * unchanged).
+   * To re-hydrate when switching from one rule to another in edit mode, the
+   * page should `key={existingRule?._id ?? "create"}` the modal so React
+   * re-mounts and `useState` re-runs its initializer.
+   */
+  existingRule?: Doc<"pricingRules">;
 };
 
 /** Empty default for a fresh condition row — the most common kind first. */
@@ -121,12 +142,17 @@ const DAY_LABELS: Record<(typeof DAY_CODES)[number], string> = {
 };
 
 export function RuleBuilderModal(props: RuleBuilderModalProps) {
-  const { open, onOpenChange } = props;
+  const { open, onOpenChange, existingRule } = props;
+  // F-PRICING-3 (#248) — mode-derived strings. We compute them here (not in
+  // the form) so the dialog HEADER reflects the mode without re-running the
+  // form's state initializer. The form keeps its own derived label.
+  const isEditMode = existingRule !== undefined;
+  const title = isEditMode ? "Modifier la règle" : "Nouvelle règle de pricing";
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent data-slot="pricing-rule-builder">
         <DialogHeader>
-          <DialogTitle>Nouvelle règle de pricing</DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
             Définissez les conditions qui déclenchent la règle, puis ce que le
             resto absorbe sur les frais de livraison.
@@ -142,15 +168,31 @@ function RuleBuilderForm({
   onSubmit,
   onOpenChange,
   submitError,
+  existingRule,
 }: RuleBuilderModalProps) {
   // -- State -----------------------------------------------------------------
   // Two top-level pieces of state, in this order (the test's
   // `mockStateOverrides` keys assume `[conditions, action]` — keep the order
   // STABLE):
   //   state[0]: conditions array  (default = [], the gérant explicitly adds)
+  //                                EDIT mode: pre-filled from existingRule.conditions
   //   state[1]: action            (default = livraison_offerte_resto)
-  const [conditions, setConditions] = useState<PricingCondition[]>([]);
-  const [action, setAction] = useState<PricingAction>(DEFAULT_ACTION);
+  //                                EDIT mode: pre-filled from existingRule.action
+  //
+  // The initializers are functions so they only run on first mount. The page
+  // is expected to `key={existingRule?._id ?? "create"}` the modal to force a
+  // re-mount when switching from one rule to another — otherwise React would
+  // keep the previous rule's state and the new pre-fill would silently fail.
+  // Cents/percent stay in their schema units inside state; the per-kind input
+  // converts to UI representation at render time (centsToEuroDisplay /
+  // String(percent)), so no separate "load conversion" step is needed.
+  const [conditions, setConditions] = useState<PricingCondition[]>(
+    () => existingRule?.conditions ?? [],
+  );
+  const [action, setAction] = useState<PricingAction>(
+    () => existingRule?.action ?? DEFAULT_ACTION,
+  );
+  const isEditMode = existingRule !== undefined;
 
   // -- Conditions: add / remove / mutate -------------------------------------
   const handleAddCondition = () => {
@@ -312,7 +354,7 @@ function RuleBuilderForm({
             data-slot="pricing-rule-builder-submit"
             onClick={handleSubmit}
           >
-            Enregistrer
+            {isEditMode ? "Enregistrer les modifications" : "Enregistrer"}
           </Button>
         </div>
         {submitError !== null ? (
