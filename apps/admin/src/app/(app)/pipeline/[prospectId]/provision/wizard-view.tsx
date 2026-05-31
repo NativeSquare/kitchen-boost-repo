@@ -199,7 +199,11 @@ export function WizardView({
         isStepComplete={isStepComplete ?? ((n) => n < currentStep)}
         onStepChange={onStepChange}
       />
-      <StepForm onPrev={handlePrev} onNext={handleNext} />
+      <StepForm
+        onPrev={handlePrev}
+        onNext={handleNext}
+        onStepChange={onStepChange}
+      />
     </div>
   );
 }
