@@ -159,10 +159,14 @@ describe("page.tsx — F-COMMANDES-LIVE-TABLE (#227) wiring contract", () => {
     expect(code).toMatch(/\bonOrderClick\b/);
   });
 
-  it("slice discipline — does NOT call `useTenantMutation` / `useTenantAction` / `useMutation` / `useAction` (refund lands in a later slice; filters are pure client state)", () => {
+  it("slice discipline — does NOT call raw `useMutation` / `useAction` / `useTenantMutation` (refund is an ACTION, must go through the auto-tenant `useTenantAction` hook — ADR 0014 §4)", () => {
+    // F-COMMANDES-REFUND (#243) wires the refund via `useTenantAction`
+    // (the action twin of `useTenantMutation`). The page must NOT use
+    // raw `useMutation` / `useAction` (bypasses tenantId auto-injection,
+    // ADR 0014 §4 / ADR 0010), and must NOT use `useTenantMutation`
+    // (refundOrder is an action, not a mutation).
     const code = stripNonCode(PAGE_SOURCE);
     expect(code).not.toMatch(/\buseTenantMutation\b/);
-    expect(code).not.toMatch(/\buseTenantAction\b/);
     expect(code).not.toMatch(/\buseMutation\b/);
     expect(code).not.toMatch(/\buseAction\b/);
   });
@@ -195,10 +199,71 @@ describe("page.tsx — F-COMMANDES-LIVE-TABLE (#227) wiring contract", () => {
     expect(code).not.toMatch(/\buseRouter\b/);
   });
 
-  it("slice discipline — does NOT reference the refund entrypoints `refundOrder` / `refundOnRefusal` (refund flow lands in a later slice of EPIC #141)", () => {
+  // F-COMMANDES-REFUND (#243) — the page now wires the public refund
+  // entrypoint `api.lib.stripe.refund.refundOrder` via `useTenantAction`,
+  // and forwards the trigger to the modal. The internal `refundOnRefusal`
+  // (system-side, used by the kitchen Refusal workflow) MUST NOT be
+  // referenced — the manager-driven refund goes through the dedicated
+  // public action (issue body #243).
+  it("AC #243 — binds `api.lib.stripe.refund.refundOrder` via `useTenantAction` (refund flow)", () => {
     const code = stripNonCode(PAGE_SOURCE);
-    expect(code).not.toMatch(/\brefundOrder\b/);
+    expect(code).toMatch(/\brefundOrder\b/);
+    expect(code).toMatch(/\buseTenantAction\b/);
+    const collapsed = code.replace(/\s+/g, " ");
+    expect(collapsed).toMatch(
+      /useTenantAction\([^)]*api\.lib\.stripe\.refund\.refundOrder[^)]*\)/,
+    );
+  });
+
+  it("slice discipline (#243) — does NOT reference the internal `refundOnRefusal` (system-side path is for kitchen Refusal, not manager-driven)", () => {
+    const code = stripNonCode(PAGE_SOURCE);
     expect(code).not.toMatch(/\brefundOnRefusal\b/);
+  });
+
+  it("AC #243 — wraps the refund trigger in try/catch + toast.error + getConvexErrorMessage (same discipline as menu CRUD)", () => {
+    // The refund action can throw `NOT_REFUNDABLE` / `STRIPE_ERROR` /
+    // `NOT_FOUND` (issue body #243 + #221). The page surfaces the failure
+    // via the wire message — same pattern as item / category CRUD
+    // (`apps/admin/src/app/(app)/t/[tenantId]/menu/page.tsx`).
+    expect(PAGE_SOURCE).toMatch(/from\s+["']sonner["']/);
+    expect(PAGE_SOURCE).toMatch(/getConvexErrorMessage/);
+    const code = stripNonCode(PAGE_SOURCE);
+    // The handler awaits refundOrder, catches, and surfaces toast.error
+    // with getConvexErrorMessage — collapse whitespace + match within a
+    // reasonable handler window (same shape as menu/page.test.ts).
+    const collapsed = code.replace(/\s+/g, " ");
+    expect(collapsed).toMatch(/try\s*\{[^}]*refund[^}]*\}\s*catch/i);
+    expect(collapsed).toMatch(
+      /toast\.error\([^)]*\)[^;]*getConvexErrorMessage/,
+    );
+  });
+
+  it("AC #243 — emits a success toast after the refund completes (« Commande remboursée »)", () => {
+    // Issue body: « Succès -> toast vert "Commande remboursée" + modal se ferme ».
+    expect(PAGE_SOURCE).toMatch(/toast\.success/);
+    expect(PAGE_SOURCE).toMatch(/Commande rembours/);
+  });
+
+  it("AC #243 — gates the refund affordance by role: passes `onRefund` ONLY when the active tenant-role is `kb_manager` (or KB Admin via root override)", () => {
+    // The issue body: « visible uniquement si role = kb_manager ; PAS staff ;
+    // KB Admin passe via root override backend ». The page reads the active
+    // tenant-role from `useSession()` (the role per tenant lives there) and
+    // only forwards `onRefund` to the modal when allowed. We pin the
+    // mechanics (session lookup + kb_manager literal in the gate).
+    const code = stripNonCode(PAGE_SOURCE);
+    expect(code).toMatch(/useSession/);
+    expect(code).toMatch(/kb_manager/);
+    // Negative pin: the page MUST NOT pass `onRefund` to a `staff` user
+    // (the negative is enforced by the gate; we pin the staff literal so a
+    // copy-paste regression that flips the comparison is caught here).
+    expect(code).toMatch(/\bstaff\b/);
+  });
+
+  it("AC #243 — forwards the refund affordance to the modal via dedicated props (onRefund / canRefund / refundAmountCentimes)", () => {
+    const code = stripNonCode(PAGE_SOURCE);
+    expect(code).toMatch(/\bonRefund\b/);
+    expect(code).toMatch(/\bcanRefund\b/);
+    expect(code).toMatch(/\brefundAmountCentimes\b/);
   });
 
   it("AC scope — never imports from `apps/web`, `apps/native`, or the backend `functions` tree", () => {

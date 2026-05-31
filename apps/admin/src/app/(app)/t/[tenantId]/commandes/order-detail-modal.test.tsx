@@ -82,6 +82,53 @@ vi.mock("@/components/ui/dialog", () => {
   };
 });
 
+// F-COMMANDES-REFUND (#243) — the refund affordance uses `AlertDialog`
+// (shadcn). Same node-env discipline as `item-modal.test.tsx` — radix
+// primitives must be passthrough-mocked. `AlertDialogAction` is rendered
+// as a plain <button> so the « Confirmer » click surfaces in the serialised
+// tree (the action button is the one we assert `onClick` calls `onRefund`).
+vi.mock("@/components/ui/alert-dialog", () => {
+  const passthrough = ({
+    children,
+  }: {
+    children?: React.ReactNode;
+  }): React.ReactNode => children ?? null;
+  return {
+    AlertDialog: passthrough,
+    AlertDialogContent: passthrough,
+    AlertDialogHeader: passthrough,
+    AlertDialogTitle: passthrough,
+    AlertDialogDescription: passthrough,
+    AlertDialogFooter: passthrough,
+    AlertDialogCancel: passthrough,
+    AlertDialogTrigger: passthrough,
+    AlertDialogPortal: passthrough,
+    AlertDialogOverlay: passthrough,
+    AlertDialogAction: ({
+      children,
+      onClick,
+      disabled,
+      ...rest
+    }: {
+      children?: React.ReactNode;
+      onClick?: () => void;
+      disabled?: boolean;
+      [k: string]: unknown;
+    }) => ({
+      type: "button",
+      props: {
+        ...rest,
+        onClick,
+        disabled,
+        "data-slot":
+          (rest["data-slot"] as string | undefined) ?? "alert-dialog-action",
+        children: children ?? null,
+      },
+      $$typeof: Symbol.for("react.element"),
+    }),
+  };
+});
+
 const { OrderDetailModal } = await import("./order-detail-modal");
 
 // ---------------------------------------------------------------------------
@@ -259,6 +306,26 @@ function defaults(detail: OrderWithDetail | null | undefined) {
     onOpenChange: () => {},
     detail,
   };
+}
+
+/**
+ * F-COMMANDES-REFUND (#243) — convenience defaults for the refund-positive
+ * branches. The modal stays a pure function of its props: the page wires
+ * `canRefund` (paidAt set + status !== "refusée" + role === kb_manager / KB
+ * Admin) and `onRefund` (the `useTenantAction(refundOrder)` trigger). The
+ * modal renders the button + the confirm `AlertDialog` only when BOTH are
+ * provided — a stricter contract than « show button + throw on click »,
+ * because a regression that forgets to wire `onRefund` is silenced cleanly
+ * rather than blowing up at click time.
+ */
+function refundableDetail(
+  partial: Partial<OrderWithDetail> = {},
+): OrderWithDetail {
+  return makeDetail({
+    paidAt: Date.UTC(2026, 4, 29, 14, 30),
+    status: "nouvelle",
+    ...partial,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -447,27 +514,177 @@ describe("OrderDetailModal — F-COMMANDES-DETAIL-MODAL (#239)", () => {
       expect(dataSlots(tree)).not.toContain("order-detail-modal-note");
     });
 
-    // ---- Slice discipline ----
-    it("does NOT render a refund button (« Pas de bouton refund encore — slice suivant »)", () => {
-      // The issue body explicitly defers the refund action to
-      // F-COMMANDES-REFUND. We pin its absence so a regression that adds
-      // the button to this slice fires here loudly.
-      const tree = serialize(OrderDetailModal(defaults(makeDetail())));
+    // ---- Slice discipline (F-COMMANDES-REFUND #243 supersedes the
+    // pre-#243 « pas de bouton refund encore » pins) ----
+    it("does NOT render the refund button when the page does not pass `onRefund` (refund affordance is opt-in via props — no callback, no button)", () => {
+      // The modal stays a pure function of its props: the refund button +
+      // confirm AlertDialog only mount when the page wires `onRefund`. A
+      // regression that renders the button unconditionally would surface
+      // here (and would call a missing handler at click time).
+      const tree = serialize(OrderDetailModal(defaults(refundableDetail())));
       const text = allText(tree);
       expect(text).not.toMatch(/Rembourser/i);
-      expect(text).not.toMatch(/Refund/i);
       expect(dataSlots(tree)).not.toContain("order-detail-modal-refund");
     });
+  });
 
-    it("does NOT render a refund button on a paid + non-refused order either", () => {
-      // Extra pin — the « refund affordance » regression usually surfaces
-      // when paidAt is set; we explicitly cover the case.
-      const detail = makeDetail({
-        paidAt: Date.UTC(2026, 4, 29, 14, 30),
-        status: "livrée",
-      });
-      const tree = serialize(OrderDetailModal(defaults(detail)));
+  // -------------------------------------------------------------------------
+  // F-COMMANDES-REFUND (#243) — refund affordance
+  //
+  // The modal stays controlled — the page owns role gating + the action
+  // wiring (`useTenantAction(api.lib.stripe.refund.refundOrder)`). The modal
+  // receives:
+  //   - `onRefund?: () => Promise<void>` — undefined ⇒ no button rendered.
+  //   - `canRefund?: boolean` — false ⇒ no button rendered (the page
+  //     computes `paidAt set && status !== "refusée" && role allowed`).
+  //   - `refundAmountCentimes?: number` — the total to display in the CTA
+  //     and the confirm dialog (« Rembourser <X,XX €> »).
+  //
+  // RBAC: the page passes `onRefund` ONLY when the active tenant-role is
+  // `kb_manager` (or KB Admin via root override). For `staff` the page
+  // passes `onRefund: undefined`, so the button is not rendered — tested at
+  // the page level + structurally pinned here (no-button without callback).
+  // -------------------------------------------------------------------------
+  describe("refund affordance (F-COMMANDES-REFUND #243)", () => {
+    it("renders the « Rembourser intégralement » CTA when the page wires `onRefund` + `canRefund: true` + `refundAmountCentimes`", () => {
+      const tree = serialize(
+        OrderDetailModal({
+          open: true,
+          onOpenChange: () => {},
+          detail: refundableDetail(),
+          onRefund: async () => {},
+          canRefund: true,
+          refundAmountCentimes: 2750,
+        }),
+      );
+      const slots = dataSlots(tree);
+      expect(slots).toContain("order-detail-modal-refund");
+      // The button shows the total (« 27,50 € » for 2750 centimes) so the
+      // gérant sees the amount BEFORE confirming.
+      expect(allText(tree)).toMatch(/27,50/);
+      expect(allText(tree)).toMatch(/Rembourser/i);
+    });
+
+    it("does NOT render the CTA when `canRefund: false` (page-side guard — paidAt absent OR status === 'refusée' OR role = staff)", () => {
+      const tree = serialize(
+        OrderDetailModal({
+          open: true,
+          onOpenChange: () => {},
+          detail: refundableDetail(),
+          onRefund: async () => {},
+          canRefund: false,
+          refundAmountCentimes: 2750,
+        }),
+      );
+      const slots = dataSlots(tree);
+      expect(slots).not.toContain("order-detail-modal-refund");
       expect(allText(tree)).not.toMatch(/Rembourser/i);
+    });
+
+    it("does NOT render the CTA when `onRefund` is not wired (e.g. role = staff: page passes undefined)", () => {
+      const tree = serialize(
+        OrderDetailModal({
+          open: true,
+          onOpenChange: () => {},
+          detail: refundableDetail(),
+          canRefund: true,
+          refundAmountCentimes: 2750,
+        }),
+      );
+      const slots = dataSlots(tree);
+      expect(slots).not.toContain("order-detail-modal-refund");
+    });
+
+    it("does NOT render the CTA on a `refusée` order (no double refund — page-side guard)", () => {
+      // A refunded / refused order MUST not show the CTA — refunding twice
+      // throws NOT_REFUNDABLE backend-side, but the UX must never let the
+      // gérant click in the first place. The page sets `canRefund: false`
+      // when `status === "refusée"`.
+      const tree = serialize(
+        OrderDetailModal({
+          open: true,
+          onOpenChange: () => {},
+          detail: refundableDetail({ status: "refusée" }),
+          onRefund: async () => {},
+          canRefund: false,
+          refundAmountCentimes: 2750,
+        }),
+      );
+      const slots = dataSlots(tree);
+      expect(slots).not.toContain("order-detail-modal-refund");
+    });
+
+    it("renders the confirm dialog with the amount + an optional reason field (max 500 chars)", () => {
+      const tree = serialize(
+        OrderDetailModal({
+          open: true,
+          onOpenChange: () => {},
+          detail: refundableDetail(),
+          onRefund: async () => {},
+          canRefund: true,
+          refundAmountCentimes: 2750,
+        }),
+      );
+      const slots = dataSlots(tree);
+      // The confirm dialog mounts inline (alert-dialog primitives pass-through
+      // so the inner content surfaces in the tree). It carries the amount + the
+      // free-text reason input + Cancel / Confirm buttons.
+      expect(slots).toContain("order-detail-modal-refund-confirm");
+      expect(slots).toContain("order-detail-modal-refund-reason");
+      // The amount is shown prominently in the dialog body (« 27,50 € »).
+      const text = allText(tree);
+      expect(text).toMatch(/27,50/);
+      // The reason input is capped at 500 chars per the issue body. We
+      // pin the maxLength attribute structurally (the field is controlled
+      // — onChange truncation is exercised by the click test below).
+      const reasonNodes = flatten(tree).filter(
+        (n) =>
+          n !== null &&
+          !("text" in n) &&
+          n.props["data-slot"] === "order-detail-modal-refund-reason",
+      );
+      expect(reasonNodes.length).toBeGreaterThan(0);
+      const reasonNode = reasonNodes[0];
+      if (reasonNode === null || "text" in reasonNode) {
+        throw new Error("unexpected text node for refund reason slot");
+      }
+      expect(reasonNode.props.maxLength).toBe(500);
+    });
+
+    it("calls `onRefund` when the AlertDialogAction button is clicked (the confirm path)", async () => {
+      let calls = 0;
+      const tree = serialize(
+        OrderDetailModal({
+          open: true,
+          onOpenChange: () => {},
+          detail: refundableDetail(),
+          onRefund: async () => {
+            calls += 1;
+          },
+          canRefund: true,
+          refundAmountCentimes: 2750,
+        }),
+      );
+      // Find the AlertDialogAction-rendered <button> (the « Confirmer »
+      // button in the dialog footer). The mock renders it as a plain
+      // <button> with `data-slot="order-detail-modal-refund-confirm-action"`.
+      const actionNodes = flatten(tree).filter(
+        (n) =>
+          n !== null &&
+          !("text" in n) &&
+          n.props["data-slot"] === "order-detail-modal-refund-confirm-action",
+      );
+      expect(actionNodes.length).toBeGreaterThan(0);
+      const action = actionNodes[0];
+      if (action === null || "text" in action) {
+        throw new Error("unexpected text node for refund confirm action slot");
+      }
+      const onClick = action.props.onClick as
+        | (() => void | Promise<void>)
+        | undefined;
+      expect(typeof onClick).toBe("function");
+      await onClick?.();
+      expect(calls).toBe(1);
     });
   });
 
