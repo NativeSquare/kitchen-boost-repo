@@ -29,5 +29,11 @@ export {
   decideWizardShell,
   isStepNavigable,
   type WizardShellDecision,
+  type WizardShellInput,
   type WizardState,
+  type WizardStateInput,
 } from "./wizard.decision";
+// `StepFormProps` is the shape every follow-up wizard slice's real form
+// must accept — `onPrev` / `onNext`. Exposed here so a slice can replace
+// `Step{N}Form` while preserving the navigation contract.
+export type { StepFormProps } from "./step-forms";
