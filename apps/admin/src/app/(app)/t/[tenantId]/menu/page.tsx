@@ -47,6 +47,7 @@ import type { Id } from "@packages/backend/convex/_generated/dataModel";
 import { useTenantMutation, useTenantQuery } from "@/hooks";
 import { getConvexErrorMessage } from "@/utils/getConvexErrorMessage";
 
+import { bucketItemsByCategory } from "./item-list";
 import { MenuView } from "./menu-view";
 
 /** Placeholder name for a freshly-created category — the gérant renames it inline. */
@@ -59,10 +60,14 @@ export default function MenuPage() {
   // loading sentinel; an empty array means the tenant has no categories
   // yet; otherwise we render the list.
   const categories = useTenantQuery(api.lib.menu.categories.list);
+  const items = useTenantQuery(api.lib.menu.items.list);
   const createCategory = useTenantMutation(api.lib.menu.categories.create);
   const renameCategory = useTenantMutation(api.lib.menu.categories.rename);
   const removeCategory = useTenantMutation(api.lib.menu.categories.remove);
   const reorderCategories = useTenantMutation(api.lib.menu.categories.reorder);
+  const setItemAvailability = useTenantMutation(
+    api.lib.menu.availability.setItemAvailability,
+  );
 
   const handleCreate = async () => {
     try {
@@ -107,6 +112,28 @@ export default function MenuPage() {
     }
   };
 
+  // F-MENU-04 (#211) — Rupture toggle: LIVE mutation, bypasses publication
+  // (ADR 0015 § Conséquences — « le toggle live indépendant de la
+  // publication »). Optimistic UI is provided by Convex's natural reactivity:
+  // the toggle's `checked` mirrors `item.available`, so a successful
+  // round-trip is silent and a server reject snaps it back automatically.
+  // The try/catch surfaces backend `NOT_FOUND` (cross-tenant race) or any
+  // other `ConvexError` as a user-visible toast, never silently swallowed.
+  const handleToggleItemAvailability = async (
+    itemId: Id<"menuItems">,
+    nextAvailable: boolean,
+  ) => {
+    try {
+      await setItemAvailability({ itemId, available: nextAvailable });
+    } catch (error) {
+      toast.error("Impossible de mettre à jour la disponibilité", {
+        description: getConvexErrorMessage(error),
+      });
+    }
+  };
+
+  const itemsByCategory = bucketItemsByCategory(items);
+
   return (
     <MenuView
       categories={categories}
@@ -114,6 +141,8 @@ export default function MenuPage() {
       onRenameCategory={handleRename}
       onDeleteCategory={handleDelete}
       onReorderCategories={handleReorder}
+      itemsByCategory={itemsByCategory}
+      onToggleItemAvailability={handleToggleItemAvailability}
     />
   );
 }

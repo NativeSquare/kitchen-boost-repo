@@ -44,6 +44,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import { CategoryListEditor } from "./category-list-editor";
+import { ItemList } from "./item-list";
 
 export type MenuViewProps = {
   /**
@@ -65,6 +66,28 @@ export type MenuViewProps = {
    * pinned by `packages/backend/convex/lib/menu/categories.test.ts`).
    */
   onReorderCategories?: (orderedIds: Id<"menuCategories">[]) => void;
+  /**
+   * F-MENU-04 (#211) — items bucketed by their `categoryId`.
+   *   - `undefined` (the WHOLE map) → items query still in flight at page
+   *     level; each `ItemList` renders skeletons.
+   *   - present but a category key MISSING → that category has zero items;
+   *     the `ItemList` will render its empty branch.
+   *
+   * Bucketing happens in the page (see `bucketItemsByCategory`) so this
+   * view stays a pure function of its props and the page owns the Convex
+   * call.
+   */
+  itemsByCategory?: Record<string, Doc<"menuItems">[]> | undefined;
+  /**
+   * F-MENU-04 (#211) — fired when the gérant flips the rupture toggle on a
+   * card. The page wires this to `useTenantMutation(
+   * api.lib.menu.availability.setItemAvailability)`. The toggle calls back
+   * with the NEW (toggled) value so the page can forward it as-is.
+   */
+  onToggleItemAvailability?: (
+    itemId: Id<"menuItems">,
+    nextAvailable: boolean,
+  ) => void;
 };
 
 export function MenuView({
@@ -73,6 +96,8 @@ export function MenuView({
   onRenameCategory,
   onDeleteCategory,
   onReorderCategories,
+  itemsByCategory,
+  onToggleItemAvailability,
 }: MenuViewProps) {
   const hasCrud =
     onCreateCategory !== undefined &&
@@ -89,6 +114,8 @@ export function MenuView({
           onRenameCategory={onRenameCategory}
           onDeleteCategory={onDeleteCategory}
           onReorderCategories={onReorderCategories}
+          itemsByCategory={itemsByCategory}
+          onToggleItemAvailability={onToggleItemAvailability}
         />
       </div>
     </div>
@@ -138,6 +165,8 @@ function MenuBody({
   onRenameCategory,
   onDeleteCategory,
   onReorderCategories,
+  itemsByCategory,
+  onToggleItemAvailability,
 }: MenuBodyProps) {
   if (categories === undefined) {
     return <CategoryListSkeleton />;
@@ -149,13 +178,19 @@ function MenuBody({
       />
     );
   }
-  if (
+  // F-MENU-04 (#211) — only render the per-category items sections when the
+  // page wires BOTH `itemsByCategory` (the bucketed map) AND
+  // `onToggleItemAvailability` (the live mutation handler). Without the
+  // handler we would render a toggle the gérant could click that wouldn't
+  // do anything — bad UX, worse safety (ADR 0015: the toggle MUST fire the
+  // live mutation, never silently no-op).
+  const showItemsSections =
+    onToggleItemAvailability !== undefined && itemsByCategory !== undefined;
+  const categoriesNode =
     hasCrud &&
     onCreateCategory !== undefined &&
     onRenameCategory !== undefined &&
-    onDeleteCategory !== undefined
-  ) {
-    return (
+    onDeleteCategory !== undefined ? (
       <CategoryListEditor
         categories={categories}
         onCreate={onCreateCategory}
@@ -163,9 +198,64 @@ function MenuBody({
         onDelete={onDeleteCategory}
         onReorder={onReorderCategories}
       />
+    ) : (
+      <CategoryList categories={categories} />
     );
-  }
-  return <CategoryList categories={categories} />;
+  if (!showItemsSections) return categoriesNode;
+  // Defensive resort by `order` — same insurance as `CategoryList` (the
+  // backend returns them sorted via `by_tenant_order`; cheap to repeat).
+  const sortedCategories = [...categories].sort((a, b) => a.order - b.order);
+  return (
+    <div className="flex flex-col gap-6">
+      {categoriesNode}
+      <div
+        className="flex flex-col gap-6"
+        data-slot="menu-categories-items-sections"
+      >
+        {sortedCategories.map((category) => (
+          <CategoryItemsSection
+            key={category._id}
+            category={category}
+            items={itemsByCategory[category._id as unknown as string]}
+            onToggleItemAvailability={onToggleItemAvailability}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * F-MENU-04 (#211) — One « section » per category: the category name as the
+ * section heading, followed by the per-category `ItemList`. The categories
+ * editor above still owns CRUD + drag&drop; THIS block surfaces the items
+ * each category contains (with the inline rupture toggle, the load-bearing
+ * staff affordance — story body).
+ */
+function CategoryItemsSection({
+  category,
+  items,
+  onToggleItemAvailability,
+}: {
+  category: Doc<"menuCategories">;
+  items: Doc<"menuItems">[] | undefined;
+  onToggleItemAvailability: (
+    itemId: Id<"menuItems">,
+    nextAvailable: boolean,
+  ) => void;
+}) {
+  return (
+    <section
+      data-slot="menu-category-items-section"
+      data-category-id={category._id as unknown as string}
+      className="flex flex-col gap-2"
+    >
+      <h2 className="text-sm font-semibold tracking-wide uppercase">
+        {category.name}
+      </h2>
+      <ItemList items={items} onToggleAvailability={onToggleItemAvailability} />
+    </section>
+  );
 }
 
 function CategoryList({ categories }: { categories: Doc<"menuCategories">[] }) {
