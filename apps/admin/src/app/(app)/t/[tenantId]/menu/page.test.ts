@@ -345,14 +345,17 @@ describe("page.tsx — F-MENU-01 (#187) wiring contract", () => {
     // NOT_FOUND for cross-tenant probes, etc.) surface as a visible toast —
     // never silently swallowed.
     const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
-    // Window widened to 3500 (#246 inserted the attach/detach mutation
+    // Window widened to 4500 (#246 inserted the attach/detach mutation
     // declarations + handlers between the first `createGroup` mention — in
     // the mutation declaration block — and the first downstream
-    // `toast.error` in the categories CRUD handlers). Pairing is intact: each
-    // handler still wraps its own mutation in try/catch + toast.error.
-    expect(collapsed).toMatch(/createGroup[\s\S]{0,3500}toast\.error/);
-    expect(collapsed).toMatch(/updateGroup[\s\S]{0,3500}toast\.error/);
-    expect(collapsed).toMatch(/removeGroup[\s\S]{0,3500}toast\.error/);
+    // `toast.error` in the categories CRUD handlers; #254 layered the
+    // publication wiring on top — publishMenu + hasUnpublishedChanges +
+    // previewHref + tenantId + state hooks before the first CRUD handler).
+    // Pairing is intact: each handler still wraps its own mutation in
+    // try/catch + toast.error.
+    expect(collapsed).toMatch(/createGroup[\s\S]{0,4500}toast\.error/);
+    expect(collapsed).toMatch(/updateGroup[\s\S]{0,4500}toast\.error/);
+    expect(collapsed).toMatch(/removeGroup[\s\S]{0,4500}toast\.error/);
   });
 
   // ---------------------------------------------------------------------------

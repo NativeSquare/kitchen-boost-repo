@@ -246,13 +246,16 @@ describe("MenuView — F-MENU-01 (#187)", () => {
     }
   });
 
-  it("AC4 — header surfaces the three placeholder labels « Aperçu » / « Publier » / « modifications non publiées »", () => {
+  it("AC4 — header surfaces the « Aperçu » + « Publier » labels (badge presence is F-MENU-10's contract)", () => {
+    // The badge « modifications non publiées » is now conditionally rendered
+    // (F-MENU-10 / #254): visible only when the page wires
+    // `hasUnpublishedChanges === true`. Its visibility contract lives in the
+    // F-MENU-10 tests below — this AC4 test stays on the two header buttons.
     const text = allText(
       serialize(MenuView({ categories: UNORDERED_CATEGORIES })),
     );
     expect(text).toMatch(/Aperçu/);
     expect(text).toMatch(/Publier/);
-    expect(text).toMatch(/modifications non publi[ée]es/i);
   });
 
   it("AC4 — « Aperçu » and « Publier » HEADER buttons are DISABLED when no F-MENU-10 callbacks are wired (read-only baseline)", () => {
