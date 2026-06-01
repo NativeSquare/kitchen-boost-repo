@@ -29,6 +29,8 @@
  *   - No new primitive — only the already-scaffolded shadcn pieces (Card,
  *     Skeleton, Badge) routed through `TemplatePicker`/`TemplateCard`.
  */
+import Link from "next/link";
+
 import type { TenantTemplateSummary } from "@packages/backend/convex/lib/notifications/campaigns";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
 
@@ -53,8 +55,20 @@ export type CampagnesViewProps = {
 export function CampagnesView({ tenantId, templates }: CampagnesViewProps) {
   return (
     <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
-      <div className="px-4 lg:px-6">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 lg:px-6">
         <h1 className="text-2xl font-bold">Campagnes</h1>
+        {/*
+         * F-CAMPAGNES [6/7] (#240) — entry point into the « historique des
+         * lancements » sub-route. Surfaces on every branch (loading / empty /
+         * populated) so the gérant can always go review past launches without
+         * having to wait for the templates query to resolve.
+         */}
+        <Link
+          href={`/t/${tenantId}/campagnes/historique`}
+          className="text-sm font-medium text-[#1B7A3D] underline-offset-4 hover:underline"
+        >
+          Historique
+        </Link>
       </div>
       <div className="px-4 lg:px-6">
         <TemplatePicker tenantId={tenantId} templates={templates} />

@@ -114,8 +114,11 @@ export {
  * seam). Also INTERNAL-ONLY — the barrel exposes only the pure channel predicate.
  */
 export {
+  type CampaignLaunchSummary,
   type CampaignResult,
   type TenantTemplateSummary,
+  getTenantCampaignLaunch,
+  listTenantCampaignLaunches,
   listTenantTemplates,
   sendCrossTenantCampaign,
   sendTenantCampaign,

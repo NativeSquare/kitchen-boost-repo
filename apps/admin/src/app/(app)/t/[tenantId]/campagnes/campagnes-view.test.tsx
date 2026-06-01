@@ -198,9 +198,7 @@ const TENANT_ID = "tenant_abc" as Id<"tenants">;
 describe("CampagnesView — F-CAMPAGNES [1/7] (#179) + [2/7] (#188)", () => {
   it("AC3 — renders one item per template (the label surfaces verbatim)", () => {
     const text = allText(
-      serialize(
-        CampagnesView({ tenantId: TENANT_ID, templates: TEMPLATES }),
-      ),
+      serialize(CampagnesView({ tenantId: TENANT_ID, templates: TEMPLATES })),
     );
     for (const t of TEMPLATES) {
       // Every template label MUST surface. Slice 2 (#188) renders a
@@ -214,9 +212,7 @@ describe("CampagnesView — F-CAMPAGNES [1/7] (#179) + [2/7] (#188)", () => {
     // The h1 anchors the page across all branches (loading / empty / list) —
     // pinned here for the list branch.
     const text = allText(
-      serialize(
-        CampagnesView({ tenantId: TENANT_ID, templates: TEMPLATES }),
-      ),
+      serialize(CampagnesView({ tenantId: TENANT_ID, templates: TEMPLATES })),
     );
     expect(text).toMatch(/Campagnes/);
   });
@@ -244,9 +240,7 @@ describe("CampagnesView — F-CAMPAGNES [1/7] (#179) + [2/7] (#188)", () => {
 
   it("AC4 — loading branch keeps the page title (no blank flash before data lands)", () => {
     const text = allText(
-      serialize(
-        CampagnesView({ tenantId: TENANT_ID, templates: undefined }),
-      ),
+      serialize(CampagnesView({ tenantId: TENANT_ID, templates: undefined })),
     );
     expect(text).toMatch(/Campagnes/);
   });
@@ -283,17 +277,11 @@ describe("CampagnesView — F-CAMPAGNES [1/7] (#179) + [2/7] (#188)", () => {
     // "Error", "Templates", title-cased English headings).
     const branches = [
       allText(
-        serialize(
-          CampagnesView({ tenantId: TENANT_ID, templates: undefined }),
-        ),
+        serialize(CampagnesView({ tenantId: TENANT_ID, templates: undefined })),
       ),
+      allText(serialize(CampagnesView({ tenantId: TENANT_ID, templates: [] }))),
       allText(
-        serialize(CampagnesView({ tenantId: TENANT_ID, templates: [] })),
-      ),
-      allText(
-        serialize(
-          CampagnesView({ tenantId: TENANT_ID, templates: TEMPLATES }),
-        ),
+        serialize(CampagnesView({ tenantId: TENANT_ID, templates: TEMPLATES })),
       ),
     ];
     for (const text of branches) {
@@ -310,13 +298,37 @@ describe("CampagnesView — F-CAMPAGNES [1/7] (#179) + [2/7] (#188)", () => {
     // built from `/t/[tenantId]/campagnes/[templateId]`. The detailed
     // grid/loading/empty branches are pinned by `TemplatePicker.test.tsx`
     // and `TemplateCard.test.tsx`; here we only assert the page-level
-    // delegation didn't lose the count.
+    // delegation didn't lose the count. Slice 6 (#240) adds ONE extra
+    // anchor — the « Historique » link to /campagnes/historique — so the
+    // count is `templates.length + 1`.
     const tree = serialize(
       CampagnesView({ tenantId: TENANT_ID, templates: TEMPLATES }),
     );
     const anchors = flatten(tree).filter(
       (n) => n !== null && !("text" in n) && n.type.toLowerCase() === "a",
     );
-    expect(anchors).toHaveLength(TEMPLATES.length);
+    expect(anchors).toHaveLength(TEMPLATES.length + 1);
+  });
+
+  it("AC (#240) — page shell exposes a « Historique » link pointing at /t/[tenantId]/campagnes/historique", () => {
+    // Slice 6 (#240) adds a navigation entry from the picker shell to the
+    // « historique des lancements » sub-route so the gérant can review past
+    // campaign runs without leaving the campagnes section.
+    const branches = [
+      serialize(CampagnesView({ tenantId: TENANT_ID, templates: undefined })),
+      serialize(CampagnesView({ tenantId: TENANT_ID, templates: [] })),
+      serialize(CampagnesView({ tenantId: TENANT_ID, templates: TEMPLATES })),
+    ];
+    for (const tree of branches) {
+      const text = allText(tree);
+      expect(text).toMatch(/Historique/);
+      const anchors = flatten(tree).filter(
+        (n) => n !== null && !("text" in n) && n.type.toLowerCase() === "a",
+      ) as Array<{ type: string; props: Record<string, unknown> }>;
+      const hrefs = anchors
+        .map((a) => a.props["href"])
+        .filter((h): h is string => typeof h === "string");
+      expect(hrefs).toContain(`/t/${TENANT_ID}/campagnes/historique`);
+    }
   });
 });
