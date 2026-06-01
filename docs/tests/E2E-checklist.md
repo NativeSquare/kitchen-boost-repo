@@ -545,6 +545,8 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 
 ## MO — Monitoring
 
+> **Statut** : ✅ **3/3 validés manuellement le 2026-06-01** (admin `admin@kb.test`, 2 incidents `kyc_pending` seedés via `e2e:seedE2EMonitoringIncidents`). MO4 couvert par A4b (identique). **Caveat V1** : seul le kind `kyc_pending` est visible en runtime — les 2 autres kinds (`webhook_latency`, `paid_no_course`) sont feature-flagged off et ne pourront être testés qu'à l'arrivée des chantiers 2.5 (webhook telemetry) et 2.6 (commandes payées / unfulfilled). MO2 testé sur 2 incidents (la grille demande « ≥ 10 mixtes » pour stresser les filtres AND ; revérifier à l'arrivée des 2 autres kinds).
+
 ### MO1 — KB Admin voit les 3 kinds
 
 - **Acteur** : KB Admin
