@@ -8,10 +8,15 @@
  * and the list of `prospects` already partitioned by `partitionProspectsByPhase`,
  * and renders a titled vertical stack of `ProspectCard`s.
  *
- * NO drag-and-drop in this slice (#255 « Pas de drag-and-drop dans cette
- * story — seulement la mise en colonnes statique »). PIPELINE-06 (#221)
- * cables the DnD on top of this same column shell — the surface is
- * intentionally stable so that slice is purely additive.
+ * F-PIPELINE-CRM 06 (#262) — split presentational shell vs droppable wrapper
+ * -------------------------------------------------------------------------
+ * This file stays PURE (no hooks, no @dnd-kit) so the React-tree serializer
+ * used by the vitest `node` env can expand it directly — every #255 acceptance
+ * test keeps passing. The DnD wiring lives in the sibling
+ * `DroppableKanbanColumn` (`droppable-kanban-column.tsx`) which calls
+ * `useDroppable` and wraps this pure column + swaps `ProspectCard` for
+ * `DraggableProspectCard`. The page imports the droppable wrapper; tests
+ * still mount `KanbanColumn` directly.
  *
  * The `now` prop is plumbed through to each `ProspectCard` for deterministic
  * tests of the relative-time rendering. Production callers omit it.

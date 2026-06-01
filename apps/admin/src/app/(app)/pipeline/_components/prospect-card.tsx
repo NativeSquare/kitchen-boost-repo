@@ -18,29 +18,28 @@
  *
  * The whole card is a bare `<a>` to `/pipeline/[prospectId]` (the existing
  * fiche, F-SHELL-10 #233 — see « Why plain `<a>` » section below for the
- * testing rationale). Click is the only interaction this slice exposes
- * — drag-and-drop arrives in PIPELINE-06 (#221).
+ * testing rationale).
+ *
+ * F-PIPELINE-CRM 06 (#262) — split presentational shell vs draggable wrapper
+ * -------------------------------------------------------------------------
+ * This file stays PURE (no hooks, no Convex, no @dnd-kit) so the React-tree
+ * serializer used by the vitest `node` env can expand it directly — every
+ * #255 acceptance test keeps passing without conversion. The DnD wiring
+ * lives in the sibling `DraggableProspectCard` (`draggable-prospect-card.tsx`)
+ * which calls `useDraggable` and wraps this pure card. `KanbanColumn`
+ * imports the draggable wrapper; tests still mount `ProspectCard` directly.
  *
  * Why a local relative-time helper (not date-fns)
  * ----------------------------------------------
- * The admin app doesn't ship date-fns / dayjs (verified — none in
- * `package.json`). The Kanban surface needs ONE relative formatter, in
- * French, for « il y a Nx » ; pulling a full i18n date lib for that would
- * be over-engineered. `formatRelativeFromNow` below is ~10 lines and pinned
- * by `prospect-card.test.tsx`.
+ * The admin app doesn't ship date-fns / dayjs. `formatRelativeFromNow`
+ * below is ~10 lines and pinned by `prospect-card.test.tsx`.
  *
  * Why plain `<a>` (not `next/link`)
  * ---------------------------------
  * Mirrors `provision-launcher-button.tsx` / `prospect-fiche-view.tsx`: a
  * bare `<a>` lets the React-tree serializer used by the vitest suite
  * (lean `node` env, no jsdom, no Next.js router) inspect the `href`
- * directly. Next.js's prefetching is the only thing forfeited, and the
- * Kanban renders ≤ a few hundred cards on a supervision page — not a hot
- * path that warrants the testing-ergonomics hit.
- *
- * Scope discipline (#255 hard constraint): file lives under
- * `apps/admin/src/app/(app)/pipeline/_components/` ONLY. Zero touch to
- * `apps/web`, `apps/native`, or `packages/backend/convex/`.
+ * directly.
  */
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -62,9 +61,7 @@ const SOURCE_LABEL: Record<ProspectCardSnapshot["source"], string> = {
 /**
  * Lightweight French relative-time formatter. Returns « il y a Nx »
  * where x is the most appropriate coarse unit (min / h / j) for a date
- * in the past, capped at days (the operator only cares about
- * « interagi récemment » vs « ça traîne »). Future dates collapse to
- * « à l'instant » (defensive — shouldn't happen in production).
+ * in the past, capped at days. Future dates collapse to « à l'instant ».
  */
 function formatRelativeFromNow(at: number, now: number): string {
   const deltaMs = Math.max(0, now - at);
@@ -83,9 +80,7 @@ export type ProspectCardProps = {
    * Reference instant for relative-time rendering. ALWAYS passed by the
    * caller — the parent owns the « current time » so the React purity rule
    * (`react-hooks/purity`) isn't tripped by calling `Date.now()` inside
-   * render (impure, would update unpredictably on re-render). The page
-   * computes it once via `useState(() => Date.now())` at the top of the
-   * `/pipeline` surface.
+   * render. The page computes it once via `useState(() => Date.now())`.
    */
   now: number;
   /** Optional extra class on the outer wrapper (e.g. column-side spacing). */
@@ -93,10 +88,6 @@ export type ProspectCardProps = {
 };
 
 export function ProspectCard({ prospect, now, className }: ProspectCardProps) {
-  // Most recent interaction = max by `date`. The schema stores them in an
-  // array with no specified order — appending is the documented operation
-  // (`appendInteraction` in lib/tenancy/prospectsStore), but we don't rely
-  // on insertion order here.
   const latestInteraction = prospect.interactions?.reduce<
     { date: number } | undefined
   >((acc, cur) => {
