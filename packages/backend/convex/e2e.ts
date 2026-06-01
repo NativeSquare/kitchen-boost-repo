@@ -2123,3 +2123,166 @@ export const wipeE2EFicheProspectDetails = internalMutation({
     return { prospectsDeleted, ghostTenantsDeleted };
   },
 });
+
+// -----------------------------------------------------------------------------
+// E2E-MC-B seed — populate the campagnes picker (MC5-MC9) with active
+// templates scoped to `test-t1`. `test-t2` stays empty to exercise the
+// empty-state CSM card (MC8). Sentinel `key` prefix (`e2e_mc_b_`) lets
+// `wipeE2ECampagnesTemplates` delete *exactly* what this seed inserted
+// without touching real templates.
+//
+// 2 templates inserted on `test-t1` :
+//
+//  - `e2e_mc_b_welcome_back` (texte-only, simple variables) — exerce le
+//    formulaire MC10 « texte seul » + l'affichage par défaut MC7.
+//  - `e2e_mc_b_weekend_promo` (texte + slider + time) — exerce MC10
+//    « formulaire mixte 5 champs » + MC12 « preview live + counter ».
+//
+// Les 2 templates respectent les bounds (ADR 0006 / PRD 80 §4) :
+// `language: "fr"`, `containsAlcohol: false`, body < 200 chars,
+// `maxDiscountPercent ≤ 50`, variables ∈ ALLOWED_TEMPLATE_VARIABLES.
+// -----------------------------------------------------------------------------
+
+const E2E_MC_B_TEMPLATE_KEY_PREFIX = "e2e_mc_b_";
+
+type CampagnesTemplateSpec = {
+  key: string;
+  label: string;
+  body: string;
+  variables: ReadonlyArray<
+    | "prenom_client"
+    | "nom_resto"
+    | "item_hero"
+    | "discount"
+    | "nom_plat"
+    | "heure_debut"
+    | "heure_fin"
+    | "jour"
+  >;
+  deepLinkTarget: "catalogue" | "home";
+  maxDiscountPercent: number;
+};
+
+const MC_B_TEMPLATE_SPECS: ReadonlyArray<CampagnesTemplateSpec> = [
+  {
+    key: `${E2E_MC_B_TEMPLATE_KEY_PREFIX}welcome_back`,
+    label: "On t'a manqué",
+    body: "Bonjour {prenom_client}, on a une nouvelle offre rien que pour toi chez {nom_resto} !",
+    variables: ["prenom_client", "nom_resto"],
+    deepLinkTarget: "catalogue",
+    maxDiscountPercent: 0,
+  },
+  {
+    key: `${E2E_MC_B_TEMPLATE_KEY_PREFIX}weekend_promo`,
+    label: "Promo weekend",
+    body: "Le {jour}, -{discount}% sur le {nom_plat} de {heure_debut} à {heure_fin} chez {nom_resto} !",
+    variables: [
+      "jour",
+      "discount",
+      "nom_plat",
+      "heure_debut",
+      "heure_fin",
+      "nom_resto",
+    ],
+    deepLinkTarget: "catalogue",
+    maxDiscountPercent: 50,
+  },
+];
+
+/**
+ * Seed 2 `notificationTemplates` scope=tenant active sur `test-t1` pour
+ * exercer le picker campagnes (MC5-MC9) et le formulaire dynamique
+ * (MC10/MC12). Idempotent par `key` sentinellé : re-runs patchent les
+ * rangées existantes (label/body/variables réinitialisés au shape canonique).
+ *
+ * Optionnel arg `tenantSlug` (default `test-t1`) permet de seeder un autre
+ * tenant en cas de besoin futur (ex. seed multi-tenant pour MC6 isolation).
+ */
+export const seedE2ECampagnesTemplates = internalMutation({
+  args: {
+    tenantSlug: v.optional(v.string()),
+  },
+  returns: v.object({
+    tenantId: v.id("tenants"),
+    templatesCreated: v.number(),
+    templatesUpdated: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const slug = args.tenantSlug ?? "test-t1";
+    const tenant = await ctx.db
+      .query("tenants")
+      .withIndex("by_slug", (q) => q.eq("slug", slug))
+      .unique();
+    if (tenant === null) {
+      throw new ConvexError({
+        message: `Tenant with slug "${slug}" not found.`,
+      });
+    }
+
+    const now = Date.now();
+    let templatesCreated = 0;
+    let templatesUpdated = 0;
+
+    for (const spec of MC_B_TEMPLATE_SPECS) {
+      const existing = await ctx.db
+        .query("notificationTemplates")
+        .withIndex("by_key", (q) => q.eq("key", spec.key))
+        .unique();
+
+      const payload = {
+        key: spec.key,
+        label: spec.label,
+        body: spec.body,
+        variables:
+          spec.variables as unknown as Doc<"notificationTemplates">["variables"],
+        deepLinkTarget: spec.deepLinkTarget,
+        scope: "tenant" as const,
+        maxDiscountPercent: spec.maxDiscountPercent,
+        language: "fr" as const,
+        containsAlcohol: false,
+        active: true,
+        tenantId: tenant._id,
+      };
+
+      if (existing === null) {
+        await ctx.db.insert("notificationTemplates", {
+          ...payload,
+          createdAt: now,
+        });
+        templatesCreated += 1;
+      } else {
+        await ctx.db.patch(existing._id, payload);
+        templatesUpdated += 1;
+      }
+    }
+
+    return {
+      tenantId: tenant._id,
+      templatesCreated,
+      templatesUpdated,
+    };
+  },
+});
+
+/**
+ * Wipe the E2E-MC-B campagnes templates seed. Filters by the sentinel `key`
+ * prefix (`e2e_mc_b_*`) — never touches real templates.
+ */
+export const wipeE2ECampagnesTemplates = internalMutation({
+  args: {},
+  returns: v.object({ templatesDeleted: v.number() }),
+  handler: async (ctx) => {
+    let templatesDeleted = 0;
+    for (const spec of MC_B_TEMPLATE_SPECS) {
+      const existing = await ctx.db
+        .query("notificationTemplates")
+        .withIndex("by_key", (q) => q.eq("key", spec.key))
+        .unique();
+      if (existing !== null) {
+        await ctx.db.delete(existing._id);
+        templatesDeleted += 1;
+      }
+    }
+    return { templatesDeleted };
+  },
+});

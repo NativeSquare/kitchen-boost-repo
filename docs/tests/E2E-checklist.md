@@ -94,6 +94,8 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 
 ## MC — Mes clients
 
+> **Statut partiel** : ✅ **MC1-MC4 validés le 2026-06-01** (vague MC-A, KPIs « Mes clients » côté manager mono-T1 — seed existant `seedE2ECustomerKPIs` lancé sur `test-t1` → 6 customers réutilisés : 2 actifs + 2 inactifs + 2 VIP, distribution reachability + macro + MOAT anti-PII OK). Reste à valider : MC5-MC9 (vague MC-B, Campagnes liste + picker — seed `e2e:seedE2ECampagnesTemplates` à ajouter), MC10-MC13 (vague MC-C, template form + violation), MC14-MC16 (vague MC-D, send + anomaly + cross-tenant), MC17-MC19 (vague MC-E, historique), MC20-MC27 (vague MC-F, dashboard + stats + LineChart — seed orders à ajouter).
+
 ### MC1 — Open « Mes clients » + audit event `customer.kpi.consult`
 
 - **Acteur** : KB Manager
