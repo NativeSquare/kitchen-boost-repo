@@ -502,6 +502,12 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 
 ## QR — Export SVG
 
+> **Statut** : ✅ **2/2 validés manuellement le 2026-06-01** (manager `manager@kb.test`, tenant `test-t1` avec et sans `customDomain`). 4 commits pendant le run :
+>
+> - **QR2 customDomain ignoré** (`0c428ec`) — la page lisait `loadTenantForStripe` (admin-only) sur le chemin manager, donc fallback systématique sur `<slug>.kitchen-boost.fr`. Fixé en branchant sur `api.lib.admin.tenantSettings.getSettings` (manager-accessible).
+> - **QR1 A4/A6 cropped text** (`36f441c`) — accroche centrée sans `maxWidth`, débordait sur les noms de resto longs. Wrap auto désormais.
+> - **Simplification produit SVG-only** (`000c6ee` + `972c5d2`) — voir bloc ci-dessous.
+
 > Simplification 2026-06-01 : la page `/t/[tenantId]/qr` ne produit plus
 > qu'un seul export — un SVG noir-sur-blanc, sans branding ni accroche, sans
 > variantes de format. La direction artistique appartient au restaurateur,
