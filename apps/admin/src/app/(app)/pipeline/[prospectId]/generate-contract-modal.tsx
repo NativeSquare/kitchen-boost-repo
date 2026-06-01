@@ -327,8 +327,21 @@ export function GenerateContractModal(props: GenerateContractModalProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
+      {/* Responsiveness contract (T6bis fix) :
+          - `sm:max-w-2xl` : ~672px, ne déborde plus du viewport sur écrans
+            normaux (la base shadcn `sm:max-w-lg` était OK mais on a élargi
+            pour accommoder les 5 inputs juridiques + descriptions sans
+            tasser visuellement).
+          - `max-h-[90vh]` + `flex-col` + `overflow-hidden` + `p-0` : la
+            hauteur est plafonnée et le SCROLL est confié au body interne,
+            pas au modal entier (header + footer restent visibles).
+          - `gap-0` : on reprend la main sur l'espacement (la base shadcn
+            ajoute `gap-4` entre tous les enfants du grid, ce qui ferait
+            sauter le sticky parfait + un trou visible entre sections). */}
+      <DialogContent className="flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
+        {/* Header sticky : padding restauré ici (le DialogContent a `p-0`)
+            + bordure bas pour séparer visuellement du body scrollable. */}
+        <DialogHeader className="border-b px-6 pt-6 pb-4">
           <DialogTitle>Générer un contrat</DialogTitle>
           <DialogDescription>
             Choisis la prestation et vérifie les champs juridiques pré-remplis
@@ -338,117 +351,131 @@ export function GenerateContractModal(props: GenerateContractModalProps) {
           </DialogDescription>
         </DialogHeader>
 
-        {/* Prestation picker (radios) — each option carries a one-line
-            FR description distilled from the contract template (Art. 1
-            §1.3) so a user who has not read the contract knows what
-            they are picking. */}
-        <div
-          className="flex flex-col gap-3"
-          data-slot="generate-contract-prestation"
-        >
-          <Label className="text-sm font-medium">Prestation</Label>
-          <RadioGroup
-            value={prestation}
-            onValueChange={(next) => setPrestation(next as ContractPrestation)}
+        {/* Body scrollable — seul ce conteneur scrolle verticalement.
+            `min-h-0` est obligatoire dans un flex-col parent sinon le
+            child ne shrink pas (il prend sa taille de contenu et casse
+            le sticky). */}
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 py-4">
+          {/* Prestation picker (radios) — each option carries a one-line
+              FR description distilled from the contract template (Art. 1
+              §1.3) so a user who has not read the contract knows what
+              they are picking. */}
+          <div
+            className="flex flex-col gap-3"
+            data-slot="generate-contract-prestation"
           >
-            {PRESTATION_OPTIONS.map((opt) => {
-              const id = `generate-contract-prestation-${opt.value}`;
-              return (
-                <div key={opt.value} className="flex items-start gap-2">
-                  <RadioGroupItem value={opt.value} id={id} className="mt-1" />
-                  <div className="flex flex-col gap-0.5">
-                    <Label htmlFor={id} className="text-sm font-medium">
-                      {opt.label}
-                    </Label>
-                    <span
-                      data-slot="generate-contract-prestation-description"
-                      className="text-muted-foreground text-xs"
-                    >
-                      {opt.description}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </RadioGroup>
-        </div>
-
-        {/* Juridical fields — editable inputs seeded from the prospect.
-            The launcher persists any change BEFORE generating so the
-            fresh values flow back into the prospect doc + the next
-            opening pre-fills with them. */}
-        <div
-          className="flex flex-col gap-2"
-          data-slot="generate-contract-juridical-recap"
-        >
-          <Label className="text-sm font-medium">Champs juridiques</Label>
-          <p className="text-muted-foreground text-xs">
-            Pré-remplis depuis la fiche prospect — modifiables ici. Les
-            modifications sont enregistrées sur le prospect au moment de
-            générer.
-          </p>
-          <div className="flex flex-col gap-3 rounded-md border p-3">
-            {FIELDS.map((f) => {
-              const err = fieldErrors[f.key];
-              const isMissing = f.value.trim().length === 0;
-              return (
-                <div
-                  key={f.key}
-                  data-slot="juridical-field-row"
-                  data-field={f.key}
-                  data-missing={isMissing ? "true" : "false"}
-                  data-invalid={err !== undefined ? "true" : "false"}
-                  className="flex flex-col gap-1"
-                >
-                  <Label
-                    htmlFor={`generate-contract-field-${f.key}`}
-                    className="text-muted-foreground text-xs uppercase"
-                  >
-                    {f.label}
-                  </Label>
-                  <Input
-                    id={`generate-contract-field-${f.key}`}
-                    data-slot={`generate-contract-input-${f.key}`}
-                    value={f.value}
-                    onChange={(e) => f.setValue(e.target.value)}
-                    placeholder={f.placeholder}
-                    inputMode={f.inputMode}
-                    type={f.type ?? "text"}
-                    aria-invalid={err !== undefined ? true : undefined}
-                  />
-                  {err !== undefined ? (
-                    <span
-                      data-slot={`generate-contract-error-${f.key}`}
-                      className="text-destructive text-xs"
-                    >
-                      {err}
-                    </span>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-          {!canGenerate ? (
-            <p
-              data-slot="generate-contract-missing-help"
-              className="text-destructive text-xs"
+            <Label className="text-sm font-medium">Prestation</Label>
+            <RadioGroup
+              value={prestation}
+              onValueChange={(next) =>
+                setPrestation(next as ContractPrestation)
+              }
             >
-              {MISSING_FIELDS_COPY}
+              {PRESTATION_OPTIONS.map((opt) => {
+                const id = `generate-contract-prestation-${opt.value}`;
+                return (
+                  <div key={opt.value} className="flex items-start gap-2">
+                    <RadioGroupItem
+                      value={opt.value}
+                      id={id}
+                      className="mt-1"
+                    />
+                    <div className="flex flex-col gap-0.5">
+                      <Label htmlFor={id} className="text-sm font-medium">
+                        {opt.label}
+                      </Label>
+                      <span
+                        data-slot="generate-contract-prestation-description"
+                        className="text-muted-foreground text-xs"
+                      >
+                        {opt.description}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </RadioGroup>
+          </div>
+
+          {/* Juridical fields — editable inputs seeded from the prospect.
+              The launcher persists any change BEFORE generating so the
+              fresh values flow back into the prospect doc + the next
+              opening pre-fills with them. */}
+          <div
+            className="flex flex-col gap-2"
+            data-slot="generate-contract-juridical-recap"
+          >
+            <Label className="text-sm font-medium">Champs juridiques</Label>
+            <p className="text-muted-foreground text-xs">
+              Pré-remplis depuis la fiche prospect — modifiables ici. Les
+              modifications sont enregistrées sur le prospect au moment de
+              générer.
             </p>
+            <div className="flex flex-col gap-3 rounded-md border p-3">
+              {FIELDS.map((f) => {
+                const err = fieldErrors[f.key];
+                const isMissing = f.value.trim().length === 0;
+                return (
+                  <div
+                    key={f.key}
+                    data-slot="juridical-field-row"
+                    data-field={f.key}
+                    data-missing={isMissing ? "true" : "false"}
+                    data-invalid={err !== undefined ? "true" : "false"}
+                    className="flex flex-col gap-1"
+                  >
+                    <Label
+                      htmlFor={`generate-contract-field-${f.key}`}
+                      className="text-muted-foreground text-xs uppercase"
+                    >
+                      {f.label}
+                    </Label>
+                    <Input
+                      id={`generate-contract-field-${f.key}`}
+                      data-slot={`generate-contract-input-${f.key}`}
+                      value={f.value}
+                      onChange={(e) => f.setValue(e.target.value)}
+                      placeholder={f.placeholder}
+                      inputMode={f.inputMode}
+                      type={f.type ?? "text"}
+                      aria-invalid={err !== undefined ? true : undefined}
+                    />
+                    {err !== undefined ? (
+                      <span
+                        data-slot={`generate-contract-error-${f.key}`}
+                        className="text-destructive text-xs"
+                      >
+                        {err}
+                      </span>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+            {!canGenerate ? (
+              <p
+                data-slot="generate-contract-missing-help"
+                className="text-destructive text-xs"
+              >
+                {MISSING_FIELDS_COPY}
+              </p>
+            ) : null}
+          </div>
+
+          {/* Inline backend error (in addition to the toast the launcher fires). */}
+          {submitError !== null ? (
+            <div
+              data-slot="generate-contract-submit-error"
+              className="border-destructive/40 bg-destructive/10 text-destructive rounded-md border p-3 text-sm"
+            >
+              {submitError}
+            </div>
           ) : null}
         </div>
 
-        {/* Inline backend error (in addition to the toast the launcher fires). */}
-        {submitError !== null ? (
-          <div
-            data-slot="generate-contract-submit-error"
-            className="border-destructive/40 bg-destructive/10 text-destructive rounded-md border p-3 text-sm"
-          >
-            {submitError}
-          </div>
-        ) : null}
-
-        <DialogFooter>
+        {/* Footer sticky : padding restauré + bordure haut + `bg-background`
+            pour rester opaque devant le body scrollable. */}
+        <DialogFooter className="bg-background border-t px-6 py-4">
           <Button
             type="button"
             variant="outline"
