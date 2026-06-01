@@ -593,7 +593,7 @@ Voir A4b (identique).
 
 ## T — Tenants
 
-> **Statut partiel** : ✅ **T1 + T1bis validés le 2026-06-01** (vague T-A, switcher). Reste à valider : T2 + T9 + T10 (vague T-B, supervision Kanban — seed `e2e:seedE2ESupervisionProspects` ajouté), T3-T8 (vague T-C, contrats — seed à ajouter), T11-T13 + T17-T19 (vague T-D, Kanban DnD), T14-T16 + T20-T25 (vague T-E, fiche prospect détaillée).
+> **Statut partiel** : ✅ **T1 + T1bis + T2 + T9 + T10 validés le 2026-06-01** (vagues T-A switcher + T-B supervision). T10 variante (a) skippée intentionnellement (impossible sans wipe complet ; couverture code-review jugée suffisante). Reste à valider : T3-T8 (vague T-C, contrats — seed `e2e:seedE2EContractProspects`), T11-T13 + T17-T19 (vague T-D, Kanban DnD), T14-T16 + T20-T25 (vague T-E, fiche prospect détaillée).
 
 ### T1 — Tenant switcher (manager + admin avec Supervision pinned)
 
