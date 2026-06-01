@@ -1408,3 +1408,94 @@ export const wipeE2EMonitoringIncidents = internalMutation({
     return { prospectsDeleted };
   },
 });
+
+// -----------------------------------------------------------------------------
+// E2E-T-B seed — populate the supervision Kanban with multi-phase prospects so
+// T9/T10/T11 are testable. The MO seed already inserts 2 prospects in
+// `preparation` (Stripe KYC + Uber Direct KYC). To exercise the Kanban's 3
+// columns (Acquisition / Préparation / Installation) we add 1 prospect in
+// `acquisition` and 1 in `installation` — sentinel-prefixed `[E2E T-B]` so the
+// wipe stays surgical and never touches real prospect rows.
+// -----------------------------------------------------------------------------
+
+const E2E_TB_PROSPECT_PREFIX = "[E2E T-B] ";
+
+const TB_SEED_SPECS: ReadonlyArray<{
+  nameSuffix: string;
+  phase: "acquisition" | "installation";
+  phone: string;
+}> = [
+  { nameSuffix: "Acquisition", phase: "acquisition", phone: "+33600000101" },
+  { nameSuffix: "Installation", phase: "installation", phone: "+33600000102" },
+];
+
+/**
+ * Seed 2 prospects (1 acquisition, 1 installation) so that combined with the
+ * 2 MO seeded prospects (preparation), the supervision Kanban renders all 3
+ * columns non-empty. Idempotent by name sentinel.
+ */
+export const seedE2ESupervisionProspects = internalMutation({
+  args: {},
+  returns: v.object({
+    prospectsCreated: v.number(),
+    prospectsUpdated: v.number(),
+  }),
+  handler: async (ctx) => {
+    const now = Date.now();
+    let prospectsCreated = 0;
+    let prospectsUpdated = 0;
+
+    for (const spec of TB_SEED_SPECS) {
+      const name = `${E2E_TB_PROSPECT_PREFIX}${spec.nameSuffix}`;
+
+      const existing = await ctx.db
+        .query("prospects")
+        .filter((q) => q.eq(q.field("name"), name))
+        .first();
+
+      if (existing === null) {
+        await ctx.db.insert("prospects", {
+          name,
+          phone: spec.phone,
+          phase: spec.phase,
+          source: "cold_call",
+          createdAt: now,
+          updatedAt: now,
+        });
+        prospectsCreated += 1;
+      } else {
+        await ctx.db.patch(existing._id, {
+          phase: spec.phase,
+          updatedAt: now,
+        });
+        prospectsUpdated += 1;
+      }
+    }
+
+    return { prospectsCreated, prospectsUpdated };
+  },
+});
+
+/**
+ * Wipe the E2E-T-B supervision Kanban seed. Filters by the sentinel name
+ * prefix (`[E2E T-B] *`) — never touches real prospect rows.
+ */
+export const wipeE2ESupervisionProspects = internalMutation({
+  args: {},
+  returns: v.object({ prospectsDeleted: v.number() }),
+  handler: async (ctx) => {
+    let prospectsDeleted = 0;
+    for (const spec of TB_SEED_SPECS) {
+      const name = `${E2E_TB_PROSPECT_PREFIX}${spec.nameSuffix}`;
+      const existing = await ctx.db
+        .query("prospects")
+        .filter((q) => q.eq(q.field("name"), name))
+        .first();
+      if (existing !== null) {
+        await ctx.db.delete(existing._id);
+        prospectsDeleted += 1;
+      }
+    }
+    return { prospectsDeleted };
+  },
+});
