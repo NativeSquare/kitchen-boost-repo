@@ -771,6 +771,148 @@ Voir A4b (identique).
   - Aucun appel réseau Convex visible pour `setMilestone` ou `recordIntegrationStatus`.
 - **Couvre** : #256 + ADR 0010 (isolation `kbAdminQuery` / `kbAdminMutation`) + F-SHELL-10 (#233 access gate).
 
+### T17 — Kanban DnD : drag clean en avant (Acquisition → Préparation, milestones complets)
+- **Acteur** : KB Admin (root)
+- **Pré-requis** : ≥ 2 prospects (un dans `acquisition` avec tous les milestones Closing cochés en `appareil_existant` : `contratSigne` + `kbisRecu` + `pieceIdentiteRecue` + `ribRecu` ; un autre dans `preparation`) ; route `/pipeline`, onglet « Kanban » actif.
+- **Étapes** :
+  1. Localiser la carte du prospect clean dans la colonne Acquisition.
+  2. Drag de la carte vers la colonne Préparation (drop sur la zone de la colonne).
+  3. Observer la carte changer immédiatement de colonne (réactivité Convex).
+  4. Vérifier qu'aucun dialog ne s'ouvre.
+  5. Rafraîchir la page et confirmer la persistance.
+- **Attendu** :
+  - La carte est rendue dans la colonne Préparation.
+  - Aucun dialog n'est apparu.
+  - Audit `prospect.changePhase` créé, SANS ligne `prospect.changePhase.bypass`.
+- **Couvre** : #262.
+
+### T18 — Kanban DnD : drag bypass en avant + dialog de confirmation (milestones manquants)
+- **Acteur** : KB Admin (root)
+- **Pré-requis** : ≥ 1 prospect en `acquisition` avec `tabletteMode = achat_kb` et seulement 4 des 5 milestones Closing cochés (manque `factureTablettePayee`) ; route `/pipeline`.
+- **Étapes** :
+  1. Drag de la carte du prospect bypass vers la colonne Préparation.
+  2. Observer l'apparition du dialog « Confirmer le bypass » avec le bullet `Facture tablette payée`.
+  3. Cliquer sur « Annuler » → la carte reste en Acquisition.
+  4. Refaire le drag, cliquer « Confirmer le bypass ».
+  5. Vérifier que la carte bascule en Préparation et que le dialog se ferme.
+- **Attendu** :
+  - Dialog affiche bien le bullet `Facture tablette payée` (label FR du milestone manquant).
+  - Cancel ne déplace pas la carte (aucune mutation).
+  - Confirm déplace la carte vers Préparation.
+  - Audit `prospect.changePhase.bypass` créé avec `missing: ["factureTablettePayee"]` + ligne `prospect.changePhase`.
+- **Couvre** : #262.
+
+### T19 — Kanban : toast bascule auto Closing (coche du dernier milestone sur la fiche)
+- **Acteur** : KB Admin (root)
+- **Pré-requis** : 1 prospect en `acquisition`, `tabletteMode = appareil_existant`, 3 des 4 milestones mandatory Closing cochés (manque `ribRecu`) ; deux onglets ouverts : A=`/pipeline` (Kanban), B=`/pipeline/[prospectId]` (fiche).
+- **Étapes** :
+  1. Onglet B : cocher `RIB reçu` via le `MilestoneChecklist` (mutation `setMilestone`).
+  2. Basculer immédiatement sur l'onglet A (Kanban) sans interagir avec le DnD.
+  3. Observer la carte du prospect glisser de Acquisition vers Préparation.
+  4. Observer le toast `<Nom du prospect> — Prospect basculé en Préparation (Closing complet)` en bas de l'écran.
+  5. Refresh de l'onglet A, confirmer la persistance.
+- **Attendu** :
+  - La carte est passée de Acquisition à Préparation sans intervention DnD.
+  - Toast `success` (vert) avec nom du prospect + mention « Closing complet ».
+  - Audit `prospect.closing.autoBascule` émis par `maybeAutoBascule`.
+- **Couvre** : #262.
+
+### T20 — Fiche prospect : logger une interaction et la voir en tête de timeline
+- **Acteur** : KB Admin (root)
+- **Pré-requis** : 1 prospect `acquisition` seedé avec 1 interaction historique (« Premier contact » jour-30) ; route `/pipeline/<prospectId>`.
+- **Étapes** :
+  1. Ouvrir la fiche prospect.
+  2. Vérifier que le panneau « Interactions » affiche bien l'interaction historique.
+  3. Cliquer sur « Logger interaction ».
+  4. Saisir la note `"Appel intéressé, RDV à caler"`, sélectionner canal `Cold call`.
+  5. Cliquer « Logger ».
+  6. Vérifier que le dialog se ferme et que la nouvelle interaction apparaît **en tête** de la timeline.
+  7. Recharger la page (F5) — l'interaction reste, datée « à l'instant ».
+- **Attendu** :
+  - Timeline antichronologique respectée (nouvelle entrée en tête).
+  - Canal affiche label FR « Cold call » + icône téléphone.
+  - Réactivité Convex (pas de fetch manuel).
+  - Audit `prospect.logInteraction` (foundation auto-audit via `kbAdminMutation`).
+- **Couvre** : #263.
+
+### T21 — Fiche prospect : éditer l'identité du prospect via modal
+- **Acteur** : KB Admin (root)
+- **Pré-requis** : 1 prospect existant avec `name="L'Artisan"`, SIRET non renseigné, contact `Jean Dupont` ; route `/pipeline/<prospectId>`.
+- **Étapes** :
+  1. Ouvrir la fiche prospect.
+  2. Cliquer sur « Éditer » au-dessus du panneau identité.
+  3. Modal pré-rempli avec `L'Artisan` / `Jean Dupont`.
+  4. Modifier nom en `L'Artisan Boulangerie`, saisir SIRET `12345678900012`, changer source en `WhatsApp`.
+  5. Cliquer « Enregistrer ».
+  6. Vérifier que le modal se ferme.
+  7. Vérifier que le `ProspectIdentityPanel` affiche immédiatement les nouvelles valeurs.
+- **Attendu** :
+  - Modal pré-rempli avec les valeurs courantes (pas de champs vides).
+  - Après submit : panneau identité reflète les nouvelles valeurs sans rechargement.
+  - Audit `prospect.edit` côté backend.
+  - Pas d'écriture sur les champs laissés vides (no-touch sur autres champs).
+- **Couvre** : #263.
+
+### T22 — Fiche prospect : ExternalLinksPanel — WhatsApp E.164 + direct.uber.com + Stripe disabled
+- **Acteur** : KB Admin (root)
+- **Pré-requis** : 1 prospect avec téléphone `06 12 34 56 78` ; route `/pipeline/<prospectId>`.
+- **Étapes** :
+  1. Ouvrir la fiche prospect.
+  2. Repérer le panneau « Liens externes » (bas de fiche).
+  3. Inspecter le `href` du bouton WhatsApp : doit être exactement `https://wa.me/33612345678` (sans `+`, sans espaces, préfixe `33` FR).
+  4. Cliquer sur « Ouvrir direct.uber.com » → nouvel onglet sur `https://direct.uber.com`.
+  5. Vérifier que « Ouvrir Stripe Connect onboarding » est disabled (champ `stripeConnectOnboardingUrl` pas encore tracé).
+- **Attendu** :
+  - Deep-link WhatsApp E.164 correctement formaté.
+  - `direct.uber.com` ouvre dans un nouvel onglet (`target="_blank"`).
+  - Bouton Stripe disabled avec tooltip « Pas encore généré ».
+  - Bouton Odoo cliquable (lien générique V1).
+- **Couvre** : #263.
+
+### T23 — Fiche prospect : panneau Tenant absent quand pas encore provisionné
+- **Acteur** : KB Admin (root)
+- **Pré-requis** : 1 prospect sans `tenantId` (phase `acquisition` ou `preparation`, wizard de provisioning jamais lancé).
+- **Étapes** :
+  1. Se connecter en root.
+  2. Naviguer vers `/pipeline`.
+  3. Cliquer sur une carte de prospect SANS tenant.
+  4. Observer la section centrale de la fiche (identité, milestones, intégrations).
+- **Attendu** :
+  - Aucune carte « Tenant » n'est rendue.
+  - Pas de placeholder vide, pas de bandeau « Chargement », pas de squelette.
+  - Layout reste compact (pas de gap inutile entre la section identité et la grid milestones/intégrations).
+- **Couvre** : #264.
+
+### T24 — Fiche prospect : panneau Tenant + bouton « Ouvrir la vue resto » fonctionnel
+- **Acteur** : KB Admin (root)
+- **Pré-requis** : 1 prospect dont le wizard de provisioning a été complété (step 1 a posé `tenantId`, step 8 a activé le tenant → `status = "active"`) ; tenant a slug + nom.
+- **Étapes** :
+  1. Se connecter en root.
+  2. Naviguer vers `/pipeline/<prospectId>` du prospect provisionné.
+  3. Observer la carte « Tenant » sous la section identité : slug + nom + badge vert « Actif ».
+  4. Cliquer sur « Ouvrir la vue resto ».
+  5. Vérifier l'URL et l'écran d'atterrissage.
+- **Attendu** :
+  - Carte Tenant rendue avec `slug` + `name` + badge `Actif`.
+  - Bouton « Ouvrir la vue resto » navigue vers `/t/<tenantId>` (puis redirige vers `/menu`, sous-route par défaut V1).
+  - Bandeau d'impersonation F-SHELL visible en haut (« Mode impersonation : <nom du resto> »).
+- **Couvre** : #264 (+ couplage F-SHELL TenantSwitcher).
+
+### T25 — Fiche prospect : panneau Tenant dégradé quand le tenant a été supprimé manuellement
+- **Acteur** : KB Admin (root)
+- **Pré-requis** : 1 prospect dont `tenantId` pointe sur un tenant supprimé (cas dégradé — typiquement après debug ou rollback manuel en base).
+- **Étapes** :
+  1. Se connecter en root.
+  2. Ouvrir DevTools → Console.
+  3. Naviguer vers `/pipeline/<prospectId>` du prospect dont le tenant a disparu.
+  4. Observer le panneau Tenant + la console DevTools.
+- **Attendu** :
+  - Carte Tenant rendue avec le message « Tenant introuvable (id: tenants_…) ».
+  - `console.warn` émis : `[TenantPanel] tenant introuvable pour prospect ... (tenantId: ...)`.
+  - Le bouton « Ouvrir la vue resto » n'est PAS rendu (pas de lien cassé).
+  - Le reste de la fiche (identité, milestones, intégrations, contrats) reste pleinement fonctionnel.
+- **Couvre** : #264.
+
 ---
 
 ## P — Paramètres
