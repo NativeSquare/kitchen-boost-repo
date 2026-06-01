@@ -164,20 +164,42 @@ export function ParametresView({
     <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
       <ParametresHeader />
       <div className="flex flex-col gap-4 px-4 md:gap-6 lg:px-6">
+        {/*
+         * `key` on each editor — fix 2026-06-01 (P1/P2/P3/P4 spot-check).
+         *
+         * Every editor below uses `useForm({ defaultValues })` (or `useState`
+         * with an init callback for service-hours). Those APIs read `value`
+         * ONCE on mount and ignore subsequent prop changes — so when the
+         * Convex query resolves AFTER the editor has already mounted with
+         * `value = {}` (the loading sentinel), the persisted value never
+         * makes it into the form. The user sees defaults at every reload.
+         *
+         * Forcing a remount via a content-derived `key` re-runs the form's
+         * init callback with the just-arrived `value`. The key is computed
+         * from the persisted content, NOT identity, so a parent re-render
+         * with the same value doesn't trigger a spurious remount (which
+         * would wipe user input mid-typing). After a save, the persisted
+         * value changes → remount → form re-syncs to what the user just
+         * saved → no perceptible flash.
+         */}
         <SectionIdentiteVisuelle
+          key={brandingEditorKey(branding)}
           value={branding ?? {}}
           onSave={onSaveBranding}
           onUploadLogo={onUploadLogo}
         />
         <SectionCoordonnees
+          key={coordonneesEditorKey(coordonnees)}
           value={coordonnees ?? {}}
           onSave={onSaveCoordonnees}
         />
         <SectionModesAcceptes
+          key={modesEditorKey(acceptedModes)}
           value={acceptedModes ?? {}}
           onSave={onSaveAcceptedModes}
         />
         <SectionHorairesService
+          key={serviceHoursEditorKey(serviceHours?.windows ?? [])}
           value={serviceHours?.windows ?? []}
           onSave={onSaveServiceHours}
         />
@@ -186,6 +208,41 @@ export function ParametresView({
       </div>
     </div>
   );
+}
+
+/**
+ * Editor `key` derivation helpers (cf. inline comment above). Each returns
+ * a stable string per persisted-content shape; same content → same key
+ * (no spurious remount on parent re-render); different content → different
+ * key (remount, re-sync the form). `undefined` (query loading) collapses to
+ * a sentinel so the editor mounts at most once with the loading state and
+ * then remounts ONCE more when the value arrives.
+ */
+function brandingEditorKey(branding: BrandingValue | undefined): string {
+  if (branding === undefined) return "branding|loading";
+  return `branding|${branding.primaryColor ?? "-"}|${branding.logoUrl ?? "-"}`;
+}
+
+function coordonneesEditorKey(
+  coordonnees: CoordonneesValue | undefined,
+): string {
+  if (coordonnees === undefined) return "coordonnees|loading";
+  return `coordonnees|${coordonnees.address ?? "-"}|${coordonnees.phone ?? "-"}`;
+}
+
+function modesEditorKey(modes: ModesValue | undefined): string {
+  if (modes === undefined) return "modes|loading";
+  return `modes|${modes.delivery ?? "-"}|${modes.clickAndCollect ?? "-"}`;
+}
+
+function serviceHoursEditorKey(windows: ServiceWindow[]): string {
+  // The editor's `useState` init callback reads `value` (windows) on mount
+  // ONLY. Same reactivity bug as the RHF-based siblings. Key = a compact
+  // signature over the persisted windows; small arrays (one row per tenant
+  // carries ≤ ~30 windows in practice) so the JSON serialisation cost is
+  // negligible. The empty array maps to a stable sentinel.
+  if (windows.length === 0) return "service-hours|empty";
+  return `service-hours|${JSON.stringify(windows)}`;
 }
 
 function ParametresHeader() {
