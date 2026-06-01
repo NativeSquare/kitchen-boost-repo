@@ -1,199 +1,178 @@
 "use client";
 
 /**
- * F-QR.4 (#198) — Route `/t/[tenantId]/qr/`.
+ * `/t/[tenantId]/qr` — minimal SVG-only export.
  *
- * Quatrième et dernier tracer-bullet de l'EPIC F-QR #142 — boucle la boucle :
- * tenant-scoped page qui lit le tenant courant depuis le shell, recompose la
- * PWA URL côté front (zéro round-trip backend), et monte le composant
- * réutilisable `QrGeneratorView` (#182) qui orchestre QR data URL + PDF +
- * preview + download.
+ * Product decision (2026-06-01) : KB does NOT own the design surface for the
+ * QR sticker / poster. The restaurateur integrates the QR into their own
+ * visuel via Canva / Figma / Illustrator. We therefore ship the QR itself
+ * and nothing else :
  *
- * Acceptance criteria pinned (#198) :
- *   - AC1 « Page rendue à `/t/[tenantId]/qr` sous le shell `(app)` » → ce
- *     fichier vit sous `apps/admin/src/app/(app)/t/[tenantId]/qr/page.tsx` ;
- *     les guards (KB Manager ne peut pas reach un autre tenant, KB Admin via
- *     root override = ADR 0014 impersonation V1 = navigation) sont hérités du
- *     layout chrome-less `(app)/t/[tenantId]/layout.tsx` (F-SHELL-04 #175).
- *   - AC2 « Lit le tenant courant via le hook fourni par F-SHELL (zéro nouvel
- *     endpoint backend) » → on lit `useCurrentTenantId()` (#175) + `useSession()`
- *     (#159). Le seul `useQuery` est sur la primitive root-only EXISTANTE
- *     `api.lib.stripe.account.loadTenantForStripe` (incidemment nommée Stripe,
- *     mais c'est un `kbAdminQuery` qui renvoie le `Doc<"tenants">` entier ;
- *     ré-utilisée à l'identique par le F-SHELL-04 layout pour la probe
- *     d'existence d'un tenant côté KB Admin).
- *   - AC3 « Recompose `pwaUrl` via `tenantPwaUrl` (pas d'appel backend pour
- *     l'URL) » → on duplique côté front ce que `provisionTenant` fait côté
- *     backend (helper #167). Si un `customDomain` est défini → `https://<dom>`,
- *     sinon → `https://<slug>.kitchen-boost.fr`.
- *   - AC4 « Monte `QrGeneratorView` avec props branding du tenant » → mount
- *     direct, props mappées depuis la source ad-hoc selon le rôle (voir plus
- *     bas).
- *   - AC5 « Si tenant non trouvé / non autorisé → comportement standard du
- *     shell F-SHELL » → inhérité du layout (notFound() / redirect / spinner).
- *     Cette page n'est rendue QUE quand `decideTenantGate` renvoie `"allow"`.
+ *   - one single export format: SVG (vector, opens natively in every design
+ *     tool, infinite zoom, no resolution issues);
+ *   - black on white only (max contrast = max scan reliability — a pastel
+ *     brand colour can kill the QR);
+ *   - no surrounding chrome (no title overlay, no accroche, no logo, no
+ *     format variants A4 / A6 / sticker rond, no PDF pipeline);
+ *   - filename `qr-<slug>.svg`.
  *
- * Source des props branding selon le rôle (architecturalement)
- * ------------------------------------------------------------
- * Les `tenants` n'exposent PAS de read query côté `kb_manager` aujourd'hui
- * (sa fiche complète arrivera avec F-PARAMETRES-02..04, hors-scope #198). On
- * travaille donc avec ce que F-SHELL EXPOSE DÉJÀ, sans introduire de nouvel
- * endpoint (contrainte forte du body) :
+ * The page reads `customDomain` via the manager-accessible
+ * `api.lib.admin.tenantSettings.getSettings` (added 2026-06-01 for
+ * B-PARAMETRES-04) so the encoded URL respects the configured custom domain.
+ * Falls back to the bootstrap sub-domain `<slug>.kitchen-boost.fr` via the
+ * existing `tenantPwaUrl` helper.
  *
- *  - KB Manager  → `session.tenants` contient `{ slug, name }` pour le tenant
- *    courant. `customDomain` / `branding.logoUrl` / `branding.primaryColor`
- *    restent `undefined` → `tenantPwaUrl` retombera sur le sous-domaine
- *    bootstrap `<slug>.kitchen-boost.fr` (parité avec backend, PRD 50 §3) et
- *    `QrPdfDocument` rend les fallbacks ink-noir / pas de logo (déjà pinés
- *    par `QrPdfDocument.test.tsx`). C'est la dégradation gracieuse explicite
- *    voulue par les helpers front #167 et #173.
- *  - KB Admin    → re-utilise la PRIMITIVE EXISTANTE `loadTenantForStripe`
- *    (`kbAdminQuery`, retourne `Doc<"tenants"> | null`) — c'est la même que
- *    le F-SHELL-04 layout consomme déjà pour valider l'existence d'un tenant
- *    inconnu côté admin. Le nom est incident, le scope est root-only. On en
- *    tire `customDomain` + `branding` PLUS un fallback nom/slug si le KB
- *    Admin atterrit sur un tenant dont il n'est pas membre (cas typique de
- *    l'impersonation ADR 0014 V1 = navigation). Aucun nouvel endpoint créé.
- *
- * Re-render automatique quand `customDomain` change
- * -------------------------------------------------
- * Couvert naturellement par les effets côté hooks : si le KB Manager change
- * son `customDomain` depuis la page Paramètres, la query Convex le ré-émet,
- * `pwaUrl` est recomputé via `tenantPwaUrl`, et `QrGeneratorView` régénère le
- * QR (son `useEffect` dépend de `pwaUrl`, pinné par `QrGeneratorView.tsx`
- * lui-même). Aucune logique custom à ajouter ici.
- *
- * Hors-scope V2 (issue body) : tracking de scans, batches QR uniques par
- * sticker, templates custom au-delà des 3 formats, envoi automatique
- * imprimeur. Ne PAS les implémenter — `blocked` + `needs-info` si demandés.
- *
- * Scope discipline (#198 hard constraint) : ce fichier sous
- * `apps/admin/src/app/(app)/t/[tenantId]/qr/` est la SEULE surface touchée
- * par cette story. Zéro touch à `apps/web`, `apps/native`,
- * `packages/backend/convex/`, ou au sidebar / shell partagé.
+ * The standalone wizard step 6 (`step6-qr-form.tsx`) still mounts the legacy
+ * `QrGeneratorView` (PDF pipeline) — that path is unaffected. This page no
+ * longer depends on `QrGeneratorView`.
  */
 
+import { useEffect, useState } from "react";
 import { useQuery } from "convex/react";
+import QRCode from "qrcode";
 import { api } from "@packages/backend/convex/_generated/api";
 
 import { useCurrentTenantId } from "@/components/app/tenant-context";
-import { QrGeneratorView } from "@/components/qr/QrGeneratorView";
 import { useTenantQuery } from "@/hooks";
 import { useSession } from "@/lib/session";
 import { tenantPwaUrl } from "@/lib/tenant-url";
+
+/**
+ * Build the SVG QR code for the given URL. Black on white, zero margin (the
+ * design tool will add the bleed). `qrcode`'s `toString({type:'svg'})`
+ * returns a standalone `<svg>` document we can drop straight into the DOM
+ * or into a `data:image/svg+xml` href.
+ */
+async function buildQrSvg(url: string): Promise<string> {
+  return QRCode.toString(url, {
+    type: "svg",
+    margin: 0,
+    color: { dark: "#000000", light: "#FFFFFF" },
+  });
+}
 
 export default function QrPage() {
   const tenantId = useCurrentTenantId();
   const session = useSession();
 
-  // Source #1 : `session.tenants` — disponible pour le KB Manager (et pour
-  // un KB Admin qui serait aussi membre du tenant). Ne porte que slug + name
-  // (cf. `SessionTenant` dans `lib/session/types.ts`).
   const sessionTenant =
     session.status === "ready"
       ? (session.session.tenants.find((t) => t.tenantId === tenantId) ?? null)
       : null;
 
-  // Source #2 : `loadTenantForStripe` — kbAdminQuery, retourne le
-  // `Doc<"tenants">` complet (slug + name + customDomain + branding). On ne
-  // la fire QUE pour le KB Admin (la query refuserait un kb_manager de toute
-  // façon). Skip-sentinel quand non-applicable, conformément au pattern
-  // Convex (cf. F-SHELL-04 layout). Garantit zéro requête réseau côté manager.
   const isAdmin =
     session.status === "ready" && session.session.isAdmin === true;
+
+  // KB Admin path : reuse the existing root-only primitive (same one the
+  // F-SHELL-04 layout uses for tenant existence probe — incidental Stripe
+  // naming, returns the full `Doc<"tenants">`).
   const adminTenantDoc = useQuery(
     api.lib.stripe.account.loadTenantForStripe,
     isAdmin ? { tenantId } : "skip",
   );
 
-  // Source #3 : `tenantSettings.getSettings` — `tenantQuery({allow:["kb_manager"]})`
-  // avec root override kb_admin, expose `customDomain` + `branding` au
-  // KB Manager (qui n'a PAS accès à `loadTenantForStripe`, root-only).
-  //
-  // Bug fix 2026-06-01 (E2E spot-check QR2, [docs/tests/E2E-checklist.md](../../../../../../docs/tests/E2E-checklist.md)):
-  // jusqu'ici le manager voyait `customDomain = undefined` (la session ne le
-  // porte pas), donc le QR pointait toujours sur `<slug>.kitchen-boost.fr`
-  // même quand un customDomain était configuré → faux QR imprimé en prod.
-  // On lit donc le customDomain via cette query manager-accessible. Pour
-  // l'admin, sa source #2 reste la source de vérité (impersonation peut
-  // viser un tenant dont l'admin n'est pas membre — getSettings passe via
-  // root override mais le `useTenantQuery` est inutile à fire en double
-  // quand on a déjà tout via `loadTenantForStripe`).
+  // KB Manager path : read customDomain via the manager-accessible query
+  // (the session payload doesn't carry customDomain).
   const settings = useTenantQuery(
     api.lib.admin.tenantSettings.getSettings,
     isAdmin ? "skip" : {},
   );
 
-  // Loading sentinel : tant que la session n'est pas résolue, ou que la query
-  // admin (quand pertinente) est en vol, on rend un placeholder léger plutôt
-  // qu'un QR sur des données partielles. Le shell parent (F-SHELL-04 layout)
-  // a déjà géré le spinner d'auth — ici on couvre uniquement le delta tenant.
-  if (session.status !== "ready") {
-    // Le SessionGuard / layout parent gère déjà le spinner + redirect login.
-    // On rend `null` pour rester muet le temps qu'il prenne la main.
-    return null;
-  }
-  if (isAdmin && adminTenantDoc === undefined) {
-    // Le KB Admin attend le retour de `loadTenantForStripe` pour avoir le
-    // branding réel — sinon il verrait une régénération immédiate au refetch.
-    return null;
-  }
-  if (!isAdmin && settings === undefined) {
-    // Le KB Manager attend le retour de `getSettings` pour avoir customDomain
-    // + branding — sinon il verrait un QR pointant sur l'URL bootstrap puis
-    // une régénération immédiate au refetch (cf. bug fix 2026-06-01).
-    return null;
-  }
-
-  // Fusion des trois sources :
-  //  - slug/name : `adminTenantDoc` (admin impersonation) puis `sessionTenant`
-  //    (manager ou admin membre).
-  //  - customDomain + branding : `adminTenantDoc` (admin, doc complet) puis
-  //    `settings` (manager, via la query D5 élargi).
   const slug = adminTenantDoc?.slug ?? sessionTenant?.slug ?? null;
-  const name = adminTenantDoc?.name ?? sessionTenant?.name ?? null;
-  // `settings.customDomain` is wire-typed `string | null` (Convex `v.union(v.null(),
-  // v.string())`) — collapse null → undefined so `tenantPwaUrl` (which expects
-  // `string | undefined`) never receives a stray null. The `??` chain treats
-  // null and undefined identically, but the final fall-through to `undefined`
-  // is the explicit type narrowing that keeps TypeScript happy.
   const customDomain: string | undefined =
     adminTenantDoc?.customDomain ?? settings?.customDomain ?? undefined;
-  const logoUrl =
-    adminTenantDoc?.branding?.logoUrl ?? settings?.branding?.logoUrl;
-  const primaryColor =
-    adminTenantDoc?.branding?.primaryColor ?? settings?.branding?.primaryColor;
 
-  // Garde défensive : si NI la session NI la query admin ne nous donnent un
-  // slug/name, on ne peut pas calculer une URL stable — on retourne `null`
-  // (le layout parent aurait dû redirect ou 404 avant qu'on en arrive là ;
-  // cette branche est un cintre de sécurité, pas un chemin attendu).
-  if (slug === null || name === null) {
-    return null;
-  }
+  // Compute the encoded URL only when we have a stable slug. We pre-compute
+  // it (rather than guarding inside the effect) so the JSX preview can show
+  // it under the QR as plain text.
+  const pwaUrl = slug !== null ? tenantPwaUrl({ slug, customDomain }) : null;
 
-  // Recomposition front de la PWA URL (helper #167, miroir du backend
-  // `provisionTenant`). Quand `customDomain` est défini → l'host gagne ;
-  // sinon → bootstrap `<slug>.kitchen-boost.fr` (PRD 50 §3).
-  const pwaUrl = tenantPwaUrl({ slug, customDomain });
+  const [svg, setSvg] = useState<string | null>(null);
+
+  useEffect(() => {
+    // While `pwaUrl` is null (session still resolving) we skip the build
+    // entirely — the page early-returns below for the null branch, so a
+    // stale `svg` value is never rendered. Avoids a synchronous setState
+    // inside the effect body (react-hooks/set-state-in-effect).
+    if (pwaUrl === null) return;
+    let cancelled = false;
+    buildQrSvg(pwaUrl)
+      .then((next) => {
+        if (!cancelled) setSvg(next);
+      })
+      .catch(() => {
+        // Silent : the disabled-button branch already covers the "no svg"
+        // UX, and the only realistic failure here is a malformed input URL
+        // (which we control via `tenantPwaUrl`).
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [pwaUrl]);
+
+  // Loading sentinels — keep the page mute until we have all inputs.
+  if (session.status !== "ready") return null;
+  if (isAdmin && adminTenantDoc === undefined) return null;
+  if (!isAdmin && settings === undefined) return null;
+  if (slug === null || pwaUrl === null) return null;
+
+  const fileName = `qr-${slug}.svg`;
+  const downloadHref =
+    svg !== null ? `data:image/svg+xml;utf8,${encodeURIComponent(svg)}` : null;
 
   return (
     <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
       <div className="flex flex-col gap-2 px-4 lg:px-6">
         <h1 className="text-2xl font-bold">QR code</h1>
         <p className="text-muted-foreground text-sm">
-          Générez et téléchargez les stickers QR à coller dans les sacs de
-          livraison Uber Eats. Le client scanne, atterrit sur votre PWA et
-          commande direct.
+          Importez ce SVG dans Canva, Figma ou Illustrator pour l&apos;intégrer
+          dans votre support visuel (sticker, affiche, packaging&hellip;).
         </p>
       </div>
-      <div className="px-4 lg:px-6">
-        <QrGeneratorView
-          pwaUrl={pwaUrl}
-          restoName={name}
-          logoUrl={logoUrl}
-          primaryColor={primaryColor}
-        />
+      <div className="flex flex-col items-center gap-4 px-4 lg:px-6">
+        <div
+          data-slot="qr-preview"
+          className="border-input bg-white flex h-[340px] w-[340px] items-center justify-center overflow-hidden rounded-md border p-4"
+        >
+          {svg !== null ? (
+            // `qrcode` returns a fully self-contained <svg> document — safe
+            // to inline (no script, no external refs). We render it via
+            // dangerouslySetInnerHTML because constructing a React tree
+            // from the SVG string would lose nothing and gain nothing.
+            <div
+              className="h-full w-full"
+              dangerouslySetInnerHTML={{ __html: svg }}
+            />
+          ) : (
+            <span className="text-muted-foreground text-sm">
+              Génération du QR code&hellip;
+            </span>
+          )}
+        </div>
+        <code
+          data-slot="qr-url"
+          className="text-muted-foreground bg-muted/40 max-w-full break-all rounded px-2 py-1 text-xs"
+        >
+          {pwaUrl}
+        </code>
+        {downloadHref !== null ? (
+          <a
+            href={downloadHref}
+            download={fileName}
+            data-slot="qr-download"
+            className="bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:border-ring focus-visible:ring-ring/50 inline-flex h-9 items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium shadow-xs outline-none focus-visible:ring-[3px]"
+          >
+            Télécharger SVG
+          </a>
+        ) : (
+          <button
+            type="button"
+            disabled
+            className="bg-primary/60 text-primary-foreground inline-flex h-9 cursor-not-allowed items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium opacity-60 shadow-xs"
+          >
+            Télécharger SVG
+          </button>
+        )}
       </div>
     </div>
   );
