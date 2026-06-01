@@ -11,7 +11,10 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 
 ## A — Auth & shell
 
+> **Statut** : ✅ **7/7 validés manuellement le 2026-06-01** (dev `impartial-goshawk-798`, seed 4-comptes : `admin@kb.test`, `manager@kb.test` mono-tenant T1, `manager-multi@kb.test` rattaché T1+T2, `manager-orphan@kb.test` sans rattachement). Voir `packages/backend/convex/e2e.ts` (`bootstrapE2EInvites` + `bootstrapE2EA2A3Invites` + `finalizeE2EA2A3Accounts`).
+
 ### A1 — Login email + password (+ OTP vérif si email non vérifié)
+
 - **Acteur** : KB Manager
 - **Pré-requis** : compte manager (email vérifié) ; boîte mail accessible
 - **Étapes** :
@@ -24,6 +27,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 - **Couvre** : foundation auth password + verify-email.
 
 ### A2 — Multi-tenants : dernière resto ouverte restaurée à l'entrée
+
 - **Acteur** : KB Manager multi-tenants (ex. Walid : `lartisan` + `tablelibanaise`)
 - **Pré-requis** : navigateur frais (cookies vidés)
 - **Étapes** :
@@ -36,6 +40,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 - **Couvre** : #223 (cookie hint multi-tenant)
 
 ### A3 — KB Manager sans tenant rattaché
+
 - **Acteur** : KB Manager dont toutes les rattaches `userTenants` sont révoquées
 - **Étapes** : Login → arrive sur `/`.
 - **Attendu** :
@@ -45,6 +50,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 - **Couvre** : #169 (NoTenantEmptyState).
 
 ### A4a — KB Manager hors-tenant (UnauthorizedCard, pas raw error)
+
 - **Acteur** : KB Manager rattaché à `T1`
 - **Étapes** : copier l'URL `/t/T2/menu` et naviguer manuellement.
 - **Attendu** :
@@ -53,6 +59,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 - **Couvre** : #175 (decideTenantGate).
 
 ### A4b — KB Manager qui hit /monitoring (UnauthorizedCard, pas FORBIDDEN raw)
+
 - **Acteur** : KB Manager
 - **Étapes** : naviguer manuellement vers `/monitoring`.
 - **Attendu** :
@@ -61,6 +68,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 - **Couvre** : monitoring admin-only guard + UnauthorizedCard.
 
 ### A5 — /accept-invite avec token vide
+
 - **Acteur** : visiteur sans session
 - **Étapes** : ouvrir `/accept-invite` sans paramètre `token`.
 - **Attendu** :
@@ -69,6 +77,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 - **Couvre** : invite token validation fallback.
 
 ### A6 — ImpersonationBanner KB Admin sur /t/[id]
+
 - **Acteur** : KB Admin (+ test croisé avec KB Manager)
 - **Pré-requis** : seeds e2e
 - **Étapes** :
@@ -86,6 +95,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 ## MC — Mes clients
 
 ### MC1 — Open « Mes clients » + audit event `customer.kpi.consult`
+
 - **Acteur** : KB Manager
 - **Pré-requis** : tenant T1 avec ≥ 1 client (sinon empty state)
 - **Étapes** :
@@ -97,6 +107,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 - **Couvre** : #181 (audit-on-open) ; #186 (route + query).
 
 ### MC2 — Cards segments (Actifs / Inactifs / VIP)
+
 - **Acteur** : KB Manager
 - **Pré-requis** : mix de clients (actifs 30j / inactifs 90j / VIP ≥ 5 cmd ou LTV ≥ 150€)
 - **Étapes** : `/t/<tenantId>/mes-clients`, observer le 1er bloc 3 cards.
@@ -107,6 +118,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 - **Couvre** : #186 (segments).
 
 ### MC3 — Cards reachability + macro
+
 - **Acteur** : KB Manager
 - **Pré-requis** : tenant avec ≥ 1 client joignable par chaque canal
 - **Étapes** : `/t/<tenantId>/mes-clients`, observer les 2 blocs suivants.
@@ -116,6 +128,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 - **Couvre** : #190.
 
 ### MC4 — Anti-PII guard
+
 - **Acteur** : KB Manager
 - **Pré-requis** : tenant avec ≥ 10 clients identifiés (email + tel renseignés)
 - **Étapes** :
@@ -127,6 +140,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 - **Couvre** : #190 (anti-PII MOAT).
 
 ### MC5 — Liste campagnes : tracer-bullet vide → peuplé
+
 - **Acteur** : KB Manager
 - **Pré-requis** : seeds e2e ; tenant `T1` rattaché au manager, aucun `notificationTemplate` actif scope=`tenant` lié à `T1` initialement.
 - **Étapes** :
@@ -141,6 +155,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 - **Couvre** : #179 (slice 1 F-CAMPAGNES) ; sanity check #183 (`useTenantQuery`) + #157 (`listTenantTemplates`).
 
 ### MC6 — Garde de route campagnes cross-tenant
+
 - **Acteur** : KB Manager rattaché à `T1` uniquement
 - **Pré-requis** : seeds e2e ; templates actifs sur `T1` ET sur `T2` ; manager NON rattaché à `T2`.
 - **Étapes** :
@@ -153,6 +168,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 - **Couvre** : #179 (propagation A4 via `useTenantQuery`) + #175 (UnauthorizedCard layout tenant).
 
 ### MC7 — Picker campagnes : grid responsive + navigation vers template
+
 - **Acteur** : KB Manager
 - **Pré-requis** : seeds e2e (tenant `lartisan` avec ≥ 2 templates `scope:"tenant"` `active:true`) ; session manager loggée ; sur `/t/lartisan/menu`.
 - **Étapes** :
@@ -169,6 +185,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 - **Couvre** : #188 (F-CAMPAGNES slice 2/7).
 
 ### MC8 — Picker campagnes : empty state CSM
+
 - **Acteur** : KB Manager
 - **Pré-requis** : seeds e2e ; un tenant secondaire `nouveau-resto` sans aucun `notificationTemplate` actif scope tenant.
 - **Étapes** :
@@ -181,6 +198,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 - **Couvre** : #188 (empty state) + #170 (cross-tenant fuzz `listTenantTemplates`).
 
 ### MC9 — Picker campagnes : loading skeletons sans flash empty
+
 - **Acteur** : KB Manager
 - **Pré-requis** : seeds e2e + DevTools Network throttling « Slow 3G » activé.
 - **Étapes** :
@@ -193,6 +211,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 - **Couvre** : #188 (AC distinction loading/empty).
 
 ### MC10 — Template campagne : formulaire dynamique (texte + slider + time)
+
 - **Acteur** : KB Manager
 - **Pré-requis** : seeds e2e (tenant `lartisan` avec ≥ 2 templates : un « welcome_back » texte-only, un « weekend_promo » slider+time+texte). Session manager loggée.
 - **Étapes** :
@@ -215,6 +234,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 - **Couvre** : #205 (F-CAMPAGNES 3/7) + #188 (carte → navigation, recoupé) + #175 (UnauthorizedCard cross-tenant) + #170 (tenant fuzz).
 
 ### MC11 — Template campagne introuvable (URL stale / désactivé)
+
 - **Acteur** : KB Manager
 - **Pré-requis** : un `templateId` qui n'existe pas ou plus dans l'`active` set du tenant (template désactivé côté backend OU URL bookmarkée d'un ancien template).
 - **Étapes** :
@@ -228,6 +248,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 - **Couvre** : #205 (F-CAMPAGNES 3/7, branche not-found).
 
 ### MC12 — Preview live campagne + activation Envoyer (parcours bout-à-bout slice 1→4)
+
 - **Acteur** : KB Manager (kb_manager du tenant cible)
 - **Pré-requis** : seeds e2e ; tenant seedé avec au moins 1 template `notificationTemplates` actif scope `tenant` contenant `{prenom_client}`, `{discount}`, `{nom_resto}` (ex. `weekend_promo`, `maxDiscountPercent: 50`, `language: "fr"`, `containsAlcohol: false`) ; manager loggé, rattaché au tenant, à `/t/[tenantId]/campagnes`.
 - **Étapes** :
@@ -245,6 +266,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 - **Couvre** : #215 (F-CAMPAGNES 4/7) + #205 (rendu form) + #188 (picker → navigation) + #145 (EPIC).
 
 ### MC13 — Garde-fous violation surfacée (alcool flag défensif)
+
 - **Acteur** : KB Admin (impersonating un tenant ou en provisionnement)
 - **Pré-requis** : seeds e2e ; forcer (via seed dev ou script) un template avec `containsAlcohol: true` ou `language: "en"` malgré la validation schema (simule régression défense en profondeur). Alternativement : seed un template dont le body rend > 200 caractères même avec discount=10.
 - **Étapes** :
@@ -258,6 +280,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 - **Couvre** : #215 (défense en profondeur des bounds backend miroir de `templateBounds.ts`).
 
 ### MC14 — Lancer une campagne pendant horaires (envoi immédiat)
+
 - **Acteur** : restaurateur (rôle `kb_manager`)
 - **Pré-requis** : tenant seed avec ≥10 clients linkés actifs (au moins 5 joignables push + 3 joignables email), template « Promo weekend » actif, heure courante hors créneau DNT (entre 8h et 22h Europe/Paris). Route de départ : `/t/<tenantId>/campagnes`.
 - **Étapes** :
@@ -274,6 +297,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 - **Couvre** : #228 (F-CAMPAGNES 5/7 — câblage `sendTenantCampaign` + `CampaignResultStats`) ; valide aussi #145 (EPIC F-CAMPAGNES) et #215 (preview live).
 
 ### MC15 — Anti-anomaly bloque deuxième envoi en 48h
+
 - **Acteur** : restaurateur (`kb_manager`)
 - **Pré-requis** : tenant seed avec 1 campagne déjà lancée < 48h, ≥5 clients linkés. Route de départ : `/t/<tenantId>/campagnes/<templateId>`.
 - **Étapes** :
@@ -289,6 +313,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 - **Couvre** : #228 (anomaly path) ; valide PRD 80 §7 anti-anomaly.
 
 ### MC16 — Isolation cross-tenant via URL forgée sur la mutation send (Forbidden)
+
 - **Acteur** : restaurateur du tenant A (`kb_manager`)
 - **Pré-requis** : 2 tenants A et B avec chacun ≥1 template. Le gérant de A est authentifié.
 - **Étapes** :
@@ -302,6 +327,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 - **Couvre** : #228 ; valide ADR 0010 + cross-tenant fuzz suite du wrapper. Voir aussi T (Tenant isolation).
 
 ### MC17 — Historique d'une campagne envoyée (round-trip envoi → historique → détail)
+
 - **Acteur** : KB Manager (`lartisan` ou tenant seed e2e)
 - **Pré-requis** : seeds e2e chargées ; au moins 2 clients liés au tenant, marketing-éligibles, l'un avec push enrolled, l'autre email-only ; au moins 1 template campagne actif `scope=tenant` côté `notificationTemplates`.
 - **Étapes** :
@@ -320,6 +346,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 - **Couvre** : #240 (F-CAMPAGNES 6/7) ; smoke #228 (CampaignResultStats reuse).
 
 ### MC18 — Historique : isolation cross-tenant + URL stale launchId
+
 - **Acteur** : KB Manager mono-tenant T1 (ex. seed e2e)
 - **Pré-requis** : un launch existant dans T1 dont on connaît le `launchId` ; un second tenant T2 dont T1 n'est pas membre ; un seed launch dans T2.
 - **Étapes** :
@@ -334,6 +361,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 - **Couvre** : #240 (cross-tenant fuzz + not-found branch) ; ADR 0010 isolation.
 
 ### MC19 — Historique : état vide (resto neuf, aucune campagne lancée)
+
 - **Acteur** : KB Manager d'un tenant n'ayant jamais envoyé de campagne
 - **Pré-requis** : tenant T fraîchement créé / aucun row dans `campaignLaunches` pour T.
 - **Étapes** :
@@ -345,6 +373,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 - **Couvre** : #240 (empty branch).
 
 ### MC20 — Dashboard /t/[tenantId] affiche les 4 KPI cards du jour (CA, commandes, panier, en cours)
+
 - **Acteur** : KB Manager
 - **Pré-requis** : tenant actif avec au moins 1 commande payée et 1 commande en cours du jour ; session ouverte ; route de départ `/t/[tenantId]` (= `/t/[tenantId]/dashboard`, root override).
 - **Étapes** :
@@ -361,6 +390,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 - **Couvre** : #252 (F-STATS 2/8 — Dashboard 4 KPI cards + backend `dailyKpis`).
 
 ### MC21 — Dashboard isolation cross-tenant via switcher (KB Admin supervision)
+
 - **Acteur** : KB Admin (supervision)
 - **Pré-requis** : 2 tenants actifs A et B avec CA distincts aujourd'hui (ex : A = 50€, B = 200€) ; connexion KB Admin avec tenant switcher monté.
 - **Étapes** :
@@ -377,6 +407,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 - **Couvre** : #252 + ADR 0010 (isolation cross-tenant).
 
 ### MC22 — Page Stats `/t/[tenantId]/stats` : RangePicker recalcule les chiffres bruts (7 / 30 / 90)
+
 - **Acteur** : KB Manager
 - **Pré-requis** : tenant T rattaché au manager, au moins 1 commande payée < 7j et 1 commande payée entre 30 et 90j ; route de départ `/t/T/stats`.
 - **Étapes** :
@@ -394,6 +425,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 - **Couvre** : #253 (F-STATS 3/8 — Stats shell + RangePicker + backend `rangeAggregates`).
 
 ### MC23 — Stats cross-tenant : KB Manager refusé sur URL forgée d'un autre resto
+
 - **Acteur** : KB Manager du tenant A (sans accès B)
 - **Pré-requis** : 2 tenants A (rattaché) et B (non rattaché), tous deux avec commandes payées récentes ; démarrer sur `/t/A/stats` puis taper manuellement `/t/B/stats`.
 - **Étapes** :
@@ -408,6 +440,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 - **Couvre** : #253 + ADR 0010 (MOAT applicatif Convex).
 
 ### MC24 — Stats accessibles par Staff opérationnel (même vue que le manager)
+
 - **Acteur** : Staff du tenant T
 - **Pré-requis** : tenant T avec un user `staff` rattaché et au moins 3 commandes payées dans les 30 derniers jours ; route `/t/T/stats`.
 - **Étapes** :
@@ -422,6 +455,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 - **Couvre** : #253 (allow-list `["kb_manager", "staff"]`).
 
 ### MC25 — LineChart Revenus par jour : changement de fenêtre temporelle (7 / 30 / 90) + tooltip
+
 - **Acteur** : KB Manager
 - **Pré-requis** : tenant `t` actif avec ≥5 commandes payées (`paidAt` set, `pricingSnapshot.total` renseigné) réparties sur les 30 derniers jours ; user `kb_manager` connecté ; route `/tenants/<tenantId>/stats`.
 - **Étapes** :
@@ -438,6 +472,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 - **Couvre** : #257 + #253 (RangePicker propagé à plusieurs blocs).
 
 ### MC26 — LineChart Revenus : isolation cross-tenant (MOAT)
+
 - **Acteur** : KB Manager du tenant A
 - **Pré-requis** : tenants A et B, chacun avec ≥3 commandes payées dans les 30 derniers jours ; user `mgrA` est `kb_manager` sur A uniquement ; route `/tenants/<tenantA-id>/stats`.
 - **Étapes** :
@@ -450,6 +485,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 - **Couvre** : #257 + ADR 0010 (MOAT applicatif).
 
 ### MC27 — LineChart Revenus : état empty (aucune commande payée sur 90j)
+
 - **Acteur** : KB Manager
 - **Pré-requis** : tenant `t` actif AUCUNE commande payée sur les 90 derniers jours ; user `mgr` connecté ; route `/tenants/<tenantId>/stats`.
 - **Étapes** :
@@ -467,6 +503,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 ## QR — QR PDF
 
 ### QR1 — Download PDF nominal (3 formats)
+
 - **Acteur** : KB Manager
 - **Pré-requis** : tenant actif avec slug
 - **Étapes** :
@@ -480,6 +517,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 - **Couvre** : #182 ; #198.
 
 ### QR2 — Regen sur customDomain
+
 - **Acteur** : KB Manager
 - **Pré-requis** : tenant avec `customDomain` configuré via #358
 - **Étapes** : configurer customDomain (Paramètres → Domaine), revenir sur `/t/<tenantId>/qr`.
@@ -493,6 +531,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 ## MO — Monitoring
 
 ### MO1 — KB Admin voit les 3 kinds
+
 - **Acteur** : KB Admin
 - **Pré-requis** : seeds avec ≥ 1 incident actif de chaque kind
 - **Étapes** : login KB Admin, sidebar → `/monitoring`.
@@ -503,6 +542,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 - **Couvre** : #184.
 
 ### MO2 — Filtres type / tenant / sévérité (AND)
+
 - **Acteur** : KB Admin
 - **Pré-requis** : ≥ 10 incidents mixtes sur ≥ 2 tenants
 - **Étapes** :
@@ -515,6 +555,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 - **Couvre** : #197.
 
 ### MO3 — Drill-down panel
+
 - **Acteur** : KB Admin
 - **Pré-requis** : ≥ 1 incident en table
 - **Étapes** :
@@ -528,6 +569,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 - **Couvre** : #207.
 
 ### MO4 — Manager refusé (UnauthorizedCard)
+
 Voir A4b (identique).
 
 ---
@@ -535,6 +577,7 @@ Voir A4b (identique).
 ## T — Tenants
 
 ### T1 — Tenant switcher (manager + admin avec Supervision pinned)
+
 - **Acteur** : KB Admin (≥ 2 tenants) + KB Manager multi-tenants
 - **Étapes** :
   1. Login KB Admin, ouvrir le tenant switcher du header.
@@ -548,6 +591,7 @@ Voir A4b (identique).
 - **Couvre** : #223 ; tenant switcher RBAC.
 
 ### T1bis — Cookie stale : manager qui a perdu un resto retombe sur le 1er tenant
+
 - **Acteur** : KB Manager avec cookie `kb_current_tenant=<tenant révoqué>`, conserve A et B
 - **Étapes** :
   1. (Setup BO) Retirer la rattache `userTenants` du tenant Z.
@@ -558,6 +602,7 @@ Voir A4b (identique).
 - **Couvre** : #223 (branche cookie stale).
 
 ### T2 — Fiche supervision /pipeline/[prospectId]
+
 - **Acteur** : KB Admin
 - **Pré-requis** : seeds e2e (au moins 1 prospect en DB — note : `api.prospects.get` est STUBBÉ V1, la page reste en loading tant que F-PIPELINE-CRM n'a pas atterri)
 - **Étapes** : aller manuellement sur `/pipeline/<prospectId>`.
@@ -569,6 +614,7 @@ Voir A4b (identique).
 - **Couvre** : #233.
 
 ### T3 — Aperçu contrat dans iframe sandboxée
+
 - **Acteur** : KB Admin (root)
 - **Pré-requis** : seeds e2e ; un prospect avec contrat déjà généré (HTML stocké côté backend, statut `draft`) ; route `/pipeline/<prospectId>` accessible ; bloc Contrats (slice 1) visible.
 - **Étapes** :
@@ -585,6 +631,7 @@ Voir A4b (identique).
 - **Couvre** : #165 + invariant sécurité PRD 70 §3.5.
 
 ### T4 — Téléchargement HTML du contrat
+
 - **Acteur** : KB Admin (root)
 - **Pré-requis** : `ContractIframe` monté avec un HTML non vide (cf. T3).
 - **Étapes** :
@@ -598,6 +645,7 @@ Voir A4b (identique).
 - **Couvre** : #165.
 
 ### T5 — Fallback erreur si HTML manquant
+
 - **Acteur** : KB Admin (root)
 - **Pré-requis** : `ContractIframe` monté avec `html = ""` ou `null` ou `undefined` (simulation d'échec backend en amont, ou tri-state Convex « no row »).
 - **Étapes** :
@@ -609,6 +657,7 @@ Voir A4b (identique).
 - **Couvre** : #165 + PRD 70 §3.5 (pas d'iframe blanche).
 
 ### T6 — Génération d'un contrat A&B depuis la fiche prospect (parcours complet)
+
 - **Acteur** : KB Admin (root)
 - **Pré-requis** : seeds e2e ; session connectée avec rôle `kb_admin` ; un prospect avec les 5 champs juridiques renseignés (`name`, `siret`, `address`, `contactName`, `email`) ; aucun contrat encore généré pour ce prospect ; route `/pipeline/<prospectId>`.
 - **Étapes** :
@@ -625,6 +674,7 @@ Voir A4b (identique).
 - **Couvre** : #174 (modal Générer contrat) + #158 (bloc lecture seule visible) + #165 (iframe + download).
 
 ### T7 — Échec génération sur prospect incomplet (champs juridiques manquants)
+
 - **Acteur** : KB Admin (root)
 - **Pré-requis** : seeds e2e ; session `kb_admin` ; un prospect avec `name` + `phone` uniquement (les 4 champs `siret`/`address`/`email`/`contactName` sont vides) ; route `/pipeline/<prospectId>`.
 - **Étapes** :
@@ -639,6 +689,7 @@ Voir A4b (identique).
 - **Couvre** : #174 (gating champs manquants) + #158 (liste reste vide).
 
 ### T8 — Erreur backend génération contrat (toast + pas d'iframe blanche)
+
 - **Acteur** : KB Admin (root)
 - **Pré-requis** : seeds e2e ; session `kb_admin` ; un prospect complet (5 champs juridiques OK) ; simulation d'erreur backend (couper la connexion Convex après ouverture du modal, ou seed un prospect dont le SIRET force une `ConvexError` côté `generateContract`) ; route `/pipeline/<prospectId>`.
 - **Étapes** :
@@ -653,6 +704,7 @@ Voir A4b (identique).
 - **Couvre** : #174 (branche erreur) + #165 (ContractIframe error branch indirectement).
 
 ### T9 — Pipeline Kanban accessible KB Admin uniquement (RBAC + Convex wire)
+
 - **Acteur** : root admin (KB Admin) puis KB Manager
 - **Pré-requis** : seeds e2e ; au moins 2-3 prospects en base (différentes phases : `acquisition`, `preparation`, `installation`) — utiliser `seedData` ou la mutation `crm.createProspect` ; un compte KB Admin (`role = kb_admin`) et un compte KB Manager (`role = kb_manager` rattaché à au moins 1 tenant) ; starting route : `/` (root-entry redirige selon rôle).
 - **Étapes** :
@@ -670,6 +722,7 @@ Voir A4b (identique).
 - **Couvre** : #216 (F-PIPELINE-CRM 01) + F-SHELL-06 #196 (sidebar conditional) + F-SHELL-10 #233 (fiche drill-down) + ADR 0014 §5.
 
 ### T10 — Pipeline Kanban : loading state et empty state distinguables
+
 - **Acteur** : root admin (KB Admin)
 - **Pré-requis** : seeds e2e ; un compte KB Admin connecté ; deux variantes de fixture : (a) base vide (0 prospects) ; (b) base avec 1 prospect minimum ; outils : DevTools (Network throttling « Slow 3G ») pour observer le loading.
 - **Étapes** :
@@ -684,6 +737,7 @@ Voir A4b (identique).
 - **Couvre** : #216 (Convex tri-state contract `undefined` / `[]` / `Doc[]`).
 
 ### T11 — Kanban `/pipeline` : 3 colonnes triées par phase + drill-down fiche
+
 - **Acteur** : KB Admin (root)
 - **Pré-requis** : tenant KB seed avec ≥ 4 prospects (au moins 1 par phase : `acquisition`, `preparation`, `installation`, `operationnel`) ; auth en root admin ; route de départ `/`.
 - **Étapes** :
@@ -700,6 +754,7 @@ Voir A4b (identique).
 - **Couvre** : #255 + smoke régression #216 + #233 (drill-down fiche).
 
 ### T12 — Kanban : recherche par nom filtre les 3 colonnes en temps réel (accent insensible)
+
 - **Acteur** : KB Admin (root)
 - **Pré-requis** : tenant KB seed avec au moins 3 prospects nommés : « Café Vert » (acquisition), « Pizza Roma » (preparation), « Sushi Bar » (installation) ; route `/pipeline`.
 - **Étapes** :
@@ -715,6 +770,7 @@ Voir A4b (identique).
 - **Couvre** : #255 (search + partition front-side, identité quand vide).
 
 ### T13 — Kanban : onglet « Clients actifs » affiche les prospects Opérationnel + badge tenant
+
 - **Acteur** : KB Admin (root)
 - **Pré-requis** : tenant KB seed avec ≥ 1 prospect en phase `operationnel` ET avec un `tenantId` back-link posé (prospect provisionné) ; route `/pipeline`.
 - **Étapes** :
@@ -730,6 +786,7 @@ Voir A4b (identique).
 - **Couvre** : #255 (onglet séparé + badge tenant conditionnel + filtrage Operationnel hors Kanban — PRD 70 §3.3).
 
 ### T14 — Fiche prospect : KB Admin coche un milestone Acquisition et observe l'auto-bascule vers Préparation
+
 - **Acteur** : KB Admin (root user)
 - **Pré-requis** : 1 prospect seed en phase `acquisition` avec `tabletteMode = "appareil_existant"` et `milestones = { contratSigne: <ts>, kbisRecu: <ts>, pieceIdentiteRecue: <ts> }` (3/4 milestones Closing déjà cochés).
 - **Étapes** :
@@ -745,6 +802,7 @@ Voir A4b (identique).
 - **Couvre** : #256 + B-ONBOARDING-MILESTONES (#189) + PIPELINE-06 (réactivité fiche).
 
 ### T15 — Fiche prospect : KB Admin met à jour un statut Stripe Connect et voit l'historique pousser
+
 - **Acteur** : KB Admin
 - **Pré-requis** : 1 prospect seed sans intégrations initialisées (`milestones.stripeConnect` absent).
 - **Étapes** :
@@ -760,6 +818,7 @@ Voir A4b (identique).
 - **Couvre** : #256 + B-ONBOARDING-MILESTONES slice 4 (#213).
 
 ### T16 — Fiche prospect : KB Manager (non-admin) deep-linke `/pipeline/[prospectId]` et voit le refus
+
 - **Acteur** : KB Manager (non-root)
 - **Pré-requis** : 1 prospect existant en BD.
 - **Étapes** :
@@ -772,6 +831,7 @@ Voir A4b (identique).
 - **Couvre** : #256 + ADR 0010 (isolation `kbAdminQuery` / `kbAdminMutation`) + F-SHELL-10 (#233 access gate).
 
 ### T17 — Kanban DnD : drag clean en avant (Acquisition → Préparation, milestones complets)
+
 - **Acteur** : KB Admin (root)
 - **Pré-requis** : ≥ 2 prospects (un dans `acquisition` avec tous les milestones Closing cochés en `appareil_existant` : `contratSigne` + `kbisRecu` + `pieceIdentiteRecue` + `ribRecu` ; un autre dans `preparation`) ; route `/pipeline`, onglet « Kanban » actif.
 - **Étapes** :
@@ -787,6 +847,7 @@ Voir A4b (identique).
 - **Couvre** : #262.
 
 ### T18 — Kanban DnD : drag bypass en avant + dialog de confirmation (milestones manquants)
+
 - **Acteur** : KB Admin (root)
 - **Pré-requis** : ≥ 1 prospect en `acquisition` avec `tabletteMode = achat_kb` et seulement 4 des 5 milestones Closing cochés (manque `factureTablettePayee`) ; route `/pipeline`.
 - **Étapes** :
@@ -803,6 +864,7 @@ Voir A4b (identique).
 - **Couvre** : #262.
 
 ### T19 — Kanban : toast bascule auto Closing (coche du dernier milestone sur la fiche)
+
 - **Acteur** : KB Admin (root)
 - **Pré-requis** : 1 prospect en `acquisition`, `tabletteMode = appareil_existant`, 3 des 4 milestones mandatory Closing cochés (manque `ribRecu`) ; deux onglets ouverts : A=`/pipeline` (Kanban), B=`/pipeline/[prospectId]` (fiche).
 - **Étapes** :
@@ -818,6 +880,7 @@ Voir A4b (identique).
 - **Couvre** : #262.
 
 ### T20 — Fiche prospect : logger une interaction et la voir en tête de timeline
+
 - **Acteur** : KB Admin (root)
 - **Pré-requis** : 1 prospect `acquisition` seedé avec 1 interaction historique (« Premier contact » jour-30) ; route `/pipeline/<prospectId>`.
 - **Étapes** :
@@ -836,6 +899,7 @@ Voir A4b (identique).
 - **Couvre** : #263.
 
 ### T21 — Fiche prospect : éditer l'identité du prospect via modal
+
 - **Acteur** : KB Admin (root)
 - **Pré-requis** : 1 prospect existant avec `name="L'Artisan"`, SIRET non renseigné, contact `Jean Dupont` ; route `/pipeline/<prospectId>`.
 - **Étapes** :
@@ -854,6 +918,7 @@ Voir A4b (identique).
 - **Couvre** : #263.
 
 ### T22 — Fiche prospect : ExternalLinksPanel — WhatsApp E.164 + direct.uber.com + Stripe disabled
+
 - **Acteur** : KB Admin (root)
 - **Pré-requis** : 1 prospect avec téléphone `06 12 34 56 78` ; route `/pipeline/<prospectId>`.
 - **Étapes** :
@@ -870,6 +935,7 @@ Voir A4b (identique).
 - **Couvre** : #263.
 
 ### T23 — Fiche prospect : panneau Tenant absent quand pas encore provisionné
+
 - **Acteur** : KB Admin (root)
 - **Pré-requis** : 1 prospect sans `tenantId` (phase `acquisition` ou `preparation`, wizard de provisioning jamais lancé).
 - **Étapes** :
@@ -884,6 +950,7 @@ Voir A4b (identique).
 - **Couvre** : #264.
 
 ### T24 — Fiche prospect : panneau Tenant + bouton « Ouvrir la vue resto » fonctionnel
+
 - **Acteur** : KB Admin (root)
 - **Pré-requis** : 1 prospect dont le wizard de provisioning a été complété (step 1 a posé `tenantId`, step 8 a activé le tenant → `status = "active"`) ; tenant a slug + nom.
 - **Étapes** :
@@ -899,6 +966,7 @@ Voir A4b (identique).
 - **Couvre** : #264 (+ couplage F-SHELL TenantSwitcher).
 
 ### T25 — Fiche prospect : panneau Tenant dégradé quand le tenant a été supprimé manuellement
+
 - **Acteur** : KB Admin (root)
 - **Pré-requis** : 1 prospect dont `tenantId` pointe sur un tenant supprimé (cas dégradé — typiquement après debug ou rollback manuel en base).
 - **Étapes** :
@@ -907,7 +975,7 @@ Voir A4b (identique).
   3. Naviguer vers `/pipeline/<prospectId>` du prospect dont le tenant a disparu.
   4. Observer le panneau Tenant + la console DevTools.
 - **Attendu** :
-  - Carte Tenant rendue avec le message « Tenant introuvable (id: tenants_…) ».
+  - Carte Tenant rendue avec le message « Tenant introuvable (id: tenants\_…) ».
   - `console.warn` émis : `[TenantPanel] tenant introuvable pour prospect ... (tenantId: ...)`.
   - Le bouton « Ouvrir la vue resto » n'est PAS rendu (pas de lien cassé).
   - Le reste de la fiche (identité, milestones, intégrations, contrats) reste pleinement fonctionnel.
@@ -918,6 +986,7 @@ Voir A4b (identique).
 ## P — Paramètres
 
 ### P1 — Identité visuelle (logo + couleur)
+
 - **Acteur** : KB Manager
 - **Pré-requis** : tenant sans branding préalable
 - **Étapes** :
@@ -930,6 +999,7 @@ Voir A4b (identique).
 - **Couvre** : #229 ; #168.
 
 ### P2 — Coordonnées (save isolé + diff-only)
+
 - **Acteur** : KB Manager
 - **Étapes** :
   1. Coordonnées : adresse + téléphone `06 12 34 56 78`, Enregistrer.
@@ -940,6 +1010,7 @@ Voir A4b (identique).
 - **Couvre** : #231.
 
 ### P2bis — Validation téléphone FR
+
 - **Acteur** : KB Manager
 - **Étapes** : saisir `abcd` ou `0812345678` (08 = numéro spécial), corriger `06 12 34 56 78`, Enregistrer.
 - **Attendu** :
@@ -948,6 +1019,7 @@ Voir A4b (identique).
 - **Couvre** : #231.
 
 ### P2ter — Save isolé entre sections (régression #229)
+
 - **Acteur** : KB Manager
 - **Étapes** :
   1. Commencer à modifier la couleur dans Identité visuelle (NE PAS Enregistrer).
@@ -956,6 +1028,7 @@ Voir A4b (identique).
 - **Couvre** : #231 + régression #229.
 
 ### P3 — Modes acceptés (au moins un actif)
+
 - **Acteur** : KB Manager
 - **Pré-requis** : tenant `acceptedModes = { delivery: true, clickAndCollect: true }`
 - **Étapes** :
@@ -968,6 +1041,7 @@ Voir A4b (identique).
 - **Couvre** : #234 ; #168 (D5).
 
 ### P4 — Horaires serviceHours
+
 - **Acteur** : KB Manager
 - **Étapes** :
   1. « Horaires de service » : Lundi 11h30–14h30 + 18h30–22h30, Dimanche fermé.
@@ -978,6 +1052,7 @@ Voir A4b (identique).
 - **Couvre** : #236.
 
 ### P5 — Uber Direct read-only (info only V1)
+
 - **Acteur** : KB Manager
 - **Étapes** : observer la section « Uber Direct ».
 - **Attendu** :
@@ -990,9 +1065,11 @@ Voir A4b (identique).
 ## AC — Auth core
 
 ### AC1 — Accept-invite admin path
+
 _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptInvite` admin path EXISTE (branche `targetRole === "kb_admin"` dans `convex/table/admin.ts` ~ligne 280) mais aucune UI ne PERMET d'émettre une invite admin en V1 — l'ancien `inviteAdmin` a été supprimé. L'envoi se fait aujourd'hui via Convex dashboard / script.
 
 ### AC2 — Invite manager via wizard step 7
+
 - **Acteur** : KB Admin (envoi) + gérant invité (acceptation)
 - **Pré-requis** : prospect en phase `preparation`/`installation`/`operationnel` AVEC `tenantId` ; aucune `managerInvites` row encore
 - **Étapes** :
@@ -1008,6 +1085,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Couvre** : #273 ; B-AUTH-4 (#204) ; B-AUTH-5 (#212) ; B-AUTH-6 (#230) ; useWizardState (#265).
 
 ### AC2bis — Step 7 non-bloquant + relance après expiration
+
 - **Acteur** : KB Admin
 - **Étapes** :
   1. Step 7 sans envoyer : warning « Sans invitation, le gérant ne pourra pas se connecter ».
@@ -1023,6 +1101,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 ## M — Menu
 
 ### M1 — Catégories CRUD
+
 - **Acteur** : KB Manager
 - **Pré-requis** : tenant fraîchement provisionné, 0 catégorie
 - **Étapes** :
@@ -1035,6 +1114,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Couvre** : #200 ; #206.
 
 ### M2 — Items list + toggle rupture
+
 - **Acteur** : KB Manager
 - **Pré-requis** : menu publié contenant ≥ 1 item « Smash Burger » disponible
 - **Étapes** :
@@ -1046,12 +1126,14 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Couvre** : #211 (AC3 + AC4) ; ADR 0015.
 
 ### M2bis — Réactivité multi-onglets
+
 - **Acteur** : KB Manager (2 sessions)
 - **Étapes** : onglet A toggle rupture, onglet B observe la card.
 - **Attendu** : onglet B reflète le nouveau state + badge en < 2 s, sans refresh.
 - **Couvre** : #211 (AC5).
 
 ### M3 — Modale item CRUD
+
 - **Acteur** : KB Manager
 - **Pré-requis** : tenant avec ≥ 2 catégories (« Entrées », « Plats »)
 - **Étapes** :
@@ -1064,6 +1146,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Couvre** : #219 ; #211.
 
 ### M3bis — Validation prix (front + INVALID_PRICE backend)
+
 - **Acteur** : KB Manager
 - **Étapes** : modale édition item : essayer « -5 », « abc », « 12,505 », puis « 12,50 ».
 - **Attendu** :
@@ -1072,6 +1155,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Couvre** : #219.
 
 ### M4 — Upload photo (libération blob)
+
 - **Acteur** : KB Manager
 - **Pré-requis** : item sans photo
 - **Étapes** :
@@ -1085,6 +1169,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Couvre** : #226.
 
 ### M5 — DnD reorder items (intra-catégorie)
+
 - **Acteur** : KB Manager
 - **Pré-requis** : ≥ 1 catégorie avec ≥ 3 items
 - **Étapes** : drag handle d'un item (`data-slot="menu-item-drag-handle"`) du milieu vers le haut, lâcher, F5.
@@ -1094,6 +1179,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Couvre** : #237.
 
 ### M6 — DnD reorder catégories
+
 - **Acteur** : KB Manager
 - **Pré-requis** : ≥ 3 catégories
 - **Étapes** : drag la 3e catégorie en position 1, lâcher, F5.
@@ -1103,6 +1189,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Couvre** : #206.
 
 ### M7 — CRUD groupes Personnalisations (zone dédiée)
+
 - **Acteur** : KB Manager
 - **Pré-requis** : tenant sans groupe
 - **Étapes** :
@@ -1117,6 +1204,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Couvre** : #242.
 
 ### M8 — Attach/detach groupes (cross-item + détach isolé)
+
 - **Acteur** : KB Manager
 - **Pré-requis** : groupe « Suppléments » (min=0, max=3) ; 2 items I1, I2
 - **Étapes** :
@@ -1130,6 +1218,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Couvre** : #246 (a)(b) ; #242.
 
 ### M8bis — Création inline d'un groupe depuis la modale item
+
 - **Acteur** : KB Manager
 - **Pré-requis** : I1 existe ; 0 groupe
 - **Étapes** :
@@ -1141,6 +1230,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Couvre** : #246 (c) ; #242.
 
 ### M8ter — Idempotence attach
+
 - **Acteur** : KB Manager
 - **Pré-requis** : groupe G déjà attaché à I1
 - **Étapes** : ouvrir I1 → picker « Ajouter un groupe existant ».
@@ -1148,6 +1238,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Couvre** : #246 (b).
 
 ### M9 — Publier + badge + Aperçu
+
 - **Acteur** : KB Manager
 - **Pré-requis** : tenant actif, ≥ 1 item au prix P0 publié au moins une fois
 - **Étapes** :
@@ -1161,6 +1252,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Couvre** : #254.
 
 ### M9bis — Publish sur tenant fraîchement provisionné
+
 - **Acteur** : KB Manager
 - **Pré-requis** : tenant jamais publié, 0 catégorie
 - **Étapes** :
@@ -1172,6 +1264,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Couvre** : #254.
 
 ### M9ter — Aperçu protégé par l'auth admin
+
 - **Acteur** : KB Manager
 - **Étapes** : copier `/t/[tenantId]/menu/preview`, l'ouvrir en incognito.
 - **Attendu** :
@@ -1184,12 +1277,14 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 ## CMD — Commandes
 
 ### CMD1 — Page shell
+
 - **Acteur** : KB Manager
 - **Étapes** : sidebar → Commandes → `/t/<tenantId>/commandes`.
 - **Attendu** : header « Commandes » + bouton CSV (désactivé si vide), table empty si pas de commandes.
 - **Couvre** : #222.
 
 ### CMD2 — Table live Convex
+
 - **Acteur** : KB Manager
 - **Pré-requis** : tenant avec ≥ 1 commande
 - **Étapes** : observer la table, déclencher une nouvelle commande backend.
@@ -1197,6 +1292,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Couvre** : #227.
 
 ### CMD3 — Filtres date + statut
+
 - **Acteur** : KB Manager
 - **Pré-requis** : tenant avec ≥ 10 commandes étalées sur > 30 j, mix de statuts
 - **Étapes** :
@@ -1208,6 +1304,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Couvre** : #238 ; #227.
 
 ### CMD4 — Modal détail
+
 - **Acteur** : KB Manager
 - **Pré-requis** : ≥ 1 commande payée (`pricingSnapshot` rempli, ≥ 2 events)
 - **Étapes** :
@@ -1220,6 +1317,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Couvre** : #239 ; #227.
 
 ### CMD4bis — Détail commande en attente de paiement
+
 - **Acteur** : KB Manager
 - **Pré-requis** : ≥ 1 commande `en attente de paiement` (`pricingSnapshot` absent)
 - **Étapes** : cliquer la ligne.
@@ -1229,12 +1327,14 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Couvre** : #239 (branche `pricingSnapshot === undefined`).
 
 ### CMD4ter — Fermeture modal (Esc + backdrop)
+
 - **Acteur** : KB Manager
 - **Étapes** : Esc, rouvrir, clic backdrop.
 - **Attendu** : focus revient, pas de portail orphelin.
 - **Couvre** : #239.
 
 ### CMD5 — Refund
+
 - **Acteur** : KB Manager
 - **Pré-requis** : T1 a ≥ 1 commande payée 27,50 € ; Stripe sandbox + `stripeAccountId`
 - **Étapes** :
@@ -1246,12 +1346,14 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Couvre** : #243 ; #221.
 
 ### CMD5bis — Staff ne voit pas le bouton refund
+
 - **Acteur** : staff sur T1
 - **Étapes** : ouvrir le modal d'une commande payée.
 - **Attendu** : aucun bouton « Rembourser », seul « Fermer ».
 - **Couvre** : #243 (RBAC mirror front).
 
 ### CMD5ter — Refund déjà effectué (CTA masqué)
+
 - **Acteur** : KB Manager
 - **Pré-requis** : commande déjà `refusée`
 - **Étapes** : ouvrir le modal.
@@ -1259,6 +1361,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Couvre** : #243 (gate refundability).
 
 ### CMD6 — Export CSV filtré reflète l'état UI
+
 - **Acteur** : KB Manager
 - **Pré-requis** : ≥ 10 commandes mixtes sur 30 j
 - **Étapes** :
@@ -1272,6 +1375,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Couvre** : #244 ; #238.
 
 ### CMD6bis — Bouton CSV désactivé sans données
+
 - **Acteur** : KB Manager
 - **Pré-requis** : tenant fraîchement provisionné
 - **Étapes** : `/t/<tenantId>/commandes`.
@@ -1285,6 +1389,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 ## PR — Pricing
 
 ### PR1 — Liste règles + auto-priorité
+
 - **Acteur** : KB Manager
 - **Pré-requis** : tenant A avec ≥ 2 règles (1 active, 1 inactive, actions variées) ; tenant B vierge
 - **Étapes** :
@@ -1296,6 +1401,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Couvre** : #241.
 
 ### PR2 — Builder create
+
 - **Acteur** : KB Manager
 - **Étapes** :
   1. « + Nouvelle règle ». Modale « Créer une règle ».
@@ -1306,6 +1412,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Couvre** : #245.
 
 ### PR3 — Builder edit
+
 - **Acteur** : KB Manager
 - **Pré-requis** : ≥ 1 règle persistée (`panier >= 25 EUR + premiere commande → livraison offerte resto`)
 - **Étapes** :
@@ -1315,6 +1422,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Couvre** : #248 ; #245 ; #241.
 
 ### PR3bis — Édition avec conditions contradictoires
+
 - **Acteur** : KB Manager
 - **Étapes** : ajouter `total_panier lte 10 EUR` à une règle `gte 25 EUR`, Enregistrer.
 - **Attendu** :
@@ -1324,6 +1432,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Couvre** : #248 ; #245.
 
 ### PR4 — Toggle active (round-trip préserve la règle)
+
 - **Acteur** : KB Manager
 - **Pré-requis** : ≥ 1 règle (conditions + action non triviales)
 - **Étapes** :
@@ -1333,6 +1442,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Couvre** : #249 ; #248.
 
 ### PR4bis — Toggle pricing cross-tenant safe
+
 - **Acteur** : KB Manager rattaché à A uniquement, B existe
 - **Étapes** :
   1. `/t/A/pricing` : toggle une règle.
@@ -1343,6 +1453,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Couvre** : #249 ; ADR 0010 / withTenant.
 
 ### PR5 — Supprimer (confirmation 2 clics)
+
 - **Acteur** : KB Manager
 - **Pré-requis** : ≥ 2 règles actives
 - **Étapes** :
@@ -1358,6 +1469,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 ## SUP — Support
 
 ### SUP1 — Composant partagé
+
 - **Acteur** : tout rôle
 - **Étapes** : charger `/support` ou `/t/[id]/support`.
 - **Attendu** :
@@ -1366,6 +1478,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Couvre** : #210.
 
 ### SUP2 — Route supervision `/support`
+
 - **Acteur** : KB Admin (root)
 - **Étapes** : naviguer `/support`.
 - **Attendu** :
@@ -1374,6 +1487,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Couvre** : #232 ; #210.
 
 ### SUP3 — Route opérationnelle `/t/[tenantId]/support` (y compris tenant suspendu)
+
 - **Acteur** : KB Manager sur T1 (actif) puis T2 (suspended)
 - **Étapes** :
   1. `/t/T1/support` : bandeau + 4 cards. Cliquer « FAQ » → lien externe nouvel onglet.
@@ -1382,6 +1496,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Couvre** : #235 ; #150.
 
 ### SUP3bis — Parité supervision / opérationnelle (zero duplication)
+
 - **Acteur** : KB Admin
 - **Étapes** : comparer visuellement `/support` (admin) vs `/t/T1/support`.
 - **Attendu** : mêmes textes, mêmes 4 cards, même ordre, même grid 1col mobile / 2cols desktop.
@@ -1392,6 +1507,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 ## W — Wizard provisioning (10/10 steps)
 
 ### W1 — Skeleton + stepper
+
 - **Acteur** : KB Admin
 - **Pré-requis** : prospect en phase `preparation`
 - **Étapes** : `/pipeline/<prospectId>/provision` → shell wizard.
@@ -1401,6 +1517,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Couvre** : #265.
 
 ### W2 — Launcher button
+
 - **Acteur** : KB Admin
 - **Étapes** : `/pipeline/<prospectId>`, cliquer le bouton (Lancer / Reprendre / Ouvrir la vue resto selon état).
 - **Attendu** :
@@ -1409,6 +1526,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Couvre** : #266.
 
 ### W3 — Step 1 provisionTenant
+
 - **Acteur** : KB Admin
 - **Pré-requis** : prospect sans `tenantId`
 - **Étapes** : step 1 : nom resto + slug suggéré, « Créer le tenant ».
@@ -1418,6 +1536,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Couvre** : #267.
 
 ### W4 — Step 2 customDomain (débloqué par #358)
+
 - **Acteur** : KB Admin
 - **Pré-requis** : step 1 fait
 - **Étapes** : step 2 « Domaine » : saisir `commande.monresto.fr`, vérification DNS, confirmer.
@@ -1427,6 +1546,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Couvre** : #268 (débloqué) ; #358.
 
 ### W5 — Step 3 Stripe Connect KYC
+
 - **Acteur** : KB Admin
 - **Pré-requis** : tenant sans `stripeAccountId`
 - **Étapes** :
@@ -1436,6 +1556,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Couvre** : #269.
 
 ### W6 — Step 4 Branding (bout-en-bout)
+
 - **Acteur** : KB Admin
 - **Pré-requis** : step 1 fait. Image PNG/JPG ~200 Ko
 - **Étapes** :
@@ -1450,6 +1571,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Couvre** : #270 ; #229 ; #231 ; #234 ; #168.
 
 ### W6bis — Step 4 INVALID_HEX_COLOR backend
+
 - **Acteur** : KB Admin
 - **Étapes** : step 4 : bypass UI (`document.querySelector('[data-slot=parametres-branding-color-input]').value = '#XYZ'` + dispatch `change`). Enregistrer.
 - **Attendu** :
@@ -1458,6 +1580,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Couvre** : #270 ; #228.
 
 ### W7 — Step 5 Menu (publication requise → gate Step 6)
+
 - **Acteur** : KB Admin
 - **Pré-requis** : tenant provisionné, aucune publication antérieure
 - **Étapes** :
@@ -1472,6 +1595,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Couvre** : #271 ; #176 ; #155 ; #160 ; ADR 0015.
 
 ### W8 — Step 6 QR sticker PDF
+
 - **Acteur** : KB Admin
 - **Pré-requis** : step 5 complete
 - **Étapes** :
@@ -1483,9 +1607,11 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Couvre** : #272.
 
 ### W9 — Step 7 Invitation gérant
+
 Voir AC2 et AC2bis (couverture identique : #273 + B-AUTH-4/5/6).
 
 ### W10 — Step 8 Activation
+
 - **Acteur** : KB Admin
 - **Pré-requis** : steps 1-7 complets (ou au moins les bloquants)
 - **Étapes** :
@@ -1502,26 +1628,26 @@ Voir AC2 et AC2bis (couverture identique : #273 + B-AUTH-4/5/6).
 
 Les 16 PRs suivantes n'ont pas inclus de section « Tests E2E proposés » exploitable dans leur body. Justification rappelée quand explicite ; sinon, marquer comme dette à combler si le parcours n'est pas couvert par une E2E voisine ci-dessus.
 
-| PR   | Ticket  | Domaine                      | Justification / note                                                                                                                    |
-| ---- | ------- | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| #317 | #210    | F-SUPPORT                    | _Justifié_ : composant 100 % statique, sans fetch ni Convex. Premier E2E pertinent = #232 (route /support).                             |
-| #319 | _(n/a)_ | _empty_                      | Body vide (`@-`). À vérifier.                                                                                                           |
-| #320 | _(n/a)_ | _empty_                      | Body vide.                                                                                                                              |
-| #322 | #221    | F-COMMANDES (backend)        | Backend slice ; couvert end-to-end par l'E2E refund de #243.                                                                            |
-| #323 | #222    | F-COMMANDES                  | _Justifié_ : scaffold placeholder, parcours significatif arrive en #227/#238/#239.                                                      |
-| #325 | #224    | B-MENU-PUBLICATION (backend) | _Justifié_ : invariants backend purs, couverts par 1211 tests convex-test.                                                              |
-| #327 | #227    | F-COMMANDES                  | Pas de section E2E (slice 2 — liste live). Parcours couvert par les E2E de #238 / #239.                                                 |
-| #329 | #230    | B-AUTH                       | Pas de section E2E. Couvert end-to-end par l'E2E Step 7 wizard (#273).                                                                  |
-| #332 | _(n/a)_ | _empty_                      | Body vide.                                                                                                                              |
-| #335 | _(n/a)_ | _empty_                      | Body vide.                                                                                                                              |
-| #336 | _(n/a)_ | _empty_                      | Body vide.                                                                                                                              |
-| #340 | #242    | F-MENU                       | Pas de section E2E (CRUD groupes Personnalisations standalone). Parcours couvert par les E2E de #246.                                   |
-| #343 | #245    | F-PRICING                    | Pas de section E2E (CREATE de règle). Parcours couvert indirectement par les E2E d'édition #248. À compléter pour le chemin CREATE pur. |
-| #359 | #158    | F-CONTRATS (slice 1)         | Body PR réduit à `@-` (artefact d'édition post-merge). Parcours « bloc Contrats lecture seule » couvert indirectement par T6 (E2E #174 qui exerce le bloc slice 1 visible).                                |
-| #360 | #163    | B-ONBOARDING-MILESTONES (s1) | _Justifié_ : pure addition de seam backend (`prospectsStore`), aucun appel front, aucune Convex function exposée. Parcours porté par les slices 2/3 (#172, futures).        |
-| #362 | #172    | B-ONBOARDING-MILESTONES (s2) | _Justifié_ : refacto interne backend (helper privé `maybeAutoBascule`), shape de retour `applyClosing` strictement inchangé, helper hors barrel. Aucune surface modifiée.        |
-| #365 | #185    | F-CONTRATS (slice 4)         | Body PR réduit à `@-` (artefact d'édition post-merge). Parcours « relecture contrat existant » couvert par T3/T4 (iframe sandboxée + téléchargement HTML) ; clic ligne → iframe vérifié manuellement via T3.                                |
-| #367 | #189    | B-ONBOARDING-MILESTONES (s3) | Body PR réduit à `@-` (artefact d'édition post-merge). Mutation `setMilestone` granulaire + auto-Closing : invariants backend purs couverts par les tests convex-test du module ; aucune surface front directe (consommée par slices ultérieures).        |
+| PR   | Ticket  | Domaine                      | Justification / note                                                                                                                                                                                                                                                                                            |
+| ---- | ------- | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| #317 | #210    | F-SUPPORT                    | _Justifié_ : composant 100 % statique, sans fetch ni Convex. Premier E2E pertinent = #232 (route /support).                                                                                                                                                                                                     |
+| #319 | _(n/a)_ | _empty_                      | Body vide (`@-`). À vérifier.                                                                                                                                                                                                                                                                                   |
+| #320 | _(n/a)_ | _empty_                      | Body vide.                                                                                                                                                                                                                                                                                                      |
+| #322 | #221    | F-COMMANDES (backend)        | Backend slice ; couvert end-to-end par l'E2E refund de #243.                                                                                                                                                                                                                                                    |
+| #323 | #222    | F-COMMANDES                  | _Justifié_ : scaffold placeholder, parcours significatif arrive en #227/#238/#239.                                                                                                                                                                                                                              |
+| #325 | #224    | B-MENU-PUBLICATION (backend) | _Justifié_ : invariants backend purs, couverts par 1211 tests convex-test.                                                                                                                                                                                                                                      |
+| #327 | #227    | F-COMMANDES                  | Pas de section E2E (slice 2 — liste live). Parcours couvert par les E2E de #238 / #239.                                                                                                                                                                                                                         |
+| #329 | #230    | B-AUTH                       | Pas de section E2E. Couvert end-to-end par l'E2E Step 7 wizard (#273).                                                                                                                                                                                                                                          |
+| #332 | _(n/a)_ | _empty_                      | Body vide.                                                                                                                                                                                                                                                                                                      |
+| #335 | _(n/a)_ | _empty_                      | Body vide.                                                                                                                                                                                                                                                                                                      |
+| #336 | _(n/a)_ | _empty_                      | Body vide.                                                                                                                                                                                                                                                                                                      |
+| #340 | #242    | F-MENU                       | Pas de section E2E (CRUD groupes Personnalisations standalone). Parcours couvert par les E2E de #246.                                                                                                                                                                                                           |
+| #343 | #245    | F-PRICING                    | Pas de section E2E (CREATE de règle). Parcours couvert indirectement par les E2E d'édition #248. À compléter pour le chemin CREATE pur.                                                                                                                                                                         |
+| #359 | #158    | F-CONTRATS (slice 1)         | Body PR réduit à `@-` (artefact d'édition post-merge). Parcours « bloc Contrats lecture seule » couvert indirectement par T6 (E2E #174 qui exerce le bloc slice 1 visible).                                                                                                                                     |
+| #360 | #163    | B-ONBOARDING-MILESTONES (s1) | _Justifié_ : pure addition de seam backend (`prospectsStore`), aucun appel front, aucune Convex function exposée. Parcours porté par les slices 2/3 (#172, futures).                                                                                                                                            |
+| #362 | #172    | B-ONBOARDING-MILESTONES (s2) | _Justifié_ : refacto interne backend (helper privé `maybeAutoBascule`), shape de retour `applyClosing` strictement inchangé, helper hors barrel. Aucune surface modifiée.                                                                                                                                       |
+| #365 | #185    | F-CONTRATS (slice 4)         | Body PR réduit à `@-` (artefact d'édition post-merge). Parcours « relecture contrat existant » couvert par T3/T4 (iframe sandboxée + téléchargement HTML) ; clic ligne → iframe vérifié manuellement via T3.                                                                                                    |
+| #367 | #189    | B-ONBOARDING-MILESTONES (s3) | Body PR réduit à `@-` (artefact d'édition post-merge). Mutation `setMilestone` granulaire + auto-Closing : invariants backend purs couverts par les tests convex-test du module ; aucune surface front directe (consommée par slices ultérieures).                                                              |
 | #374 | #220    | F-PIPELINE-CRM (s4)          | _Justifié_ : module pur `reduceIntegrationStatus` (TypeScript générique sans UI / sans Convex / sans React). Couvert exhaustivement par 5 tests Vitest unitaires. Le flux end-to-end "KB Admin flippe Stripe Connect status → history persistée" relève des stories UI sœurs de l'épique F-PIPELINE-CRM (#144). |
-| #375 | #225    | B-ONBOARDING-MILESTONES (s5) | _Justifié_ : refactor barrel `lib/onboarding/index.ts` + JSDoc deprecation sur `editProspect.patch.milestones`. Zéro changement de comportement runtime. Les parcours `setMilestone` / `recordIntegrationStatus` sont déjà couverts par les E2E des slices 3/4 (#189 / #213).                                  |
-| #378 | #247    | F-CAMPAGNES (s7 polish)      | _Justifié_ : polish visuel sans nouveau parcours (palette KB, responsive, garde-fous ADR 0006 / ADR 0010 MOAT, FR-only) verrouillés par 21 tests d'audit source-code + 2 tests runtime pour l'accent jaune/or `data-warning` sur la carte rate-limit. Parcours fonctionnels déjà couverts par MC5→MC19.        |
+| #375 | #225    | B-ONBOARDING-MILESTONES (s5) | _Justifié_ : refactor barrel `lib/onboarding/index.ts` + JSDoc deprecation sur `editProspect.patch.milestones`. Zéro changement de comportement runtime. Les parcours `setMilestone` / `recordIntegrationStatus` sont déjà couverts par les E2E des slices 3/4 (#189 / #213).                                   |
+| #378 | #247    | F-CAMPAGNES (s7 polish)      | _Justifié_ : polish visuel sans nouveau parcours (palette KB, responsive, garde-fous ADR 0006 / ADR 0010 MOAT, FR-only) verrouillés par 21 tests d'audit source-code + 2 tests runtime pour l'accent jaune/or `data-warning` sur la carte rate-limit. Parcours fonctionnels déjà couverts par MC5→MC19.         |
