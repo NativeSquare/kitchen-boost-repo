@@ -344,6 +344,124 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
   - Pas de skeleton, pas de crash, lien « Historique » toujours visible depuis `/campagnes`.
 - **Couvre** : #240 (empty branch).
 
+### MC20 — Dashboard /t/[tenantId] affiche les 4 KPI cards du jour (CA, commandes, panier, en cours)
+- **Acteur** : KB Manager
+- **Pré-requis** : tenant actif avec au moins 1 commande payée et 1 commande en cours du jour ; session ouverte ; route de départ `/t/[tenantId]` (= `/t/[tenantId]/dashboard`, root override).
+- **Étapes** :
+  1. Se connecter en tant que manager du tenant.
+  2. Naviguer vers `/t/[tenantId]` (ou cliquer « Tableau de bord » depuis la sidebar).
+  3. Attendre que les 4 KPI cards s'affichent (skeleton → données).
+  4. Vérifier les 4 valeurs : CA jour (€), Commandes du jour (entier), Panier moyen (€), Commandes en cours (entier).
+  5. Passer une nouvelle commande payée depuis le PWA client, revenir sur le dashboard.
+- **Attendu** :
+  - 4 KPI cards rendues, valeurs formatées français (`1 234,56 €` / `12`).
+  - Aucun retour à `/menu` (la story remplace l'ancien redirect).
+  - Live update post-commande sans refresh manuel (Convex live-query).
+  - Les KPIs reflètent uniquement le tenant courant.
+- **Couvre** : #252 (F-STATS 2/8 — Dashboard 4 KPI cards + backend `dailyKpis`).
+
+### MC21 — Dashboard isolation cross-tenant via switcher (KB Admin supervision)
+- **Acteur** : KB Admin (supervision)
+- **Pré-requis** : 2 tenants actifs A et B avec CA distincts aujourd'hui (ex : A = 50€, B = 200€) ; connexion KB Admin avec tenant switcher monté.
+- **Étapes** :
+  1. Se connecter en KB Admin.
+  2. Sélectionner tenant A dans le switcher → atterrir sur `/t/[A]`.
+  3. Lire les 4 KPI de A (CA = 50€).
+  4. Switcher vers tenant B → atterrir sur `/t/[B]`.
+  5. Lire les 4 KPI de B (CA = 200€).
+  6. Revenir sur A et vérifier le rollback.
+- **Attendu** :
+  - Chaque tenant affiche uniquement ses propres chiffres (zéro leak).
+  - Le switch déclenche un re-fetch de la query avec le bon `tenantId`.
+  - KB Admin a le même rendu visuel que le KB Manager (root override transparent).
+- **Couvre** : #252 + ADR 0010 (isolation cross-tenant).
+
+### MC22 — Page Stats `/t/[tenantId]/stats` : RangePicker recalcule les chiffres bruts (7 / 30 / 90)
+- **Acteur** : KB Manager
+- **Pré-requis** : tenant T rattaché au manager, au moins 1 commande payée < 7j et 1 commande payée entre 30 et 90j ; route de départ `/t/T/stats`.
+- **Étapes** :
+  1. Observer le RangePicker : « 30 jours » sélectionné par défaut.
+  2. Lire « Panier moyen » et « Total commandes » du bloc « chiffres bruts ».
+  3. Cliquer « 7 jours » dans le RangePicker.
+  4. Attendre la requête Convex (skeleton bref sur les cards « chiffres bruts »).
+  5. Re-lire « Panier moyen » et « Total commandes ».
+  6. Cliquer « 90 jours », re-lire les deux KPI.
+- **Attendu** :
+  - Étape 5 : `Total commandes` ≤ valeur étape 2 (7j ⊂ 30j).
+  - Étape 6 : `Total commandes` ≥ valeur étape 2 (30j ⊂ 90j).
+  - Aucune valeur `NaN`, `undefined`, ni « 0,00 € » alors que `Total commandes > 0`.
+  - Le titre « Statistiques » reste affiché en permanence (pas de blank flash).
+- **Couvre** : #253 (F-STATS 3/8 — Stats shell + RangePicker + backend `rangeAggregates`).
+
+### MC23 — Stats cross-tenant : KB Manager refusé sur URL forgée d'un autre resto
+- **Acteur** : KB Manager du tenant A (sans accès B)
+- **Pré-requis** : 2 tenants A (rattaché) et B (non rattaché), tous deux avec commandes payées récentes ; démarrer sur `/t/A/stats` puis taper manuellement `/t/B/stats`.
+- **Étapes** :
+  1. Naviguer vers `/t/A/stats` — chiffres bruts s'affichent.
+  2. Modifier l'URL en `/t/B/stats` et valider.
+  3. Observer le rendu : UnauthorizedCard ou redirect explicite, sans afficher les chiffres de B.
+  4. Vérifier via DevTools réseau que la query `rangeAggregates` retourne Forbidden pour B.
+- **Attendu** :
+  - Aucun chiffre de B n'est jamais affiché.
+  - `rangeAggregates({ tenantId: B, rangeDays: 30 })` rejette côté `tenantQuery`.
+  - Page d'erreur / refus explicite (pas un dashboard vide silencieux).
+- **Couvre** : #253 + ADR 0010 (MOAT applicatif Convex).
+
+### MC24 — Stats accessibles par Staff opérationnel (même vue que le manager)
+- **Acteur** : Staff du tenant T
+- **Pré-requis** : tenant T avec un user `staff` rattaché et au moins 3 commandes payées dans les 30 derniers jours ; route `/t/T/stats`.
+- **Étapes** :
+  1. Se connecter en tant que staff de T.
+  2. Naviguer vers `/t/T/stats`.
+  3. Observer le bloc « chiffres bruts » et le RangePicker.
+  4. Cliquer « 7 jours » puis « 90 jours ».
+- **Attendu** :
+  - Les chiffres bruts s'affichent sans erreur de permission.
+  - Le RangePicker fonctionne (les chiffres se recalculent).
+  - Les 5 cards placeholders sont visibles (skeleton + hint « graph stories 4-8 »).
+- **Couvre** : #253 (allow-list `["kb_manager", "staff"]`).
+
+### MC25 — LineChart Revenus par jour : changement de fenêtre temporelle (7 / 30 / 90) + tooltip
+- **Acteur** : KB Manager
+- **Pré-requis** : tenant `t` actif avec ≥5 commandes payées (`paidAt` set, `pricingSnapshot.total` renseigné) réparties sur les 30 derniers jours ; user `kb_manager` connecté ; route `/tenants/<tenantId>/stats`.
+- **Étapes** :
+  1. Naviguer vers `/tenants/<tenantId>/stats` — page Stats visible, bloc « Revenus par jour » visible.
+  2. Observer le LineChart : axe X = dates (DD/MM), axe Y = montants en €, courbe verte (#1B7A3D).
+  3. Cliquer « 7 jours » dans le RangePicker.
+  4. Cliquer « 30 jours » puis « 90 jours ».
+  5. Survoler un point de la courbe.
+- **Attendu** :
+  - Étape 2 : 30 points (un par jour, jours sans commande à 0 — continuité visuelle).
+  - Étape 3 : 7 points.
+  - Étape 4 : 30 puis 90 points, redraw sans skeleton intermédiaire (cache Convex).
+  - Étape 5 : tooltip avec date complète + revenu formaté EUR fr-FR (ex. « 23,45 € »).
+- **Couvre** : #257 + #253 (RangePicker propagé à plusieurs blocs).
+
+### MC26 — LineChart Revenus : isolation cross-tenant (MOAT)
+- **Acteur** : KB Manager du tenant A
+- **Pré-requis** : tenants A et B, chacun avec ≥3 commandes payées dans les 30 derniers jours ; user `mgrA` est `kb_manager` sur A uniquement ; route `/tenants/<tenantA-id>/stats`.
+- **Étapes** :
+  1. Se connecter en tant que `mgrA` et naviguer vers la page Stats de A.
+  2. Noter le total visuel approximatif de la courbe.
+  3. Manipuler l'URL pour pointer vers `/tenants/<tenantB-id>/stats`.
+- **Attendu** :
+  - Étape 2 : seul le revenu des commandes du tenant A apparaît.
+  - Étape 3 : la page n'affiche PAS les chiffres de B — redirect/forbidden ou erreur surfaceée ; en aucun cas la courbe n'expose le revenu de B (`tenantQuery` refuse Forbidden côté backend).
+- **Couvre** : #257 + ADR 0010 (MOAT applicatif).
+
+### MC27 — LineChart Revenus : état empty (aucune commande payée sur 90j)
+- **Acteur** : KB Manager
+- **Pré-requis** : tenant `t` actif AUCUNE commande payée sur les 90 derniers jours ; user `mgr` connecté ; route `/tenants/<tenantId>/stats`.
+- **Étapes** :
+  1. Naviguer vers la page Stats.
+  2. Vérifier le bloc « Revenus par jour ».
+  3. Basculer entre 7 / 30 / 90 jours.
+- **Attendu** :
+  - Bloc affiche le titre « Revenus par jour » + sous-titre « Sur les N derniers jours ».
+  - En lieu et place du LineChart : zone centrée verticalement contenant exactement « Pas encore de données sur cette période ».
+  - Le message reste affiché sur les 3 valeurs de range (rien à dessiner sur 7/30/90 jours).
+- **Couvre** : #257, US9 (empty state défensif).
+
 ---
 
 ## QR — QR PDF
@@ -564,6 +682,94 @@ Voir A4b (identique).
   - Variante (b) avec throttling : pendant le in-flight, le titre « Pipeline » apparaît mais le sous-texte est « Chargement des prospects… » (PAS la card empty). Une fois hydraté : « 1 prospect » + ligne unique du prospect.
   - Aucun flicker entre `loading` et `empty` (les deux états ont des copies clairement distinctes).
 - **Couvre** : #216 (Convex tri-state contract `undefined` / `[]` / `Doc[]`).
+
+### T11 — Kanban `/pipeline` : 3 colonnes triées par phase + drill-down fiche
+- **Acteur** : KB Admin (root)
+- **Pré-requis** : tenant KB seed avec ≥ 4 prospects (au moins 1 par phase : `acquisition`, `preparation`, `installation`, `operationnel`) ; auth en root admin ; route de départ `/`.
+- **Étapes** :
+  1. Ouvrir `/pipeline` depuis la sidebar admin.
+  2. Vérifier que 3 colonnes sont visibles : « Acquisition », « Préparation », « Installation » (onglet « Kanban » actif par défaut).
+  3. Vérifier que chaque colonne contient les prospects de sa phase (count badge en header).
+  4. Vérifier qu'aucune carte de phase `operationnel` n'apparaît dans le Kanban (filtrée vers « Clients actifs »).
+  5. Cliquer sur la carte d'un prospect.
+- **Attendu** :
+  - Header Pipeline affiche le total agrégé (« N prospects »).
+  - 3 colonnes scrollables verticalement, count badge correct.
+  - Click sur carte → navigation vers `/pipeline/<prospectId>` (fiche F-SHELL-10).
+  - Aucun drag-and-drop disponible (story 06 le câble plus tard).
+- **Couvre** : #255 + smoke régression #216 + #233 (drill-down fiche).
+
+### T12 — Kanban : recherche par nom filtre les 3 colonnes en temps réel (accent insensible)
+- **Acteur** : KB Admin (root)
+- **Pré-requis** : tenant KB seed avec au moins 3 prospects nommés : « Café Vert » (acquisition), « Pizza Roma » (preparation), « Sushi Bar » (installation) ; route `/pipeline`.
+- **Étapes** :
+  1. Cliquer dans le champ « Rechercher un prospect par nom… ».
+  2. Taper `pizz`.
+  3. Observer les 3 colonnes.
+  4. Vider le champ.
+  5. Taper `cafe` (sans accent).
+- **Attendu** :
+  - Étape 2 : seule la colonne « Préparation » contient « Pizza Roma » ; les autres deviennent vides (« Aucun prospect »). Compteur header : « 1 prospect (filtré) ».
+  - Étape 4 : toutes les cartes réapparaissent dans leurs colonnes d'origine.
+  - Étape 5 : seule la colonne « Acquisition » contient « Café Vert » (recherche accent insensible).
+- **Couvre** : #255 (search + partition front-side, identité quand vide).
+
+### T13 — Kanban : onglet « Clients actifs » affiche les prospects Opérationnel + badge tenant
+- **Acteur** : KB Admin (root)
+- **Pré-requis** : tenant KB seed avec ≥ 1 prospect en phase `operationnel` ET avec un `tenantId` back-link posé (prospect provisionné) ; route `/pipeline`.
+- **Étapes** :
+  1. Cliquer sur le tab « Clients actifs (N) » au-dessus du Kanban.
+  2. Observer la grille rendue.
+  3. Repérer la carte d'un prospect provisionné.
+  4. Revenir sur l'onglet « Kanban ».
+- **Attendu** :
+  - Le Kanban (3 colonnes) disparaît, remplacé par une grille responsive (1 colonne mobile → 3 colonnes desktop).
+  - Chaque card en phase Opérationnel apparaît ici, AUCUNE n'apparaît dans le Kanban.
+  - Badge vert « tenant ✓ » visible sur la card du prospect provisionné, absent sinon.
+  - Étape 4 : Kanban réapparaît avec 3 colonnes, « Clients actifs » non persisté en V1.
+- **Couvre** : #255 (onglet séparé + badge tenant conditionnel + filtrage Operationnel hors Kanban — PRD 70 §3.3).
+
+### T14 — Fiche prospect : KB Admin coche un milestone Acquisition et observe l'auto-bascule vers Préparation
+- **Acteur** : KB Admin (root user)
+- **Pré-requis** : 1 prospect seed en phase `acquisition` avec `tabletteMode = "appareil_existant"` et `milestones = { contratSigne: <ts>, kbisRecu: <ts>, pieceIdentiteRecue: <ts> }` (3/4 milestones Closing déjà cochés).
+- **Étapes** :
+  1. Se connecter en tant que KB Admin et naviguer sur `/pipeline/[prospectId]` du prospect seed.
+  2. Vérifier que le panneau identité affiche le nom + le badge phase « Acquisition ».
+  3. Vérifier que le bloc `MilestoneChecklist` rend la section « Acquisition » avec les 4 milestones Closing badgés.
+  4. Cocher le milestone « RIB reçu » (impactsClosing=true).
+  5. Attendre la réactivité Convex (~500 ms).
+- **Attendu** :
+  - Le badge phase passe de « Acquisition » à « Préparation » sans rechargement.
+  - La row « RIB reçu » apparaît cochée + label en line-through.
+  - Toast vert ou pas de toast d'erreur.
+- **Couvre** : #256 + B-ONBOARDING-MILESTONES (#189) + PIPELINE-06 (réactivité fiche).
+
+### T15 — Fiche prospect : KB Admin met à jour un statut Stripe Connect et voit l'historique pousser
+- **Acteur** : KB Admin
+- **Pré-requis** : 1 prospect seed sans intégrations initialisées (`milestones.stripeConnect` absent).
+- **Étapes** :
+  1. Naviguer sur `/pipeline/[prospectId]`.
+  2. Localiser le sous-panneau « Stripe Connect » de l'`IntegrationStatusPanel`.
+  3. Vérifier badge « not_started » + dropdown avec les 5 statuts canoniques.
+  4. Sélectionner « pending_kyc », cliquer « Mettre à jour ».
+  5. Sélectionner « verified », cliquer « Mettre à jour ».
+- **Attendu** :
+  - Le badge passe à « pending_kyc » puis « verified » (vert).
+  - L'historique sous le panneau affiche 2 lignes, ordre antichronologique : verified en haut, pending_kyc en bas.
+  - Chaque ligne montre timestamp lisible (`2026-06-01 14:32`) + statut.
+- **Couvre** : #256 + B-ONBOARDING-MILESTONES slice 4 (#213).
+
+### T16 — Fiche prospect : KB Manager (non-admin) deep-linke `/pipeline/[prospectId]` et voit le refus
+- **Acteur** : KB Manager (non-root)
+- **Pré-requis** : 1 prospect existant en BD.
+- **Étapes** :
+  1. Se connecter en tant que KB Manager.
+  2. Coller directement l'URL `/pipeline/[prospectId]` dans le navigateur.
+- **Attendu** :
+  - La page rend l'`UnauthorizedCard` (« Accès non autorisé »).
+  - Aucune donnée prospect ne fuite (pas de nom, pas de SIRET, pas de milestone).
+  - Aucun appel réseau Convex visible pour `setMilestone` ou `recordIntegrationStatus`.
+- **Couvre** : #256 + ADR 0010 (isolation `kbAdminQuery` / `kbAdminMutation`) + F-SHELL-10 (#233 access gate).
 
 ---
 
