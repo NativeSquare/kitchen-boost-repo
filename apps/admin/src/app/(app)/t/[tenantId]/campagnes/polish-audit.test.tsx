@@ -104,9 +104,11 @@ describe("F-CAMPAGNES [7/7] #247 — Palette KB (#1B7A3D vert + #E5A100 jaune/or
       join(CAMPAGNES_ROOT, "_components", "TemplateCard.tsx"),
       "utf-8",
     );
-    // Push badge — channel marker vert.
+    // Push badge — channel marker vert. `[\s\S]*?` (lazy) au lieu du flag
+    // `/s` (dotAll) pour rester compatible avec le target TS du projet
+    // (< ES2018).
     expect(card).toMatch(
-      /data-slot="template-card-channel-push"[^>]*bg-\[#1B7A3D\]/s,
+      /data-slot="template-card-channel-push"[\s\S]*?bg-\[#1B7A3D\]/,
     );
   });
 
@@ -116,7 +118,7 @@ describe("F-CAMPAGNES [7/7] #247 — Palette KB (#1B7A3D vert + #E5A100 jaune/or
       "utf-8",
     );
     expect(card).toMatch(
-      /data-slot="template-card-channel-email"[^>]*bg-\[#E5A100\]/s,
+      /data-slot="template-card-channel-email"[\s\S]*?bg-\[#E5A100\]/,
     );
   });
 
