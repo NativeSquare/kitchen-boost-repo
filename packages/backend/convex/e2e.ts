@@ -1625,3 +1625,212 @@ export const wipeE2EContractProspects = internalMutation({
     return { prospectsDeleted };
   },
 });
+
+// -----------------------------------------------------------------------------
+// E2E-T-D seed — populate the supervision Kanban with prospects exercising
+// the search + filters + DnD + auto-bascule features (T11 → T13, T17 → T19).
+// Inserts 7 sentinellés `[E2E T-D]` prospects covering:
+//
+//  - T11 (3 cols + 4 phases) + T12 (search Café / Pizza) : 3 named prospects
+//    (« Café Vert » acquisition, « Pizza Roma » preparation, « Sushi Bar »
+//    installation) — chosen to exercise the search test (accent-insensitive
+//    `cafe` match + substring `pizz`).
+//  - T13 (onglet Clients actifs + badge tenant ✓) : 1 prospect en phase
+//    `operationnel` avec `tenantId` back-linké sur `test-t1` (la rangée
+//    tenant doit déjà exister — créée par `bootstrapE2EInvites`).
+//  - T17 (DnD clean Acquisition → Préparation) : 1 prospect en `acquisition`,
+//    `tabletteMode = appareil_existant`, les 4 milestones Closing mandatory
+//    cochés (timestamps = now), drag clean autorisé sans dialog bypass.
+//  - T18 (DnD bypass + dialog) : 1 prospect en `acquisition`,
+//    `tabletteMode = achat_kb`, 4 milestones cochés (manque
+//    `factureTablettePayee`) — le drag déclenche le dialog « Confirmer le
+//    bypass » avec le bullet `Facture tablette payée`.
+//  - T19 (toast auto-bascule au check du dernier milestone) : 1 prospect en
+//    `acquisition`, `tabletteMode = appareil_existant`, 3 des 4 milestones
+//    mandatory cochés (manque `ribRecu`) — Alex coche `ribRecu` via la
+//    fiche et la carte glisse en Préparation côté Kanban avec toast.
+//
+// Sentinel name prefix (`[E2E T-D]`) keeps the wipe surgical and never
+// touches real prospect rows.
+// -----------------------------------------------------------------------------
+
+const E2E_TD_PROSPECT_PREFIX = "[E2E T-D] ";
+
+type TDMilestoneKey =
+  | "contratSigne"
+  | "kbisRecu"
+  | "pieceIdentiteRecue"
+  | "ribRecu"
+  | "factureTabletteEmise"
+  | "factureTablettePayee";
+
+type TDProspectSpec = {
+  nameSuffix: string;
+  phone: string;
+  phase: "acquisition" | "preparation" | "installation" | "operationnel";
+  tabletteMode?: "appareil_existant" | "achat_kb";
+  cockedMilestones?: readonly TDMilestoneKey[];
+  linkToTenantSlug?: string;
+};
+
+const TD_SEED_SPECS: ReadonlyArray<TDProspectSpec> = [
+  // T11 + T12 — search test (3 prospects with distinguishable names + accents)
+  { nameSuffix: "Café Vert", phone: "+33600000301", phase: "acquisition" },
+  { nameSuffix: "Pizza Roma", phone: "+33600000302", phase: "preparation" },
+  { nameSuffix: "Sushi Bar", phone: "+33600000303", phase: "installation" },
+  // T13 — onglet Clients actifs (operationnel + tenantId backlink)
+  {
+    nameSuffix: "Resto Actif",
+    phone: "+33600000304",
+    phase: "operationnel",
+    linkToTenantSlug: "test-t1",
+  },
+  // T17 — DnD clean Acquisition → Préparation (appareil_existant, 4/4 cocked)
+  {
+    nameSuffix: "DnD Clean",
+    phone: "+33600000305",
+    phase: "acquisition",
+    tabletteMode: "appareil_existant",
+    cockedMilestones: [
+      "contratSigne",
+      "kbisRecu",
+      "pieceIdentiteRecue",
+      "ribRecu",
+    ],
+  },
+  // T18 — DnD bypass dialog (achat_kb, 4/5 cocked, missing factureTablettePayee)
+  {
+    nameSuffix: "DnD Bypass",
+    phone: "+33600000306",
+    phase: "acquisition",
+    tabletteMode: "achat_kb",
+    cockedMilestones: [
+      "contratSigne",
+      "kbisRecu",
+      "pieceIdentiteRecue",
+      "ribRecu",
+      "factureTabletteEmise",
+    ],
+  },
+  // T19 — auto-bascule on last milestone check (appareil_existant, 3/4 cocked, missing ribRecu)
+  {
+    nameSuffix: "Auto Bascule",
+    phone: "+33600000307",
+    phase: "acquisition",
+    tabletteMode: "appareil_existant",
+    cockedMilestones: ["contratSigne", "kbisRecu", "pieceIdentiteRecue"],
+  },
+];
+
+/**
+ * Build a `milestones` payload from a list of cocked milestone keys + a
+ * common timestamp (so re-runs always produce the same shape). Empty list
+ * returns `undefined` (no milestones field on the prospect).
+ */
+function buildTDMilestones(
+  cocked: readonly TDMilestoneKey[] | undefined,
+  ts: number,
+): Record<string, number> | undefined {
+  if (cocked === undefined || cocked.length === 0) return undefined;
+  const out: Record<string, number> = {};
+  for (const key of cocked) {
+    out[key] = ts;
+  }
+  return out;
+}
+
+/**
+ * Seed 7 prospects for the Kanban DnD parcours (T11/T12/T13/T17/T18/T19).
+ * Idempotent by name sentinel : re-runs reset phase + tabletteMode +
+ * milestones + tenantId backlink to their canonical state.
+ */
+export const seedE2EKanbanDnDProspects = internalMutation({
+  args: {},
+  returns: v.object({
+    prospectsCreated: v.number(),
+    prospectsUpdated: v.number(),
+  }),
+  handler: async (ctx) => {
+    const now = Date.now();
+    let prospectsCreated = 0;
+    let prospectsUpdated = 0;
+
+    for (const spec of TD_SEED_SPECS) {
+      const name = `${E2E_TD_PROSPECT_PREFIX}${spec.nameSuffix}`;
+
+      // Resolve the optional tenantId backlink first so the patch is atomic.
+      let tenantId: Id<"tenants"> | undefined = undefined;
+      if (spec.linkToTenantSlug !== undefined) {
+        const tenant = await ctx.db
+          .query("tenants")
+          .withIndex("by_slug", (q) =>
+            q.eq("slug", spec.linkToTenantSlug as string),
+          )
+          .unique();
+        if (tenant === null) {
+          throw new ConvexError({
+            message: `Tenant with slug "${spec.linkToTenantSlug}" not found (required by T-D seed for "${name}").`,
+          });
+        }
+        tenantId = tenant._id;
+      }
+
+      const milestones = buildTDMilestones(spec.cockedMilestones, now);
+
+      const existing = await ctx.db
+        .query("prospects")
+        .filter((q) => q.eq(q.field("name"), name))
+        .first();
+
+      if (existing === null) {
+        await ctx.db.insert("prospects", {
+          name,
+          phone: spec.phone,
+          phase: spec.phase,
+          source: "cold_call",
+          tabletteMode: spec.tabletteMode,
+          milestones,
+          tenantId,
+          createdAt: now,
+          updatedAt: now,
+        });
+        prospectsCreated += 1;
+      } else {
+        await ctx.db.patch(existing._id, {
+          phase: spec.phase,
+          tabletteMode: spec.tabletteMode,
+          milestones,
+          tenantId,
+          updatedAt: now,
+        });
+        prospectsUpdated += 1;
+      }
+    }
+
+    return { prospectsCreated, prospectsUpdated };
+  },
+});
+
+/**
+ * Wipe the E2E-T-D Kanban DnD seed. Filters by the sentinel name prefix
+ * (`[E2E T-D] *`) — never touches real prospect rows.
+ */
+export const wipeE2EKanbanDnDProspects = internalMutation({
+  args: {},
+  returns: v.object({ prospectsDeleted: v.number() }),
+  handler: async (ctx) => {
+    let prospectsDeleted = 0;
+    for (const spec of TD_SEED_SPECS) {
+      const name = `${E2E_TD_PROSPECT_PREFIX}${spec.nameSuffix}`;
+      const existing = await ctx.db
+        .query("prospects")
+        .filter((q) => q.eq(q.field("name"), name))
+        .first();
+      if (existing !== null) {
+        await ctx.db.delete(existing._id);
+        prospectsDeleted += 1;
+      }
+    }
+    return { prospectsDeleted };
+  },
+});
