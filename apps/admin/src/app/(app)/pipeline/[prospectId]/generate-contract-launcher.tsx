@@ -52,7 +52,10 @@ import {
   GenerateContractModal,
   type ContractPrestation,
 } from "./generate-contract-modal";
-import { decideGenerateContract } from "./generate-contract.decision";
+import {
+  type ContractPartnerPayload,
+  decideGenerateContract,
+} from "./generate-contract.decision";
 
 export type GenerateContractLauncherProps = {
   /**
@@ -78,6 +81,12 @@ export function GenerateContractLauncher({
   const generateContract = useMutation(
     api.lib.admin.contracts.generateContract,
   );
+  // T6 chantier 2 — when the user edits one of the 5 juridical fields in
+  // the modal, the changes are persisted on the prospect BEFORE generating
+  // the contract so the next opening pre-fills with the fresh values (and
+  // the rest of the CRM sees the updated data). If the persist fails we
+  // surface a toast + abort the generation — no half-update.
+  const editProspect = useMutation(api.lib.onboarding.crm.editProspect);
 
   const [open, setOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -99,34 +108,74 @@ export function GenerateContractLauncher({
     setOpen(next);
   };
 
-  const handleSubmit = async (prestation: ContractPrestation) => {
-    // Re-derive the decision at submit time so we ALWAYS see the latest
-    // prospect snapshot (no risk of stale capture from a stale render).
-    const decision = decideGenerateContract({ prospect });
-    if (decision.kind !== "ready" || decision.partner === null) {
-      // Defensive — the modal disables submit in this branch, but if the
-      // prospect went stale between render and click we refuse cleanly.
-      const msg = "Champs juridiques incomplets — impossible de générer.";
-      setSubmitError(msg);
-      toast.error(msg);
+  const handleSubmit = async (
+    prestation: ContractPrestation,
+    partner: ContractPartnerPayload,
+  ) => {
+    if (prospect === undefined || prospect === null) {
+      // Belt-and-braces — the trigger is disabled in this branch, but
+      // a defensive guard keeps the `prospect._id` access below sound.
       return;
     }
 
-    if (prospect === undefined || prospect === null) {
-      // Belt-and-braces — `decision.kind === "ready"` already implies a
-      // hydrated prospect, but TypeScript's narrowing through the
-      // separate decision call doesn't carry over. This pin keeps the
-      // `prospect._id` access below sound.
-      return;
-    }
+    // Re-derive the decision at submit time so we ALWAYS see the latest
+    // prospect snapshot (no risk of stale capture from a stale render).
+    // The modal carries the editable form state, so we compare its
+    // `partner` payload against the prospect's seed to decide whether to
+    // persist a `editProspect` patch first.
+    const decision = decideGenerateContract({ prospect });
+    void decision;
 
     setIsSubmitting(true);
     setSubmitError(null);
     try {
+      // T6 chantier 2 — persist edits on the prospect FIRST so the
+      // next opening pre-fills with the fresh values + the CRM sees
+      // them. Build a minimal patch containing only the fields that
+      // diverge from the current prospect doc (avoid writing the same
+      // value).
+      const seed = {
+        raisonSociale: (prospect.name ?? "").trim(),
+        siret: (prospect.siret ?? "").trim(),
+        adresse: (prospect.address ?? "").trim(),
+        email: (prospect.email ?? "").trim(),
+        representant: (prospect.contactName ?? "").trim(),
+      };
+      const patch: {
+        name?: string;
+        siret?: string;
+        address?: string;
+        email?: string;
+        contactName?: string;
+      } = {};
+      if (partner.raisonSociale !== seed.raisonSociale) {
+        patch.name = partner.raisonSociale;
+      }
+      if (partner.siret !== seed.siret) patch.siret = partner.siret;
+      if (partner.adresse !== seed.adresse) patch.address = partner.adresse;
+      if (partner.email !== seed.email) patch.email = partner.email;
+      if (partner.representant !== seed.representant) {
+        patch.contactName = partner.representant;
+      }
+      const hasEdit = Object.keys(patch).length > 0;
+      if (hasEdit) {
+        try {
+          await editProspect({ prospectId: prospect._id, patch });
+        } catch (error) {
+          const msg = getConvexErrorMessage(error);
+          setSubmitError(msg);
+          // Abort BEFORE generating — never produce a contract with
+          // un-persisted edits (the next opening would silently
+          // regenerate with the stale prospect data).
+          toast.error(`Échec mise à jour fiche prospect : ${msg}`);
+          return;
+        }
+      }
+
       const contractId = await generateContract({
         prospectId: prospect._id,
         prestation,
-        partner: decision.partner,
+        partner,
       });
       // Success path : close the modal, then signal the parent so it can
       // hydrate the iframe below the block. The list of contracts

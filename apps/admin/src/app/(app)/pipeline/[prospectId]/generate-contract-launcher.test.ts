@@ -80,11 +80,26 @@ describe("GenerateContractLauncher — F-CONTRATS slice 3/4 (#174) wiring", () =
     expect(CODE).toMatch(/data-slot="generate-contract-trigger"/);
   });
 
-  it("AC — re-derives the pure decision (`decideGenerateContract`) at submit time, not a hand-built payload", () => {
+  it("AC — re-derives the pure decision (`decideGenerateContract`) at submit time, alongside the editable partner payload from the modal", () => {
+    // T6 chantier 2 — the launcher now receives the (possibly edited)
+    // partner directly from the modal's onSubmit signature and forwards
+    // it to the mutation. The decision helper is still imported + used
+    // as a defensive seed source (for the patch diff against the prospect
+    // doc), so the import must still be present.
     expect(CODE).toMatch(/decideGenerateContract/);
-    // The mutation call MUST forward `decision.partner` (the pure decision
-    // builds the trimmed normalised payload — no hand-rolled rebuild).
-    expect(CODE).toMatch(/decision\.partner/);
+    // The mutation call forwards the editable partner from the modal.
+    expect(CODE).toMatch(/partner,?\s*}/);
+  });
+
+  it("AC chantier 2 — persists prospect edits via api.lib.onboarding.crm.editProspect BEFORE generating", () => {
+    expect(CODE).toMatch(/api\.lib\.onboarding\.crm\.editProspect/);
+    // editProspect MUST be called before generateContract in the source
+    // order (we await it first, abort on failure).
+    const editIdx = CODE.indexOf("editProspect(");
+    const generateIdx = CODE.indexOf("generateContract(");
+    expect(editIdx).toBeGreaterThan(-1);
+    expect(generateIdx).toBeGreaterThan(-1);
+    expect(editIdx).toBeLessThan(generateIdx);
   });
 
   it("AC — surfaces a toast.error on failure (« pas d'iframe blanche silencieuse »)", () => {

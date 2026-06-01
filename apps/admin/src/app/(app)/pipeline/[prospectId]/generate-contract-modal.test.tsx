@@ -261,7 +261,7 @@ describe("GenerateContractModal — F-CONTRATS slice 3/4 (#174)", () => {
     expect(values).toEqual(["A", "A_AND_B", "B"]);
   });
 
-  it("AC — surfaces a recap row for each of the 5 juridical fields (raison sociale, SIRET, adresse, email, représentant)", () => {
+  it("AC — surfaces an editable input row for each of the 5 juridical fields (raison sociale, SIRET, adresse, email, représentant)", () => {
     const tree = serialize(GenerateContractModal(baseProps()));
     const rows = findAllBySlot(tree, "juridical-field-row");
     expect(rows.length).toBe(5);
@@ -271,12 +271,23 @@ describe("GenerateContractModal — F-CONTRATS slice 3/4 (#174)", () => {
     expect(text).toMatch(/Adresse/i);
     expect(text).toMatch(/Email/i);
     expect(text).toMatch(/Repr[ée]sentant/i);
-    // Each pre-fill value from the fixture must surface.
-    expect(text).toMatch(/Buns and Bao/);
-    expect(text).toMatch(/98765432100012/);
-    expect(text).toMatch(/12 rue de la Paix/);
-    expect(text).toMatch(/khan@bunsandbao\.fr/);
-    expect(text).toMatch(/Khan Diallo/);
+    // T6 chantier 2 — the seed values now live inside <Input value="...">
+    // attributes (editable fields), not as plain text nodes. Pin the
+    // input values per field via their dedicated slots.
+    const inputs = Object.fromEntries(
+      ["raisonSociale", "siret", "adresse", "email", "representant"].map(
+        (k) => {
+          const node = findAllBySlot(tree, `generate-contract-input-${k}`)[0];
+          if (node === undefined) throw new Error(`missing input ${k}`);
+          return [k, node.props.value as string];
+        },
+      ),
+    );
+    expect(inputs.raisonSociale).toBe("Buns and Bao");
+    expect(inputs.siret).toBe("98765432100012");
+    expect(inputs.adresse).toBe("12 rue de la Paix, 91000 Évry");
+    expect(inputs.email).toBe("khan@bunsandbao.fr");
+    expect(inputs.representant).toBe("Khan Diallo");
   });
 
   it('AC — every juridical-field row carries `data-missing="false"` when the prospect is fully filled (no red flag)', () => {
@@ -311,6 +322,54 @@ describe("GenerateContractModal — F-CONTRATS slice 3/4 (#174)", () => {
     expect(submitNode.props.disabled).toBe(true);
   });
 
+  it("AC chantier 2 — SIRET invalide (pas 14 chiffres) → submit DISABLED + erreur affichée", () => {
+    const tree = serialize(
+      GenerateContractModal(
+        baseProps({
+          prospect: makeProspect({ siret: "abc123" }),
+        }),
+      ),
+    );
+    const submit = findAllBySlot(tree, "generate-contract-submit")[0];
+    if (submit === undefined) throw new Error("expected submit");
+    expect(submit.props.disabled).toBe(true);
+    const errorNode = findAllBySlot(tree, "generate-contract-error-siret")[0];
+    expect(errorNode).toBeDefined();
+    const text = allText(tree);
+    expect(text).toMatch(/SIRET invalide/i);
+  });
+
+  it("AC chantier 2 — email invalide → submit DISABLED + erreur affichée", () => {
+    const tree = serialize(
+      GenerateContractModal(
+        baseProps({
+          prospect: makeProspect({ email: "not-an-email" }),
+        }),
+      ),
+    );
+    const submit = findAllBySlot(tree, "generate-contract-submit")[0];
+    if (submit === undefined) throw new Error("expected submit");
+    expect(submit.props.disabled).toBe(true);
+    const errorNode = findAllBySlot(tree, "generate-contract-error-email")[0];
+    expect(errorNode).toBeDefined();
+    const text = allText(tree);
+    expect(text).toMatch(/email invalide/i);
+  });
+
+  it("AC chantier 3 — chaque radio prestation porte une description courte FR", () => {
+    const tree = serialize(GenerateContractModal(baseProps()));
+    const descs = findAllBySlot(
+      tree,
+      "generate-contract-prestation-description",
+    );
+    expect(descs.length).toBe(3);
+    const text = allText(tree);
+    // Mots-clés des trois descriptions distillées du template (Art. 1).
+    expect(text).toMatch(/Uber Eats/i);
+    expect(text).toMatch(/QR code|commande directe/i);
+    expect(text).toMatch(/combin[ée]es|courant/i);
+  });
+
   it("AC — submit is ENABLED when every juridical field is present + a prestation is selected (default A)", () => {
     const tree = serialize(GenerateContractModal(baseProps()));
     const submit = findAllBySlot(tree, "generate-contract-submit");
@@ -333,7 +392,7 @@ describe("GenerateContractModal — F-CONTRATS slice 3/4 (#174)", () => {
     expect(text).toMatch(/G[ée]n[ée]ration…|G[ée]n[ée]ration\.{3}/);
   });
 
-  it("AC — clicking submit fires `onSubmit(prestation)` with the currently selected prestation (default A)", () => {
+  it("AC — clicking submit fires `onSubmit(prestation, partner)` with the currently selected prestation (default A) + the editable partner payload", () => {
     const onSubmit = vi.fn();
     const tree = serialize(GenerateContractModal(baseProps({ onSubmit })));
     const submit = findAllBySlot(tree, "generate-contract-submit")[0];
@@ -343,7 +402,13 @@ describe("GenerateContractModal — F-CONTRATS slice 3/4 (#174)", () => {
     if (handler === undefined) throw new Error("expected onClick");
     handler();
     expect(onSubmit).toHaveBeenCalledTimes(1);
-    expect(onSubmit).toHaveBeenCalledWith("A");
+    expect(onSubmit).toHaveBeenCalledWith("A", {
+      raisonSociale: "Buns and Bao",
+      siret: "98765432100012",
+      adresse: "12 rue de la Paix, 91000 Évry",
+      email: "khan@bunsandbao.fr",
+      representant: "Khan Diallo",
+    });
   });
 
   it("AC — clicking submit while any juridical field is missing does NOT fire `onSubmit` (defensive — the disabled state is the gate)", () => {
@@ -416,7 +481,8 @@ describe("GenerateContractModal — F-CONTRATS slice 3/4 (#174)", () => {
       if (handler === undefined) throw new Error("expected onClick");
       handler();
       expect(onSubmit).toHaveBeenCalledTimes(1);
-      expect(onSubmit).toHaveBeenCalledWith("B");
+      // chantier 2 — partner payload is now part of the signature.
+      expect(onSubmit).toHaveBeenCalledWith("B", expect.any(Object));
       vi.doUnmock("react");
       vi.resetModules();
     });
@@ -447,7 +513,8 @@ describe("GenerateContractModal — F-CONTRATS slice 3/4 (#174)", () => {
       if (handler === undefined) throw new Error("expected onClick");
       handler();
       expect(onSubmit).toHaveBeenCalledTimes(1);
-      expect(onSubmit).toHaveBeenCalledWith("A_AND_B");
+      // chantier 2 — partner payload is now part of the signature.
+      expect(onSubmit).toHaveBeenCalledWith("A_AND_B", expect.any(Object));
       vi.doUnmock("react");
       vi.resetModules();
     });

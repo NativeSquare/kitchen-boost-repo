@@ -62,11 +62,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 import {
   JURIDICAL_FIELD_LABEL,
+  type ContractPartnerPayload,
   decideGenerateContract,
 } from "./generate-contract.decision";
 
@@ -80,18 +82,72 @@ import {
 export type ContractPrestation = "A" | "B" | "A_AND_B";
 
 /**
- * UI labels for the 3 prestation values (issue spec verbatim: « A seul /
- * B seul / A & B »). Order matches the issue's bullet list.
+ * UI labels for the 3 prestation values + a one-line FR description distilled
+ * from the contract template (Article 1 §1.3) so a user who has not read the
+ * full contract knows what they are picking. Resumé strict — no copy/paste
+ * from the template.
  */
-const PRESTATION_OPTIONS: { value: ContractPrestation; label: string }[] = [
-  { value: "A", label: "A seul" },
-  { value: "B", label: "B seul" },
-  { value: "A_AND_B", label: "A & B" },
+const PRESTATION_OPTIONS: {
+  value: ContractPrestation;
+  label: string;
+  description: string;
+}[] = [
+  {
+    value: "A",
+    label: "A seul — Marque virtuelle sur Uber Eats",
+    description:
+      "Licence d'une marque virtuelle KitchenBoost, création + paramétrage menu Uber Eats, gestion compte et optimisation marketing.",
+  },
+  {
+    value: "B",
+    label: "B seul — Canal de commande directe",
+    description:
+      "Plateforme KitchenBoost au nom du restaurant : QR code dans les sacs, page de commande directe, livraison Uber Direct, paiement Stripe (sans commission marketing).",
+  },
+  {
+    value: "A_AND_B",
+    label: "A & B — Les deux combinées",
+    description:
+      "Marque virtuelle Uber Eats (A) + canal de commande directe KitchenBoost (B). Cas le plus courant.",
+  },
 ];
 
 /** Verbatim copy from the issue spec (« message d'aide clair »). */
 const MISSING_FIELDS_COPY =
   "Complète la fiche prospect avant de générer un contrat.";
+
+/** SIRET = exactly 14 digits (loose validation — Luhn is not enforced V1). */
+const SIRET_REGEX = /^\d{14}$/;
+/** Email — a permissive standard shape, not RFC 5322 strict. */
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Validate the 5 juridical fields with format rules (T6 chantier 2). */
+type FieldErrors = Partial<Record<keyof ContractPartnerPayload, string>>;
+
+function validatePartner(p: ContractPartnerPayload): FieldErrors {
+  const errors: FieldErrors = {};
+  if (p.raisonSociale.trim().length === 0) {
+    errors.raisonSociale = "Raison sociale requise.";
+  }
+  const siretClean = p.siret.replace(/\s+/g, "");
+  if (siretClean.length === 0) {
+    errors.siret = "SIRET requis.";
+  } else if (!SIRET_REGEX.test(siretClean)) {
+    errors.siret = "SIRET invalide (14 chiffres exactement).";
+  }
+  if (p.adresse.trim().length === 0) {
+    errors.adresse = "Adresse requise.";
+  }
+  if (p.email.trim().length === 0) {
+    errors.email = "Email requis.";
+  } else if (!EMAIL_REGEX.test(p.email.trim())) {
+    errors.email = "Email invalide.";
+  }
+  if (p.representant.trim().length === 0) {
+    errors.representant = "Représentant requis.";
+  }
+  return errors;
+}
 
 export type GenerateContractModalProps = {
   /** Whether the dialog is open (parent state, plumbed by the launcher). */
@@ -115,24 +171,44 @@ export type GenerateContractModalProps = {
    */
   submitError: string | null;
   /**
-   * Submit callback — fired with the selected prestation when every
-   * juridical field is present. The launcher wraps the actual
-   * `api.lib.admin.contracts.generateContract` mutation, building the
-   * full payload (`prospectId` + `prestation` + `partner`) using
-   * `decideGenerateContract`'s `partner` field.
+   * Submit callback — fired with the selected prestation and the (possibly
+   * edited) partner payload. The launcher persists any field edit on the
+   * prospect BEFORE generating the contract so the next opening pre-fills
+   * with the fresh values (T6 chantier 2 — édition sur place).
    */
-  onSubmit: (prestation: ContractPrestation) => void | Promise<void>;
+  onSubmit: (
+    prestation: ContractPrestation,
+    partner: ContractPartnerPayload,
+  ) => void | Promise<void>;
 };
 
 export function GenerateContractModal(props: GenerateContractModalProps) {
   const { open, onOpenChange, prospect, isSubmitting, submitError, onSubmit } =
     props;
 
-  // The modal owns ONE piece of state: the selected prestation. Default
-  // is `A` (most-frequent contract per Yanis' case studies — L'Artisan
-  // signed A only). Resets are owned by the launcher: it unmounts the
-  // modal on close, which discards this state for the next opening.
+  // The modal owns the selected prestation + the 5 editable juridical
+  // fields. The fields are SEEDED from the prospect doc but writable —
+  // a user can edit on the fly before generating; the launcher persists
+  // any change on the prospect (via api.lib.onboarding.crm.editProspect)
+  // BEFORE firing the generate mutation so the next opening shows the
+  // fresh values. Resets are owned by the launcher: it unmounts the modal
+  // on close, which discards this state for the next opening.
   const [prestation, setPrestation] = useState<ContractPrestation>("A");
+
+  // Seed the editable inputs from the prospect doc when present. Falls
+  // back to empty strings — the gating logic below disables submit until
+  // every field validates.
+  const [raisonSociale, setRaisonSociale] = useState<string>(
+    (prospect?.name ?? "").trim(),
+  );
+  const [siret, setSiret] = useState<string>((prospect?.siret ?? "").trim());
+  const [adresse, setAdresse] = useState<string>(
+    (prospect?.address ?? "").trim(),
+  );
+  const [email, setEmail] = useState<string>((prospect?.email ?? "").trim());
+  const [representant, setRepresentant] = useState<string>(
+    (prospect?.contactName ?? "").trim(),
+  );
 
   const decision = decideGenerateContract({ prospect });
 
@@ -169,19 +245,85 @@ export function GenerateContractModal(props: GenerateContractModalProps) {
     );
   }
 
-  // decision.kind === "ready"
-  // The launcher re-derives `decideGenerateContract(...)` at submit time
-  // (single source of truth — no risk of stale capture) so the modal only
-  // signals « ready to submit » via `canGenerate` and forwards the
-  // selected prestation via `onSubmit`.
-  const { recap, missingFields, canGenerate } = decision;
+  // decision.kind === "ready" — the prospect is hydrated. We keep
+  // `decision` around for the missing-fields help message (the launcher
+  // re-derives the decision at submit time too — single source of truth
+  // for the seed values).
+  void decision;
 
+  // Build the current editable payload from the input state. Trims on
+  // collection — the validator and the backend mutation both see the
+  // trimmed form. `siret` is also stripped of inner whitespace so a user
+  // can paste « 995 089 851 00019 » and the 14-digit shape still matches.
+  const currentPartner: ContractPartnerPayload = {
+    raisonSociale: raisonSociale.trim(),
+    siret: siret.replace(/\s+/g, ""),
+    adresse: adresse.trim(),
+    email: email.trim(),
+    representant: representant.trim(),
+  };
+
+  const fieldErrors = validatePartner(currentPartner);
+  const errorCount = Object.keys(fieldErrors).length;
+  const canGenerate = errorCount === 0;
   const isSubmitEnabled = canGenerate && !isSubmitting;
 
   const handleSubmit = () => {
     if (!isSubmitEnabled) return;
-    void onSubmit(prestation);
+    void onSubmit(prestation, currentPartner);
   };
+
+  // The set of inputs rendered in the editable form — keeps the JSX
+  // declarative + lets a future field-add stay one line.
+  type FieldSpec = {
+    key: keyof ContractPartnerPayload;
+    label: string;
+    value: string;
+    setValue: (next: string) => void;
+    placeholder?: string;
+    inputMode?: "text" | "email" | "numeric";
+    type?: string;
+  };
+  const FIELDS: FieldSpec[] = [
+    {
+      key: "raisonSociale",
+      label: JURIDICAL_FIELD_LABEL.raisonSociale,
+      value: raisonSociale,
+      setValue: setRaisonSociale,
+      placeholder: "Raison sociale du restaurant",
+    },
+    {
+      key: "siret",
+      label: JURIDICAL_FIELD_LABEL.siret,
+      value: siret,
+      setValue: setSiret,
+      placeholder: "14 chiffres",
+      inputMode: "numeric",
+    },
+    {
+      key: "adresse",
+      label: JURIDICAL_FIELD_LABEL.adresse,
+      value: adresse,
+      setValue: setAdresse,
+      placeholder: "12 rue ..., 91000 Évry",
+    },
+    {
+      key: "email",
+      label: JURIDICAL_FIELD_LABEL.email,
+      value: email,
+      setValue: setEmail,
+      placeholder: "contact@restaurant.fr",
+      inputMode: "email",
+      type: "email",
+    },
+    {
+      key: "representant",
+      label: JURIDICAL_FIELD_LABEL.representant,
+      value: representant,
+      setValue: setRepresentant,
+      placeholder: "Prénom Nom du signataire",
+    },
+  ];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -196,7 +338,10 @@ export function GenerateContractModal(props: GenerateContractModalProps) {
           </DialogDescription>
         </DialogHeader>
 
-        {/* Prestation picker (radios). */}
+        {/* Prestation picker (radios) — each option carries a one-line
+            FR description distilled from the contract template (Art. 1
+            §1.3) so a user who has not read the contract knows what
+            they are picking. */}
         <div
           className="flex flex-col gap-3"
           data-slot="generate-contract-prestation"
@@ -209,52 +354,86 @@ export function GenerateContractModal(props: GenerateContractModalProps) {
             {PRESTATION_OPTIONS.map((opt) => {
               const id = `generate-contract-prestation-${opt.value}`;
               return (
-                <div key={opt.value} className="flex items-center gap-2">
-                  <RadioGroupItem value={opt.value} id={id} />
-                  <Label htmlFor={id} className="text-sm">
-                    {opt.label}
-                  </Label>
+                <div key={opt.value} className="flex items-start gap-2">
+                  <RadioGroupItem value={opt.value} id={id} className="mt-1" />
+                  <div className="flex flex-col gap-0.5">
+                    <Label htmlFor={id} className="text-sm font-medium">
+                      {opt.label}
+                    </Label>
+                    <span
+                      data-slot="generate-contract-prestation-description"
+                      className="text-muted-foreground text-xs"
+                    >
+                      {opt.description}
+                    </span>
+                  </div>
                 </div>
               );
             })}
           </RadioGroup>
         </div>
 
-        {/* Juridical fields recap (read-only V1). */}
+        {/* Juridical fields — editable inputs seeded from the prospect.
+            The launcher persists any change BEFORE generating so the
+            fresh values flow back into the prospect doc + the next
+            opening pre-fills with them. */}
         <div
           className="flex flex-col gap-2"
           data-slot="generate-contract-juridical-recap"
         >
           <Label className="text-sm font-medium">Champs juridiques</Label>
-          <ul className="flex flex-col divide-y rounded-md border">
-            {recap.map((row) => (
-              <li
-                key={row.field}
-                data-slot="juridical-field-row"
-                data-field={row.field}
-                data-missing={row.present ? "false" : "true"}
-                className={
-                  row.present
-                    ? "flex items-baseline justify-between gap-4 px-3 py-2 text-sm"
-                    : "flex items-baseline justify-between gap-4 px-3 py-2 text-sm text-destructive"
-                }
-              >
-                <span className="text-muted-foreground text-xs uppercase">
-                  {row.label}
-                </span>
-                <span className="text-right font-medium">
-                  {row.present ? row.value : "— Manquant"}
-                </span>
-              </li>
-            ))}
-          </ul>
-          {missingFields.length > 0 ? (
+          <p className="text-muted-foreground text-xs">
+            Pré-remplis depuis la fiche prospect — modifiables ici. Les
+            modifications sont enregistrées sur le prospect au moment de
+            générer.
+          </p>
+          <div className="flex flex-col gap-3 rounded-md border p-3">
+            {FIELDS.map((f) => {
+              const err = fieldErrors[f.key];
+              const isMissing = f.value.trim().length === 0;
+              return (
+                <div
+                  key={f.key}
+                  data-slot="juridical-field-row"
+                  data-field={f.key}
+                  data-missing={isMissing ? "true" : "false"}
+                  data-invalid={err !== undefined ? "true" : "false"}
+                  className="flex flex-col gap-1"
+                >
+                  <Label
+                    htmlFor={`generate-contract-field-${f.key}`}
+                    className="text-muted-foreground text-xs uppercase"
+                  >
+                    {f.label}
+                  </Label>
+                  <Input
+                    id={`generate-contract-field-${f.key}`}
+                    data-slot={`generate-contract-input-${f.key}`}
+                    value={f.value}
+                    onChange={(e) => f.setValue(e.target.value)}
+                    placeholder={f.placeholder}
+                    inputMode={f.inputMode}
+                    type={f.type ?? "text"}
+                    aria-invalid={err !== undefined ? true : undefined}
+                  />
+                  {err !== undefined ? (
+                    <span
+                      data-slot={`generate-contract-error-${f.key}`}
+                      className="text-destructive text-xs"
+                    >
+                      {err}
+                    </span>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+          {!canGenerate ? (
             <p
               data-slot="generate-contract-missing-help"
               className="text-destructive text-xs"
             >
-              {MISSING_FIELDS_COPY} Champs absents :{" "}
-              {missingFields.map((f) => JURIDICAL_FIELD_LABEL[f]).join(", ")}.
+              {MISSING_FIELDS_COPY}
             </p>
           ) : null}
         </div>
