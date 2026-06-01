@@ -2286,3 +2286,107 @@ export const wipeE2ECampagnesTemplates = internalMutation({
     return { templatesDeleted };
   },
 });
+
+// -----------------------------------------------------------------------------
+// E2E-MC-C seed — populate the campagnes form + violation parcours (MC10-MC13).
+// MC10 / MC12 réutilisent les templates MC-B (`weekend_promo` pour le form
+// dynamique + `welcome_back` pour la preview live simple), MC11 ne nécessite
+// AUCUN seed (URL forgée vers un templateId inexistant). MC13 demande UN
+// template « corrompu » avec `containsAlcohol: true` actif (défense en
+// profondeur — l'écran doit surfacer la bannière même si le schema l'a laissé
+// passer). Sentinel `key = e2e_mc_c_alcohol_violation` pour wipe surgical.
+// -----------------------------------------------------------------------------
+
+const E2E_MC_C_ALCOHOL_TEMPLATE_KEY = "e2e_mc_c_alcohol_violation";
+
+/**
+ * Seed 1 `notificationTemplate` scope=tenant active sur `test-t1` avec
+ * `containsAlcohol: true` — exerce le path défensif de `CampaignPreview` qui
+ * doit surfacer la bannière FR « Mention d'alcool interdite » et désactiver
+ * le bouton « Envoyer maintenant » MÊME si le template a réussi à se
+ * persister (cas de régression d'un check backend amont).
+ *
+ * Idempotent par `key` sentinellé.
+ */
+export const seedE2ECampagnesCorruptedTemplate = internalMutation({
+  args: {
+    tenantSlug: v.optional(v.string()),
+  },
+  returns: v.object({
+    tenantId: v.id("tenants"),
+    templateCreated: v.boolean(),
+    templateUpdated: v.boolean(),
+  }),
+  handler: async (ctx, args) => {
+    const slug = args.tenantSlug ?? "test-t1";
+    const tenant = await ctx.db
+      .query("tenants")
+      .withIndex("by_slug", (q) => q.eq("slug", slug))
+      .unique();
+    if (tenant === null) {
+      throw new ConvexError({
+        message: `Tenant with slug "${slug}" not found.`,
+      });
+    }
+
+    const now = Date.now();
+    const payload = {
+      key: E2E_MC_C_ALCOHOL_TEMPLATE_KEY,
+      label: "[CORROMPU] Apéro vin rouge",
+      body: "Bonjour {prenom_client}, ce soir on offre un verre de vin rouge avec le {nom_plat} !",
+      variables: [
+        "prenom_client",
+        "nom_plat",
+      ] as unknown as Doc<"notificationTemplates">["variables"],
+      deepLinkTarget: "catalogue" as const,
+      scope: "tenant" as const,
+      maxDiscountPercent: 0,
+      language: "fr" as const,
+      containsAlcohol: true, // ← le flag défensif que MC13 vérifie
+      active: true,
+      tenantId: tenant._id,
+    };
+
+    const existing = await ctx.db
+      .query("notificationTemplates")
+      .withIndex("by_key", (q) => q.eq("key", E2E_MC_C_ALCOHOL_TEMPLATE_KEY))
+      .unique();
+
+    if (existing === null) {
+      await ctx.db.insert("notificationTemplates", {
+        ...payload,
+        createdAt: now,
+      });
+      return {
+        tenantId: tenant._id,
+        templateCreated: true,
+        templateUpdated: false,
+      };
+    }
+    await ctx.db.patch(existing._id, payload);
+    return {
+      tenantId: tenant._id,
+      templateCreated: false,
+      templateUpdated: true,
+    };
+  },
+});
+
+/**
+ * Wipe the E2E-MC-C corrupted template seed. Filtre par `key` sentinellé.
+ */
+export const wipeE2ECampagnesCorruptedTemplate = internalMutation({
+  args: {},
+  returns: v.object({ templateDeleted: v.boolean() }),
+  handler: async (ctx) => {
+    const existing = await ctx.db
+      .query("notificationTemplates")
+      .withIndex("by_key", (q) => q.eq("key", E2E_MC_C_ALCOHOL_TEMPLATE_KEY))
+      .unique();
+    if (existing !== null) {
+      await ctx.db.delete(existing._id);
+      return { templateDeleted: true };
+    }
+    return { templateDeleted: false };
+  },
+});
