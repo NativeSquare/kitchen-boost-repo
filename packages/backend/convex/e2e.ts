@@ -735,6 +735,224 @@ export const wipeE2EAuthAccounts = internalMutation({
 });
 
 // -----------------------------------------------------------------------------
+// bootstrapE2EA2A3Invites — extra accounts for A2 (multi-tenant) and A3 (orphan)
+// -----------------------------------------------------------------------------
+
+/**
+ * Bootstrap the 2 extra accounts required by the current E2E A2 and A3
+ * parcours (post-2026-06 audit pass renamed the original "A6 NoTenantEmptyState"
+ * to A3 and added A2 multi-tenant cookie hint).
+ *
+ *   - **A2** (`multi-tenants : dernière resto restaurée`) needs a KB Manager
+ *     attached to BOTH `test-t1` AND `test-t2`. The 2-account model only
+ *     covers a mono-tenant manager — touching `manager@kb.test`'s attachments
+ *     would break A4a (which requires a mono-tenant manager to forge `/t/T2/...`).
+ *     Hence a separate `multiEmail` account.
+ *
+ *   - **A3** (`KB Manager sans tenant rattaché`) needs a user with role
+ *     `"customer"` and 0 `userTenants` rows (UnauthorizedCard NoTenantEmptyState).
+ *     This is the same shape as the legacy `customerEmail` opt-in of
+ *     `bootstrapE2EInvites`, but kept here so the A2 + A3 bootstrap is one
+ *     atomic step driven by the current doc names (not the historical ones).
+ *
+ * Side effects:
+ *   - Requires `test-t1` AND `test-t2` to already exist (run
+ *     `bootstrapE2EInvites` first; the seed-system user is also reused).
+ *   - Wipes any existing invite for the 2 emails (idempotence).
+ *   - Inserts 2 fresh invites:
+ *       * multi   → new shape (`targetRole: "kb_manager"` + `tenantId: test-t1`)
+ *                   so acceptInvite creates `userTenants(kb_manager, test-t1)`
+ *                   at accept-time. `finalizeE2EA2A3Accounts` adds the 2nd
+ *                   link to `test-t2` after the user signs up.
+ *       * orphan  → legacy shape (no `targetRole`) so acceptInvite patches
+ *                   `users.role = "kb_admin"`. `finalizeE2EA2A3Accounts`
+ *                   downgrades it back to `"customer"` + wipes attachments,
+ *                   landing on the NoTenantEmptyState shape.
+ *
+ * Workflow:
+ *   1. `npx convex run e2e:bootstrapE2EA2A3Invites '{multiEmail, orphanEmail}'`
+ *      → returns 2 URLs.
+ *   2. Open each URL in a fresh browser session, create a password (same is fine).
+ *   3. `npx convex run e2e:finalizeE2EA2A3Accounts '{multiEmail, orphanEmail}'`
+ *      → multi has 2 `userTenants`, orphan has 0.
+ *   4. `npx convex run e2e:inspectE2EState '{adminEmail, managerEmail}'` to
+ *      sanity-check (manager attachments stays at 1, the multi/orphan rows
+ *      need a separate lookup if you want the full picture).
+ *
+ * Idempotent: re-running before the user accepts wipes the previous invite
+ * and re-issues a fresh URL. Re-running AFTER accept is harmless (the next
+ * accept will hit the "Account already exists" guard of Convex Auth — the
+ * user can simply log in instead).
+ */
+export const bootstrapE2EA2A3Invites = internalMutation({
+  args: {
+    multiEmail: v.string(),
+    orphanEmail: v.string(),
+    baseUrl: v.optional(v.string()),
+    expiresInDays: v.optional(v.number()),
+  },
+  returns: v.object({
+    multiAcceptUrl: v.string(),
+    orphanAcceptUrl: v.string(),
+    multiInviteId: v.id("adminInvites"),
+    orphanInviteId: v.id("adminInvites"),
+    tenant1Id: v.id("tenants"),
+    tenant2Id: v.id("tenants"),
+  }),
+  handler: async (ctx, args) => {
+    const tenant1 = await ctx.db
+      .query("tenants")
+      .withIndex("by_slug", (q) => q.eq("slug", "test-t1"))
+      .unique();
+    const tenant2 = await ctx.db
+      .query("tenants")
+      .withIndex("by_slug", (q) => q.eq("slug", "test-t2"))
+      .unique();
+    if (tenant1 === null || tenant2 === null) {
+      throw new ConvexError({
+        message:
+          "test-t1 and/or test-t2 not found. Run `bootstrapE2EInvites` first to upsert the base tenants.",
+      });
+    }
+
+    const systemSeedUserId = await getOrCreateSystemSeedUser(ctx);
+
+    for (const email of [args.multiEmail, args.orphanEmail]) {
+      const existing = await ctx.db
+        .query("adminInvites")
+        .withIndex("by_email", (q) => q.eq("email", email))
+        .collect();
+      for (const inv of existing) await ctx.db.delete(inv._id);
+    }
+
+    const expiresAt =
+      Date.now() + (args.expiresInDays ?? 7) * 24 * 60 * 60 * 1000;
+    const ts = Date.now().toString(36);
+    const baseUrl = args.baseUrl ?? "http://localhost:3000";
+
+    const multiToken = `e2e-multi-${ts}`;
+    const multiInviteId = await ctx.db.insert("adminInvites", {
+      email: args.multiEmail,
+      name: "E2E Manager Multi",
+      token: multiToken,
+      invitedBy: systemSeedUserId,
+      expiresAt,
+      targetRole: "kb_manager",
+      tenantId: tenant1._id,
+    });
+
+    const orphanToken = `e2e-orphan-${ts}`;
+    const orphanInviteId = await ctx.db.insert("adminInvites", {
+      email: args.orphanEmail,
+      name: "E2E Manager Orphan",
+      token: orphanToken,
+      invitedBy: systemSeedUserId,
+      expiresAt,
+    });
+
+    return {
+      multiAcceptUrl: `${baseUrl}/accept-invite?token=${multiToken}`,
+      orphanAcceptUrl: `${baseUrl}/accept-invite?token=${orphanToken}`,
+      multiInviteId,
+      orphanInviteId,
+      tenant1Id: tenant1._id,
+      tenant2Id: tenant2._id,
+    };
+  },
+});
+
+// -----------------------------------------------------------------------------
+// finalizeE2EA2A3Accounts — step 2 after Alex accepts the 2 invites
+// -----------------------------------------------------------------------------
+
+/**
+ * Finalize the A2 (multi-tenant manager) and A3 (orphan) accounts AFTER the
+ * user has accepted the 2 invites from `bootstrapE2EA2A3Invites`.
+ *
+ * Idempotent: the multi attachments get wiped + re-inserted (2 rows, one per
+ * tenant), and the orphan attachments get wiped (always 0 rows). Roles get
+ * patched unconditionally.
+ *
+ * After running:
+ *   - multiEmail  → role: "customer", 2 active userTenants
+ *                   (test-t1 + test-t2, both kb_manager)
+ *   - orphanEmail → role: "customer", 0 userTenants (UnauthorizedCard target)
+ */
+export const finalizeE2EA2A3Accounts = internalMutation({
+  args: {
+    multiEmail: v.string(),
+    orphanEmail: v.string(),
+  },
+  returns: v.object({
+    multiUserId: v.id("users"),
+    orphanUserId: v.id("users"),
+    multiAttachments: v.number(),
+    orphanAttachments: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const multi = await findUserByEmailOrThrow(
+      ctx,
+      args.multiEmail,
+      "multi-tenant manager",
+    );
+    const orphan = await findUserByEmailOrThrow(
+      ctx,
+      args.orphanEmail,
+      "orphan manager",
+    );
+
+    const tenant1 = await ctx.db
+      .query("tenants")
+      .withIndex("by_slug", (q) => q.eq("slug", "test-t1"))
+      .unique();
+    const tenant2 = await ctx.db
+      .query("tenants")
+      .withIndex("by_slug", (q) => q.eq("slug", "test-t2"))
+      .unique();
+    if (tenant1 === null || tenant2 === null) {
+      throw new ConvexError({
+        message: "test-t1 and/or test-t2 not found.",
+      });
+    }
+
+    // Use the seed system user as `attachedBy` (mirrors the bootstrap pattern;
+    // admin@kb.test would also work but isn't guaranteed to exist yet during
+    // an isolated run).
+    const seedSystemUserId = await getOrCreateSystemSeedUser(ctx);
+
+    // === Multi ===
+    await ctx.db.patch(multi._id, { role: "customer" });
+    await wipeUserAttachments(ctx, multi._id);
+    const now = Date.now();
+    await ctx.db.insert("userTenants", {
+      userId: multi._id,
+      tenantId: tenant1._id,
+      role: "kb_manager",
+      attachedAt: now,
+      attachedBy: seedSystemUserId,
+    });
+    await ctx.db.insert("userTenants", {
+      userId: multi._id,
+      tenantId: tenant2._id,
+      role: "kb_manager",
+      attachedAt: now,
+      attachedBy: seedSystemUserId,
+    });
+
+    // === Orphan ===
+    await ctx.db.patch(orphan._id, { role: "customer" });
+    await wipeUserAttachments(ctx, orphan._id);
+
+    return {
+      multiUserId: multi._id,
+      orphanUserId: orphan._id,
+      multiAttachments: 2,
+      orphanAttachments: 0,
+    };
+  },
+});
+
+// -----------------------------------------------------------------------------
 // E2E-MC seed — populate the « Mes clients » KPI dashboard with non-zero
 // aggregates so the 9 cards render instead of the empty-state. Inserts 6
 // `customers` (each behind its own auth user) + their `customerOrdersPerTenant`
