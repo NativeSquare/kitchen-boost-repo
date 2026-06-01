@@ -257,6 +257,93 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
   - UI : le mock Push affiche quand même le rendu (pour debug) mais le bouton bloque toute action.
 - **Couvre** : #215 (défense en profondeur des bounds backend miroir de `templateBounds.ts`).
 
+### MC14 — Lancer une campagne pendant horaires (envoi immédiat)
+- **Acteur** : restaurateur (rôle `kb_manager`)
+- **Pré-requis** : tenant seed avec ≥10 clients linkés actifs (au moins 5 joignables push + 3 joignables email), template « Promo weekend » actif, heure courante hors créneau DNT (entre 8h et 22h Europe/Paris). Route de départ : `/t/<tenantId>/campagnes`.
+- **Étapes** :
+  1. Cliquer sur la card du template « Promo weekend » dans le picker.
+  2. Sur `/t/<tenantId>/campagnes/<templateId>`, remplir les variables : `jour` = « samedi », `discount` slider à 20, `nom_resto` = « Buns & Bao ».
+  3. Vérifier que la preview live se met à jour à chaque champ + counter sous 200 chars en vert.
+  4. Cliquer « Envoyer maintenant ».
+  5. Observer le bouton qui passe en « Envoi en cours… » disabled le temps de la mutation.
+  6. À résolution, l'écran bascule sur `CampaignResultStats` (6 cards avec les compteurs).
+- **Attendu** :
+  - UI : titre « Résultats » + 6 cards avec les labels FR exacts, valeurs numériques cohérentes (`targeted` = somme `sent`+`queued`, `queued` = 0 hors DNT).
+  - DB : 1 row `notificationCampaignLaunches` pour ce tenant, N rows `notificationCampaignEvents` avec `status="sent"` et `scope="tenant"`. 1 row `auditLog` action=`notifications.campaign.send`.
+  - **MOAT** : AUCUN nom/email/téléphone client ne doit apparaître nulle part dans l'UI.
+- **Couvre** : #228 (F-CAMPAGNES 5/7 — câblage `sendTenantCampaign` + `CampaignResultStats`) ; valide aussi #145 (EPIC F-CAMPAGNES) et #215 (preview live).
+
+### MC15 — Anti-anomaly bloque deuxième envoi en 48h
+- **Acteur** : restaurateur (`kb_manager`)
+- **Pré-requis** : tenant seed avec 1 campagne déjà lancée < 48h, ≥5 clients linkés. Route de départ : `/t/<tenantId>/campagnes/<templateId>`.
+- **Étapes** :
+  1. Remplir les variables d'un template valide.
+  2. Cliquer « Envoyer maintenant ».
+  3. Observer la dialog qui s'ouvre.
+  4. Lire le message « Trop tôt pour relancer » / « Tu as déjà lancé une campagne récemment ».
+  5. Cliquer « Compris » pour fermer la dialog.
+- **Attendu** :
+  - UI : `CampaignAnomalyDialog` ouverte avec titre « Trop tôt pour relancer » et message FR.
+  - DB : AUCUN nouveau row `notificationCampaignLaunches` (le throw backend précède l'insert). 1 row `auditLog` action=`notifications.campaign.anomaly` avec `metadata.anomaly = "TOO_FREQUENT_48H"`.
+  - Après fermeture dialog : le formulaire reste rempli, bouton « Envoyer maintenant » de nouveau enabled, gérant peut modifier les variables sans perdre son état.
+- **Couvre** : #228 (anomaly path) ; valide PRD 80 §7 anti-anomaly.
+
+### MC16 — Isolation cross-tenant via URL forgée sur la mutation send (Forbidden)
+- **Acteur** : restaurateur du tenant A (`kb_manager`)
+- **Pré-requis** : 2 tenants A et B avec chacun ≥1 template. Le gérant de A est authentifié.
+- **Étapes** :
+  1. Manuellement naviguer vers `/t/<tenantId_B>/campagnes/<templateId_B>` (forge l'URL).
+  2. Observer le rendu.
+  3. Tenter de cliquer « Envoyer maintenant » si le formulaire s'affiche.
+- **Attendu** :
+  - UI : la branche « Template introuvable » ou un état d'erreur (le wrapper `tenantQuery({allow:["kb_manager"]})` rejette avec Forbidden ; le shell tenant B redirige).
+  - Si malgré tout le clic passe : la mutation `sendTenantCampaign` rejette server-side (cross-tenant fuzz du wrapper, ADR 0010) → toast erreur générique côté front.
+  - DB : aucun row de campaign créé pour le tenant B initié par le gérant de A.
+- **Couvre** : #228 ; valide ADR 0010 + cross-tenant fuzz suite du wrapper. Voir aussi T (Tenant isolation).
+
+### MC17 — Historique d'une campagne envoyée (round-trip envoi → historique → détail)
+- **Acteur** : KB Manager (`lartisan` ou tenant seed e2e)
+- **Pré-requis** : seeds e2e chargées ; au moins 2 clients liés au tenant, marketing-éligibles, l'un avec push enrolled, l'autre email-only ; au moins 1 template campagne actif `scope=tenant` côté `notificationTemplates`.
+- **Étapes** :
+  1. Login KB Manager, naviguer sur `/t/<tenant>/campagnes`.
+  2. Cliquer une template → page détail, remplir variables, cliquer « Envoyer ».
+  3. Attendre le résultat (`CampaignResultStats` s'affiche avec les 6 compteurs).
+  4. Cliquer le lien « Historique » en haut à droite de `/campagnes`.
+  5. Sur la liste, repérer la ligne fraîchement créée (label template + date FR + `Clients ciblés` + `Envoyés maintenant`). Cliquer la ligne.
+  6. Sur le détail, vérifier que les 6 cartes `CampaignResultStats` rendent EXACTEMENT les mêmes nombres qu'à l'étape 3.
+- **Attendu** :
+  - Liste triée date desc, la nouvelle ligne en tête.
+  - Date affichée au format `fr-FR` (ex. « 1 juin 2026 à 14:32 »).
+  - Détail : titre = label du template, sous-titre = « Lancée le … ».
+  - DB : `campaignLaunches` row du tenant carries `templateId` + les 6 compteurs persistés (`recipients`, `sent`, `queued`, `skippedIneligible`, `skippedRateLimited`, `skippedUnreachable`).
+  - **MOAT** : aucune adresse e-mail, aucun nom client, aucun téléphone visible sur AUCUN écran.
+- **Couvre** : #240 (F-CAMPAGNES 6/7) ; smoke #228 (CampaignResultStats reuse).
+
+### MC18 — Historique : isolation cross-tenant + URL stale launchId
+- **Acteur** : KB Manager mono-tenant T1 (ex. seed e2e)
+- **Pré-requis** : un launch existant dans T1 dont on connaît le `launchId` ; un second tenant T2 dont T1 n'est pas membre ; un seed launch dans T2.
+- **Étapes** :
+  1. Login KB Manager T1, ouvrir `/t/T1/campagnes/historique` → la liste contient le launch T1.
+  2. Forger l'URL `/t/T1/campagnes/historique/<launchId_T2>` (launch de l'AUTRE tenant) et naviguer.
+  3. Forger ensuite `/t/T1/campagnes/historique/<id_inexistant>` et naviguer.
+  4. Copier l'URL `/t/T2/campagnes/historique` et naviguer.
+- **Attendu** :
+  - Étape 2 et 3 : branche « Lancement introuvable » + bouton « Retour à l'historique » (pas de crash, pas de leak du launch T2 — la query retourne `null` côté serveur).
+  - Étape 4 : `UnauthorizedCard` (decideTenantGate F-SHELL-04), aucune query T2 firée.
+  - Aucun compteur de T2 visible nulle part.
+- **Couvre** : #240 (cross-tenant fuzz + not-found branch) ; ADR 0010 isolation.
+
+### MC19 — Historique : état vide (resto neuf, aucune campagne lancée)
+- **Acteur** : KB Manager d'un tenant n'ayant jamais envoyé de campagne
+- **Pré-requis** : tenant T fraîchement créé / aucun row dans `campaignLaunches` pour T.
+- **Étapes** :
+  1. Login, naviguer sur `/t/T/campagnes` → cliquer « Historique ».
+- **Attendu** :
+  - Titre « Historique des campagnes » + sous-titre MOAT.
+  - Bloc empty state encadré : « Aucune campagne lancée pour l'instant. ».
+  - Pas de skeleton, pas de crash, lien « Historique » toujours visible depuis `/campagnes`.
+- **Couvre** : #240 (empty branch).
+
 ---
 
 ## QR — QR PDF
@@ -1065,7 +1152,7 @@ Voir AC2 et AC2bis (couverture identique : #273 + B-AUTH-4/5/6).
 
 ## ⚠️ PRs sans tests E2E proposés
 
-Les 13 PRs suivantes n'ont pas inclus de section « Tests E2E proposés » exploitable dans leur body. Justification rappelée quand explicite ; sinon, marquer comme dette à combler si le parcours n'est pas couvert par une E2E voisine ci-dessus.
+Les 16 PRs suivantes n'ont pas inclus de section « Tests E2E proposés » exploitable dans leur body. Justification rappelée quand explicite ; sinon, marquer comme dette à combler si le parcours n'est pas couvert par une E2E voisine ci-dessus.
 
 | PR   | Ticket  | Domaine                      | Justification / note                                                                                                                    |
 | ---- | ------- | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1087,3 +1174,6 @@ Les 13 PRs suivantes n'ont pas inclus de section « Tests E2E proposés » explo
 | #362 | #172    | B-ONBOARDING-MILESTONES (s2) | _Justifié_ : refacto interne backend (helper privé `maybeAutoBascule`), shape de retour `applyClosing` strictement inchangé, helper hors barrel. Aucune surface modifiée.        |
 | #365 | #185    | F-CONTRATS (slice 4)         | Body PR réduit à `@-` (artefact d'édition post-merge). Parcours « relecture contrat existant » couvert par T3/T4 (iframe sandboxée + téléchargement HTML) ; clic ligne → iframe vérifié manuellement via T3.                                |
 | #367 | #189    | B-ONBOARDING-MILESTONES (s3) | Body PR réduit à `@-` (artefact d'édition post-merge). Mutation `setMilestone` granulaire + auto-Closing : invariants backend purs couverts par les tests convex-test du module ; aucune surface front directe (consommée par slices ultérieures).        |
+| #374 | #220    | F-PIPELINE-CRM (s4)          | _Justifié_ : module pur `reduceIntegrationStatus` (TypeScript générique sans UI / sans Convex / sans React). Couvert exhaustivement par 5 tests Vitest unitaires. Le flux end-to-end "KB Admin flippe Stripe Connect status → history persistée" relève des stories UI sœurs de l'épique F-PIPELINE-CRM (#144). |
+| #375 | #225    | B-ONBOARDING-MILESTONES (s5) | _Justifié_ : refactor barrel `lib/onboarding/index.ts` + JSDoc deprecation sur `editProspect.patch.milestones`. Zéro changement de comportement runtime. Les parcours `setMilestone` / `recordIntegrationStatus` sont déjà couverts par les E2E des slices 3/4 (#189 / #213).                                  |
+| #378 | #247    | F-CAMPAGNES (s7 polish)      | _Justifié_ : polish visuel sans nouveau parcours (palette KB, responsive, garde-fous ADR 0006 / ADR 0010 MOAT, FR-only) verrouillés par 21 tests d'audit source-code + 2 tests runtime pour l'accent jaune/or `data-warning` sur la carte rate-limit. Parcours fonctionnels déjà couverts par MC5→MC19.        |
