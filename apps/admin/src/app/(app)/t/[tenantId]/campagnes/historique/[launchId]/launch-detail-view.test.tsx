@@ -211,7 +211,7 @@ describe("LaunchDetailView — F-CAMPAGNES [6/7] (#240)", () => {
         }),
       ),
     );
-    expect(text).toContain(LAUNCH.templateLabel!);
+    expect(text).toContain(LAUNCH.templateLabel ?? "");
   });
 
   it("loaded branch: delegates to `CampaignResultStats` (REUSED from slice 5, no duplication)", () => {

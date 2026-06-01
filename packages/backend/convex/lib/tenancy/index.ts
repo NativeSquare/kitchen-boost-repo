@@ -117,6 +117,7 @@ export {
   setTenantNotificationEventSent,
 } from "./notificationsStore";
 export {
+  type CampaignLaunchCounters,
   type CustomerCampaignFields,
   type NewCampaignEvent,
   type TenantCampaignLaunch,
@@ -130,6 +131,7 @@ export {
   listTenantCustomerIds,
   readCustomerCampaignFields,
   readNotificationTemplate,
+  readTenantCampaignLaunch,
 } from "./campaignsStore";
 export {
   type BinaryMilestoneKey,

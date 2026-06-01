@@ -223,4 +223,17 @@ export const campaignLaunches = defineTable({
   launchedAt: v.number(),
   // Count ONLY — never a recipient identity (the MOAT, ADR 0010 / PRD 90 §3).
   recipients: v.number(),
+  // F-CAMPAGNES [6/7] (#240) — the « historique des lancements » sub-route
+  // surfaces, per launch, the 6 `CampaignResult` aggregate counters + the
+  // pre-validated template that was fired. Optional because rows inserted
+  // before #240 only carried `recipients` — the read seam falls back to
+  // zeroes for missing counters and `null` for the missing template, so the
+  // historique UI never crashes on legacy data. Every value stays an
+  // aggregate count (the MOAT — no recipient identity ever leaves here).
+  templateId: v.optional(v.id("notificationTemplates")),
+  sent: v.optional(v.number()),
+  queued: v.optional(v.number()),
+  skippedIneligible: v.optional(v.number()),
+  skippedRateLimited: v.optional(v.number()),
+  skippedUnreachable: v.optional(v.number()),
 }).index("by_tenant", ["tenantId"]);

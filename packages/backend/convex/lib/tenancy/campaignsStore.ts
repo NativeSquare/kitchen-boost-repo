@@ -120,10 +120,43 @@ export async function listCustomerCampaignSendTimestamps(
 
 // ── Anti-anomaly history (per-resto launches) ─────────────────────────────────
 
-/** One prior campaign launch of a tenant (anti-anomaly history element). */
+/**
+ * One prior campaign launch of a tenant.
+ *
+ * Originally introduced as the anti-anomaly history element (`launchedAt` +
+ * `recipients` only — PRD 80 §7); F-CAMPAGNES [6/7] (#240) extends it with the
+ * launch `id`, `scope`, persisted `templateId`, and the 6 `CampaignResult`
+ * aggregate counters so the « historique des lancements » sub-route can paint
+ * `CampaignResultStats` directly from the persisted row (no re-computation).
+ *
+ * Every field stays an aggregate count — the MOAT (ADR 0010 / PRD 90 §3-§5)
+ * forbids any nominative recipient surface.
+ *
+ * Legacy rows (inserted before #240 added the new optional schema fields)
+ * carry `recipients` only; the missing counters fall back to 0 and the missing
+ * `templateId` falls back to `null`, so the historique UI never crashes on
+ * legacy data.
+ */
 export type TenantCampaignLaunch = {
+  id: Id<"campaignLaunches">;
+  scope: TemplateScope;
   launchedAt: number;
+  /**
+   * Legacy `recipients` column (kept as the canonical "targeted" count for
+   * anti-anomaly back-compat). For #240 historique reads, prefer the
+   * `targeted` alias below — they hold the same value on freshly-inserted
+   * rows.
+   */
   recipients: number;
+  /** Resolved pre-validated template id, or `null` for a legacy launch row. */
+  templateId: Id<"notificationTemplates"> | null;
+  /** Alias of `recipients`, kept symmetric with `CampaignResult.targeted`. */
+  targeted: number;
+  sent: number;
+  queued: number;
+  skippedIneligible: number;
+  skippedRateLimited: number;
+  skippedUnreachable: number;
 };
 
 /** A tenant's prior campaign launches, keyed on `campaignLaunches.by_tenant`. */
@@ -135,28 +168,103 @@ export async function listTenantCampaignLaunches(
     .query("campaignLaunches")
     .withIndex("by_tenant", (q) => q.eq("tenantId", tenantId))
     .collect();
-  return rows.map((r) => ({
-    launchedAt: r.launchedAt,
-    recipients: r.recipients,
-  }));
+  return rows.map(projectLaunch);
 }
 
 /**
- * Record one campaign LAUNCH for a tenant (anti-anomaly trail, PRD 80 §7). Stamps
- * `tenantId` from the caller's resolved scope; stores the recipient COUNT only —
- * never an identity (the MOAT).
+ * Read a single launch by id, scoped to `tenantId`. Returns `null` when:
+ *   - the id does not resolve (stale link), OR
+ *   - the launch belongs to a DIFFERENT tenant (cross-tenant isolation: the
+ *     caller's wrapper has already established their right to read this
+ *     tenant; we refuse to surface a foreign-tenant launch by id even so).
+ */
+export async function readTenantCampaignLaunch(
+  ctx: QueryCtx | MutationCtx,
+  tenantId: Id<"tenants">,
+  launchId: Id<"campaignLaunches">,
+): Promise<TenantCampaignLaunch | null> {
+  const row = await ctx.db.get(launchId);
+  if (row === null) return null;
+  if (row.tenantId !== tenantId) return null;
+  return projectLaunch(row);
+}
+
+/**
+ * Project a raw `campaignLaunches` row into the public `TenantCampaignLaunch`
+ * shape. Centralised so the legacy-row fallback (zeroes for missing counters,
+ * `null` for missing `templateId`) lives in ONE place.
+ */
+function projectLaunch(row: Doc<"campaignLaunches">): TenantCampaignLaunch {
+  return {
+    id: row._id,
+    scope: row.scope,
+    launchedAt: row.launchedAt,
+    recipients: row.recipients,
+    templateId: row.templateId ?? null,
+    targeted: row.recipients,
+    sent: row.sent ?? 0,
+    queued: row.queued ?? 0,
+    skippedIneligible: row.skippedIneligible ?? 0,
+    skippedRateLimited: row.skippedRateLimited ?? 0,
+    skippedUnreachable: row.skippedUnreachable ?? 0,
+  };
+}
+
+/**
+ * The optional 6-counter persistence side-payload F-CAMPAGNES [6/7] (#240) adds
+ * to `insertCampaignLaunch`. Every field stays a count (the MOAT, ADR 0010).
+ */
+export type CampaignLaunchCounters = {
+  templateId?: Id<"notificationTemplates">;
+  sent?: number;
+  queued?: number;
+  skippedIneligible?: number;
+  skippedRateLimited?: number;
+  skippedUnreachable?: number;
+};
+
+/**
+ * Record one campaign LAUNCH for a tenant (anti-anomaly trail, PRD 80 §7 +
+ * historique persistence, #240). Stamps `tenantId` from the caller's resolved
+ * scope; stores the recipient COUNT + the 6 aggregate `CampaignResult`
+ * counters only — never an identity (the MOAT, ADR 0010 / PRD 90 §3).
  */
 export async function insertCampaignLaunch(
   ctx: MutationCtx,
   tenantId: Id<"tenants">,
-  launch: { scope: TemplateScope; launchedAt: number; recipients: number },
+  launch: {
+    scope: TemplateScope;
+    launchedAt: number;
+    recipients: number;
+  } & CampaignLaunchCounters,
 ): Promise<Id<"campaignLaunches">> {
-  return ctx.db.insert("campaignLaunches", {
+  const row: {
+    tenantId: Id<"tenants">;
+    scope: TemplateScope;
+    launchedAt: number;
+    recipients: number;
+    templateId?: Id<"notificationTemplates">;
+    sent?: number;
+    queued?: number;
+    skippedIneligible?: number;
+    skippedRateLimited?: number;
+    skippedUnreachable?: number;
+  } = {
     tenantId,
     scope: launch.scope,
     launchedAt: launch.launchedAt,
     recipients: launch.recipients,
-  });
+  };
+  if (launch.templateId !== undefined) row.templateId = launch.templateId;
+  if (launch.sent !== undefined) row.sent = launch.sent;
+  if (launch.queued !== undefined) row.queued = launch.queued;
+  if (launch.skippedIneligible !== undefined)
+    row.skippedIneligible = launch.skippedIneligible;
+  if (launch.skippedRateLimited !== undefined)
+    row.skippedRateLimited = launch.skippedRateLimited;
+  if (launch.skippedUnreachable !== undefined)
+    row.skippedUnreachable = launch.skippedUnreachable;
+  return ctx.db.insert("campaignLaunches", row);
 }
 
 // ── Campaign send journal write ───────────────────────────────────────────────

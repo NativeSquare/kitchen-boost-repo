@@ -8,17 +8,19 @@ import type {
 import { marketingEligible } from "../customer";
 import {
   type CustomerCampaignFields,
+  type TenantCampaignLaunch,
   insertCampaignEvent,
   insertCampaignLaunch,
   kbAdminMutation,
   listCrossTenantCustomerIds,
   listCustomerCampaignSendTimestamps,
-  listTenantCampaignLaunches,
+  listTenantCampaignLaunches as listTenantCampaignLaunchesSeam,
   listTenantCampaignTemplates,
   listTenantCustomerIds,
   logAudit,
   readCustomerCampaignFields,
   readNotificationTemplate,
+  readTenantCampaignLaunch,
   tenantMutation,
   tenantQuery,
 } from "../tenancy";
@@ -248,7 +250,7 @@ export const sendTenantCampaign = tenantMutation({ allow: ["kb_manager"] })({
     // Anti-anomaly (PRD 80 §7) — cadence + recipient surge vs the resto's history.
     // The "recipients" the rule weighs is the candidate audience size (the bond
     // the resto is about to push to), checked BEFORE per-customer filtering.
-    const history = await listTenantCampaignLaunches(ctx, ctx.tenantId);
+    const history = await listTenantCampaignLaunchesSeam(ctx, ctx.tenantId);
     const anomaly = findCampaignAnomaly(history, customerIds.length, now);
     if (anomaly !== null) {
       await logAudit(ctx, {
@@ -271,11 +273,21 @@ export const sendTenantCampaign = tenantMutation({ allow: ["kb_manager"] })({
       now,
     });
 
-    // Record the launch (anti-anomaly trail) + audit the trigger (PRD 80 §7).
+    // Record the launch (anti-anomaly trail + #240 historique persistence) +
+    // audit the trigger (PRD 80 §7). The 6 aggregate counters are persisted on
+    // the row so the « historique des lancements » detail page can render
+    // `CampaignResultStats` directly off it (no re-computation, no nominative
+    // recipient surface — the MOAT stays intact, ADR 0010 / PRD 90 §3-§5).
     await insertCampaignLaunch(ctx, ctx.tenantId, {
       scope: "tenant",
       launchedAt: now,
       recipients: result.targeted,
+      templateId: args.templateId,
+      sent: result.sent,
+      queued: result.queued,
+      skippedIneligible: result.skippedIneligible,
+      skippedRateLimited: result.skippedRateLimited,
+      skippedUnreachable: result.skippedUnreachable,
     });
     await logAudit(ctx, {
       actorUserId: ctx.actor.userId,
@@ -330,6 +342,11 @@ export const sendCrossTenantCampaign = kbAdminMutation({
       scope: "cross_tenant",
       launchedAt: now,
       recipients: result.targeted,
+      sent: result.sent,
+      queued: result.queued,
+      skippedIneligible: result.skippedIneligible,
+      skippedRateLimited: result.skippedRateLimited,
+      skippedUnreachable: result.skippedUnreachable,
     });
 
     return result;
@@ -383,5 +400,106 @@ export const listTenantTemplates = tenantQuery({ allow: ["kb_manager"] })({
       maxDiscountPercent: r.maxDiscountPercent,
       containsAlcohol: r.containsAlcohol,
     }));
+  },
+});
+
+/**
+ * F-CAMPAGNES [6/7] (#240) — the PUBLIC view of a tenant's CAMPAIGN LAUNCH
+ * history (parent EPIC #145). Backs the sub-route
+ * `/t/[tenantId]/campagnes/historique/` (list) + its `[launchId]` detail page.
+ *
+ * Each entry is a `CampaignLaunchSummary` — the launch id + scope + timestamp,
+ * the persisted template id with its resolved label (server-side, label only —
+ * the body is not part of the historique surface), and the 6 aggregate
+ * `CampaignResult` counters. Sorted by `launchedAt` DESC so the most recent
+ * lands first.
+ *
+ * Legacy rows (inserted BEFORE #240 added the new optional schema fields) fall
+ * back to zeroes for the missing counters and `null` for the missing template
+ * label — they pre-date the new persistence contract; the front renders them
+ * with zero counts rather than crashing.
+ *
+ * ── MOAT (ADR 0010 / PRD 90 §3-§5) ────────────────────────────────────────────
+ * The projection is aggregate-only — NO recipient identity ever leaves the
+ * server: no email, no phone, no name, no per-customer row. The historique is
+ * a count-only ledger by design.
+ *
+ * Strict allowlist `kb_manager` (+ root `kb_admin` override inherited from the
+ * `tenantQuery` wrapper, for supervision). Cross-tenant fuzz pinned in
+ * `listTenantCampaignLaunches.test.ts`.
+ */
+export type CampaignLaunchSummary = {
+  id: Id<"campaignLaunches">;
+  scope: TemplateScope;
+  launchedAt: number;
+  templateId: Id<"notificationTemplates"> | null;
+  templateLabel: string | null;
+  targeted: number;
+  sent: number;
+  queued: number;
+  skippedIneligible: number;
+  skippedRateLimited: number;
+  skippedUnreachable: number;
+};
+
+/** Resolve the template label for one launch row, with the legacy fallback. */
+async function resolveTemplateLabel(
+  ctx: Parameters<typeof readNotificationTemplate>[0],
+  launch: TenantCampaignLaunch,
+): Promise<string | null> {
+  if (launch.templateId === null) return null;
+  const template = await readNotificationTemplate(ctx, launch.templateId);
+  return template?.label ?? null;
+}
+
+/** Project a tenancy-seam launch + its resolved label into the public summary. */
+function toSummary(
+  launch: TenantCampaignLaunch,
+  templateLabel: string | null,
+): CampaignLaunchSummary {
+  return {
+    id: launch.id,
+    scope: launch.scope,
+    launchedAt: launch.launchedAt,
+    templateId: launch.templateId,
+    templateLabel,
+    targeted: launch.targeted,
+    sent: launch.sent,
+    queued: launch.queued,
+    skippedIneligible: launch.skippedIneligible,
+    skippedRateLimited: launch.skippedRateLimited,
+    skippedUnreachable: launch.skippedUnreachable,
+  };
+}
+
+export const listTenantCampaignLaunches = tenantQuery({
+  allow: ["kb_manager"],
+})({
+  args: {},
+  handler: async (ctx): Promise<CampaignLaunchSummary[]> => {
+    const launches = await listTenantCampaignLaunchesSeam(ctx, ctx.tenantId);
+    // Server-side desc sort on launchedAt (the index doesn't pin order; a
+    // stable client-side sort would also work but the contract belongs here).
+    const sorted = [...launches].sort((a, b) => b.launchedAt - a.launchedAt);
+    return Promise.all(
+      sorted.map(async (l) => toSummary(l, await resolveTemplateLabel(ctx, l))),
+    );
+  },
+});
+
+export const getTenantCampaignLaunch = tenantQuery({
+  allow: ["kb_manager"],
+})({
+  args: {
+    launchId: v.id("campaignLaunches"),
+  },
+  handler: async (ctx, args): Promise<CampaignLaunchSummary | null> => {
+    const launch = await readTenantCampaignLaunch(
+      ctx,
+      ctx.tenantId,
+      args.launchId,
+    );
+    if (launch === null) return null;
+    return toSummary(launch, await resolveTemplateLabel(ctx, launch));
   },
 });
