@@ -66,16 +66,30 @@ describe("page.tsx — F-QR.4 (#198) wiring contract", () => {
   });
 
   it("AC2 — does NOT introduce a new backend endpoint (zero new query path)", () => {
-    // The page may legitimately reuse the EXISTING `loadTenantForStripe`
-    // root-only probe (same primitive the F-SHELL-04 layout uses for KB Admin
-    // tenant resolution — incidental Stripe naming, no Stripe coupling). Any
-    // OTHER `api.lib.*` reference would imply a fresh backend surface, which
-    // the issue forbids. We pin that constraint by allow-listing exactly the
-    // one acceptable path.
+    // The page may legitimately reuse two EXISTING queries:
+    //
+    //  - `api.lib.stripe.account.loadTenantForStripe` — root-only probe
+    //    (same primitive the F-SHELL-04 layout uses for KB Admin tenant
+    //    resolution — incidental Stripe naming, no Stripe coupling).
+    //
+    //  - `api.lib.admin.tenantSettings.getSettings` — added 2026-06-01 by
+    //    B-PARAMETRES-04 to back the Paramètres page (cf. its docstring).
+    //    Reused here (E2E spot-check QR2 fix 2026-06-01) so the KB Manager
+    //    can read `customDomain` (the session payload doesn't carry it),
+    //    otherwise the QR pointed at `<slug>.kitchen-boost.fr` instead of
+    //    the tenant's configured custom domain.
+    //
+    // Any OTHER `api.lib.*` reference would imply a fresh backend surface,
+    // which the issue forbids. We pin that constraint by allow-listing
+    // exactly these two acceptable paths.
     const code = stripNonCode(PAGE_SOURCE);
     const apiRefs = code.match(/api\.lib\.[A-Za-z0-9_.]+/g) ?? [];
+    const allowed = new Set([
+      "api.lib.stripe.account.loadTenantForStripe",
+      "api.lib.admin.tenantSettings.getSettings",
+    ]);
     for (const ref of apiRefs) {
-      expect(ref).toBe("api.lib.stripe.account.loadTenantForStripe");
+      expect(allowed.has(ref)).toBe(true);
     }
   });
 

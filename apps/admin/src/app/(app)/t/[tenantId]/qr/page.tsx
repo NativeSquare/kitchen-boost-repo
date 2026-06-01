@@ -78,6 +78,7 @@ import { api } from "@packages/backend/convex/_generated/api";
 
 import { useCurrentTenantId } from "@/components/app/tenant-context";
 import { QrGeneratorView } from "@/components/qr/QrGeneratorView";
+import { useTenantQuery } from "@/hooks";
 import { useSession } from "@/lib/session";
 import { tenantPwaUrl } from "@/lib/tenant-url";
 
@@ -105,6 +106,24 @@ export default function QrPage() {
     isAdmin ? { tenantId } : "skip",
   );
 
+  // Source #3 : `tenantSettings.getSettings` — `tenantQuery({allow:["kb_manager"]})`
+  // avec root override kb_admin, expose `customDomain` + `branding` au
+  // KB Manager (qui n'a PAS accès à `loadTenantForStripe`, root-only).
+  //
+  // Bug fix 2026-06-01 (E2E spot-check QR2, [docs/tests/E2E-checklist.md](../../../../../../docs/tests/E2E-checklist.md)):
+  // jusqu'ici le manager voyait `customDomain = undefined` (la session ne le
+  // porte pas), donc le QR pointait toujours sur `<slug>.kitchen-boost.fr`
+  // même quand un customDomain était configuré → faux QR imprimé en prod.
+  // On lit donc le customDomain via cette query manager-accessible. Pour
+  // l'admin, sa source #2 reste la source de vérité (impersonation peut
+  // viser un tenant dont l'admin n'est pas membre — getSettings passe via
+  // root override mais le `useTenantQuery` est inutile à fire en double
+  // quand on a déjà tout via `loadTenantForStripe`).
+  const settings = useTenantQuery(
+    api.lib.admin.tenantSettings.getSettings,
+    isAdmin ? "skip" : {},
+  );
+
   // Loading sentinel : tant que la session n'est pas résolue, ou que la query
   // admin (quand pertinente) est en vol, on rend un placeholder léger plutôt
   // qu'un QR sur des données partielles. Le shell parent (F-SHELL-04 layout)
@@ -119,16 +138,31 @@ export default function QrPage() {
     // branding réel — sinon il verrait une régénération immédiate au refetch.
     return null;
   }
+  if (!isAdmin && settings === undefined) {
+    // Le KB Manager attend le retour de `getSettings` pour avoir customDomain
+    // + branding — sinon il verrait un QR pointant sur l'URL bootstrap puis
+    // une régénération immédiate au refetch (cf. bug fix 2026-06-01).
+    return null;
+  }
 
-  // Fusion des deux sources, en favorisant `adminTenantDoc` (plus complet)
-  // quand disponible, sinon retombant sur `sessionTenant`. Pour un KB Admin
-  // qui aurait DOUBLE attache (admin + membre), l'admin doc reste la source
-  // de vérité (a le branding complet ; le `SessionTenant` ne le porte pas).
+  // Fusion des trois sources :
+  //  - slug/name : `adminTenantDoc` (admin impersonation) puis `sessionTenant`
+  //    (manager ou admin membre).
+  //  - customDomain + branding : `adminTenantDoc` (admin, doc complet) puis
+  //    `settings` (manager, via la query D5 élargi).
   const slug = adminTenantDoc?.slug ?? sessionTenant?.slug ?? null;
   const name = adminTenantDoc?.name ?? sessionTenant?.name ?? null;
-  const customDomain = adminTenantDoc?.customDomain;
-  const logoUrl = adminTenantDoc?.branding?.logoUrl;
-  const primaryColor = adminTenantDoc?.branding?.primaryColor;
+  // `settings.customDomain` is wire-typed `string | null` (Convex `v.union(v.null(),
+  // v.string())`) — collapse null → undefined so `tenantPwaUrl` (which expects
+  // `string | undefined`) never receives a stray null. The `??` chain treats
+  // null and undefined identically, but the final fall-through to `undefined`
+  // is the explicit type narrowing that keeps TypeScript happy.
+  const customDomain: string | undefined =
+    adminTenantDoc?.customDomain ?? settings?.customDomain ?? undefined;
+  const logoUrl =
+    adminTenantDoc?.branding?.logoUrl ?? settings?.branding?.logoUrl;
+  const primaryColor =
+    adminTenantDoc?.branding?.primaryColor ?? settings?.branding?.primaryColor;
 
   // Garde défensive : si NI la session NI la query admin ne nous donnent un
   // slug/name, on ne peut pas calculer une URL stable — on retourne `null`
