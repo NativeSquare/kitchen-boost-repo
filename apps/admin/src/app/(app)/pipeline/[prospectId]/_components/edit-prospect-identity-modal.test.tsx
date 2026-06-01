@@ -2,17 +2,38 @@
  * F-PIPELINE-CRM 08 (#263) — `EditProspectIdentityModal` test matrix.
  *
  * Pure presentational modal — V1 = formulaire global, pas d'édition inline
- * cellule-par-cellule (issue spec verbatim). Wraps `api.lib.onboarding.crm.editProspect`
- * via a connected wrapper (`EditProspectIdentityLauncher`) — the modal itself
- * is hook-free so it expands in the lean `node` env.
+ * cellule-par-cellule (issue spec verbatim). Wraps
+ * `api.lib.onboarding.crm.editProspect` via a connected wrapper
+ * (`EditProspectIdentityLauncher`) — the modal itself is hook-using
+ * (`useState` for the form fields) so the test shims `useState` to a
+ * first-render-only stub, same pattern as `generate-contract-modal.test.tsx`.
  */
 import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { Doc, Id } from "@packages/backend/convex/_generated/dataModel";
 
-import { EditProspectIdentityModal } from "./edit-prospect-identity-modal";
-import { allText, flatten, serialize } from "../../_components/test-utils";
+vi.mock("react", async () => {
+  const actual = await vi.importActual<typeof import("react")>("react");
+  return {
+    ...actual,
+    useState: <T,>(initial: T | (() => T)) => {
+      const v =
+        typeof initial === "function" ? (initial as () => T)() : initial;
+      return [v, () => {}];
+    },
+    useEffect: () => {},
+    useMemo: <T,>(factory: () => T) => factory(),
+  };
+});
+
+const { EditProspectIdentityModal } =
+  await import("./edit-prospect-identity-modal");
+type EditProspectIdentityModalProps =
+  import("./edit-prospect-identity-modal").EditProspectIdentityModalProps;
+
+const { allText, flatten, serialize } =
+  await import("../../_components/test-utils");
 
 const PROSPECT_ID = "prospects_xxx" as unknown as Id<"prospects">;
 
@@ -35,8 +56,8 @@ function makeProspect(
 }
 
 function baseProps(
-  overrides: Partial<Parameters<typeof EditProspectIdentityModal>[0]> = {},
-) {
+  overrides: Partial<EditProspectIdentityModalProps> = {},
+): EditProspectIdentityModalProps {
   return {
     open: true,
     onOpenChange: vi.fn(),
@@ -66,9 +87,8 @@ describe("EditProspectIdentityModal — F-PIPELINE-CRM 08 (#263)", () => {
       ),
     );
     const text = allText(tree);
-    // The form inputs carry the value either in their `value`/`defaultValue`
-    // prop OR in the rendered tree text. Either way the prospect's current
-    // values must be reachable from the serialized form.
+    // Pre-filled `value` props of the inputs surface via the serialized tree
+    // (each input slot carries a `value` prop seeded by the prospect doc).
     expect(JSON.stringify(tree)).toContain("Mon Resto");
     expect(JSON.stringify(tree)).toContain("12345678900012");
     expect(JSON.stringify(tree)).toContain("Jean Dupont");

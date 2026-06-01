@@ -4,7 +4,9 @@
  * Pure presentational timeline rendered on the supervision fiche
  * (`prospect-fiche-view.tsx`). Same React-tree-serializer pattern as
  * `milestone-checklist.test.tsx` — admin vitest runs the lean `node`
- * env (no jsdom).
+ * env (no jsdom). The component uses `useState` for the dialog open
+ * flag, so the test shims `useState` to a first-render-only stub
+ * (same pattern as `generate-contract-modal.test.tsx`).
  *
  * Issue #263 — « Timeline antichronologique des interactions du
  * prospect ; chaque entrée : date relative, canal (icône), note ;
@@ -16,16 +18,33 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
 
-import { InteractionLog } from "./interaction-log";
-import { allText, flatten, serialize } from "../../_components/test-utils";
+vi.mock("react", async () => {
+  const actual = await vi.importActual<typeof import("react")>("react");
+  return {
+    ...actual,
+    useState: <T,>(initial: T | (() => T)) => {
+      const v =
+        typeof initial === "function" ? (initial as () => T)() : initial;
+      return [v, () => {}];
+    },
+    useEffect: () => {},
+    useMemo: <T,>(factory: () => T) => factory(),
+  };
+});
+
+const { InteractionLog } = await import("./interaction-log");
+type InteractionLogProps = import("./interaction-log").InteractionLogProps;
+
+const { allText, flatten, serialize } =
+  await import("../../_components/test-utils");
 
 const PROSPECT_ID = "prospects_xxx" as unknown as Id<"prospects">;
 
 type SerializedShape = ReturnType<typeof serialize>;
 
 function baseProps(
-  overrides: Partial<Parameters<typeof InteractionLog>[0]> = {},
-) {
+  overrides: Partial<InteractionLogProps> = {},
+): InteractionLogProps {
   return {
     prospectId: PROSPECT_ID,
     interactions: [],

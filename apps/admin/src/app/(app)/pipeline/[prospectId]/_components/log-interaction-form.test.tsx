@@ -1,25 +1,44 @@
 /**
  * F-PIPELINE-CRM 08 (#263) — `LogInteractionForm` test matrix.
  *
- * Pure presentational form (no Convex hooks). Renders the note textarea +
- * canal select. Date is server-stamped by the backend
- * `appendInteraction` helper (`Date.now()` in `lib/tenancy/prospectsStore.ts`,
- * line 139 — the caller never forges it), so the form does NOT expose a
- * date picker (no-invent — the validator on `logInteraction` only accepts
- * `prospectId`, `note`, `canal`).
+ * Pure presentational form (no Convex hooks, but uses `useState`).
+ * Renders the note textarea + canal select. Date is server-stamped by
+ * the backend `appendInteraction` helper (`Date.now()` in
+ * `lib/tenancy/prospectsStore.ts` — the caller never forges it), so the
+ * form does NOT expose a date picker (no-invent — the validator on
+ * `logInteraction` only accepts `prospectId`, `note`, `canal`).
  *
- * Same React-tree-serializer pattern as the sibling tests in this folder.
+ * React hooks shim — mirror of `generate-contract-modal.test.tsx` so the
+ * lean `node` vitest env can expand the form's first render.
  */
 import { describe, expect, it, vi } from "vitest";
 
-import { LogInteractionForm } from "./log-interaction-form";
-import { allText, flatten, serialize } from "../../_components/test-utils";
+vi.mock("react", async () => {
+  const actual = await vi.importActual<typeof import("react")>("react");
+  return {
+    ...actual,
+    useState: <T,>(initial: T | (() => T)) => {
+      const v =
+        typeof initial === "function" ? (initial as () => T)() : initial;
+      return [v, () => {}];
+    },
+    useEffect: () => {},
+    useMemo: <T,>(factory: () => T) => factory(),
+  };
+});
+
+const { LogInteractionForm } = await import("./log-interaction-form");
+type LogInteractionFormProps =
+  import("./log-interaction-form").LogInteractionFormProps;
+
+const { allText, flatten, serialize } =
+  await import("../../_components/test-utils");
 
 type SerializedShape = ReturnType<typeof serialize>;
 
 function baseProps(
-  overrides: Partial<Parameters<typeof LogInteractionForm>[0]> = {},
-) {
+  overrides: Partial<LogInteractionFormProps> = {},
+): LogInteractionFormProps {
   return {
     isSubmitting: false,
     submitError: null,
@@ -72,9 +91,8 @@ describe("LogInteractionForm — F-PIPELINE-CRM 08 (#263)", () => {
     expect(text).toMatch(/visite|physique/i);
   });
 
-  it("calls `onSubmit({ note, canal })` when the submit button is clicked with a non-empty note", async () => {
-    const onSubmit = vi.fn(async () => {});
-    const tree = serialize(LogInteractionForm(baseProps({ onSubmit })));
+  it("disables submit when the note is empty (data-can-submit=false)", () => {
+    const tree = serialize(LogInteractionForm(baseProps()));
     const submitBtns = flatten(tree).filter(
       (
         n,
@@ -89,11 +107,6 @@ describe("LogInteractionForm — F-PIPELINE-CRM 08 (#263)", () => {
           "log-interaction-submit",
     );
     expect(submitBtns.length).toBe(1);
-    // The submit button is rendered with a closure capturing the form state.
-    // We can't inject keystrokes in `node` env, so we exercise the callback
-    // by reading the bound `onClick` and calling it after seeding state via
-    // the captured note/canal slots. We instead pin the submit handler ALSO
-    // surfaces via `data-can-submit="false"` when the note is empty.
     expect(submitBtns[0].props["data-can-submit"]).toBe(false);
   });
 

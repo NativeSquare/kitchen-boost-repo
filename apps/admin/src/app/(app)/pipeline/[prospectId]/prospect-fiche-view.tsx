@@ -60,8 +60,11 @@ import type { SessionState } from "@/lib/session";
 
 import { ContractIframe } from "./contract-iframe";
 import { ContractsBlock } from "./contracts-block";
+import { EditProspectIdentityLauncher } from "./_components/edit-prospect-identity-modal";
+import { ExternalLinksPanel } from "./_components/external-links-panel";
 import { GenerateContractLauncher } from "./generate-contract-launcher";
 import { IntegrationStatusPanelConnected } from "./_components/integration-status-panel";
+import { InteractionLogConnected } from "./_components/interaction-log";
 import { MilestoneChecklistConnected } from "./_components/milestone-checklist";
 import { ProspectIdentityPanel } from "./_components/prospect-identity-panel";
 import { decideProspectFiche } from "./prospect-fiche.decision";
@@ -288,7 +291,14 @@ export function ProspectFicheView({
        *  retired — the remaining drill-downs (embed KYC, monitoring) ship
        *  in later slices of the epic.
        */}
-      <div className="px-4 lg:px-6">
+      <div className="flex flex-col gap-2 px-4 lg:px-6">
+        {/* F-PIPELINE-CRM 08 (#263) — « Éditer » trigger sits next to the
+         *  identity panel; the launcher owns the modal + mutation wiring
+         *  while keeping the identity panel pure-presentational (no
+         *  regression on the slice-07 test matrix). */}
+        <div className="flex justify-end">
+          <EditProspectIdentityLauncher prospect={p} />
+        </div>
         <ProspectIdentityPanel prospect={p} />
       </div>
       <div className="grid gap-4 px-4 lg:grid-cols-2 lg:px-6">
@@ -305,6 +315,15 @@ export function ProspectFicheView({
             hubrise: p.milestones?.hubrise,
           }}
         />
+      </div>
+      {/* F-PIPELINE-CRM 08 (#263) — InteractionLog (timeline + log form)
+       *  + ExternalLinksPanel (Stripe / Odoo / direct.uber.com / WhatsApp). */}
+      <div className="grid gap-4 px-4 lg:grid-cols-2 lg:px-6">
+        <InteractionLogConnected
+          prospectId={p._id}
+          interactions={p.interactions ?? []}
+        />
+        <ExternalLinksPanel prospect={p} />
       </div>
     </div>
   );
