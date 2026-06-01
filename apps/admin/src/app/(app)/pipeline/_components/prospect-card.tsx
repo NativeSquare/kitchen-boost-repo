@@ -16,8 +16,9 @@
  *     been provisioned — i.e. it's now a signed tenant, kb-admin CONTEXT
  *     `tenantId` back-link)
  *
- * The whole card is a `next/link` to `/pipeline/[prospectId]` (the existing
- * fiche, F-SHELL-10 #233). Click is the only interaction this slice exposes
+ * The whole card is a bare `<a>` to `/pipeline/[prospectId]` (the existing
+ * fiche, F-SHELL-10 #233 — see « Why plain `<a>` » section below for the
+ * testing rationale). Click is the only interaction this slice exposes
  * — drag-and-drop arrives in PIPELINE-06 (#221).
  *
  * Why a local relative-time helper (not date-fns)
