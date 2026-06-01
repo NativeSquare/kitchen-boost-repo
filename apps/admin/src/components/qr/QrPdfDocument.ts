@@ -105,6 +105,17 @@ export type PdfElement =
       color: string;
       align: "left" | "center";
       bold: boolean;
+      /**
+       * Maximum horizontal width (in pt) the text may occupy. When provided,
+       * the runtime passes it to `doc.text(..., { maxWidth })` so jsPDF
+       * auto-wraps the string onto as many lines as needed instead of letting
+       * a long resto name overflow the page (E2E spot-check bug 2026-06-01:
+       * "Scannez pour commander direct chez <very long name>" was being cut
+       * on the left of A4 and A6 because the centred text extended past the
+       * page edges). When omitted, the text is drawn on a single line —
+       * appropriate for short content like the URL fallback (always one line).
+       */
+      maxWidth?: number;
     }
   | {
       kind: "rect";
@@ -152,6 +163,43 @@ const PAGE_HEIGHT = { a4: 841.89, a6: 419.53 } as const;
 /** Locked V1 accroche copy (PRD §4.7). */
 export function accrocheFor(restoName: string): string {
   return `Scannez pour commander direct chez ${restoName}`;
+}
+
+/**
+ * Average character width as a fraction of the font size for Helvetica.
+ * Empirical (Helvetica's per-glyph widths vary from 0.28 em for `i` to ~0.77
+ * em for `M`/`W`; the lowercase-heavy French accroche averages ~0.50 em,
+ * bold ~0.55 em). Used by `estimateWrappedLineCount` to budget vertical
+ * room in the PURE plan — the runtime is the source of truth (jsPDF measures
+ * exact widths from its embedded metrics and wraps via `maxWidth`); the
+ * estimate just lets the plan reserve enough Y so the QR never collides
+ * with a wrapped accroche.
+ */
+const HELVETICA_AVG_CHAR_EM_REGULAR = 0.5;
+const HELVETICA_AVG_CHAR_EM_BOLD = 0.55;
+
+/**
+ * Estimate how many lines a string will occupy when drawn at `fontSize` and
+ * wrapped at `maxWidth` (jsPDF wraps on whitespace; we approximate by
+ * counting visual character columns per line and dividing). Used by the
+ * plan to reserve enough Y for the wrapped accroche.
+ *
+ * Always returns at least 1 — even an empty string occupies one baseline.
+ */
+function estimateWrappedLineCount(
+  text: string,
+  fontSize: number,
+  maxWidth: number,
+  bold: boolean,
+): number {
+  const avgEm = bold
+    ? HELVETICA_AVG_CHAR_EM_BOLD
+    : HELVETICA_AVG_CHAR_EM_REGULAR;
+  const approxCharWidth = fontSize * avgEm;
+  if (approxCharWidth <= 0) return 1;
+  const totalWidth = text.length * approxCharWidth;
+  if (totalWidth <= maxWidth) return 1;
+  return Math.max(1, Math.ceil(totalWidth / maxWidth));
 }
 
 // ---------------------------------------------------------------------------
@@ -234,19 +282,32 @@ function planA6(opts: QrPdfBuildOptions): QrPdfLayoutPlan {
     y += logoH + 8;
   }
 
-  // Accroche (centred, bold, accent colour, 12 pt).
+  // Accroche (centred, bold, accent colour, 12 pt). `maxWidth` caps it at the
+  // printable inner width so a long resto name wraps to a second line rather
+  // than spilling past the page edges (E2E spot-check fix 2026-06-01).
   const accrocheText = accrocheFor(opts.restoName);
+  const a6InnerW = pageW - 2 * PAGE_MARGIN_PT;
+  const a6AccrocheFontSize = 12;
+  const a6AccrocheLineCount = estimateWrappedLineCount(
+    accrocheText,
+    a6AccrocheFontSize,
+    a6InnerW,
+    true,
+  );
   elements.push({
     kind: "text",
     text: accrocheText,
     x: pageW / 2,
-    y: y + 12, // baseline offset for the 12 pt size
-    fontSize: 12,
+    y: y + a6AccrocheFontSize, // baseline offset for the 12 pt size
+    fontSize: a6AccrocheFontSize,
     color: accent,
     align: "center",
     bold: true,
+    maxWidth: a6InnerW,
   });
-  y += 24;
+  // Reserve vertical room for every wrapped line so the QR below never
+  // collides with the (possibly multi-line) accroche.
+  y += a6AccrocheFontSize * a6AccrocheLineCount + 12;
 
   // QR centred (180 pt = ~63 mm — large enough to scan from 0.5 m).
   const qrSize = 180;
@@ -260,7 +321,9 @@ function planA6(opts: QrPdfBuildOptions): QrPdfLayoutPlan {
   });
   y += qrSize + 12;
 
-  // URL en clair (centred, smaller).
+  // URL en clair (centred, smaller). `maxWidth` caps it to the printable
+  // inner width so a long customDomain stays on the page (E2E spot-check
+  // fix 2026-06-01).
   elements.push({
     kind: "text",
     text: opts.pwaUrl,
@@ -270,6 +333,7 @@ function planA6(opts: QrPdfBuildOptions): QrPdfLayoutPlan {
     color: DEFAULT_INK,
     align: "center",
     bold: false,
+    maxWidth: a6InnerW,
   });
 
   return {
@@ -314,18 +378,35 @@ function planA4(opts: QrPdfBuildOptions): QrPdfLayoutPlan {
   // y starts below the bandeau + breathing room.
   let y = bandeauH + 24;
 
-  // Accroche (centred, bold, 24 pt, accent colour).
+  // Accroche (centred, bold, 24 pt, accent colour). `maxWidth` is the
+  // printable inner width — long resto names wrap to a second line rather
+  // than being cropped against the page edges (E2E spot-check fix
+  // 2026-06-01: "Scannez pour commander direct chez Test Restaurant" was
+  // overflowing horizontally at 24 pt on A4, the leading "S" appearing
+  // cut on the downloaded PDF).
+  const a4AccrocheText = accrocheFor(opts.restoName);
+  const a4InnerW = pageW - 2 * PAGE_MARGIN_PT;
+  const a4AccrocheFontSize = 24;
+  const a4AccrocheLineCount = estimateWrappedLineCount(
+    a4AccrocheText,
+    a4AccrocheFontSize,
+    a4InnerW,
+    true,
+  );
   elements.push({
     kind: "text",
-    text: accrocheFor(opts.restoName),
+    text: a4AccrocheText,
     x: pageW / 2,
-    y: y + 24,
-    fontSize: 24,
+    y: y + a4AccrocheFontSize,
+    fontSize: a4AccrocheFontSize,
     color: accent,
     align: "center",
     bold: true,
+    maxWidth: a4InnerW,
   });
-  y += 48;
+  // Reserve vertical room for every wrapped line so the QR below never
+  // collides with the (possibly multi-line) accroche.
+  y += a4AccrocheFontSize * a4AccrocheLineCount + 24;
 
   // Big QR (360 pt = ~127 mm — readable from across the room).
   const qrSize = 360;
@@ -339,7 +420,8 @@ function planA4(opts: QrPdfBuildOptions): QrPdfLayoutPlan {
   });
   y += qrSize + 24;
 
-  // URL en clair (14 pt, centred).
+  // URL en clair (14 pt, centred). `maxWidth` caps it to the inner page
+  // width so a long customDomain stays on the page.
   elements.push({
     kind: "text",
     text: opts.pwaUrl,
@@ -349,6 +431,7 @@ function planA4(opts: QrPdfBuildOptions): QrPdfLayoutPlan {
     color: DEFAULT_INK,
     align: "center",
     bold: false,
+    maxWidth: a4InnerW,
   });
 
   // sideMargin is referenced for symmetry of the layout intent but the
@@ -437,7 +520,18 @@ export function buildQrPdfBlob(opts: QrPdfBuildOptions): Blob {
         // jsPDF font-weight: "bold" toggles the bold variant of the default
         // Helvetica face; "normal" reverts. Avoids loading a custom font.
         doc.setFont("helvetica", el.bold ? "bold" : "normal");
-        doc.text(el.text, el.x, el.y, { align: el.align });
+        // `maxWidth` (when provided) makes jsPDF auto-wrap the text onto
+        // multiple lines instead of letting it overflow the page edges —
+        // the centred accroche on A4/A6 must stay inside the printable
+        // inner width whatever the resto name length (E2E spot-check fix
+        // 2026-06-01).
+        const textOptions: { align: "left" | "center"; maxWidth?: number } = {
+          align: el.align,
+        };
+        if (el.maxWidth !== undefined) {
+          textOptions.maxWidth = el.maxWidth;
+        }
+        doc.text(el.text, el.x, el.y, textOptions);
         break;
       }
       case "rect": {

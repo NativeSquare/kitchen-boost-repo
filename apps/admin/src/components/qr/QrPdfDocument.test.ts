@@ -213,6 +213,78 @@ describe("planQrPdfLayout — a4-poster", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Wrap-to-fit (E2E spot-check fix 2026-06-01) — long resto names must not
+// overflow the printable inner width on A4 / A6.
+//
+// Before the fix, the centred accroche `Scannez pour commander direct chez
+// <name>` was drawn with no `maxWidth`, so jsPDF rendered it on a single
+// line — for a tenant name like "Test Restaurant" at 24 pt on A4, the line
+// width exceeded the page width and the leading "S" got cropped at the left
+// edge of the downloaded PDF. The fix is to set `maxWidth` on the centred
+// text elements so jsPDF auto-wraps onto a second line instead.
+// ---------------------------------------------------------------------------
+
+describe("planQrPdfLayout — wrap-to-fit centred copy (E2E 2026-06-01)", () => {
+  // A6 PAGE_WIDTH = 297.64 pt, A4 PAGE_WIDTH = 595.28 pt, PAGE_MARGIN = 28.35.
+  const A6_INNER_W = 297.64 - 2 * 28.35;
+  const A4_INNER_W = 595.28 - 2 * 28.35;
+
+  it("a6-card accroche caps maxWidth to the printable inner width", () => {
+    const p = planQrPdfLayout(baseOpts("a6-card"));
+    const accroche = p.elements.filter(isText).find((t) => t.bold === true);
+    expect(accroche).toBeDefined();
+    expect(accroche?.maxWidth).toBeCloseTo(A6_INNER_W, 1);
+  });
+
+  it("a6-card URL en clair caps maxWidth to the printable inner width (long customDomain)", () => {
+    const p = planQrPdfLayout(baseOpts("a6-card"));
+    const urlText = p.elements.filter(isText).find((t) => t.text === PWA);
+    expect(urlText).toBeDefined();
+    expect(urlText?.maxWidth).toBeCloseTo(A6_INNER_W, 1);
+  });
+
+  it("a4-poster accroche caps maxWidth to the printable inner width", () => {
+    const p = planQrPdfLayout(baseOpts("a4-poster"));
+    const accroche = p.elements.filter(isText).find((t) => t.bold === true);
+    expect(accroche).toBeDefined();
+    expect(accroche?.maxWidth).toBeCloseTo(A4_INNER_W, 1);
+  });
+
+  it("a4-poster URL en clair caps maxWidth to the printable inner width", () => {
+    const p = planQrPdfLayout(baseOpts("a4-poster"));
+    const urlText = p.elements.filter(isText).find((t) => t.text === PWA);
+    expect(urlText).toBeDefined();
+    expect(urlText?.maxWidth).toBeCloseTo(A4_INNER_W, 1);
+  });
+
+  it("a4-poster QR Y position grows when accroche wraps to 2+ lines (long resto name)", () => {
+    // A short name → 1 line. Pin the QR Y as baseline.
+    const shortPlan = planQrPdfLayout({
+      ...baseOpts("a4-poster"),
+      restoName: "X",
+    });
+    // A very long name → forces a wrap (the avg-char estimate yields >=2
+    // lines for the centred 24 pt accroche on A4).
+    const longPlan = planQrPdfLayout({
+      ...baseOpts("a4-poster"),
+      restoName:
+        "Le Grand Restaurant Très Très Très Très Très Très Long Bistrot",
+    });
+    const shortQrY =
+      shortPlan.elements
+        .filter(isImage)
+        .find((e) => e.src === TINY_PNG_DATA_URL)?.y ?? -1;
+    const longQrY =
+      longPlan.elements.filter(isImage).find((e) => e.src === TINY_PNG_DATA_URL)
+        ?.y ?? -1;
+    // The QR slot must move DOWN to make room for the second wrapped line —
+    // otherwise the QR would collide with (and visually overlap) the
+    // multi-line accroche.
+    expect(longQrY).toBeGreaterThan(shortQrY);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Runtime smoke — buildQrPdfBlob actually produces a PDF Blob
 // ---------------------------------------------------------------------------
 
