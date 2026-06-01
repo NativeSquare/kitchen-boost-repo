@@ -61,6 +61,9 @@ import type { SessionState } from "@/lib/session";
 import { ContractIframe } from "./contract-iframe";
 import { ContractsBlock } from "./contracts-block";
 import { GenerateContractLauncher } from "./generate-contract-launcher";
+import { IntegrationStatusPanelConnected } from "./_components/integration-status-panel";
+import { MilestoneChecklistConnected } from "./_components/milestone-checklist";
+import { ProspectIdentityPanel } from "./_components/prospect-identity-panel";
 import { decideProspectFiche } from "./prospect-fiche.decision";
 import { ProvisionLauncherButton } from "./provision-launcher-button";
 
@@ -273,13 +276,35 @@ export function ProspectFicheView({
           <ContractIframe html={generatedContractHtml} />
         </div>
       ) : null}
+      {/* F-PIPELINE-CRM 07 (#256) — identity + milestone checklist +
+       *  integration statuses. The identity panel duplicates a bit of header
+       *  metadata (name + phase) but expands every persisted identity field
+       *  in a structured grid. The checklist consumes
+       *  `buildMilestoneChecklist` (PIPELINE-03) and fires
+       *  `api.lib.onboarding.milestones.setMilestone` (B-ONBOARDING-MILESTONES);
+       *  the integration panel renders the 3 composite oscillating
+       *  integrations and fires `recordIntegrationStatus`. The legacy
+       *  « contenu détaillé livré par F-PIPELINE-CRM » placeholder is now
+       *  retired — the remaining drill-downs (embed KYC, monitoring) ship
+       *  in later slices of the epic.
+       */}
       <div className="px-4 lg:px-6">
-        <div className="rounded-lg border border-dashed p-8 text-center">
-          <p className="text-muted-foreground text-sm">
-            Contenu détaillé livré par F-PIPELINE-CRM (milestones, intégrations,
-            embed KYC, contrats, monitoring drill-down).
-          </p>
-        </div>
+        <ProspectIdentityPanel prospect={p} />
+      </div>
+      <div className="grid gap-4 px-4 lg:grid-cols-2 lg:px-6">
+        <MilestoneChecklistConnected
+          prospectId={p._id}
+          milestones={p.milestones ?? {}}
+          tabletteMode={p.tabletteMode ?? "non_applicable"}
+        />
+        <IntegrationStatusPanelConnected
+          prospectId={p._id}
+          integrations={{
+            stripeConnect: p.milestones?.stripeConnect,
+            uberDirect: p.milestones?.uberDirect,
+            hubrise: p.milestones?.hubrise,
+          }}
+        />
       </div>
     </div>
   );

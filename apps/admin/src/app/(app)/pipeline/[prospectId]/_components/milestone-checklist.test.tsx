@@ -64,7 +64,7 @@ describe("MilestoneChecklist — F-PIPELINE-CRM 07 (#256) runtime", () => {
     const tree = serialize(MilestoneChecklist(baseProps()));
     const text = allText(tree);
     expect(text).toMatch(/Premier contact/i);
-    expect(text).toMatch(/RDV bok[ée]/i);
+    expect(text).toMatch(/RDV book[ée]/i);
     expect(text).toMatch(/Contrat sign[ée]/i);
     expect(text).toMatch(/KBIS/i);
   });
@@ -85,7 +85,7 @@ describe("MilestoneChecklist — F-PIPELINE-CRM 07 (#256) runtime", () => {
     expect(text).toMatch(/Facture tablette/i);
   });
 
-  it('marks the checkbox `checked` (`data-state="checked"`-equivalent prop) for milestones with a timestamp', () => {
+  it("marks the row `achieved` (data-achieved=true on the row) for milestones with a timestamp", () => {
     const tree = serialize(
       MilestoneChecklist(
         baseProps({
@@ -93,9 +93,11 @@ describe("MilestoneChecklist — F-PIPELINE-CRM 07 (#256) runtime", () => {
         }),
       ),
     );
-    // Each milestone row carries a checkbox with `data-checked` boolean
-    // attribute reflecting `entry.achieved`.
-    const checked = flatten(tree).filter(
+    // Each milestone row carries `data-achieved={entry.achieved}` — the
+    // canonical pin (radix's Checkbox primitive doesn't expand cleanly in
+    // the `node` env, so we pin the achieved state on the row, not the
+    // inner checkbox).
+    const achievedRows = flatten(tree).filter(
       (
         n,
       ): n is {
@@ -105,11 +107,11 @@ describe("MilestoneChecklist — F-PIPELINE-CRM 07 (#256) runtime", () => {
       } =>
         n !== null &&
         "type" in n &&
-        (n.props as Record<string, unknown>)["data-slot"] ===
-          "milestone-checkbox" &&
-        (n.props as Record<string, unknown>)["data-checked"] === true,
+        (n.props as Record<string, unknown>)["data-slot"] === "milestone-row" &&
+        (n.props as Record<string, unknown>)["data-achieved"] === true,
     );
-    expect(checked.length).toBeGreaterThan(0);
+    expect(achievedRows.length).toBeGreaterThan(0);
+    expect(achievedRows[0].props["data-milestone-key"]).toBe("premierContact");
   });
 
   it("visually badges the milestones that impact Closing (data-impacts-closing=true on the row)", () => {
@@ -157,8 +159,10 @@ describe("MilestoneChecklist — F-PIPELINE-CRM 07 (#256) runtime", () => {
     const premierContactRow = rows.find(
       (r) => r.props["data-milestone-key"] === "premierContact",
     );
-    expect(premierContactRow).toBeDefined();
-    const onClick = premierContactRow!.props.onClick as () => void;
+    if (premierContactRow === undefined) {
+      throw new Error("premierContact row not found");
+    }
+    const onClick = premierContactRow.props.onClick as () => void;
     expect(typeof onClick).toBe("function");
     onClick();
     expect(onToggle).toHaveBeenCalledWith(

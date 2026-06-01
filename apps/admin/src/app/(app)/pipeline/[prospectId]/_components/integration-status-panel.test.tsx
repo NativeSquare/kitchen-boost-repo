@@ -101,8 +101,10 @@ describe("IntegrationStatusPanel — F-PIPELINE-CRM 07 (#256) runtime", () => {
         (s.props as Record<string, unknown>)["data-provider"] ===
         "stripeConnect",
     );
-    expect(stripeSelect).toBeDefined();
-    const optionValues = findAllByType(stripeSelect!, "option").map(
+    if (stripeSelect === undefined) {
+      throw new Error("Stripe Connect select not found");
+    }
+    const optionValues = findAllByType(stripeSelect, "option").map(
       (o) => (o.props as Record<string, unknown>)["value"],
     );
     expect(optionValues).toContain("pending_kyc");
@@ -159,9 +161,11 @@ describe("IntegrationStatusPanel — F-PIPELINE-CRM 07 (#256) runtime", () => {
         (n.props as Record<string, unknown>)["data-provider"] ===
           "stripeConnect",
     );
-    expect(stripeSubpanel).toBeDefined();
+    if (stripeSubpanel === undefined) {
+      throw new Error("Stripe Connect subpanel not found");
+    }
     // History rows are explicit
-    const historyRows = flatten(stripeSubpanel!).filter(
+    const historyRows = flatten(stripeSubpanel).filter(
       (
         n,
       ): n is {
@@ -181,7 +185,13 @@ describe("IntegrationStatusPanel — F-PIPELINE-CRM 07 (#256) runtime", () => {
   });
 
   it("calls `onUpdate(prospectId, provider, status)` when the « Mettre à jour » button is clicked with a new dropdown selection", () => {
-    const onUpdate = vi.fn(async () => {});
+    const onUpdate = vi.fn<
+      (
+        prospectId: Id<"prospects">,
+        provider: "stripeConnect" | "uberDirect" | "hubrise",
+        status: string,
+      ) => Promise<void>
+    >(async () => {});
     const tree = serialize(
       IntegrationStatusPanel(
         baseProps({

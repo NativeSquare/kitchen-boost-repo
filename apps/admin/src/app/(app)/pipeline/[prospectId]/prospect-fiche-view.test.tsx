@@ -360,15 +360,34 @@ describe("ProspectFicheView — F-SHELL-10 (#233)", () => {
     }
   });
 
-  it("AC5 — surfaces the « Contenu détaillé livré par F-PIPELINE-CRM » placeholder under the header (anchors the route while the detailed content lands in the follow-up epic)", () => {
+  it("AC5 — mounts the F-PIPELINE-CRM 07 (#256) blocks under the header (identity panel + milestone checklist + integration status panel — the placeholder is retired)", () => {
     const prospect = makeProspect();
     const tree = serialize(
       ProspectFicheView({ session: adminSession(), prospect }),
     );
-    const text = allText(tree);
-    // The placeholder copy explicitly names the follow-up epic so a future
-    // reader of the surface knows where the actual content will live.
-    expect(text).toMatch(/F-PIPELINE-CRM/);
+    // The 3 PIPELINE-07 blocks replace the legacy « Contenu détaillé livré
+    // par F-PIPELINE-CRM » placeholder. The Convex-wired wrappers
+    // (`*Connected`) surface as the typed stub the serializer falls back to
+    // when expanding a `useMutation` component throws; the pure identity
+    // panel expands fully, so we pin it by its `data-slot`.
+    const identitySlot = flatten(tree).filter(
+      (
+        n,
+      ): n is {
+        type: string;
+        props: Record<string, unknown>;
+        children: ReturnType<typeof flatten>;
+      } =>
+        n !== null &&
+        "type" in n &&
+        (n.props as Record<string, unknown>)["data-slot"] ===
+          "prospect-identity-panel",
+    );
+    expect(identitySlot.length).toBe(1);
+    expect(findAllByType(tree, "MilestoneChecklistConnected").length).toBe(1);
+    expect(findAllByType(tree, "IntegrationStatusPanelConnected").length).toBe(
+      1,
+    );
   });
 
   it("F-CONTRATS slice 1/4 (#158) — mounts the `ContractsBlock` in the `show` branch (block heading « Contrats » + empty state when the list is empty)", () => {
