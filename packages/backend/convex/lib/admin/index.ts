@@ -80,6 +80,17 @@ export {
   refreshContractStatus,
   sendContract,
 } from "./contracts";
+// F-PIPELINE-CRM 09 (#264) — `getTenant` root-only read used by the
+// supervision fiche's `TenantPanel`. Returns a minimal projection
+// (`_id / slug / name / status`) — same exposure discipline as
+// `listAllTenants` (no Stripe ids / SIRET). Convex registers it by module
+// path, so callers invoke `api.lib.admin.tenants.getTenant`.
+export {
+  type TenantPanelProjection,
+  type TenantPanelStatus,
+  getTenant,
+  listAllTenants,
+} from "./tenants";
 // B-AUTH-4 (#204, EPIC #134) — `inviteManager` mutation, root-only manager
 // pendant of `inviteAdmin`. Routes through `kbAdminMutation` + the sanctioned
 // `lib/tenancy/adminInvitesStore` seam (ADR 0010 / `no-untenanted-query`).
