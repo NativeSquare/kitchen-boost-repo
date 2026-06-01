@@ -30,7 +30,11 @@ import type { Id } from "@packages/backend/convex/_generated/dataModel";
 
 import { Skeleton } from "@/components/ui/skeleton";
 
-import { VariablesForm } from "./_components/VariablesForm";
+import {
+  type SendCampaignArgs,
+  VariablesForm,
+} from "./_components/VariablesForm";
+import type { CampaignResult } from "@packages/backend/convex/lib/notifications";
 
 export type TemplateViewProps = {
   /** Current tenant — forwarded into `VariablesForm` (parity with the
@@ -51,12 +55,20 @@ export type TemplateViewProps = {
    *   - `TenantTemplateSummary` → loaded.
    */
   template: TenantTemplateSummary | null | undefined;
+  /**
+   * F-CAMPAGNES [5/7] (#228) — the `sendTenantCampaign` mutation trigger
+   * threaded by the page. The view forwards it as-is to `VariablesForm`
+   * on the loaded branch (the loading + not-found branches have no form
+   * to wire it to).
+   */
+  onSend?: (args: SendCampaignArgs) => Promise<CampaignResult>;
 };
 
 export function TemplateView({
   tenantId,
   templateId,
   template,
+  onSend,
 }: TemplateViewProps) {
   if (template === undefined) {
     return (
@@ -116,7 +128,11 @@ export function TemplateView({
         </div>
       </div>
       <div className="px-4 lg:px-6">
-        <VariablesForm tenantId={tenantId} template={template} />
+        <VariablesForm
+          tenantId={tenantId}
+          template={template}
+          onSend={onSend}
+        />
       </div>
     </div>
   );

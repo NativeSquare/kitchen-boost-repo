@@ -71,3 +71,32 @@ describe("[templateId]/page.tsx — F-CAMPAGNES [3/7] (#205) wiring contract", (
     expect(collapsed).toMatch(/templateId/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// F-CAMPAGNES [5/7] (#228) — Page MUST wire the `sendTenantCampaign` mutation
+// via `useTenantMutation` (the sanctioned tenant-injecting wrapper, ADR 0014
+// §4 / #183). The shell-side `onSend` prop is the seam — the page is the only
+// caller that knows the Convex symbol.
+// ---------------------------------------------------------------------------
+describe("[templateId]/page.tsx — F-CAMPAGNES [5/7] (#228) sendTenantCampaign wiring", () => {
+  it("binds `api.lib.notifications.campaigns.sendTenantCampaign` via `useTenantMutation` (tenant-scoped, ADR 0014 §4)", () => {
+    expect(PAGE_SOURCE).toMatch(/useTenantMutation/);
+    const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
+    expect(collapsed).toMatch(
+      /useTenantMutation\([^)]*api\.lib\.notifications\.campaigns\.sendTenantCampaign[^)]*\)/,
+    );
+  });
+
+  it("does NOT use a raw `useMutation` (would bypass tenantId injection — ADR 0014 §4 / no-untenanted-query discipline)", () => {
+    const code = stripNonCode(PAGE_SOURCE);
+    expect(code).not.toMatch(/\buseMutation\b/);
+  });
+
+  it("threads the mutation as an `onSend` prop down to `TemplateView` (the shell consumes it via `VariablesForm`)", () => {
+    // The mutation is the seam between the page (Convex caller) and the
+    // shell (state machine). Pin the prop name so a regression that drops
+    // it surfaces here, not silently as a no-op send.
+    const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
+    expect(collapsed).toMatch(/onSend\s*=/);
+  });
+});

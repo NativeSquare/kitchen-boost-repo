@@ -14,6 +14,8 @@
  *     `VariablesForm`.
  */
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import type { ReactElement, ReactNode } from "react";
 
 import type { TenantTemplateSummary } from "@packages/backend/convex/lib/notifications/campaigns";
@@ -257,6 +259,21 @@ describe("TemplateView — F-CAMPAGNES [3/7] (#205)", () => {
       .map((a) => (a as { props: Record<string, unknown> }).props["href"])
       .filter((h): h is string => typeof h === "string");
     expect(backHrefs).toContain(`/t/${TENANT_ID}/campagnes`);
+  });
+
+  it("F-CAMPAGNES [5/7] (#228) — loaded branch threads the `onSend` mutation seam to `VariablesForm`", () => {
+    // The page wires `useTenantMutation(api.lib.notifications.campaigns.sendTenantCampaign)`
+    // and threads the trigger as `onSend` through the view down to the form
+    // shell. Pinned via source text — the React-tree serializer cannot walk
+    // into the stateful `VariablesForm` shell to assert prop forwarding
+    // (the shell uses `useState`, which throws under `environment: "node"`).
+    const source = readFileSync(
+      path.resolve(__dirname, "./template-view.tsx"),
+      "utf8",
+    );
+    const collapsed = source.replace(/\s+/g, " ");
+    expect(collapsed).toMatch(/onSend\??\s*:/);
+    expect(collapsed).toMatch(/onSend\s*=/);
   });
 
   it("FR-only across every branch", () => {
