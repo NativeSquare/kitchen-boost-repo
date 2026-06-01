@@ -953,6 +953,61 @@ export const finalizeE2EA2A3Accounts = internalMutation({
 });
 
 // -----------------------------------------------------------------------------
+// seedE2ETenantCustomDomain — set/clear customDomain on a test tenant
+// -----------------------------------------------------------------------------
+
+/**
+ * Set (or clear) the `customDomain` field on one of the test tenants for the
+ * QR E2E parcours.
+ *
+ * The QR2 parcours (`docs/tests/E2E-checklist.md` groupe QR) needs a tenant
+ * with `customDomain` set so the regenerated QR PDF points at it instead of
+ * the default `<slug>.kitchen-boost.fr`. In production, `customDomain` is set
+ * via the wizard step 2 (`/pipeline/[prospectId]/provision/step2-domain-form.tsx`,
+ * #358) — but driving a fresh wizard run end-to-end just to seed one field is
+ * heavy for an E2E spot-check on the already-existing test-t1 / test-t2
+ * tenants. This shortcut patches the field directly via the sanctioned dev
+ * seed path (eslint-disable at file top).
+ *
+ * Idempotent: re-running with the same `customDomain` is a no-op patch. Pass
+ * `null` to clear (e.g. between runs).
+ */
+export const seedE2ETenantCustomDomain = internalMutation({
+  args: {
+    tenantSlug: v.string(),
+    customDomain: v.union(v.string(), v.null()),
+  },
+  returns: v.object({
+    tenantId: v.id("tenants"),
+    customDomainBefore: v.union(v.string(), v.null()),
+    customDomainAfter: v.union(v.string(), v.null()),
+  }),
+  handler: async (ctx, args) => {
+    const tenant = await ctx.db
+      .query("tenants")
+      .withIndex("by_slug", (q) => q.eq("slug", args.tenantSlug))
+      .unique();
+    if (tenant === null) {
+      throw new ConvexError({
+        message: `Tenant with slug "${args.tenantSlug}" not found.`,
+      });
+    }
+    const customDomainBefore = tenant.customDomain ?? null;
+    // `ctx.db.patch` with `undefined` is a no-op for that field; to actually
+    // CLEAR the value we pass `undefined` after explicitly mapping `null` to
+    // that — the schema stores `v.optional(v.string())` so absent == cleared.
+    await ctx.db.patch(tenant._id, {
+      customDomain: args.customDomain ?? undefined,
+    });
+    return {
+      tenantId: tenant._id,
+      customDomainBefore,
+      customDomainAfter: args.customDomain,
+    };
+  },
+});
+
+// -----------------------------------------------------------------------------
 // E2E-MC seed — populate the « Mes clients » KPI dashboard with non-zero
 // aggregates so the 9 cards render instead of the empty-state. Inserts 6
 // `customers` (each behind its own auth user) + their `customerOrdersPerTenant`
