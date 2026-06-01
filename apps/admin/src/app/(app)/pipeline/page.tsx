@@ -36,7 +36,7 @@
  * `apps/web`, `apps/native`, or `packages/backend/convex/`.
  */
 
-import { DndContext } from "@dnd-kit/core";
+import { DndContext, DragOverlay } from "@dnd-kit/core";
 import { useMemo, useState } from "react";
 import { useQuery } from "convex/react";
 
@@ -50,6 +50,7 @@ import { useSession } from "@/lib/session";
 import { ActiveClientsTab } from "./_components/active-clients-tab";
 import { BypassConfirmDialog } from "./_components/bypass-confirm-dialog";
 import { DroppableKanbanColumn } from "./_components/droppable-kanban-column";
+import { ProspectCard } from "./_components/prospect-card";
 import { ProspectSearchBar } from "./_components/prospect-search-bar";
 import type { ProspectCardSnapshot } from "./_lib/prospectFilter";
 import {
@@ -177,7 +178,12 @@ export default function PipelineKanbanPage() {
           </TabsList>
 
           <TabsContent value="kanban" className="mt-4">
-            <DndContext sensors={dnd.sensors} onDragEnd={dnd.onDragEnd}>
+            <DndContext
+              sensors={dnd.sensors}
+              onDragStart={dnd.onDragStart}
+              onDragEnd={dnd.onDragEnd}
+              onDragCancel={dnd.onDragCancel}
+            >
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                 <DroppableKanbanColumn
                   phase="acquisition"
@@ -198,6 +204,29 @@ export default function PipelineKanbanPage() {
                   now={referenceNow}
                 />
               </div>
+              {/*
+                T17 fix (2026-06-01) — `<DragOverlay>` portal-renders the
+                active card clone at the cursor (`position: fixed`,
+                outside the columns' `overflow-y-auto` clip), so the
+                preview actually follows the mouse instead of being
+                anchored to the source slot. Rendered as a SIBLING of
+                the columns grid INSIDE `<DndContext>` (dnd-kit hard
+                requirement: the overlay reads the active drag context).
+              */}
+              <DragOverlay dropAnimation={null}>
+                {dnd.activeId
+                  ? (() => {
+                      const active = (
+                        prospects as ReadonlyArray<ProspectCardSnapshot>
+                      ).find((p) => (p._id as string) === dnd.activeId);
+                      return active ? (
+                        <div className="cursor-grabbing">
+                          <ProspectCard prospect={active} now={referenceNow} />
+                        </div>
+                      ) : null;
+                    })()
+                  : null}
+              </DragOverlay>
             </DndContext>
           </TabsContent>
 

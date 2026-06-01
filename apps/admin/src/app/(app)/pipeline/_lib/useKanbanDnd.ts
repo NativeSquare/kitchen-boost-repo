@@ -4,7 +4,7 @@
  * F-PIPELINE-CRM 06 (#262) — `useKanbanDnd`, the React-side wrapper around
  * the pure orchestration `decideKanbanDnDEnd`.
  *
- * Owns the THREE shell concerns that can't live in the pure module:
+ * Owns the FOUR shell concerns that can't live in the pure module:
  *  1. `@dnd-kit/core` sensors (`useSensor` + `useSensors`).
  *  2. The pending bypass dialog state (`useState({open, missing, phase,
  *     prospectId})`) — opened on `confirm` actions, closed on
@@ -13,6 +13,25 @@
  *     `convex/react`) — fired on `commit` actions OR on dialog confirm,
  *     with errors surfaced via `toast.error` (same UX as
  *     `milestone-checklist.tsx`).
+ *  4. The currently-dragged prospect id, exposed so the page can render
+ *     a `<DragOverlay>` clone that follows the cursor (dnd-kit's
+ *     recommended pattern — see «Drag preview / overlay» note below).
+ *
+ * Drag preview / overlay (T17 bug fix, 2026-06-01)
+ * ------------------------------------------------
+ * Before the fix, `DraggableProspectCard` applied `CSS.Translate` directly
+ * on the in-flow draggable node. Two combined hazards broke the visual:
+ *  - the kanban column wrapper has `overflow-y-auto`, which CLIPS the
+ *    transformed card to the column's bounding box → the preview
+ *    visually drifts but never reaches the cursor on long drags;
+ *  - the card lives inside a `flex` `<li>`, so the transform anchors
+ *    relative to its slot, not the viewport, so the preview only follows
+ *    the cursor when dragged near the source slot.
+ *
+ * The fix routes the visual through `<DragOverlay>` — a portal-positioned
+ * `position: fixed` clone that dnd-kit places at the cursor every frame.
+ * The hook now exposes `activeId` + `onDragStart` + `onDragCancel` so the
+ * page can mount/unmount the overlay's `<ProspectCard>` clone.
  *
  * Auto-bascule toast detection lives in a SIBLING hook
  * (`useAutoBasculeToast`) that consumes the pure `detectAutoBascule` diff —
@@ -25,6 +44,7 @@
  */
 import {
   type DragEndEvent,
+  type DragStartEvent,
   KeyboardSensor,
   PointerSensor,
   useSensor,
@@ -57,8 +77,17 @@ type PendingBypass = {
 export type UseKanbanDndResult = {
   /** Wire to `<DndContext sensors={sensors}>`. */
   sensors: ReturnType<typeof useSensors>;
+  /** Wire to `<DndContext onDragStart={onDragStart}>`. */
+  onDragStart: (event: DragStartEvent) => void;
   /** Wire to `<DndContext onDragEnd={onDragEnd}>`. */
   onDragEnd: (event: DragEndEvent) => void;
+  /** Wire to `<DndContext onDragCancel={onDragCancel}>`. */
+  onDragCancel: () => void;
+  /**
+   * The currently-dragged prospect id (null when no drag is active).
+   * The page renders the `<DragOverlay>` clone iff this is non-null.
+   */
+  activeId: string | null;
   /** Wire to `<BypassConfirmDialog open={dialog.open} ... />`. */
   dialog: {
     open: boolean;
@@ -80,6 +109,7 @@ export function useKanbanDnd(
   );
 
   const [pending, setPending] = useState<PendingBypass | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
 
   const changePhase = useMutation(api.lib.onboarding.crm.changePhase);
 
@@ -94,13 +124,22 @@ export function useKanbanDnd(
     [changePhase],
   );
 
+  const onDragStart = useCallback((event: DragStartEvent) => {
+    setActiveId(String(event.active.id));
+  }, []);
+
+  const onDragCancel = useCallback(() => {
+    setActiveId(null);
+  }, []);
+
   const onDragEnd = useCallback(
     (event: DragEndEvent) => {
-      const activeId = String(event.active.id);
+      setActiveId(null);
+      const activeIdString = String(event.active.id);
       const overId = event.over ? String(event.over.id) : null;
 
       const action = decideKanbanDnDEnd({
-        activeId,
+        activeId: activeIdString,
         overId,
         prospects,
       });
@@ -110,11 +149,11 @@ export function useKanbanDnd(
         case "noop":
           return;
         case "commit":
-          void fireChangePhase(activeId as Id<"prospects">, action.phase);
+          void fireChangePhase(activeIdString as Id<"prospects">, action.phase);
           return;
         case "confirm":
           setPending({
-            prospectId: activeId as Id<"prospects">,
+            prospectId: activeIdString as Id<"prospects">,
             phase: action.phase,
             missing: action.missing,
           });
@@ -145,5 +184,12 @@ export function useKanbanDnd(
     [pending, onConfirm, onCancel],
   );
 
-  return { sensors, onDragEnd, dialog };
+  return {
+    sensors,
+    onDragStart,
+    onDragEnd,
+    onDragCancel,
+    activeId,
+    dialog,
+  };
 }

@@ -6,8 +6,15 @@
  * Thin DnD wrapper around the pure `ProspectCard` (kept pure on purpose so
  * the #255 React-tree-serializer test matrix keeps passing in the lean
  * vitest `node` env). Calls `@dnd-kit/core` `useDraggable` with the
- * prospect id, applies the live transform + `isDragging` opacity, and
+ * prospect id, dims the in-flow slot while a drag is active, and
  * forwards the listeners + attributes on the outer `div`.
+ *
+ * NO inline `CSS.Translate` transform on this node (T17 fix, 2026-06-01)
+ * ---------------------------------------------------------------------
+ * The dragged preview is rendered through a `<DragOverlay>` in `page.tsx`
+ * instead — a portal-positioned `position: fixed` clone that follows the
+ * cursor. Translating the in-flow node here would either fight the overlay
+ * or be CLIPPED by the column's `overflow-y-auto` (the original bug).
  *
  * Click vs drag disambiguation
  * ----------------------------
@@ -20,7 +27,6 @@
  * holds at runtime: this wrapper is purely structural.
  */
 import { useDraggable } from "@dnd-kit/core";
-import { CSS } from "@dnd-kit/utilities";
 
 import type { ProspectCardSnapshot } from "../_lib/prospectFilter";
 
@@ -37,12 +43,13 @@ export function DraggableProspectCard({
   now,
   className,
 }: DraggableProspectCardProps) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } =
-    useDraggable({ id: prospect._id as string });
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: prospect._id as string,
+  });
 
   const style: React.CSSProperties = {
-    transform: CSS.Translate.toString(transform),
-    opacity: isDragging ? 0.6 : 1,
+    // Source slot dims while the DragOverlay clone follows the cursor.
+    opacity: isDragging ? 0.4 : 1,
     // `touch-action: none` lets the PointerSensor capture touch events on
     // mobile / trackpad without the browser hijacking the gesture for
     // scrolling — dnd-kit recommended default.
