@@ -500,31 +500,40 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 
 ---
 
-## QR — QR PDF
+## QR — Export SVG
 
-### QR1 — Download PDF nominal (3 formats)
+> Simplification 2026-06-01 : la page `/t/[tenantId]/qr` ne produit plus
+> qu'un seul export — un SVG noir-sur-blanc, sans branding ni accroche, sans
+> variantes de format. La direction artistique appartient au restaurateur,
+> qui intègre le QR dans son visuel (Canva / Figma / Illustrator). KB ne
+> ship que le QR lui-même. Le pipeline PDF historique (3 formats, branding,
+> logo) reste vivant uniquement dans l'étape 6 du wizard d'onboarding.
+
+### QR1 — Download SVG nominal
 
 - **Acteur** : KB Manager
-- **Pré-requis** : tenant actif avec slug
+- **Pré-requis** : tenant actif avec slug (`test-t1` sans customDomain)
 - **Étapes** :
-  1. `/t/<tenantId>/qr`, vérifier la preview iframe (format par défaut « Sticker rond 50 mm (planche A4) »).
-  2. Switcher vers « Carte A6 » puis « Affiche A4 », observer la régénération de la preview.
-  3. Cliquer « Télécharger PDF » pour chaque format.
+  1. `/t/test-t1/qr`, vérifier l'aperçu inline du QR (carré ~340 px centré, noir sur blanc).
+  2. Vérifier l'URL affichée sous le QR (texte brut copiable) : `https://test-t1.kitchen-boost.fr`.
+  3. Cliquer « Télécharger SVG ».
 - **Attendu** :
-  - 3 PDF téléchargés, filename `qr-<slug>-<format>.pdf`.
-  - QR pointe vers la PWA URL (`<slug>.kitchen-boost.fr` ou `customDomain` si défini).
-  - Sur A6 / A4 : logo + couleur primaire si branding renseigné.
-- **Couvre** : #182 ; #198.
+  - Fichier téléchargé `qr-test-t1.svg`.
+  - Ouverture du SVG dans un viewer ou un scanner QR → décode vers `https://test-t1.kitchen-boost.fr`.
+  - Aucun titre / accroche / logo dans le SVG (uniquement le QR vectoriel).
+- **Couvre** : #198 (forme simplifiée 2026-06-01).
 
-### QR2 — Regen sur customDomain
+### QR2 — Download SVG avec customDomain
 
 - **Acteur** : KB Manager
-- **Pré-requis** : tenant avec `customDomain` configuré via #358
-- **Étapes** : configurer customDomain (Paramètres → Domaine), revenir sur `/t/<tenantId>/qr`.
+- **Pré-requis** : tenant `test-t1` avec `customDomain = commander.test-t1.kb-e2e.local` (seedé dans cette session pour le spot-check QR2)
+- **Étapes** :
+  1. `/t/test-t1/qr`, vérifier que l'URL affichée sous le QR est `https://commander.test-t1.kb-e2e.local` (et non `https://test-t1.kitchen-boost.fr`).
+  2. Cliquer « Télécharger SVG ».
 - **Attendu** :
-  - Preview régénérée automatiquement (`useEffect` dépend de `pwaUrl`).
-  - Nouveau PDF pointe sur le customDomain, pas sur `<slug>.kitchen-boost.fr`.
-- **Couvre** : #358 ; QR auto-regen.
+  - Aperçu et SVG téléchargé encodent l'URL `https://commander.test-t1.kb-e2e.local`.
+  - Filename `qr-test-t1.svg` (le slug, pas le customDomain).
+- **Couvre** : #358 ; lecture customDomain via `api.lib.admin.tenantSettings.getSettings`.
 
 ---
 
