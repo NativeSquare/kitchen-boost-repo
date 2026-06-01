@@ -13,5 +13,9 @@
  *
  *  - `dailyKpis` (F-STATS-DASHBOARD, #252) — the 4 daily KPIs of a tenant
  *    (CA jour, nb commandes jour, panier moyen, commandes en cours).
+ *  - `rangeAggregates` (F-STATS-DASHBOARD [3/8], #253) — the 2 chiffres bruts
+ *    de la fenêtre N jours (panier moyen + total commandes) pour la page
+ *    Stats `/t/[tenantId]/stats`.
  */
 export { dailyKpis } from "./dailyKpis";
+export { rangeAggregates } from "./rangeAggregates";
