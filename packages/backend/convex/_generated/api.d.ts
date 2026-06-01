@@ -90,6 +90,7 @@ import type * as lib_pricing_rules from "../lib/pricing/rules.js";
 import type * as lib_stats_dailyKpis from "../lib/stats/dailyKpis.js";
 import type * as lib_stats_index from "../lib/stats/index.js";
 import type * as lib_stats_rangeAggregates from "../lib/stats/rangeAggregates.js";
+import type * as lib_stats_revenuePerDay from "../lib/stats/revenuePerDay.js";
 import type * as lib_stripe_account from "../lib/stripe/account.js";
 import type * as lib_stripe_dispute from "../lib/stripe/dispute.js";
 import type * as lib_stripe_fees from "../lib/stripe/fees.js";
@@ -273,6 +274,7 @@ declare const fullApi: ApiFromModules<{
   "lib/stats/dailyKpis": typeof lib_stats_dailyKpis;
   "lib/stats/index": typeof lib_stats_index;
   "lib/stats/rangeAggregates": typeof lib_stats_rangeAggregates;
+  "lib/stats/revenuePerDay": typeof lib_stats_revenuePerDay;
   "lib/stripe/account": typeof lib_stripe_account;
   "lib/stripe/dispute": typeof lib_stripe_dispute;
   "lib/stripe/fees": typeof lib_stripe_fees;

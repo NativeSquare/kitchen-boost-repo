@@ -45,6 +45,23 @@ function typeName(t: unknown): string {
       "Anonymous"
     );
   }
+  // forwardRef / memo: the component is an OBJECT carrying displayName, plus
+  // potentially a `render` (forwardRef) or `type` (memo) function we can dig
+  // into for a fallback name.
+  if (typeof t === "object" && t !== null) {
+    const obj = t as {
+      displayName?: string;
+      render?: { displayName?: string; name?: string };
+      type?: { displayName?: string; name?: string };
+    };
+    if (typeof obj.displayName === "string") return obj.displayName;
+    if (obj.render !== undefined) {
+      return obj.render.displayName ?? obj.render.name ?? "Anonymous";
+    }
+    if (obj.type !== undefined) {
+      return obj.type.displayName ?? obj.type.name ?? "Anonymous";
+    }
+  }
   return String(t);
 }
 
@@ -115,6 +132,27 @@ function hasSlot(n: SerializedNode, slot: string): boolean {
   });
 }
 
+/**
+ * Walk the RAW React element tree (no function-pointer-render) and return
+ * `true` iff any descendant element's `type` resolves to a component whose
+ * `displayName`/`name` matches `name`. Used to assert the presence of
+ * Recharts components (`LineChart`, `Line`, ...) which the serializer can't
+ * descend into (they use hooks that throw under `environment: "node"`).
+ */
+function containsTypeByName(node: ReactNode, name: string): boolean {
+  if (node === null || node === undefined || node === false || node === true) {
+    return false;
+  }
+  if (typeof node === "string" || typeof node === "number") return false;
+  if (Array.isArray(node)) {
+    return node.some((c) => containsTypeByName(c, name));
+  }
+  if (!isReactElement(node)) return false;
+  if (typeName(node.type) === name) return true;
+  const children = (node.props as { children?: ReactNode } | null)?.children;
+  return containsTypeByName(children ?? null, name);
+}
+
 describe("RevenuePerDayBlock — F-STATS-DASHBOARD [4/8] (#257)", () => {
   it("renders the card title « Revenus par jour » on the populated branch", () => {
     const text = allText(
@@ -153,19 +191,23 @@ describe("RevenuePerDayBlock — F-STATS-DASHBOARD [4/8] (#257)", () => {
     expect(text).toMatch(/Pas encore de données sur cette période/);
   });
 
-  it("populated branch surfaces a Recharts LineChart node", () => {
-    const tree = serialize(
-      RevenuePerDayBlock({
-        range: 30,
-        revenuePerDay: [
-          { date: "2026-05-01", revenue: 1000 },
-          { date: "2026-05-02", revenue: 2000 },
-        ],
-      }),
-    );
-    // Recharts component names are stable: LineChart / Line / XAxis / YAxis / Tooltip.
-    expect(hasNodeOfType(tree, "LineChart")).toBe(true);
-    expect(hasNodeOfType(tree, "Line")).toBe(true);
+  it("populated branch surfaces a Recharts LineChart node (carried inside ResponsiveContainer)", () => {
+    // Recharts internals (ResponsiveContainer, LineChart) call hooks at
+    // function-component render time, which our function-pointer-render
+    // serializer bails out on. We inspect the RAW React element tree returned
+    // by `RevenuePerDayBlock(...)` BEFORE serializing — that tree carries
+    // `<LineChart>` as a child of `<ResponsiveContainer>` and is enough to
+    // pin the contract (we use the Recharts component identity, not a
+    // rendered DOM node).
+    const element = RevenuePerDayBlock({
+      range: 30,
+      revenuePerDay: [
+        { date: "2026-05-01", revenue: 1000 },
+        { date: "2026-05-02", revenue: 2000 },
+      ],
+    });
+    expect(containsTypeByName(element, "LineChart")).toBe(true);
+    expect(containsTypeByName(element, "Line")).toBe(true);
   });
 
   it('populated branch carries the canonical card slot (data-slot="revenue-per-day")', () => {

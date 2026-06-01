@@ -116,8 +116,11 @@ function allText(n: SerializedNode): string {
 
 const TENANT_ID = "tenant_abc" as Id<"tenants">;
 
+/**
+ * `Revenus` was retired by #257 (replaced by the real `RevenuePerDayBlock`).
+ * The other 4 placeholders stay until stories 5-8 land them.
+ */
 const PLACEHOLDER_TITLES = [
-  "Revenus",
   "Top items",
   "Heures de pointe",
   "Conversion",
@@ -133,6 +136,7 @@ describe("StatsView — F-STATS-DASHBOARD [3/8] (#253)", () => {
           range: 30,
           onRangeChange: () => {},
           rangeAggregates: { panierMoyen: 1500, totalCommandes: 12 },
+          revenuePerDay: [{ date: "2026-05-01", revenue: 1000 }],
         }),
       ),
     );
@@ -147,13 +151,14 @@ describe("StatsView — F-STATS-DASHBOARD [3/8] (#253)", () => {
           range: 30,
           onRangeChange: () => {},
           rangeAggregates: undefined,
+          revenuePerDay: undefined,
         }),
       ),
     );
     expect(text).toMatch(/Statistiques/);
   });
 
-  it("surfaces the 5 placeholder card titles (PRD 70 §4.10)", () => {
+  it("surfaces the remaining placeholder card titles (stories 5-8)", () => {
     const text = allText(
       serialize(
         StatsView({
@@ -161,6 +166,7 @@ describe("StatsView — F-STATS-DASHBOARD [3/8] (#253)", () => {
           range: 30,
           onRangeChange: () => {},
           rangeAggregates: { panierMoyen: 0, totalCommandes: 0 },
+          revenuePerDay: [],
         }),
       ),
     );
@@ -176,6 +182,7 @@ describe("StatsView — F-STATS-DASHBOARD [3/8] (#253)", () => {
         range: 30,
         onRangeChange: () => {},
         rangeAggregates: undefined,
+        revenuePerDay: undefined,
       }),
     );
     const hasSkeleton = flatten(tree).some((n) => {
@@ -194,6 +201,7 @@ describe("StatsView — F-STATS-DASHBOARD [3/8] (#253)", () => {
         range: 30,
         onRangeChange: () => {},
         rangeAggregates: null,
+        revenuePerDay: undefined,
         onRetry,
       }),
     );
@@ -217,6 +225,7 @@ describe("StatsView — F-STATS-DASHBOARD [3/8] (#253)", () => {
           onRangeChange: () => {},
           // 23.45 € panier, 42 commandes
           rangeAggregates: { panierMoyen: 2345, totalCommandes: 42 },
+          revenuePerDay: [],
         }),
       ),
     );
@@ -234,6 +243,7 @@ describe("StatsView — F-STATS-DASHBOARD [3/8] (#253)", () => {
           range: 30,
           onRangeChange: () => {},
           rangeAggregates: { panierMoyen: 1000, totalCommandes: 5 },
+          revenuePerDay: [],
         }),
       ),
     );
@@ -250,11 +260,33 @@ describe("StatsView — F-STATS-DASHBOARD [3/8] (#253)", () => {
           range: 30,
           onRangeChange: () => {},
           rangeAggregates: { panierMoyen: 0, totalCommandes: 0 },
+          revenuePerDay: [],
         }),
       ),
     );
     expect(text).toMatch(/7 jours/);
     expect(text).toMatch(/30 jours/);
     expect(text).toMatch(/90 jours/);
+  });
+
+  it('mounts the RevenuePerDayBlock in the grid (data-slot="revenue-per-day")', () => {
+    const tree = serialize(
+      StatsView({
+        tenantId: TENANT_ID,
+        range: 30,
+        onRangeChange: () => {},
+        rangeAggregates: { panierMoyen: 0, totalCommandes: 0 },
+        revenuePerDay: [
+          { date: "2026-05-01", revenue: 1000 },
+          { date: "2026-05-02", revenue: 2000 },
+        ],
+      }),
+    );
+    const hasBlock = flatten(tree).some((n) => {
+      if (n === null || "text" in n) return false;
+      const slot = (n.props as Record<string, unknown>)["data-slot"];
+      return slot === "revenue-per-day";
+    });
+    expect(hasBlock).toBe(true);
   });
 });
