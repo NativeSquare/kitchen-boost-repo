@@ -1,52 +1,45 @@
 "use client";
 
 /**
- * Tenant root — redirects `/t/[tenantId]` → `/t/[tenantId]/menu`.
+ * F-STATS-DASHBOARD (#252) — tenant home `/t/[tenantId]/page.tsx`.
  *
- * The tenant operational space has FOUR live sub-routes today (`/menu`,
- * `/mes-clients`, `/parametres`, `/qr`) and no canonical "tenant home" yet
- * (the per-resto dashboard is a separate epic in the backlog). Without a
- * page at the bare `/t/[tenantId]` segment, Next.js returns a 404 — which
- * is what the user hit when picking a resto from the supervision switcher
- * (the switcher's `buildSwitchTarget` deliberately drops the supervision
- * path and lands on `/t/<id>` so the actor gets the *default* tenant view
- * rather than carry over a non-applicable URL — `/monitoring` → `/t/<id>`,
- * NOT `/t/<id>/monitoring`).
+ * Renders the 4 KPI cards du JOUR (CA, nb commandes, panier moyen, commandes
+ * en cours) for the gérant restaurateur. Thin wiring layer between the Convex
+ * tenant-scoped query `dailyKpis` (lib/stats/, livré DANS cette story) and the
+ * pure `DashboardView` (loading / empty / populated / error branches).
  *
- * Default landing: `/menu`. Same target as `(app)/page.tsx` picks for a
- * KB Manager (`/t/<firstTenant>/menu`), so the chrome (sidebar active item)
- * and the URL agree regardless of where the user came from.
+ * The previous version of this file (#176) redirected `/t/[tenantId]` →
+ * `/t/[tenantId]/menu` because the dashboard didn't exist yet. This story
+ * replaces the redirect with the real home — pinned by `page.test.ts` (« does
+ * NOT redirect anywhere »).
  *
- * Mounted UNDER the chrome-less `[tenantId]/layout.tsx`, so the tenant
- * gate has already validated access (KB Admin root override, KB Manager
- * owns it, or UnauthorizedCard / notFound). The redirect therefore only
- * runs for authorised actors — no leak across the gate.
+ * Access guard (cross-tenant): inherited transitively from the parent
+ * `(app)/t/[tenantId]/layout.tsx` (F-SHELL-04 #175). The backend wrapper
+ * (`tenantQuery({ allow: ["kb_manager", "staff"] })` on `dailyKpis`) is the
+ * hard isolation barrier (ADR 0010 — refuses Forbidden even if the layout
+ * regresses; cross-tenant fuzz shipped by `dailyKpis.test.ts`).
  *
- * When a real tenant home page lands, replace the redirect with the actual
- * page content. Contract stays: every navigation to `/t/<id>` resolves to a
- * usable surface, no 404.
+ * Error branch wiring: `useTenantQuery` itself does NOT expose a query error
+ * — Convex surfaces query errors by re-throwing during render (the layout's
+ * ErrorBoundary catches them then). We therefore do NOT pass `null` for an
+ * error here ; we only pass the tri-state Convex sentinel (`undefined`
+ * loading / object resolved). The DashboardView's `null` (error) branch is a
+ * defensive surface kept available for a future hook upgrade (or a manual
+ * caller from a route segment that owns its own error boundary).
  */
 
-import * as React from "react";
-import { useRouter, useParams } from "next/navigation";
-import { Spinner } from "@/components/ui/spinner";
+import { api } from "@packages/backend/convex/_generated/api";
 
-export default function TenantRootPage() {
-  const router = useRouter();
-  const params = useParams<{ tenantId: string }>();
-  const tenantId = params?.tenantId;
+import { useTenantQuery } from "@/hooks";
 
-  React.useEffect(() => {
-    if (!tenantId) return;
-    router.replace(`/t/${tenantId}/menu`);
-  }, [tenantId, router]);
+import { DashboardView } from "./dashboard-view";
 
-  // Brief spinner while the effect schedules the navigation. Matches the
-  // tenant layout's wait visual so the user never sees a flash of empty
-  // content.
-  return (
-    <div className="flex h-[60vh] w-full items-center justify-center">
-      <Spinner className="h-8 w-8" />
-    </div>
-  );
+export default function TenantDashboardPage() {
+  // `useTenantQuery` reads `tenantId` from `<TenantProvider/>` (mounted by the
+  // chrome-less `/t/[tenantId]/layout.tsx`) and injects it into args (ADR
+  // 0014 §4 / F-SHELL-05 #183). Convex sentinel : `undefined` = loading,
+  // resolved = `{ caTotal, nbCommandes, panierMoyen, commandesEnCours }`.
+  const kpis = useTenantQuery(api.lib.stats.dailyKpis.dailyKpis);
+
+  return <DashboardView kpis={kpis} />;
 }
