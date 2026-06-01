@@ -26,6 +26,7 @@
     "@packages/transactional": "workspace:*",
     "convex": "^1.29.3",
     "convex-helpers": "^0.1.111",
+    "marked": "^18.0.4",
     "node-forge": "^1.4.0",
     "oslo": "^1.2.1",
     "passkit-generator": "^3.5.7",

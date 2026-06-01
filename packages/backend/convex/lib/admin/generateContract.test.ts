@@ -27,9 +27,11 @@ const A_ONLY = "Propriété intellectuelle (Prestation A)";
 // `prestation_B` only — the Stripe PSP definition (Article 1.1, B block).
 const B_ONLY = "STRIPE PAYMENTS EUROPE, LIMITED";
 // The NESTED `prestation_A`-inside-`prestation_B` fragment of §3.1 (only present
-// when BOTH prestations are selected).
+// when BOTH prestations are selected). Apostrophes survive as `&#39;` in the
+// rendered HTML (marked escapes text-node punctuation defensively); the test
+// matches the escaped form so it pins what the iframe actually receives.
 const NESTED_A_IN_B =
-  "qu'elles soient passées sous la marque concédée ou sous l'enseigne native du Partenaire";
+  "qu&#39;elles soient passées sous la marque concédée ou sous l&#39;enseigne native du Partenaire";
 
 const partner: PartnerFiche = {
   raisonSociale: "Buns and Bao SARL",
@@ -109,5 +111,29 @@ describe("2.9-D generateContractHtml — pure template port", () => {
     });
     expect(html).not.toContain("<script>alert(1)</script>");
     expect(html).toContain("&lt;script&gt;");
+  });
+
+  it("wraps the body in a self-contained HTML document with inline styling", () => {
+    const html = generateContractHtml({ prestation: "A", partner });
+    // Doctype + html shell + inline style block (no external assets so the
+    // iframe `sandbox=""` can render it without cross-origin fetches).
+    expect(html).toMatch(/^<!doctype html>/i);
+    expect(html).toContain("<html");
+    expect(html).toContain("</html>");
+    expect(html).toContain("<style>");
+    expect(html).toContain("</style>");
+    // Renders real HTML, not raw markdown anymore.
+    expect(html).toContain("<h2>");
+    // Doc body keeps the meaningful content visible.
+    expect(html).toContain("Responsabilités du Partenaire");
+  });
+
+  it("never leaks raw markdown heading / bold syntax to the output", () => {
+    const html = generateContractHtml({ prestation: "A_AND_B", partner });
+    // No stray `## ` heading markers at line starts (we'd see them in the
+    // iframe as literal text otherwise — the exact bug T6 reported).
+    expect(html).not.toMatch(/(^|\n)## /);
+    // No double-asterisk bold markers leaked into the output.
+    expect(html).not.toContain("**Article");
   });
 });
