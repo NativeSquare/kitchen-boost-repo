@@ -985,6 +985,12 @@ Voir A4b (identique).
 
 ## P — Paramètres
 
+> **Statut** : ✅ **5/5 validés manuellement le 2026-06-01** (manager + admin sanity-check). 3 fixes appliqués pendant le run :
+>
+> - **P1** (`branding`) — query `getSettings` exposée côté manager (la query manquait, le manager voyait toujours les defaults) + `key` content-dérivée sur les éditeurs (RHF/useState non réactifs au changement de prop) — commits `b6b3083` + `d70589d`.
+> - **P1** (toast) — `<Toaster />` Sonner monté UNE FOIS à `(app)/layout.tsx` (était monté seulement sur `/pipeline`, donc toutes les pages tenant-scope avaient des toasts silencieux) — commit `b6b3083`.
+> - **P2** (`normalisePhone`) — strip étendu aux séparateurs courants `.`, `-`, `(`, `)`, `/` (rejetait `+33 6 12 34 56 78.` avec point copié-collé d'une vCard) — commit `b6b3083`.
+
 ### P1 — Identité visuelle (logo + couleur)
 
 - **Acteur** : KB Manager
