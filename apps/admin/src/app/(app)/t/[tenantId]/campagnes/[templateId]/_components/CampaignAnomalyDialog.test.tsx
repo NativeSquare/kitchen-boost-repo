@@ -21,10 +21,35 @@
  * primitive is a Radix portal; in node-env the serializer walks the React
  * tree directly, so we can pin the title + body text without a DOM.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ReactElement, ReactNode } from "react";
 
-import { CampaignAnomalyDialog } from "./CampaignAnomalyDialog";
+// Shadcn Dialog wraps Radix Dialog primitives — Radix Portal + Root use hooks
+// internally, which our node-env serializer cannot exercise. We replace the
+// dialog primitives with passthrough children renderers so the dialog body
+// (title / description / button) is reachable by the React-tree walker. Same
+// pattern as `modifier-group-modal.test.tsx`.
+vi.mock("@/components/ui/dialog", () => {
+  const passthrough = ({
+    children,
+  }: {
+    children?: React.ReactNode;
+  }): React.ReactNode => children ?? null;
+  return {
+    Dialog: passthrough,
+    DialogContent: passthrough,
+    DialogHeader: passthrough,
+    DialogTitle: passthrough,
+    DialogDescription: passthrough,
+    DialogFooter: passthrough,
+    DialogClose: passthrough,
+    DialogTrigger: passthrough,
+    DialogPortal: passthrough,
+    DialogOverlay: passthrough,
+  };
+});
+
+const { CampaignAnomalyDialog } = await import("./CampaignAnomalyDialog");
 
 // ---------------------------------------------------------------------------
 // Serializer (same shape as the rest of the campagnes folder).

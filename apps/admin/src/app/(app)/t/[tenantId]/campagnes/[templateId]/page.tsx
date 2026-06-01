@@ -40,7 +40,7 @@ import { api } from "@packages/backend/convex/_generated/api";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
 
 import { useCurrentTenantId } from "@/components/app/tenant-context";
-import { useTenantQuery } from "@/hooks";
+import { useTenantMutation, useTenantQuery } from "@/hooks";
 
 import { TemplateView } from "./template-view";
 
@@ -54,6 +54,18 @@ export default function CampagneTemplatePage() {
   // picker has been visited; first-load still pays one query.
   const templates = useTenantQuery(
     api.lib.notifications.campaigns.listTenantTemplates,
+  );
+
+  // F-CAMPAGNES [5/7] (#228) — `sendTenantCampaign` mutation, threaded
+  // down through the view to `VariablesForm` as the `onSend` seam. The
+  // tenant-scoped wrapper auto-injects `tenantId` (ADR 0014 §4 / #183);
+  // the form forwards `{templateId, variables}` only. The backend wrapper
+  // (`tenantMutation({ allow: ["kb_manager"] })`) enforces the role +
+  // cross-tenant isolation (ADR 0010) — a `staff` actor or a foreign
+  // `tenantId` surface as Forbidden / NOT_FOUND, both of which fall on
+  // the generic error branch of `classifySendError`.
+  const sendCampaign = useTenantMutation(
+    api.lib.notifications.campaigns.sendTenantCampaign,
   );
 
   // Tri-state contract threaded to the view:
@@ -72,6 +84,7 @@ export default function CampagneTemplatePage() {
       tenantId={tenantId}
       templateId={templateId}
       template={template}
+      onSend={sendCampaign}
     />
   );
 }

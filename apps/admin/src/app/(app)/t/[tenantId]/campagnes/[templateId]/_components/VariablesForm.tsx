@@ -50,18 +50,27 @@
 "use client";
 
 import { useState } from "react";
+import { toast } from "sonner";
 
 import {
+  type CampaignResult,
   type TemplateVariable,
   MAX_DISCOUNT_PERCENT,
 } from "@packages/backend/convex/lib/notifications";
 import type { TenantTemplateSummary } from "@packages/backend/convex/lib/notifications/campaigns";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
 
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
+import {
+  type CampaignAnomalyReason,
+  classifySendError,
+} from "../_lib/classifySendError";
+import { CampaignAnomalyDialog } from "./CampaignAnomalyDialog";
 import { CampaignPreview } from "./CampaignPreview";
+import { CampaignResultStats } from "./CampaignResultStats";
 import {
   type VariableValidationViolation,
   MAX_INPUT_LENGTH,
@@ -94,6 +103,16 @@ const VIOLATION_COPY: Record<VariableValidationViolation, string> = {
   TIME_INVALID: "Heure invalide (format attendu HH:MM).",
 };
 
+/**
+ * Args shape forwarded to `onSend` — `tenantId` is auto-injected by
+ * `useTenantMutation` upstream (ADR 0014 §4 / #183), so the shell only
+ * carries the two business-relevant fields.
+ */
+export type SendCampaignArgs = {
+  templateId: Id<"notificationTemplates">;
+  variables: Record<string, string>;
+};
+
 export type VariablesFormProps = {
   /** Current tenant — threaded by the page for parity with the picker's
    *  per-card hrefs and any future per-tenant deep-link the form might
@@ -108,26 +127,113 @@ export type VariablesFormProps = {
    *  event simulation). In production the form starts uncontrolled
    *  (empty values) and the gérant fills it. */
   initialValues?: Partial<Record<TemplateVariable, string>>;
+  /**
+   * F-CAMPAGNES [5/7] (#228) — the `sendTenantCampaign` mutation trigger
+   * threaded by the page (`useTenantMutation(api.lib.notifications.campaigns.sendTenantCampaign)`).
+   * Returns the aggregate `CampaignResult` payload on success, throws a
+   * `ConvexError` on backend failure (anomaly or template-bound violation).
+   * Optional so the slice [3/7] / [4/7] tests of the inner view stay
+   * decoupled from the mutation wiring.
+   */
+  onSend?: (args: SendCampaignArgs) => Promise<CampaignResult>;
 };
 
 /**
  * The stateful shell. Owns the per-field `useState` map (seeded from
- * `initialValues`); delegates rendering to the pure `VariablesFormView`.
- * NOT directly invoked under `environment: "node"` (would hit the hook-
- * call rule); the test renders this AND falls through to `VariablesFormView`
- * via the serializer (which catches the hook throw and re-renders the
- * inner view with the controlled `initialValues` as the values payload —
- * see below: when the shell falls back, the test still pins the view's
- * surface because the view is a sibling export with the SAME contract).
+ * `initialValues`) AND, since slice [5/7] (#228), the send state machine
+ * (idle / sending / success). On success the input form is swapped for
+ * the aggregate-only `CampaignResultStats` surface (MOAT, ADR 0010 /
+ * PRD 90 §3-§5). On a `CAMPAIGN_ANOMALY` ConvexError the
+ * `CampaignAnomalyDialog` opens with the parsed reason; any other failure
+ * surfaces as a generic FR `toast.error` + retry (the button stays
+ * enabled).
+ *
+ * NOT directly invoked under `environment: "node"` (uses `useState`); the
+ * serializer catches the hook throw and the inner pure view is tested
+ * separately via `VariablesFormView`.
  */
 export function VariablesForm({
   tenantId,
   template,
   initialValues,
+  onSend,
 }: VariablesFormProps) {
   const [values, setValues] = useState<
     Partial<Record<TemplateVariable, string>>
   >(() => ({ ...(initialValues ?? {}) }));
+
+  // Send state machine — `idle` is the editing phase; `sending` disables the
+  // button while the mutation is in flight; `success` swaps the form for the
+  // result surface. An error never enters the machine — it surfaces via toast
+  // (generic) or the anomaly dialog (CAMPAIGN_ANOMALY) and the machine stays
+  // `idle` so the gérant can retry.
+  const [sendState, setSendState] = useState<"idle" | "sending" | "success">(
+    "idle",
+  );
+  const [result, setResult] = useState<CampaignResult | null>(null);
+  const [anomalyOpen, setAnomalyOpen] = useState(false);
+  const [anomalyReason, setAnomalyReason] =
+    useState<CampaignAnomalyReason | null>(null);
+
+  const handleSubmit = async () => {
+    // Defensive guard — the CampaignPreview button is disabled when a bound
+    // violation is present, and absent when `onSend` is not wired (the view
+    // also lives in a slice-3/4 read-only context).
+    if (onSend === undefined || sendState === "sending") return;
+
+    // Coerce the partial `Record<TemplateVariable, string>` to the plain
+    // record the backend mutation accepts (mirror of the CampaignPreview
+    // coercion: undefined values collapse to "" via the backend's benign-
+    // blank semantics).
+    const variablesPayload: Record<string, string> = {};
+    for (const k of Object.keys(values) as TemplateVariable[]) {
+      const v = values[k];
+      if (v !== undefined) variablesPayload[k] = v;
+    }
+
+    setSendState("sending");
+    try {
+      const sent = await onSend({
+        templateId: template.id,
+        variables: variablesPayload,
+      });
+      setResult(sent);
+      setSendState("success");
+    } catch (error) {
+      const classified = classifySendError(error);
+      if (classified.kind === "anomaly") {
+        setAnomalyReason(classified.reason);
+        setAnomalyOpen(true);
+      } else {
+        toast.error("Envoi impossible. Réessaie dans un instant.");
+      }
+      setSendState("idle");
+    }
+  };
+
+  // Success branch — swap the form for the aggregate-only result surface.
+  // « Lancer une nouvelle campagne » resets the state machine and the form
+  // values so the gérant can fire another campaign without leaving the route.
+  if (sendState === "success" && result !== null) {
+    return (
+      <div className="flex flex-col gap-6">
+        <CampaignResultStats result={result} />
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setSendState("idle");
+              setResult(null);
+              setValues({});
+            }}
+          >
+            Lancer une nouvelle campagne
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -142,12 +248,13 @@ export function VariablesForm({
       <CampaignPreview
         template={template}
         values={values}
-        onSubmit={() => {
-          // Slice [5/7] (#192 send wiring) plugs the Convex
-          // `sendTenantCampaign` mutation in here. For now the click is
-          // a no-op so the disabled-vs-enabled UX is testable end-to-end
-          // without a backend dependency in this slice.
-        }}
+        onSubmit={handleSubmit}
+        sending={sendState === "sending"}
+      />
+      <CampaignAnomalyDialog
+        open={anomalyOpen}
+        onOpenChange={setAnomalyOpen}
+        reason={anomalyReason}
       />
     </div>
   );

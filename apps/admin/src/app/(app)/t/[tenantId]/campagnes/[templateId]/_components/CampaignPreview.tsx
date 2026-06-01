@@ -55,15 +55,20 @@ export type CampaignPreviewProps = {
   values: Partial<Record<TemplateVariable, string>>;
   /** Called when the gérant clicks « Envoyer maintenant » with NO violation.
    *  The button stays disabled when a violation is present, so this is never
-   *  called on an invalid render. The slice [5/7] (#192 send wiring) will
-   *  plug in the Convex mutation behind this callback. */
+   *  called on an invalid render. Slice [5/7] (#228) wires the Convex
+   *  `sendTenantCampaign` mutation behind this callback. */
   onSubmit: () => void;
+  /** Slice [5/7] (#228) — the parent shell flips this to `true` while the
+   *  `sendTenantCampaign` mutation is in flight, so the button shows a
+   *  loading affordance + stays disabled to prevent a double-fire. */
+  sending?: boolean;
 };
 
 export function CampaignPreview({
   template,
   values,
   onSubmit,
+  sending = false,
 }: CampaignPreviewProps) {
   // Coerce the partial `Record<TemplateVariable, string>` to the plain string
   // map the pure renderer accepts; undefined values collapse to "" inside
@@ -76,7 +81,9 @@ export function CampaignPreview({
 
   const { rendered, violation } = renderTemplatePreview(template, valuesMap);
   const overflow = rendered.length >= MAX_RENDERED_LENGTH;
-  const disabled = violation !== null;
+  // Disabled when a bound is violated OR while the mutation is in flight
+  // (prevents double-fire — slice [5/7] #228).
+  const disabled = violation !== null || sending;
 
   return (
     <div className="flex flex-col gap-4" data-slot="campaign-preview">
@@ -129,7 +136,7 @@ export function CampaignPreview({
           data-slot="button"
           className="bg-[#1B7A3D] hover:bg-[#1B7A3D]/90"
         >
-          Envoyer maintenant
+          {sending ? "Envoi en cours…" : "Envoyer maintenant"}
         </Button>
       </div>
     </div>
