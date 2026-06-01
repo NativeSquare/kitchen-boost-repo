@@ -57,14 +57,12 @@
  */
 
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
-import { useConvex, useQuery } from "convex/react";
+import { useConvex } from "convex/react";
 import { toast } from "sonner";
 
 import { api } from "@packages/backend/convex/_generated/api";
 
-import { useCurrentTenantId } from "@/components/app/tenant-context";
 import { useTenantMutation, useTenantQuery } from "@/hooks";
-import { useSession } from "@/lib/session";
 import { getConvexErrorMessage } from "@/utils/getConvexErrorMessage";
 
 import type { BrandingPatch, BrandingValue } from "./branding-editor";
@@ -106,50 +104,45 @@ export default function ParametresPage() {
   // as `login-form.tsx` (`convex.query(api.table.users.getUserByEmail)`).
   const convex = useConvex();
 
-  // Initial branding value source — dual, role-dependent (see file header).
-  // KB Manager: no read available → undefined (editor treats as {}). KB
-  // Admin: re-use `loadTenantForStripe` (root-only query already in use by
-  // `qr/page.tsx` for branding). Both cases are read-only here; the editor
-  // refreshes through Convex's natural reactivity once the user saves.
-  const tenantId = useCurrentTenantId();
-  const session = useSession();
-  const isAdmin =
-    session.status === "ready" && session.session.isAdmin === true;
-  const adminTenantDoc = useQuery(
-    api.lib.stripe.account.loadTenantForStripe,
-    isAdmin ? { tenantId } : "skip",
-  );
-  const branding: BrandingValue | undefined = isAdmin
-    ? adminTenantDoc?.branding
-    : undefined;
-
-  // F-PARAMETRES-03 (#231) — Coordonnées seed follows the SAME degradation
-  // rule as branding: KB Manager has no manager-accessible read yet (a
-  // follow-up slice will expose one), so we feed `undefined` and the editor
-  // treats it as an empty `{}`. KB Admin gets the real `{ address, phone }`
-  // from `loadTenantForStripe` (already loaded above for branding — same
-  // query, zero extra read).
-  const coordonnees: CoordonneesValue | undefined = isAdmin
-    ? adminTenantDoc !== undefined && adminTenantDoc !== null
-      ? { address: adminTenantDoc.address, phone: adminTenantDoc.phone }
-      : undefined
-    : undefined;
-
-  // F-PARAMETRES-04 (#234) — Modes acceptés seed follows the SAME degradation
-  // rule as branding / coordonnées: KB Manager has no manager-accessible read
-  // yet → `undefined` (editor seeds both flags to the safe default `true`).
-  // KB Admin gets the real `{ delivery, clickAndCollect }` from
-  // `loadTenantForStripe` (still ZERO extra read — same query).
-  const acceptedModes: ModesValue | undefined = isAdmin
-    ? adminTenantDoc !== undefined &&
-      adminTenantDoc !== null &&
-      adminTenantDoc.acceptedModes !== undefined
-      ? {
-          delivery: adminTenantDoc.acceptedModes.delivery,
-          clickAndCollect: adminTenantDoc.acceptedModes.clickAndCollect,
-        }
-      : undefined
-    : undefined;
+  // 2026-06-01 (P1 E2E spot-check fix) — settings now read from the
+  // canonical manager-accessible query `api.lib.admin.tenantSettings.getSettings`
+  // (tenantQuery({allow:["kb_manager"]}) with kb_admin root override — ONE
+  // query, BOTH callers, zero role-branching). Before this query existed, the
+  // page seeded branding/coordonnees/acceptedModes from `undefined` for the
+  // manager and from the root-only `loadTenantForStripe` for the admin —
+  // which meant a manager's successful save was INVISIBLE to them (no read
+  // = no Convex reactivity = no refresh; the value was persisted in the DB
+  // but the form snapped back to defaults on reload). See the query's
+  // docstring for the full lineage.
+  //
+  // `useTenantQuery` injects `tenantId` from the TenantProvider (ADR 0014 §4)
+  // and returns `undefined` while the query is in flight (Convex's loading
+  // sentinel). A successful read returns the 5 settings fields (each `null`
+  // when not yet set — converted back to `undefined` for the editors that
+  // expect an optional sub-object).
+  const settings = useTenantQuery(api.lib.admin.tenantSettings.getSettings);
+  const branding: BrandingValue | undefined =
+    settings?.branding === undefined
+      ? undefined
+      : settings.branding === null
+        ? undefined
+        : settings.branding;
+  const coordonnees: CoordonneesValue | undefined =
+    settings === undefined
+      ? undefined
+      : {
+          // The editor treats `undefined` field as « pas encore renseigné »
+          // and seeds an empty input. `null` (the wire-level absence) maps
+          // to that.
+          address: settings.address ?? undefined,
+          phone: settings.phone ?? undefined,
+        };
+  const acceptedModes: ModesValue | undefined =
+    settings?.acceptedModes === undefined
+      ? undefined
+      : settings.acceptedModes === null
+        ? undefined
+        : settings.acceptedModes;
 
   // Save handler — wraps the mutation in try/catch + toast.error, same
   // discipline as menu/page.tsx. Re-throws so the editor can surface the

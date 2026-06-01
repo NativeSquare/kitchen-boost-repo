@@ -5,6 +5,7 @@ import {
   kbAdminMutation,
   logAudit,
   tenantMutation,
+  tenantQuery,
   updateTenantSettings as updateTenantSettingsStore,
 } from "../tenancy";
 import { assertLegalTenantTransition } from "./tenantLifecycle";
@@ -86,6 +87,91 @@ const settingsPatch = v.object({
   phone: v.optional(v.string()),
   acceptedModes: v.optional(acceptedModesPatch),
   customDomain: v.optional(v.string()),
+});
+
+/**
+ * Read counterpart of `updateSettings` — the SINGLE KB Manager-accessible
+ * read of the persisted settings sub-object (`branding` + `address` + `phone`
+ * + `acceptedModes` + `customDomain`).
+ *
+ * Background fix (2026-06-01, P1 E2E spot-check, [docs/tests/E2E-checklist.md](../../../../../docs/tests/E2E-checklist.md)
+ * groupe P) — until this query landed, the Paramètres page had NO manager-
+ * accessible read for the values it lets the manager edit: the page header
+ * explicitly noted « *No KB-Manager-accessible read query exists for `branding`
+ * today (a follow-up slice will expose one)* » and seeded the editor with
+ * `undefined`, so a successful save was invisible to the manager (no read =
+ * no Convex reactivity = no refresh; the value was persisted in the DB but
+ * the form snapped back to defaults on reload). This query IS that follow-up.
+ *
+ * Wrapper: `tenantQuery({ allow: ["kb_manager"] })`. The kb_admin root
+ * override (cf. `withTenant.ts`) covers the admin caller for free — ONE
+ * query, TWO callers, no separate root surface (mirrors `updateSettings`).
+ *
+ * Returns ONLY the settings fields the Paramètres / Wizard editors care
+ * about — NOT the whole `Doc<"tenants">` row (which carries Stripe ids,
+ * Uber customer ids, operational pause, audit timestamps, etc. that have
+ * no business landing on a manager-side payload). Each field is `undefined`
+ * when not yet set (a fresh tenant has none of these); the editors handle
+ * `undefined` gracefully (seeds empty inputs / brand-default color).
+ *
+ * Tenancy discipline (ADR 0010): no raw `ctx.db` — reads through the
+ * sanctioned `lib/tenancy/tenantsStore.getTenantById` seam (same shape as
+ * the rest of the file). `ctx.tenantId` is auto-injected by the wrapper from
+ * the session, so a manager cannot forge an `args.tenantId` for a different
+ * resto (cross-tenant MOAT, ADR 0010).
+ *
+ * Error codes:
+ *  - `FORBIDDEN` / `UNAUTHENTICATED` (wrapper)
+ *  - `NOT_FOUND` — syntactically valid `tenantId` but no row (the wrapper
+ *    already refuses Forbidden on an unrecognised tenant for a manager;
+ *    the explicit check here covers an internal race where the row was
+ *    deleted between the wrapper's membership check and this read).
+ */
+export const getSettings = tenantQuery({ allow: ["kb_manager"] })({
+  args: {},
+  returns: v.object({
+    branding: v.union(
+      v.null(),
+      v.object({
+        logoUrl: v.optional(v.string()),
+        primaryColor: v.optional(v.string()),
+      }),
+    ),
+    address: v.union(v.null(), v.string()),
+    phone: v.union(v.null(), v.string()),
+    acceptedModes: v.union(
+      v.null(),
+      v.object({
+        delivery: v.boolean(),
+        clickAndCollect: v.boolean(),
+      }),
+    ),
+    customDomain: v.union(v.null(), v.string()),
+  }),
+  handler: async (
+    ctx,
+  ): Promise<{
+    branding: { logoUrl?: string; primaryColor?: string } | null;
+    address: string | null;
+    phone: string | null;
+    acceptedModes: { delivery: boolean; clickAndCollect: boolean } | null;
+    customDomain: string | null;
+  }> => {
+    const tenant = await getTenantById(ctx, ctx.tenantId);
+    if (tenant === null) {
+      throw new ConvexError({
+        code: "NOT_FOUND",
+        message: "Tenant not found.",
+      });
+    }
+    return {
+      branding: tenant.branding ?? null,
+      address: tenant.address ?? null,
+      phone: tenant.phone ?? null,
+      acceptedModes: tenant.acceptedModes ?? null,
+      customDomain: tenant.customDomain ?? null,
+    };
+  },
 });
 
 export const updateSettings = tenantMutation({ allow: ["kb_manager"] })({

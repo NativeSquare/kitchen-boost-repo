@@ -121,6 +121,58 @@ describe("normalisePhone", () => {
       expect(data?.code).toBe("INVALID_PHONE");
     }
   });
+
+  /**
+   * Fix 2026-06-01 (P2 E2E spot-check) — the validator must accept the common
+   * separators users naturally type / copy-paste from contact cards. Without
+   * this, the P2 « Coordonnées » parcours throws INVALID_PHONE on a perfectly
+   * legitimate `+33 6 12 34 56 78.` (note the trailing dot from a vCard).
+   */
+  it("strips dots used as French phone separator", () => {
+    expect(normalisePhone("06.12.34.56.78")).toBe("0612345678");
+    expect(normalisePhone("+33.6.12.34.56.78")).toBe("+33612345678");
+  });
+
+  it("strips a trailing dot copy-pasted from a contact card", () => {
+    expect(normalisePhone("+33 6 12 34 56 78.")).toBe("+33612345678");
+    expect(normalisePhone("0612345678.")).toBe("0612345678");
+  });
+
+  it("strips hyphens used as separator", () => {
+    expect(normalisePhone("06-12-34-56-78")).toBe("0612345678");
+    expect(normalisePhone("+33-6-12-34-56-78")).toBe("+33612345678");
+  });
+
+  it("strips parens around area code", () => {
+    expect(normalisePhone("(+33) 6 12 34 56 78")).toBe("+33612345678");
+    expect(normalisePhone("(0)6 12 34 56 78")).toBe("0612345678");
+  });
+
+  it("strips slashes used as separator", () => {
+    expect(normalisePhone("06/12/34/56/78")).toBe("0612345678");
+  });
+
+  it("treats punctuation-only input as empty (INVALID_PHONE)", () => {
+    try {
+      normalisePhone("(-./)");
+      expect.unreachable("should have thrown");
+    } catch (err) {
+      const data = (err as { data?: { code?: string } }).data;
+      expect(data?.code).toBe("INVALID_PHONE");
+    }
+  });
+
+  it("still rejects letters / other non-allowed punctuation (commas, semicolons)", () => {
+    for (const bad of ["06,12,34,56,78", "06;12;34;56;78", "06abc12"]) {
+      try {
+        normalisePhone(bad);
+        expect.unreachable(`should have thrown on ${bad}`);
+      } catch (err) {
+        const data = (err as { data?: { code?: string } }).data;
+        expect(data?.code).toBe("INVALID_PHONE");
+      }
+    }
+  });
 });
 
 describe("assertNonEmptyString", () => {

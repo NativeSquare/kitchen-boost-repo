@@ -48,13 +48,32 @@ export function isValidCustomDomain(value: string): boolean {
 }
 
 /**
- * Strip whitespace from a phone number, preserving an optional leading `+`.
- * Throws `INVALID_PHONE` on empty / whitespace-only input, on any non-numeric
- * content (other than the optional single leading `+`), and on a lone `+`.
+ * Strip whitespace AND common phone-formatting punctuation from a phone number,
+ * preserving an optional leading `+`. Throws `INVALID_PHONE` on empty input
+ * (whitespace/punctuation-only counts as empty), on any non-numeric content
+ * after stripping (other than the optional single leading `+`), and on a lone
+ * `+`.
+ *
+ * Accepted human-typed shapes (real-world UX, not paranoia):
+ *   - `+33 6 12 34 56 78` / `+33-6-12-34-56-78` / `06.12.34.56.78`
+ *   - trailing punctuation copy/pasted from contact cards: `+33 6 12.` etc.
+ *   - parens around country/area code: `(+33) 6 12 34 56 78` / `(0)6 12 …`
+ *   - slashes as separator: `06/12/34/56/78`
+ *
+ * Stripped: ASCII whitespace, `.`, `-`, `(`, `)`, `/`. Anything else (letters,
+ * commas, semicolons, …) still fails — the goal is to be UX-friendly on the
+ * common separators users naturally type, NOT to be a permissive parser.
+ *
+ * Fix 2026-06-01 (P2 E2E spot-check, [docs/tests/E2E-checklist.md](../../../../../docs/tests/E2E-checklist.md)
+ * groupe P) — the legacy version only stripped whitespace, so `+33 6 12 34 56 78.`
+ * (with a copy-pasted trailing dot) hit INVALID_PHONE and made the P2 parcours
+ * un-passable from the manager UI. Widened to the punctuation set above.
  */
 export function normalisePhone(value: string): string {
-  // Drop ASCII whitespace anywhere in the input.
-  const stripped = value.replace(/\s+/g, "");
+  // Drop ASCII whitespace + the common phone-formatting punctuation anywhere
+  // in the input. Anything left must be `+?[0-9]+` (one optional leading + and
+  // ≥1 digit after).
+  const stripped = value.replace(/[\s.\-()/]+/g, "");
   if (stripped.length === 0) {
     throw new ConvexError({
       code: "INVALID_PHONE",

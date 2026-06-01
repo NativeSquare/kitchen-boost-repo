@@ -45,7 +45,6 @@ import { api } from "@packages/backend/convex/_generated/api";
 import { UnauthorizedCard } from "@/components/app/unauthorized-card";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Toaster } from "@/components/ui/sonner";
 import { useSession } from "@/lib/session";
 
 import { ActiveClientsTab } from "./_components/active-clients-tab";
@@ -217,8 +216,6 @@ export default function PipelineKanbanPage() {
         onConfirm={dnd.dialog.onConfirm}
         onCancel={dnd.dialog.onCancel}
       />
-
-      <Toaster />
     </div>
   );
 }
