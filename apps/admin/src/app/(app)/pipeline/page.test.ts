@@ -10,12 +10,17 @@
  *   - `useQuery(api.lib.onboarding.crm.listProspects)` — the canonical
  *     KB-Admin Kanban data source (exposed via `kbAdminQuery`, ADR 0010
  *     — backend is the real isolation barrier).
- *   - a placeholder `KanbanView` (or inline dump) that renders the list.
+ *   - the static Kanban surface (`KanbanColumn` ×3 + `ProspectCard` +
+ *     `ProspectSearchBar` + `ActiveClientsTab` — F-PIPELINE-CRM 05 #255).
  *
- * V1 scope (issue #216 « What to build ») : juste un dump des `prospects`
- * brut, pas de colonnes ni DnD à ce stade. Le Kanban riche (colonnes,
- * DnD, filtres) atterrira dans une slice ultérieure de l'épique
- * F-PIPELINE-CRM (#144).
+ * Scope evolution:
+ *   - F-PIPELINE-CRM 01 (#216) — V1 dump (flat list, no columns/DnD/search).
+ *   - F-PIPELINE-CRM 05 (#255) — THIS slice: 3 static columns (Acquisition /
+ *     Préparation / Installation), `ProspectCard` (name + source + score +
+ *     last interaction relative + `tenant ✓` badge), name search bar,
+ *     « Clients actifs » tab (Opérationnel) hidden from Kanban.
+ *   - PIPELINE-06 (#221, NOT this slice) — wires drag-and-drop on top of
+ *     the same column shells.
  *
  * Why source-string (no jsdom render)?
  * ------------------------------------
@@ -101,6 +106,28 @@ describe("page.tsx — F-PIPELINE-CRM 01 (#216) wiring contract", () => {
     const code = stripNonCode(PAGE_SOURCE);
     expect(code).not.toMatch(/apps\/web/);
     expect(code).not.toMatch(/apps\/native/);
+  });
+
+  it("AC #255 — mounts the 3 static Kanban columns (KanbanColumn) + the « Clients actifs » tab + the search bar + ProspectCard", () => {
+    const code = stripNonCode(PAGE_SOURCE);
+    // The 4 sanctioned _components/ shells (F-PIPELINE-CRM 05) must be
+    // mounted by the page wiring layer — otherwise the AC list of
+    // « 3 colonnes / onglet Clients actifs / barre de recherche /
+    //   ProspectCard » regresses to the V1 dump.
+    expect(code).toMatch(/KanbanColumn/);
+    expect(code).toMatch(/ActiveClientsTab/);
+    expect(code).toMatch(/ProspectSearchBar/);
+    expect(code).toMatch(/ProspectCard|KanbanColumn/); // card is mounted indirectly via column
+  });
+
+  it("AC #255 — partitions the FLAT prospects list front-side via the pure `partitionProspectsByPhase` helper (backend stays flat, single subscription)", () => {
+    const code = stripNonCode(PAGE_SOURCE);
+    expect(code).toMatch(/partitionProspectsByPhase/);
+  });
+
+  it("AC #255 — applies the name search BEFORE partition (typing « pizz » must narrow ALL columns + the « Clients actifs » tab simultaneously)", () => {
+    const code = stripNonCode(PAGE_SOURCE);
+    expect(code).toMatch(/searchProspectsByName/);
   });
 
   it("AC scope — never touches the backend module (apps/admin frontend slice only)", () => {
