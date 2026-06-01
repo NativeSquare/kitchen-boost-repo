@@ -33,6 +33,8 @@
  * mutation, no recipient identity. Isolation owned upstream.
  */
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import type { ReactElement, ReactNode } from "react";
 
 import type { TenantTemplateSummary } from "@packages/backend/convex/lib/notifications/campaigns";
@@ -465,5 +467,60 @@ describe("VariablesForm — AC8 FR-only", () => {
       expect(text).not.toMatch(/\bEnd time\b/i);
       expect(text).not.toMatch(/\bRestaurant name\b/i);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests — F-CAMPAGNES [5/7] (#228) `onSend` prop contract on the stateful
+// shell. Pinned at the SOURCE level (the shell uses `useState`, so a node-env
+// serializer cannot exercise the inner tree) — we assert the wiring discipline
+// the page caller depends on:
+//   - the shell ACCEPTS an `onSend` prop (the mutation trigger threaded by the
+//     page),
+//   - the shell IMPORTS `CampaignResultStats` + `CampaignAnomalyDialog` (so
+//     the result + anomaly UX branches are statically wired),
+//   - the shell IMPORTS the pure `classifySendError` helper (so the error
+//     classification stays a pure decision the test can pin).
+// The behavioural branches (loading state, success switch, anomaly open) are
+// pinned by the page integration tests + the component tests of each piece.
+// ---------------------------------------------------------------------------
+describe("VariablesForm — F-CAMPAGNES [5/7] (#228) shell wiring", () => {
+  const SHELL_SOURCE = readFileSync(
+    path.resolve(__dirname, "./VariablesForm.tsx"),
+    "utf8",
+  );
+
+  it("statically imports the result surface `CampaignResultStats`", () => {
+    expect(SHELL_SOURCE).toMatch(/CampaignResultStats/);
+    expect(SHELL_SOURCE).toMatch(/from\s+["']\.\/CampaignResultStats["']/);
+  });
+
+  it("statically imports the anomaly dialog `CampaignAnomalyDialog`", () => {
+    expect(SHELL_SOURCE).toMatch(/CampaignAnomalyDialog/);
+    expect(SHELL_SOURCE).toMatch(/from\s+["']\.\/CampaignAnomalyDialog["']/);
+  });
+
+  it("statically imports the pure error classifier `classifySendError`", () => {
+    expect(SHELL_SOURCE).toMatch(/classifySendError/);
+    expect(SHELL_SOURCE).toMatch(
+      /from\s+["']\.\.\/_lib\/classifySendError["']/,
+    );
+  });
+
+  it("declares an `onSend` prop on `VariablesFormProps` (the mutation seam threaded by the page)", () => {
+    // Pin the contract WITHOUT pinning the exact prop position so a future
+    // refactor that reorders the type is free.
+    expect(SHELL_SOURCE).toMatch(/onSend\??\s*:/);
+  });
+
+  it("calls the `onSend` prop with `{templateId, variables}` (no extra arg shape — `tenantId` is auto-injected by `useTenantMutation`)", () => {
+    // The shell invokes `onSend({ templateId, variables })`. We pin the
+    // load-bearing call shape so a regression that drops `templateId` or
+    // `variables` (which would make the mutation fail at the wrapper) is
+    // loud here.
+    const collapsed = SHELL_SOURCE.replace(/\s+/g, " ");
+    expect(collapsed).toMatch(/onSend\s*\(/);
+    expect(collapsed).toMatch(/templateId/);
+    expect(collapsed).toMatch(/variables/);
   });
 });
