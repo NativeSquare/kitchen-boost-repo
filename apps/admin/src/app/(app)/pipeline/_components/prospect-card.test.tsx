@@ -42,29 +42,43 @@ function makeProspect(
   };
 }
 
+// Deterministic reference instant used by every test that doesn't care
+// about the relative-time vocabulary itself (the card always takes `now`
+// as a required prop — see `ProspectCardProps.now` docblock for the
+// react-hooks/purity rationale).
+const FIXED_NOW = 1_700_000_000_000;
+
 describe("ProspectCard — F-PIPELINE-CRM 05 (#255)", () => {
   it("renders the prospect name", () => {
-    const tree = serialize(ProspectCard({ prospect: makeProspect() }));
+    const tree = serialize(
+      ProspectCard({ prospect: makeProspect(), now: FIXED_NOW }),
+    );
     expect(allText(tree)).toContain("L'Artisan");
   });
 
   it("renders the source label (cold_call → « Cold call »)", () => {
     const tree = serialize(
-      ProspectCard({ prospect: makeProspect({ source: "cold_call" }) }),
+      ProspectCard({
+        prospect: makeProspect({ source: "cold_call" }),
+        now: FIXED_NOW,
+      }),
     );
     expect(allText(tree)).toMatch(/cold\s*call/i);
   });
 
   it("renders the score when set", () => {
     const tree = serialize(
-      ProspectCard({ prospect: makeProspect({ score: 7 }) }),
+      ProspectCard({ prospect: makeProspect({ score: 7 }), now: FIXED_NOW }),
     );
     expect(allText(tree)).toContain("7");
   });
 
   it("does NOT render 'undefined' / 'NaN' garbage when score is absent (defensive)", () => {
     const tree = serialize(
-      ProspectCard({ prospect: makeProspect({ score: undefined }) }),
+      ProspectCard({
+        prospect: makeProspect({ score: undefined }),
+        now: FIXED_NOW,
+      }),
     );
     const text = allText(tree);
     expect(text).not.toMatch(/undefined/i);
@@ -111,6 +125,7 @@ describe("ProspectCard — F-PIPELINE-CRM 05 (#255)", () => {
     const tree = serialize(
       ProspectCard({
         prospect: makeProspect({ interactions: undefined }),
+        now: FIXED_NOW,
       }),
     );
     expect(allText(tree)).toMatch(/aucune interaction/i);
@@ -120,6 +135,7 @@ describe("ProspectCard — F-PIPELINE-CRM 05 (#255)", () => {
     const withTenant = serialize(
       ProspectCard({
         prospect: makeProspect({ tenantId: "tenants_aaa" }),
+        now: FIXED_NOW,
       }),
     );
     expect(allText(withTenant)).toMatch(/tenant\s*[✓✔v]/i);
@@ -127,6 +143,7 @@ describe("ProspectCard — F-PIPELINE-CRM 05 (#255)", () => {
     const withoutTenant = serialize(
       ProspectCard({
         prospect: makeProspect({ tenantId: undefined }),
+        now: FIXED_NOW,
       }),
     );
     expect(allText(withoutTenant)).not.toMatch(/tenant\s*[✓✔v]/i);
@@ -134,7 +151,10 @@ describe("ProspectCard — F-PIPELINE-CRM 05 (#255)", () => {
 
   it("wraps the card in an anchor pointing at /pipeline/<prospectId>", () => {
     const tree = serialize(
-      ProspectCard({ prospect: makeProspect({ _id: "prospects_xyz" }) }),
+      ProspectCard({
+        prospect: makeProspect({ _id: "prospects_xyz" }),
+        now: FIXED_NOW,
+      }),
     );
     // Bare `<a>` (not next/link) — same testing-ergonomics rationale as
     // `provision-launcher-button.tsx`. Assert the canonical drill-down URL
