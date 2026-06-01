@@ -52,18 +52,23 @@ import type { Doc } from "@packages/backend/convex/_generated/dataModel";
 
 import { Button } from "@/components/ui/button";
 
-import { decideProvisionLauncher } from "./provision-launcher.decision";
+import {
+  decideProvisionLauncher,
+  type TenantStatusSlice,
+} from "./provision-launcher.decision";
 
 export type ProvisionLauncherButtonProps = {
   prospect: Doc<"prospects">;
   /**
-   * The tenant doc when `prospect.tenantId` is set (Convex tri-state).
-   * Today the parent stubs this to `undefined` (the live `api.tenants.get`
-   * lookup is owned by F-PIPELINE-CRM); the launcher stays on `launch` /
-   * `resume` until the query lands. Once it does, `view-tenant` lights up
-   * automatically when `status === "active"`.
+   * The tenant projection when `prospect.tenantId` is set (Convex tri-state).
+   * F-PIPELINE-CRM 09 (#264) — narrowed to a structural minimum
+   * (`TenantStatusSlice = { status }`): the live
+   * `api.lib.admin.tenants.getTenant` returns a minimal projection (no Stripe
+   * ids / SIRET leak), and the launcher only reads `status`. Pre-264 callers
+   * passed `undefined` (stub); the `view-tenant` branch fires once the tenant
+   * projection is hydrated AND reports `status === "active"`.
    */
-  tenant: Doc<"tenants"> | null | undefined;
+  tenant: TenantStatusSlice | null | undefined;
 };
 
 /**

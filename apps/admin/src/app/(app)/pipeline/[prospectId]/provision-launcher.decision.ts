@@ -94,21 +94,31 @@ function isManagerEmailMissing(prospect: Doc<"prospects">): boolean {
   return email.trim().length === 0;
 }
 
+/**
+ * F-PIPELINE-CRM 09 (#264) — the launcher only reads `tenant.status`, so the
+ * input is widened to a STRUCTURAL minimum (`{ status }`) instead of the full
+ * `Doc<"tenants">`. The live `api.lib.admin.tenants.getTenant` query returns a
+ * minimal projection (`tenantId / slug / name / status`) — same exposure
+ * discipline as `listAllTenants` — and that projection satisfies this shape.
+ * A future caller may still pass a full `Doc<"tenants">`; it's a wider type
+ * so it remains assignable (covariant in TS).
+ */
+export type TenantStatusSlice = {
+  status: Doc<"tenants">["status"];
+};
+
 export type ProvisionLauncherInput = {
   prospect: Doc<"prospects">;
   /**
-   * The tenant doc when `prospect.tenantId` is set (Convex tri-state):
+   * The tenant projection when `prospect.tenantId` is set (Convex tri-state):
    *   - `undefined` → query in flight (or back-link absent and no fetch
    *     fired — same shape, same surface).
    *   - `null`      → no doc with this id (defensive — unusual).
-   *   - `Doc`       → hydrated.
-   * Passed by the parent (the prospect fiche). When the live query is not
-   * yet available (today — `api.tenants.get` lives in F-PIPELINE-CRM
-   * scope), the caller stubs this to `undefined` and the launcher stays on
-   * `launch` / `resume` (never `view-tenant`); the `view-tenant` branch
-   * fires once the tenant query is live AND reports `status === "active"`.
+   *   - hydrated    → carries at least `{ status }`.
+   * The `view-tenant` branch fires once the tenant projection is hydrated
+   * AND reports `status === "active"`.
    */
-  tenant: Doc<"tenants"> | null | undefined;
+  tenant: TenantStatusSlice | null | undefined;
 };
 
 /**
