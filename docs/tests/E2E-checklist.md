@@ -227,6 +227,36 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
   - Aucun crash, aucun spinner infini.
 - **Couvre** : #205 (F-CAMPAGNES 3/7, branche not-found).
 
+### MC12 — Preview live campagne + activation Envoyer (parcours bout-à-bout slice 1→4)
+- **Acteur** : KB Manager (kb_manager du tenant cible)
+- **Pré-requis** : seeds e2e ; tenant seedé avec au moins 1 template `notificationTemplates` actif scope `tenant` contenant `{prenom_client}`, `{discount}`, `{nom_resto}` (ex. `weekend_promo`, `maxDiscountPercent: 50`, `language: "fr"`, `containsAlcohol: false`) ; manager loggé, rattaché au tenant, à `/t/[tenantId]/campagnes`.
+- **Étapes** :
+  1. Cliquer sur la `TemplateCard` du template seedé → navigue vers `/t/[tenantId]/campagnes/[templateId]`.
+  2. Vérifier que la page affiche `VariablesForm` (champs `prenom_client`, slider `discount`, input `nom_resto`) ET `CampaignPreview` (mocks Push + E-mail, compteur `X / 200`, bouton « Envoyer maintenant »).
+  3. Au chargement initial (values vides), constater que le bouton « Envoyer maintenant » est désactivé pour les valeurs creuses (placeholder rendu = `Bonjour , -% chez  !`, compteur ~10/200, vert — pin le comportement vide).
+  4. Remplir `prenom_client = "Sophie"`, déplacer le slider `discount` à `20`, remplir `nom_resto = "Buns & Bao"` → observer en temps réel le mock Push qui affiche `Bonjour Sophie, -20% chez Buns & Bao !` et le compteur qui s'incrémente.
+  5. Déplacer manuellement le slider à `50` (la borne max) → compteur reste vert, bouton enabled.
+  6. Saisir dans `nom_resto` une chaîne de 200 caractères → compteur devient rouge (`destructive`), bannière FR « Message trop long » apparaît, bouton désactivé avec tooltip.
+- **Attendu** :
+  - UI : preview update instantané sans roundtrip réseau (le helper est pur côté client).
+  - UI : compteur vert (`text-[#1B7A3D]`) sous 200, rouge (`text-destructive`) à >= 200.
+  - UI : bouton « Envoyer maintenant » disabled = visuel grisé + `title` au survol.
+  - DB : aucune mutation déclenchée à ce stade (slice [5/7] plug `sendTenantCampaign`).
+- **Couvre** : #215 (F-CAMPAGNES 4/7) + #205 (rendu form) + #188 (picker → navigation) + #145 (EPIC).
+
+### MC13 — Garde-fous violation surfacée (alcool flag défensif)
+- **Acteur** : KB Admin (impersonating un tenant ou en provisionnement)
+- **Pré-requis** : seeds e2e ; forcer (via seed dev ou script) un template avec `containsAlcohol: true` ou `language: "en"` malgré la validation schema (simule régression défense en profondeur). Alternativement : seed un template dont le body rend > 200 caractères même avec discount=10.
+- **Étapes** :
+  1. Naviguer vers `/t/[tenantId]/campagnes/[templateId]` du template corrompu.
+  2. Remplir les variables avec des valeurs normales (`prenom_client = "Alice"`, etc.).
+  3. Observer `CampaignPreview`.
+- **Attendu** :
+  - UI : bannière `data-slot="campaign-preview-violation"` affichée en FR (« Mention d'alcool interdite » / « Template non français » / « Message trop long »).
+  - UI : bouton « Envoyer maintenant » désactivé, `title` = message FR.
+  - UI : le mock Push affiche quand même le rendu (pour debug) mais le bouton bloque toute action.
+- **Couvre** : #215 (défense en profondeur des bounds backend miroir de `templateBounds.ts`).
+
 ---
 
 ## QR — QR PDF
@@ -416,6 +446,37 @@ Voir A4b (identique).
   - UI : toast d'erreur Sonner en bas avec « Échec génération contrat : <message backend> ». Modal reste ouvert, bouton « Générer » à nouveau actif. Message d'erreur inline dans le modal (rouge). **Aucune iframe vide** ne s'affiche sous le bloc Contrats.
   - DB : aucune ligne `contracts` créée.
 - **Couvre** : #174 (branche erreur) + #165 (ContractIframe error branch indirectement).
+
+### T9 — Pipeline Kanban accessible KB Admin uniquement (RBAC + Convex wire)
+- **Acteur** : root admin (KB Admin) puis KB Manager
+- **Pré-requis** : seeds e2e ; au moins 2-3 prospects en base (différentes phases : `acquisition`, `preparation`, `installation`) — utiliser `seedData` ou la mutation `crm.createProspect` ; un compte KB Admin (`role = kb_admin`) et un compte KB Manager (`role = kb_manager` rattaché à au moins 1 tenant) ; starting route : `/` (root-entry redirige selon rôle).
+- **Étapes** :
+  1. Se connecter en tant que KB Admin → atterrit sur `/pipeline` (root-entry).
+  2. Vérifier que la sidebar contient bien l'entrée « Pipeline » (groupe « Supervision »).
+  3. Observer la page : titre « Pipeline », un compteur « N prospects », puis la liste des prospects rendus en ligne (nom + phase en majuscule, ex. `ACQUISITION`).
+  4. Cliquer sur une ligne → navigation vers `/pipeline/<prospectId>` (la fiche existante de F-SHELL-10).
+  5. Se déconnecter, se reconnecter en tant que KB Manager.
+  6. Vérifier que la sidebar n'affiche PAS « Pipeline » (groupe « Resto » uniquement).
+  7. Taper manuellement `/pipeline` dans l'URL.
+- **Attendu** :
+  - KB Admin (étapes 1-4) : la page rend la liste correctement, le lien sidebar est visible et actif, chaque ligne expose des `data-prospect-id` + `data-phase` (vérifier dans le DOM), la navigation vers la fiche fonctionne.
+  - KB Manager (étapes 5-7) : pas de lien sidebar « Pipeline » ; sur deep-link `/pipeline`, la `UnauthorizedCard` (« Accès non autorisé », même vocabulaire que `/monitoring`) s'affiche avec un bouton « Retour au dashboard » qui ramène en `/`.
+  - DB : aucune mutation déclenchée par la simple consultation (la query `listProspects` est read-only). Vérifier dans le dashboard Convex que la query est bien `skip`-ée pour le manager (pas d'appel réseau).
+- **Couvre** : #216 (F-PIPELINE-CRM 01) + F-SHELL-06 #196 (sidebar conditional) + F-SHELL-10 #233 (fiche drill-down) + ADR 0014 §5.
+
+### T10 — Pipeline Kanban : loading state et empty state distinguables
+- **Acteur** : root admin (KB Admin)
+- **Pré-requis** : seeds e2e ; un compte KB Admin connecté ; deux variantes de fixture : (a) base vide (0 prospects) ; (b) base avec 1 prospect minimum ; outils : DevTools (Network throttling « Slow 3G ») pour observer le loading.
+- **Étapes** :
+  1. Variante (a) : vider la table `prospects` (ou utiliser un deployment vierge). Naviguer vers `/pipeline`.
+  2. Observer la page après hydratation complète de la query Convex.
+  3. Variante (b) : ajouter 1 prospect via la mutation `crm.createProspect` (ou un seed). Reload `/pipeline` avec throttling « Slow 3G » activé.
+  4. Observer le rendu pendant le in-flight de la query, puis après hydratation.
+- **Attendu** :
+  - Variante (a) : la page affiche « 0 prospects — Kanban riche... » puis la card pointillée « Aucun prospect dans le pipeline pour le moment. » (PAS le loading spinner — la query est résolue mais vide).
+  - Variante (b) avec throttling : pendant le in-flight, le titre « Pipeline » apparaît mais le sous-texte est « Chargement des prospects… » (PAS la card empty). Une fois hydraté : « 1 prospect » + ligne unique du prospect.
+  - Aucun flicker entre `loading` et `empty` (les deux états ont des copies clairement distinctes).
+- **Couvre** : #216 (Convex tri-state contract `undefined` / `[]` / `Doc[]`).
 
 ---
 
