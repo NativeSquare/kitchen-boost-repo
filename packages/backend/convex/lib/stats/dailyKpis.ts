@@ -1,6 +1,6 @@
 import {
+  TERMINAL_ORDER_STATUSES,
   type TenantRole,
-  listTenantLiveOrders,
   listTenantOrders,
   tenantQuery,
 } from "../tenancy";
@@ -69,18 +69,28 @@ async function computeDailyKpis(
   panierMoyen: number;
   commandesEnCours: number;
 }> {
-  // commandesEnCours — orders the kitchen is actively working (live queue),
-  // tenant-scoped via the sanctioned seam.
-  const live: Doc<"orders">[] = await listTenantLiveOrders(ctx, tenantId);
-
-  // CA + nb — paid orders within today's window. We read via the sanctioned
-  // seam `listTenantOrders`; small per-tenant cardinality (V1).
+  // ONE fetch via the sanctioned seam — small per-tenant cardinality (V1, a
+  // few dozen orders/day). Both KPI families are derived from the same list,
+  // saving the duplicate index scan a 2-pass version would do.
   const start = startOfDayUtc(Date.now());
   const all: Doc<"orders">[] = await listTenantOrders(ctx, tenantId);
 
   let caTotal = 0;
   let nbCommandes = 0;
+  let commandesEnCours = 0;
   for (const o of all) {
+    // Live queue: same definition as `listTenantLiveOrders` (PRD 20 §2) —
+    // excludes the pending state (invisible until paid, PRD 10 §10/§11) AND
+    // the three terminal states (livrée / collectée / refusée).
+    if (
+      o.status !== "en attente de paiement" &&
+      !TERMINAL_ORDER_STATUSES.includes(o.status)
+    ) {
+      commandesEnCours += 1;
+    }
+
+    // CA + nb — paid orders within today's window (paidAt set at confirmation
+    // in lockstep with pricingSnapshot, cf. confirmTenantOrderPayment).
     if (o.paidAt === undefined) continue;
     if (o.paidAt < start) continue;
     if (o.pricingSnapshot === undefined) continue;
@@ -90,12 +100,7 @@ async function computeDailyKpis(
 
   const panierMoyen = nbCommandes === 0 ? 0 : Math.floor(caTotal / nbCommandes);
 
-  return {
-    caTotal,
-    nbCommandes,
-    panierMoyen,
-    commandesEnCours: live.length,
-  };
+  return { caTotal, nbCommandes, panierMoyen, commandesEnCours };
 }
 
 /**
