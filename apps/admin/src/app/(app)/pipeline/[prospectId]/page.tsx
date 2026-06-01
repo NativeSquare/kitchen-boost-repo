@@ -105,12 +105,18 @@ export default function ProspectFichePage() {
         }
       : "skip",
   );
-  // STUB until F-PIPELINE-CRM lands the admin-side `api.tenants.get`
-  // lookup. The fiche plumbs `tenant` through to
-  // `ProvisionLauncherButton` (F-WIZARD [2/10] #266), which stays on
-  // `launch` / `resume` until the live query reports a hydrated tenant
-  // (`view-tenant` lights up automatically when `status === "active"`).
-  const tenant = undefined;
+  // F-PIPELINE-CRM 09 (#264) — the admin-side `getTenant` kbAdminQuery is
+  // now LIVE. Gated on a ready root admin actor + a present
+  // `prospect.tenantId` back-link; otherwise `"skip"` (the F-WIZARD [2/10]
+  // launcher stays on `launch` / `resume` while the tenant is absent or
+  // mid-fetch). Used by BOTH the launcher (status === "active" → « Ouvrir
+  // la vue resto ») AND the `TenantPanel` (slug / nom / statut + CTA).
+  const tenantId =
+    prospect !== undefined && prospect !== null ? prospect.tenantId : undefined;
+  const tenant = useQuery(
+    api.lib.admin.tenants.getTenant,
+    isAdminReady && tenantId !== undefined ? { tenantId } : "skip",
+  );
 
   const contracts = useQuery(
     api.lib.admin.contracts.listContractsForProspect,

@@ -21,12 +21,7 @@ import { describe, expect, it } from "vitest";
 import type { Doc, Id } from "@packages/backend/convex/_generated/dataModel";
 
 import { TenantPanel, type TenantPanelTenant } from "./tenant-panel";
-import {
-  allText,
-  findFirstByName,
-  flatten,
-  serialize,
-} from "../../_components/test-utils";
+import { allText, flatten, serialize } from "../../_components/test-utils";
 
 const PROSPECT_ID = "prospects_xxx" as unknown as Id<"prospects">;
 const TENANT_ID = "tenants_yyy" as unknown as Id<"tenants">;
@@ -110,7 +105,7 @@ describe("TenantPanel — F-PIPELINE-CRM 09 (#264)", () => {
 
   it("renders slug, name, status badge and the « Ouvrir la vue resto » button when the tenant is hydrated", () => {
     const tenant: TenantPanelTenant = {
-      tenantId: TENANT_ID,
+      _id: TENANT_ID,
       slug: "lartisan",
       name: "L'Artisan",
       status: "active",
@@ -129,13 +124,16 @@ describe("TenantPanel — F-PIPELINE-CRM 09 (#264)", () => {
     const link = findSlot(tree, "tenant-panel-open-link");
     expect(link).not.toBeNull();
     expect(link?.props["href"]).toBe(`/t/${TENANT_ID as unknown as string}`);
-    expect(findFirstByName(tree, "Badge")).not.toBeNull();
+    // shadcn `Badge` is fully unwrapped by the test serializer down to its
+    // `<span data-slot="badge">` host element — assert on that, not the
+    // function component name.
+    expect(findSlot(tree, "badge")).not.toBeNull();
     expect(text).toContain("Actif");
   });
 
   it("renders the « pending » badge label when the tenant is provisioned but not yet activated", () => {
     const tenant: TenantPanelTenant = {
-      tenantId: TENANT_ID,
+      _id: TENANT_ID,
       slug: "fresh",
       name: "Fresh Resto",
       status: "pending",
@@ -151,7 +149,7 @@ describe("TenantPanel — F-PIPELINE-CRM 09 (#264)", () => {
 
   it("renders the « suspended » badge label when the tenant is suspended", () => {
     const tenant: TenantPanelTenant = {
-      tenantId: TENANT_ID,
+      _id: TENANT_ID,
       slug: "off",
       name: "Off Resto",
       status: "suspended",

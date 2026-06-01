@@ -67,6 +67,10 @@ import { IntegrationStatusPanelConnected } from "./_components/integration-statu
 import { InteractionLogConnected } from "./_components/interaction-log";
 import { MilestoneChecklistConnected } from "./_components/milestone-checklist";
 import { ProspectIdentityPanel } from "./_components/prospect-identity-panel";
+import {
+  TenantPanel,
+  type TenantPanelTenant,
+} from "./_components/tenant-panel";
 import { decideProspectFiche } from "./prospect-fiche.decision";
 import { ProvisionLauncherButton } from "./provision-launcher-button";
 
@@ -83,15 +87,17 @@ export type ProspectFicheViewProps = {
    */
   prospect: Doc<"prospects"> | null | undefined;
   /**
-   * The tenant doc when `prospect.tenantId` is set (Convex tri-state),
-   * plumbed through to `ProvisionLauncherButton` (F-WIZARD [2/10] #266)
-   * which decides whether to show the wizard CTA or the « Ouvrir la vue
-   * resto » CTA based on `tenant.status === "active"`. STUBBED to
-   * `undefined` today (the live `api.tenants.get` for an admin-side lookup
-   * lives in F-PIPELINE-CRM scope); the launcher stays on `launch` /
-   * `resume` until it lands. Optional so existing callers stay compatible.
+   * The tenant projection when `prospect.tenantId` is set (Convex tri-state),
+   * plumbed through to BOTH `ProvisionLauncherButton` (F-WIZARD [2/10] #266 —
+   * decides whether to show the wizard CTA or the « Ouvrir la vue resto »
+   * CTA based on `tenant.status === "active"`) AND F-PIPELINE-CRM 09 (#264)
+   * `TenantPanel` (renders slug/name/status badge + the « Ouvrir la vue
+   * resto » button). F-PIPELINE-CRM 09 (#264) — narrowed from the pre-264
+   * full `Doc<"tenants">` to the minimal projection returned by
+   * `api.lib.admin.tenants.getTenant` (no Stripe ids / SIRET leak). Optional
+   * so existing callers stay compatible.
    */
-  tenant?: Doc<"tenants"> | null | undefined;
+  tenant?: TenantPanelTenant | null | undefined;
   /**
    * F-CONTRATS slice 1/4 (#158) — the prospect's contracts list from
    * `useQuery(api.lib.admin.contracts.listContractsForProspect, ...)`,
@@ -300,6 +306,16 @@ export function ProspectFicheView({
           <EditProspectIdentityLauncher prospect={p} />
         </div>
         <ProspectIdentityPanel prospect={p} />
+      </div>
+      {/* F-PIPELINE-CRM 09 (#264) — `TenantPanel`. Self-managed visibility:
+       *  it returns null when `prospect.tenantId` is absent (no placeholder,
+       *  no layout shift); otherwise renders slug + nom + statut + the
+       *  « Ouvrir la vue resto » CTA (impersonation V1 = navigation, ADR
+       *  0014 §6). The pre-264 stub `tenant === undefined` keeps the panel
+       *  on the skeleton state when `tenantId` exists but the query hasn't
+       *  fired yet. */}
+      <div className="px-4 lg:px-6">
+        <TenantPanel prospect={p} tenant={tenant} />
       </div>
       <div className="grid gap-4 px-4 lg:grid-cols-2 lg:px-6">
         <MilestoneChecklistConnected

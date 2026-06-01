@@ -48,7 +48,7 @@ describe("F-PIPELINE-CRM 09 (#264) getTenant — happy path (root-only)", () => 
     });
     expect(got).not.toBeNull();
     expect(got).toMatchObject({
-      tenantId: seed.tenantA.tenantId,
+      _id: seed.tenantA.tenantId,
       slug: expect.any(String),
       name: expect.any(String),
       status: expect.any(String),
