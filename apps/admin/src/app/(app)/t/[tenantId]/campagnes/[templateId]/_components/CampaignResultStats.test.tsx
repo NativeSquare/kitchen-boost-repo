@@ -257,6 +257,46 @@ describe("CampaignResultStats — MOAT (no recipient identity, aggregates only)"
 // ---------------------------------------------------------------------------
 // Tests — FR-only
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Tests — F-CAMPAGNES [7/7] (#247) polish : accent jaune/or KB sur warnings
+// (rate-limit) UNIQUEMENT quand le compteur est > 0.
+// ---------------------------------------------------------------------------
+describe("CampaignResultStats — accent warning jaune/or KB (#247)", () => {
+  it('expose data-warning="true" sur la carte rate-limit quand `skippedRateLimited` > 0', () => {
+    const tree = serialize(<CampaignResultStats result={RESULT} />);
+    const cards = flatten(tree).filter(
+      (n) =>
+        n !== null &&
+        !("text" in n) &&
+        (n.props as Record<string, unknown>)["data-slot"] ===
+          "campaign-result-card",
+    ) as Array<{ type: string; props: Record<string, unknown> }>;
+    const warning = cards.filter((c) => c.props["data-warning"] === "true");
+    expect(warning).toHaveLength(1);
+  });
+
+  it("n'expose AUCUN data-warning quand le compteur rate-limit est 0 (pas d'alarme spurious)", () => {
+    const zeroes: CampaignResult = {
+      targeted: 0,
+      sent: 0,
+      queued: 0,
+      skippedIneligible: 0,
+      skippedRateLimited: 0,
+      skippedUnreachable: 0,
+    };
+    const tree = serialize(<CampaignResultStats result={zeroes} />);
+    const cards = flatten(tree).filter(
+      (n) =>
+        n !== null &&
+        !("text" in n) &&
+        (n.props as Record<string, unknown>)["data-slot"] ===
+          "campaign-result-card",
+    ) as Array<{ type: string; props: Record<string, unknown> }>;
+    const warning = cards.filter((c) => c.props["data-warning"] === "true");
+    expect(warning).toHaveLength(0);
+  });
+});
+
 describe("CampaignResultStats — FR-only", () => {
   it("no English fallback labels", () => {
     const text = allText(serialize(<CampaignResultStats result={RESULT} />));

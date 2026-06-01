@@ -135,6 +135,23 @@ describe("F-CAMPAGNES [7/7] #247 — Palette KB (#1B7A3D vert + #E5A100 jaune/or
     );
     expect(form).toMatch(/accent-\[#1B7A3D\]/);
   });
+
+  it("la carte « Quota 3/sem atteint » utilise le jaune/or KB en accent warning quand > 0", () => {
+    const stats = readFileSync(
+      join(
+        CAMPAGNES_ROOT,
+        "[templateId]",
+        "_components",
+        "CampaignResultStats.tsx",
+      ),
+      "utf-8",
+    );
+    // L'accent jaune/or est conditionnel (compteur > 0) — on vérifie que la
+    // classe Tailwind est référencée dans le source et qu'un marqueur
+    // `data-warning` est exposé pour les tests / le DOM observable.
+    expect(stats).toMatch(/#E5A100/);
+    expect(stats).toMatch(/data-warning/);
+  });
 });
 
 // ---------------------------------------------------------------------------

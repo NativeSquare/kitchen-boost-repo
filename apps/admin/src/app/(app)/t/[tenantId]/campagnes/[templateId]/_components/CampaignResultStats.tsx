@@ -33,6 +33,7 @@
 import type { CampaignResult } from "@packages/backend/convex/lib/notifications";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 export type CampaignResultStatsProps = {
   /** Aggregate-only counters returned by `sendTenantCampaign` (no PII). */
@@ -43,11 +44,19 @@ export type CampaignResultStatsProps = {
  * Static label table for the 6 counters. The FR copy is the LOAD-BEARING part
  * of the issue body — pinned by the test. Centralised here so a typographic
  * polish stays a one-line edit.
+ *
+ * `accent: "warning"` (F-CAMPAGNES [7/7] #247 polish) flags the counters that
+ * deserve a visible KitchenBoost jaune/or `#E5A100` accent when they're
+ * non-zero — currently `skippedRateLimited` (« Quota 3/sem atteint », which
+ * the issue body calls out as a « warnings rate-limit » accent target).
+ * Zero-valued warning counters render with the neutral palette (no spurious
+ * alarm when nothing was actually skipped).
  */
 const COUNTER_CARDS: ReadonlyArray<{
   key: keyof CampaignResult;
   label: string;
   description: string;
+  accent?: "warning";
 }> = [
   {
     key: "targeted",
@@ -76,6 +85,7 @@ const COUNTER_CARDS: ReadonlyArray<{
     label: "Quota 3/sem atteint",
     description:
       "Clients déjà servis 3 fois cette semaine, toutes campagnes confondues.",
+    accent: "warning",
   },
   {
     key: "skippedUnreachable",
@@ -91,21 +101,40 @@ export function CampaignResultStats({ result }: CampaignResultStatsProps) {
         Résultats
       </h2>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {COUNTER_CARDS.map((card) => (
-          <Card key={card.key} data-slot="campaign-result-card">
-            <CardHeader>
-              <CardTitle>{card.label}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-bold tabular-nums">
-                {result[card.key]}
-              </p>
-              <p className="text-muted-foreground mt-1 text-xs">
-                {card.description}
-              </p>
-            </CardContent>
-          </Card>
-        ))}
+        {COUNTER_CARDS.map((card) => {
+          const value = result[card.key];
+          // F-CAMPAGNES [7/7] (#247) — accent jaune/or KB sur les warnings
+          // (rate-limit) UNIQUEMENT quand le compteur est non-zero. CLAUDE.md
+          // DA : « accents jaune/or #E5A100 (highlights, warnings rate-limit) ».
+          const isActiveWarning = card.accent === "warning" && value > 0;
+          return (
+            <Card
+              key={card.key}
+              data-slot="campaign-result-card"
+              data-warning={isActiveWarning ? "true" : undefined}
+              className={cn(
+                isActiveWarning && "border-[#E5A100] bg-[#E5A100]/5",
+              )}
+            >
+              <CardHeader>
+                <CardTitle>{card.label}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p
+                  className={cn(
+                    "text-3xl font-bold tabular-nums",
+                    isActiveWarning && "text-[#E5A100]",
+                  )}
+                >
+                  {value}
+                </p>
+                <p className="text-muted-foreground mt-1 text-xs">
+                  {card.description}
+                </p>
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
     </div>
   );
