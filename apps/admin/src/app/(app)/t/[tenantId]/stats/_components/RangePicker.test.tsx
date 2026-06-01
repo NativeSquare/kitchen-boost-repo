@@ -125,8 +125,10 @@ describe("RangePicker — F-STATS-DASHBOARD [3/8] (#253)", () => {
     const selected = buttons.find(
       (b) => (b.props as Record<string, unknown>)["data-state"] === "on",
     );
-    expect(selected).toBeDefined();
-    expect((selected!.props as Record<string, unknown>).value).toBe("30");
+    if (selected === undefined) {
+      throw new Error("expected a selected option, found none");
+    }
+    expect((selected.props as Record<string, unknown>).value).toBe("30");
   });
 
   it("invokes onChange with the new RangeDays when an option is clicked", () => {
@@ -148,12 +150,16 @@ describe("RangePicker — F-STATS-DASHBOARD [3/8] (#253)", () => {
     const sevenDays = buttons.find(
       (b) => (b.props as Record<string, unknown>).value === "7",
     );
-    expect(sevenDays).toBeDefined();
-    const onClick = (sevenDays!.props as Record<string, unknown>).onClick as
+    if (sevenDays === undefined) {
+      throw new Error("expected the « 7 jours » option, found none");
+    }
+    const onClick = (sevenDays.props as Record<string, unknown>).onClick as
       | (() => void)
       | undefined;
-    expect(typeof onClick).toBe("function");
-    onClick!();
+    if (typeof onClick !== "function") {
+      throw new Error("expected an onClick handler on the option");
+    }
+    onClick();
     expect(onChange).toHaveBeenCalledWith(7);
   });
 });
