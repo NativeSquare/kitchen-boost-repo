@@ -16,6 +16,11 @@
  *  - `rangeAggregates` (F-STATS-DASHBOARD [3/8], #253) — the 2 chiffres bruts
  *    de la fenêtre N jours (panier moyen + total commandes) pour la page
  *    Stats `/t/[tenantId]/stats`.
+ *  - `revenuePerDay` (F-STATS-DASHBOARD [4/8], #257) — la série revenu par
+ *    jour sur la fenêtre N (7/30/90 jours) pour le LineChart Recharts de la
+ *    page Stats. Entrées remplies à 0 sur les jours sans commande (continuité
+ *    temporelle pour le graphique).
  */
 export { dailyKpis } from "./dailyKpis";
 export { rangeAggregates } from "./rangeAggregates";
+export { revenuePerDay } from "./revenuePerDay";

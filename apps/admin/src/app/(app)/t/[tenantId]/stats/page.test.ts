@@ -36,6 +36,13 @@ describe("stats/page.tsx — F-STATS-DASHBOARD [3/8] (#253) wiring contract", ()
     );
   });
 
+  it("binds `api.lib.stats.revenuePerDay.revenuePerDay` via `useTenantQuery` (#257)", () => {
+    const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
+    expect(collapsed).toMatch(
+      /useTenantQuery\([^)]*api\.lib\.stats\.revenuePerDay\.revenuePerDay[^)]*\)/,
+    );
+  });
+
   it("does NOT use a raw `useQuery` (would bypass tenantId injection — ADR 0014 §4)", () => {
     const code = stripNonCode(PAGE_SOURCE);
     expect(code).not.toMatch(/\buseQuery\b/);

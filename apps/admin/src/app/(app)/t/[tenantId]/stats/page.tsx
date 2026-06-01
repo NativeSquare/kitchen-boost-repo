@@ -51,12 +51,21 @@ export default function StatsPage() {
     { rangeDays: range },
   );
 
+  // F-STATS-DASHBOARD [4/8] (#257) — series for the LineChart Recharts block.
+  // Tri-state Convex sentinel : `undefined` = loading, resolved = array of
+  // `{ date, revenue }` entries (one per day in the window, gaps filled at 0).
+  const revenuePerDay = useTenantQuery(
+    api.lib.stats.revenuePerDay.revenuePerDay,
+    { rangeDays: range },
+  );
+
   return (
     <StatsView
       tenantId={tenantId}
       range={range}
       onRangeChange={setRange}
       rangeAggregates={rangeAggregates}
+      revenuePerDay={revenuePerDay}
     />
   );
 }

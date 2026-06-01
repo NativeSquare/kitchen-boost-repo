@@ -41,6 +41,10 @@ import { KpiCard } from "../_components/KpiCard";
 
 import type { RangeDays } from "@/lib/stats-range";
 import { RangePicker } from "./_components/RangePicker";
+import {
+  RevenuePerDayBlock,
+  type RevenuePerDayEntry,
+} from "./_components/RevenuePerDayBlock";
 
 /** Shape of the `rangeAggregates` backend query result. */
 export type RangeAggregates = {
@@ -65,13 +69,23 @@ export type StatsViewProps = {
    *   - sinon       → the 2 chiffres bruts.
    */
   rangeAggregates: RangeAggregates | undefined | null;
+  /**
+   * Tri-state payload from
+   * `useTenantQuery(api.lib.stats.revenuePerDay.revenuePerDay, { rangeDays })` :
+   *   - `undefined` → loading (Convex sentinel) ;
+   *   - `[]`        → empty window ;
+   *   - non-empty   → daily revenue series (one entry per day).
+   */
+  revenuePerDay: RevenuePerDayEntry[] | undefined;
   /** Wired by the page to refetch the query when the error CTA is clicked. */
   onRetry?: () => void;
 };
 
-/** The 5 placeholder cards (PRD 70 §4.10) — real blocks land in stories 4-8. */
+/**
+ * Placeholder cards for stories 5-8. The « Revenus » card was retired by this
+ * story (#257) — replaced by the real `RevenuePerDayBlock`.
+ */
 const PLACEHOLDER_CARDS: { key: string; title: string; hint: string }[] = [
-  { key: "revenus", title: "Revenus", hint: "Graph CA / jour (story 4)" },
   { key: "top-items", title: "Top items", hint: "Bar chart (story 5)" },
   {
     key: "heures-pointe",
@@ -102,6 +116,7 @@ export function StatsView({
   range,
   onRangeChange,
   rangeAggregates,
+  revenuePerDay,
   onRetry,
 }: StatsViewProps) {
   const isLoading = rangeAggregates === undefined;
@@ -163,6 +178,9 @@ export function StatsView({
         data-slot="stats-grid"
         className="grid grid-cols-1 gap-4 px-4 md:grid-cols-2 lg:grid-cols-3 lg:px-6"
       >
+        <div className="md:col-span-2 lg:col-span-3">
+          <RevenuePerDayBlock range={range} revenuePerDay={revenuePerDay} />
+        </div>
         {PLACEHOLDER_CARDS.map((c) => (
           <Card
             key={c.key}
