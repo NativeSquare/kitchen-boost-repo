@@ -1834,3 +1834,292 @@ export const wipeE2EKanbanDnDProspects = internalMutation({
     return { prospectsDeleted };
   },
 });
+
+// -----------------------------------------------------------------------------
+// E2E-T-E seed — populate the fiche prospect détaillée (T14-T16, T20-T25).
+// Inserts 7 sentinellés `[E2E T-E]` prospects covering :
+//
+//  - T14 (auto-bascule via fiche checkbox)     : `Auto Bascule Fiche` (acquisition,
+//    appareil_existant, 3/4 Closing milestones cocked — manque `ribRecu`).
+//  - T15 (Stripe Connect status update)        : `Intégrations Vierges` (no
+//    integration milestones initialised → dropdown shows `not_started`).
+//  - T16 (KB Manager refused on deep-link)     : ANY prospect works ; reuse one
+//    of the T-E rows (the test is purely RBAC, no specific state needed).
+//  - T20 (log interaction → timeline top)      : `Interactions` (1 historical
+//    `Premier contact` interaction logged ~30 days ago).
+//  - T21 (edit identity via modal)             : `Identity Edit` (name='L'Artisan'-ish,
+//    contactName='Jean Dupont', no SIRET — Alex saisit pendant le parcours).
+//  - T22 (ExternalLinksPanel — wa.me + uber)   : `External Links` (phone EXACTLY
+//    '06 12 34 56 78' so deep-link should normalise to `https://wa.me/33612345678`).
+//  - T23 (TenantPanel absent si non provisionné): `No Tenant` (acquisition, no
+//    `tenantId` back-link — confirms the conditional render absence).
+//  - T24 (TenantPanel + bouton Ouvrir vue resto): reuses `[E2E T-D] Resto Actif`
+//    (operationnel + tenantId backlinké à test-t1, déjà seedé par T-D).
+//  - T25 (TenantPanel dégradé tenant supprimé) : `Ghost Tenant` — prospect with
+//    `tenantId` pointing to a tenant we INSERT then DELETE in the same handler,
+//    leaving a dangling pointer the panel must surface as "Tenant introuvable".
+//
+// Sentinel name prefix (`[E2E T-E]`) keeps the wipe surgical.
+// -----------------------------------------------------------------------------
+
+const E2E_TE_PROSPECT_PREFIX = "[E2E T-E] ";
+const E2E_TE_GHOST_TENANT_SLUG = "e2e-te-ghost-tenant";
+const DAY_30_MS = 30 * DAY_MS;
+
+/**
+ * T-E specs — discriminated union to cover every "shape" the fiche tests need.
+ * The handler dispatches on `kind` to build the correct insert payload.
+ */
+type TEProspectSpec =
+  | { kind: "auto_bascule_fiche"; nameSuffix: string; phone: string }
+  | { kind: "integrations_vierges"; nameSuffix: string; phone: string }
+  | { kind: "interactions"; nameSuffix: string; phone: string }
+  | { kind: "identity_edit"; nameSuffix: string; phone: string }
+  | { kind: "external_links"; nameSuffix: string; phone: string }
+  | { kind: "no_tenant"; nameSuffix: string; phone: string }
+  | { kind: "ghost_tenant"; nameSuffix: string; phone: string };
+
+const TE_SEED_SPECS: ReadonlyArray<TEProspectSpec> = [
+  {
+    kind: "auto_bascule_fiche",
+    nameSuffix: "Auto Bascule Fiche",
+    phone: "+33600000401",
+  },
+  {
+    kind: "integrations_vierges",
+    nameSuffix: "Intégrations Vierges",
+    phone: "+33600000402",
+  },
+  { kind: "interactions", nameSuffix: "Interactions", phone: "+33600000403" },
+  { kind: "identity_edit", nameSuffix: "Identity Edit", phone: "+33600000404" },
+  // External Links uses the EXACT human-typed shape "06 12 34 56 78" (with
+  // spaces) so we exercise the wa.me normalisation rather than feeding the
+  // panel a pre-cleaned phone.
+  {
+    kind: "external_links",
+    nameSuffix: "External Links",
+    phone: "06 12 34 56 78",
+  },
+  { kind: "no_tenant", nameSuffix: "No Tenant", phone: "+33600000406" },
+  { kind: "ghost_tenant", nameSuffix: "Ghost Tenant", phone: "+33600000407" },
+];
+
+/**
+ * Seed 7 prospects for the fiche prospect détaillée parcours (T14-T16, T20-T25).
+ * Idempotent by name sentinel : re-runs reset the prospect state to canonical.
+ *
+ * Special case for T25 (`ghost_tenant`) : we INSERT a sentinellé tenant
+ * (slug = `e2e-te-ghost-tenant`), assign its `_id` to the prospect, then
+ * DELETE the tenant — leaving a dangling `tenantId` pointer that exercises
+ * the TenantPanel "Tenant introuvable" fallback. Re-runs first wipe any
+ * existing ghost tenant left over from a previous run (defensive).
+ */
+export const seedE2EFicheProspectDetails = internalMutation({
+  args: {},
+  returns: v.object({
+    prospectsCreated: v.number(),
+    prospectsUpdated: v.number(),
+  }),
+  handler: async (ctx) => {
+    const now = Date.now();
+    let prospectsCreated = 0;
+    let prospectsUpdated = 0;
+
+    for (const spec of TE_SEED_SPECS) {
+      const name = `${E2E_TE_PROSPECT_PREFIX}${spec.nameSuffix}`;
+
+      // Build the per-kind payload.
+      let payload: {
+        name: string;
+        phone: string;
+        phase: "acquisition" | "preparation" | "installation" | "operationnel";
+        source: "cold_call" | "whatsapp" | "referral" | "visite_physique";
+        tabletteMode?: "appareil_existant" | "achat_kb";
+        siret?: string;
+        address?: string;
+        contactName?: string;
+        email?: string;
+        milestones?: Doc<"prospects">["milestones"];
+        interactions?: Doc<"prospects">["interactions"];
+        tenantId?: Id<"tenants">;
+      };
+
+      switch (spec.kind) {
+        case "auto_bascule_fiche":
+          payload = {
+            name,
+            phone: spec.phone,
+            phase: "acquisition",
+            source: "cold_call",
+            tabletteMode: "appareil_existant",
+            milestones: {
+              contratSigne: now,
+              kbisRecu: now,
+              pieceIdentiteRecue: now,
+              // ribRecu absent on purpose — Alex coche depuis la fiche pour déclencher la bascule.
+            },
+          };
+          break;
+        case "integrations_vierges":
+          payload = {
+            name,
+            phone: spec.phone,
+            phase: "preparation",
+            source: "cold_call",
+            // Aucun milestone d'intégration : Stripe/Uber/Hubrise tous absents.
+          };
+          break;
+        case "interactions":
+          payload = {
+            name,
+            phone: spec.phone,
+            phase: "acquisition",
+            source: "cold_call",
+            interactions: [
+              {
+                note: "Premier contact",
+                date: now - DAY_30_MS,
+                canal: "cold_call",
+              },
+            ],
+          };
+          break;
+        case "identity_edit":
+          payload = {
+            name,
+            phone: spec.phone,
+            phase: "acquisition",
+            source: "cold_call",
+            contactName: "Jean Dupont",
+            // SIRET absent : Alex le saisit pendant T21.
+          };
+          break;
+        case "external_links":
+          payload = {
+            name,
+            phone: spec.phone, // "06 12 34 56 78" — la normalisation wa.me se fait côté panel.
+            phase: "acquisition",
+            source: "cold_call",
+          };
+          break;
+        case "no_tenant":
+          payload = {
+            name,
+            phone: spec.phone,
+            phase: "acquisition",
+            source: "cold_call",
+            // tenantId absent : confirme l'absence conditionnelle du TenantPanel.
+          };
+          break;
+        case "ghost_tenant": {
+          // Wipe any leftover ghost tenant from a previous run first.
+          const stale = await ctx.db
+            .query("tenants")
+            .withIndex("by_slug", (q) => q.eq("slug", E2E_TE_GHOST_TENANT_SLUG))
+            .unique();
+          if (stale !== null) await ctx.db.delete(stale._id);
+
+          // Insert a fresh ghost tenant (minimum viable shape — schema enforces
+          // required fields). We immediately delete it after backlinking so the
+          // prospect ends with a dangling `tenantId` pointer.
+          const ghostTenantId = await ctx.db.insert("tenants", {
+            slug: E2E_TE_GHOST_TENANT_SLUG,
+            name: "Ghost Tenant (E2E T-E)",
+            siret: "00000000000000",
+            status: "active",
+            createdAt: now,
+          });
+
+          payload = {
+            name,
+            phone: spec.phone,
+            phase: "operationnel",
+            source: "cold_call",
+            tenantId: ghostTenantId,
+          };
+          break;
+        }
+      }
+
+      const existing = await ctx.db
+        .query("prospects")
+        .filter((q) => q.eq(q.field("name"), name))
+        .first();
+
+      if (existing === null) {
+        await ctx.db.insert("prospects", {
+          ...payload,
+          createdAt: now,
+          updatedAt: now,
+        });
+        prospectsCreated += 1;
+      } else {
+        await ctx.db.patch(existing._id, {
+          phase: payload.phase,
+          tabletteMode: payload.tabletteMode,
+          siret: payload.siret,
+          address: payload.address,
+          contactName: payload.contactName,
+          email: payload.email,
+          milestones: payload.milestones,
+          interactions: payload.interactions,
+          tenantId: payload.tenantId,
+          updatedAt: now,
+        });
+        prospectsUpdated += 1;
+      }
+
+      // Post-insert cleanup for ghost_tenant : delete the tenant we just
+      // backlinked to leave the prospect with a dangling pointer (T25).
+      if (spec.kind === "ghost_tenant") {
+        const ghost = await ctx.db
+          .query("tenants")
+          .withIndex("by_slug", (q) => q.eq("slug", E2E_TE_GHOST_TENANT_SLUG))
+          .unique();
+        if (ghost !== null) await ctx.db.delete(ghost._id);
+      }
+    }
+
+    return { prospectsCreated, prospectsUpdated };
+  },
+});
+
+/**
+ * Wipe the E2E-T-E fiche prospect détaillée seed. Filters by the sentinel
+ * name prefix (`[E2E T-E] *`) — never touches real prospect rows. Also wipes
+ * any lingering ghost tenant (slug = `e2e-te-ghost-tenant`) defensively.
+ */
+export const wipeE2EFicheProspectDetails = internalMutation({
+  args: {},
+  returns: v.object({
+    prospectsDeleted: v.number(),
+    ghostTenantsDeleted: v.number(),
+  }),
+  handler: async (ctx) => {
+    let prospectsDeleted = 0;
+    let ghostTenantsDeleted = 0;
+
+    for (const spec of TE_SEED_SPECS) {
+      const name = `${E2E_TE_PROSPECT_PREFIX}${spec.nameSuffix}`;
+      const existing = await ctx.db
+        .query("prospects")
+        .filter((q) => q.eq(q.field("name"), name))
+        .first();
+      if (existing !== null) {
+        await ctx.db.delete(existing._id);
+        prospectsDeleted += 1;
+      }
+    }
+
+    const stale = await ctx.db
+      .query("tenants")
+      .withIndex("by_slug", (q) => q.eq("slug", E2E_TE_GHOST_TENANT_SLUG))
+      .unique();
+    if (stale !== null) {
+      await ctx.db.delete(stale._id);
+      ghostTenantsDeleted += 1;
+    }
+
+    return { prospectsDeleted, ghostTenantsDeleted };
+  },
+});
