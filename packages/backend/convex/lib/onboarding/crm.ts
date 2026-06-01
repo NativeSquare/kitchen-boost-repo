@@ -37,6 +37,14 @@ import { missingMilestonesForPhase } from "./gates";
  * (Q70-Q10) — a phase change is never blocked, but moving into a phase with a
  * missing required milestone records a BYPASS audit row.
  *
+ * GRANULAR milestone writes (B-ONBOARDING-MILESTONES, slices 3/4, #189 / #213)
+ * live in the sibling module `./milestones` — `setMilestone` (one binary
+ * milestone, set / clear / toggle + auto-Closing) and `recordIntegrationStatus`
+ * (composite `stripeConnect` / `uberDirect` / `hubrise` with append-only
+ * history). The wholesale `editProspect.patch.milestones` write below stays for
+ * back-office bulk compat but is DEPRECATED for the UI checklists (race-prone
+ * on concurrent operator clicks).
+ *
  * No UI here (the Kanban / CRM cards are front Train B). No invented prospect
  * lifecycle fields — every field/enum is the schema's (table/prospects.ts).
  */
@@ -64,7 +72,25 @@ export const createProspect = kbAdminMutation({
 /**
  * Edit a prospect's mutable fields (identity + score + tabletteMode + milestones).
  * A `patch` only carries the fields to change; absent fields are left intact.
- * `milestones` is replaced wholesale (the granular milestone toggles are slice C).
+ *
+ * NOTE — `patch.milestones` is DEPRECATED for the KB Admin checklists UI
+ * (B-ONBOARDING-MILESTONES, slice 5 / #225). It replaces the whole milestones
+ * object WHOLESALE, which races two concurrent operator clicks on the same
+ * prospect (each round-trips the full object, last write wins → the other
+ * checkbox is silently rolled back). The UI MUST use the granular siblings
+ * instead:
+ *   - `./milestones → setMilestone` — flip ONE binary milestone (set / clear /
+ *     toggle) and chain the composite Closing auto-bascule in the same
+ *     transaction (Acquisition → Préparation when complete).
+ *   - `./milestones → recordIntegrationStatus` — append ONE transition to a
+ *     composite integration (`stripeConnect` / `uberDirect` / `hubrise`) with
+ *     append-only `history[]` + updated `current`.
+ *
+ * The wholesale write stays exposed here (no `@deprecated` on the whole
+ * mutation — the other `patch.*` fields remain legitimate) for back-office
+ * BULK use cases (e.g. one-shot CSV reseed, manual data-fix from a kb_admin
+ * console) where the race is not a concern. No call site outside those is
+ * expected.
  */
 export const editProspect = kbAdminMutation({
   args: {
@@ -80,8 +106,14 @@ export const editProspect = kbAdminMutation({
       score: v.optional(v.number()),
       tabletteMode: v.optional(tabletteMode),
       // Reuse the schema's milestone validator (single source of truth — the
-      // business module can't drift from table/prospects.ts). Replaced wholesale;
-      // granular per-milestone toggles are slice C.
+      // business module can't drift from table/prospects.ts). Replaced wholesale.
+      //
+      // DEPRECATED for the UI checklists (slice 5 / #225) — race-prone on
+      // concurrent operator clicks (last write wins on the whole object).
+      // Use `./milestones → setMilestone` (one binary milestone, set / clear /
+      // toggle + auto-Closing) or `./milestones → recordIntegrationStatus`
+      // (composite integration with append-only history) instead. Kept here
+      // for back-office BULK compat (CSV reseed, manual data-fix).
       milestones: v.optional(milestones),
     }),
   },

@@ -39,6 +39,19 @@
  *    QR data → soft Stripe `account_link` flag → prospect back-link), invoked as
  *    `api.lib.onboarding.provisioning.provisionTenant`. Plus the pure helpers
  *    `generateSlug` / `tenantPwaUrl` / `tenantBootstrapUrl`.
+ *  - B-ONBOARDING-MILESTONES (slices 3/4/5, #189 / #213 / #225) `milestones.*` —
+ *    the GRANULAR milestone writes for the KB Admin onboarding checklists UI.
+ *    `setMilestone` flips ONE binary milestone (set / clear / toggle) and chains
+ *    the composite Closing auto-bascule in the same transaction;
+ *    `recordIntegrationStatus` appends ONE transition to a composite integration
+ *    (`stripeConnect` / `uberDirect` / `hubrise`) with append-only history.
+ *    Both invoked as `api.lib.onboarding.milestones.{setMilestone,
+ *    recordIntegrationStatus}`. The wholesale `crm.editProspect.patch.milestones`
+ *    write stays for back-office bulk compat but is DEPRECATED for the UI
+ *    checklists (race-prone on concurrent operator clicks). The canonical
+ *    `ClosingMilestoneKey` (the Closing-set keys, source of truth in
+ *    `pipeline.ts`) is re-exported here too so consumers can spell it without
+ *    reaching across modules.
  */
 export {
   changePhase,
