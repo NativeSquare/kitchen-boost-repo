@@ -2873,14 +2873,7 @@ const MC_F_T2_ORDER_SPECS: ReadonlyArray<MCFOrderSpec> = [
  * spec. Idempotent par `restaurantNote` sentinellé.
  */
 async function insertMCFOrder(
-  ctx: {
-    db: {
-      insert: (table: string, doc: unknown) => Promise<unknown>;
-      query: (table: string) => {
-        filter: (fn: unknown) => { first: () => Promise<unknown> };
-      };
-    };
-  },
+  ctx: MutationCtx,
   tenantId: Id<"tenants">,
   customerId: Id<"customers">,
   spec: MCFOrderSpec,
@@ -2891,21 +2884,13 @@ async function insertMCFOrder(
   const paidAt = createdAt + 60 * 1000; // payé 60 s après création.
   const note = `${E2E_MC_F_NOTE_PREFIX}${sentinelTag}`;
 
-  // Idempotence : si un order avec exactement ce createdAt et cette note
-  // existe déjà sur ce tenant, le réutiliser.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const existing = await (ctx.db.query("orders") as any)
-    .withIndex(
-      "by_tenant",
-      (q: { eq: (field: string, v: unknown) => unknown }) =>
-        q.eq("tenantId", tenantId),
-    )
-    .filter(
-      (q: {
-        eq: (a: unknown, b: unknown) => unknown;
-        field: (n: string) => unknown;
-      }) => q.eq(q.field("restaurantNote"), note),
-    )
+  // Idempotence : si un order avec exactement cette note existe déjà sur
+  // ce tenant, le réutiliser. Pas d'index dédié `restaurantNote` — on
+  // filtre côté handler (le seed n'est pas hot path).
+  const existing = await ctx.db
+    .query("orders")
+    .withIndex("by_tenant", (q) => q.eq("tenantId", tenantId))
+    .filter((q) => q.eq(q.field("restaurantNote"), note))
     .first();
   if (existing !== null) return "reused";
 
@@ -2981,7 +2966,7 @@ export const seedE2EOrdersT1 = internalMutation({
       const customerId = customerIds[i % customerIds.length];
       const tag = `T1-${i.toString().padStart(2, "0")}`;
       const outcome = await insertMCFOrder(
-        ctx as unknown as Parameters<typeof insertMCFOrder>[0],
+        ctx,
         tenant._id,
         customerId,
         spec,
@@ -3070,7 +3055,7 @@ export const seedE2EOrdersT2 = internalMutation({
       const customerId = seededCustomers[i % seededCustomers.length]._id;
       const tag = `T2-${i.toString().padStart(2, "0")}`;
       const outcome = await insertMCFOrder(
-        ctx as unknown as Parameters<typeof insertMCFOrder>[0],
+        ctx,
         tenant._id,
         customerId,
         spec,
