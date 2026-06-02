@@ -22,12 +22,15 @@
  *
  * Optimistic UI strategy (ADR 0015 « optimistic UI Convex + rollback + toast
  * sur erreur »):
- *   - Rename: the input is uncontrolled w/ `defaultValue`, then the row holds
- *     a local `draft` that overrides display. The debounced mutation fires
- *     after 600 ms of inactivity OR on blur (`flush()`); on resolve the
- *     incoming `category.name` matches the draft and the row settles; on
- *     reject the page surfaces `toast.error` and we revert to
- *     `category.name`.
+ *   - Rename: the input is CONTROLLED via a local `draft` state seeded from
+ *     `category.name` and resynced (via `useEffect`) when the server-side
+ *     name changes out-of-band. The debounced mutation fires after 600 ms
+ *     of inactivity OR on blur (`flush()`); on resolve the incoming
+ *     `category.name` matches the draft and the row settles; on reject the
+ *     page surfaces `toast.error` and we revert to `category.name`. (We
+ *     went controlled — not `defaultValue`-uncontrolled — because React
+ *     forbids passing both, and we need `draft` to drive the displayed
+ *     value during in-flight edits.)
  *   - Create: relies on Convex's natural reactivity — `categories.list`
  *     re-runs after the mutation resolves and a new row appears. We surface
  *     the new row with a `data-autofocus-pending` marker so a future
@@ -313,7 +316,6 @@ function CategoryRow({
       <CardContent className="flex items-center gap-3 py-3">
         {dragHandle}
         <Input
-          defaultValue={category.name}
           value={draft}
           onChange={(e) => {
             const next = e.target.value;
