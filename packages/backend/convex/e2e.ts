@@ -2689,3 +2689,119 @@ export const wipeE2EMCAnomalyLaunch = internalMutation({
     return { launchesDeleted };
   },
 });
+
+// -----------------------------------------------------------------------------
+// E2E-MC-E seed — populate l'historique campagnes de test-t2 pour MC18.
+// Le parcours MC18 demande à forger l'URL `/t/T1/campagnes/historique/<launchId_T2>`
+// pour vérifier que le manager de T1 voit « Lancement introuvable » et NON
+// la fiche du launch de T2. Pour ça il nous faut UN vrai launchId qui
+// appartient à T2 — d'où ce seed. Retourne le launchId pour qu'on puisse
+// le réutiliser dans l'URL forgée.
+//
+// MC17 réutilise le launch réel produit par MC14 sur test-t1 (pas besoin
+// de seed). MC19 demande au contraire un tenant SANS launch — on testera
+// MC19 sur test-t2 AVANT de lancer ce seed (séquence imposée).
+//
+// Sentinellé par `recipients: 42` + `templateId: undefined` (la combinaison
+// est unique à ce seed — un vrai launch carry les 6 counters + un
+// templateId).
+// -----------------------------------------------------------------------------
+
+/**
+ * Seed 1 `campaignLaunches` row sur test-t2 (ou tenant arg) avec un shape
+ * historique complet (6 counters), daté d'il y a 6 h. Retourne le `launchId`
+ * pour qu'Alex puisse le coller dans l'URL forgée MC18.
+ *
+ * Idempotent : si un row sentinellé existe déjà sur ce tenant, retourne
+ * son _id sans rien réinsérer.
+ */
+export const seedE2EMCT2Launch = internalMutation({
+  args: {
+    tenantSlug: v.optional(v.string()),
+  },
+  returns: v.object({
+    tenantId: v.id("tenants"),
+    launchId: v.id("campaignLaunches"),
+    launchCreated: v.boolean(),
+  }),
+  handler: async (ctx, args) => {
+    const slug = args.tenantSlug ?? "test-t2";
+    const tenant = await ctx.db
+      .query("tenants")
+      .withIndex("by_slug", (q) => q.eq("slug", slug))
+      .unique();
+    if (tenant === null) {
+      throw new ConvexError({
+        message: `Tenant with slug "${slug}" not found.`,
+      });
+    }
+
+    const now = Date.now();
+    const sixHoursAgo = now - 6 * 60 * 60 * 1000;
+
+    // Idempotence : si un launch sentinellé (recipients=42 + sans templateId)
+    // existe déjà, le réutiliser.
+    const existing = await ctx.db
+      .query("campaignLaunches")
+      .withIndex("by_tenant", (q) => q.eq("tenantId", tenant._id))
+      .collect();
+    const sentinel = existing.find(
+      (r) => r.recipients === 42 && r.templateId === undefined,
+    );
+    if (sentinel !== undefined) {
+      return {
+        tenantId: tenant._id,
+        launchId: sentinel._id,
+        launchCreated: false,
+      };
+    }
+
+    const launchId = await ctx.db.insert("campaignLaunches", {
+      tenantId: tenant._id,
+      scope: "tenant",
+      launchedAt: sixHoursAgo,
+      recipients: 42, // sentinellé (jamais produit par un vrai send dans la run)
+      sent: 38,
+      queued: 2,
+      skippedIneligible: 1,
+      skippedRateLimited: 1,
+      skippedUnreachable: 0,
+      // templateId omis : le legacy-shape, valide côté schema (optional).
+    });
+
+    return { tenantId: tenant._id, launchId, launchCreated: true };
+  },
+});
+
+/**
+ * Wipe the E2E-MC-E T2 launch seed. Supprime UNIQUEMENT les rows
+ * sentinellés (recipients=42 + templateId absent). Préserve les vrais
+ * launches.
+ */
+export const wipeE2EMCT2Launch = internalMutation({
+  args: {
+    tenantSlug: v.optional(v.string()),
+  },
+  returns: v.object({ launchesDeleted: v.number() }),
+  handler: async (ctx, args) => {
+    const slug = args.tenantSlug ?? "test-t2";
+    const tenant = await ctx.db
+      .query("tenants")
+      .withIndex("by_slug", (q) => q.eq("slug", slug))
+      .unique();
+    if (tenant === null) return { launchesDeleted: 0 };
+
+    let launchesDeleted = 0;
+    const launches = await ctx.db
+      .query("campaignLaunches")
+      .withIndex("by_tenant", (q) => q.eq("tenantId", tenant._id))
+      .collect();
+    for (const row of launches) {
+      if (row.recipients === 42 && row.templateId === undefined) {
+        await ctx.db.delete(row._id);
+        launchesDeleted += 1;
+      }
+    }
+    return { launchesDeleted };
+  },
+});
