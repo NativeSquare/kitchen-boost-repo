@@ -262,10 +262,21 @@ export function useWizardState(
   const [step3Visited, setStep3Visited] = useState<boolean>(false);
   const [step6Visited, setStep6Visited] = useState<boolean>(false);
 
-  const goToStep = useCallback((n: WizardStepNumber) => {
-    if (n < 1 || n > 8) return;
-    setCursor(n);
-  }, []);
+  // Note: `setCursor` appears in the deps array even though useState setters
+  // are stable across renders — the React Compiler's `react-hooks/preserve-
+  // manual-memoization` rule infers it as a dependency because the cursor
+  // setter ALSO gets called from render (the seed-once branch below), which
+  // causes the compiler to treat it as a "non-trivial reference" rather than
+  // a stable setter identity. The empty-deps form (`[]`) works for the
+  // sibling `markStep{2,3,6}Skipped/Visited` callbacks because their setters
+  // are only ever called from one site (the callback itself).
+  const goToStep = useCallback(
+    (n: WizardStepNumber) => {
+      if (n < 1 || n > 8) return;
+      setCursor(n);
+    },
+    [setCursor],
+  );
 
   const markStep2Skipped = useCallback(() => {
     setStep2Skipped(true);
