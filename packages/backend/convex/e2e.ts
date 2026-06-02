@@ -3090,3 +3090,132 @@ export const wipeE2EOrders = internalMutation({
     return { ordersDeleted };
   },
 });
+
+// -----------------------------------------------------------------------------
+// E2E-W seed — populate 1 prospect prêt pour le Wizard Provisioning (W1-W10).
+// Le prospect a :
+//   - tous les 5 champs juridiques renseignés (W3 step 1 va les lire),
+//   - 4/4 milestones Closing cochés (W2 launcher button visibility +
+//     auto-bascule déjà passée → phase preparation),
+//   - tabletteMode = appareil_existant (pas de facture tablette à gérer),
+//   - PAS de tenantId (W3 step 1 va le créer),
+//   - phase preparation (l'état attendu après Closing complet).
+//
+// Sentinel name = `[E2E W] Wizard Test`. Le wipe supprime le prospect ET
+// les tenants potentiellement créés pendant le test (filtre par slug
+// préfixé `e2e-w-` — Alex doit utiliser ce préfixe lors du step 1).
+// -----------------------------------------------------------------------------
+
+const E2E_W_PROSPECT_NAME = "[E2E W] Wizard Test";
+const E2E_W_TENANT_SLUG_PREFIX = "e2e-w-";
+
+/**
+ * Seed 1 prospect prêt pour le Wizard Provisioning (W1-W10). Idempotent
+ * par nom sentinellé : re-runs réinitialisent l'état (suppression du
+ * tenantId backlink + reset milestones + juridique).
+ */
+export const seedE2EWizardProspect = internalMutation({
+  args: {},
+  returns: v.object({
+    prospectId: v.id("prospects"),
+    prospectCreated: v.boolean(),
+    tenantsWiped: v.number(),
+  }),
+  handler: async (ctx) => {
+    const now = Date.now();
+
+    // 1. Wipe any tenant created during a previous wizard run (filter by slug
+    // prefix sentinellé `e2e-w-`). Important pour idempotence : sans ça,
+    // re-run = duplicate tenants.
+    let tenantsWiped = 0;
+    const allTenants = await ctx.db.query("tenants").collect();
+    for (const t of allTenants) {
+      if (t.slug.startsWith(E2E_W_TENANT_SLUG_PREFIX)) {
+        await ctx.db.delete(t._id);
+        tenantsWiped += 1;
+      }
+    }
+
+    // 2. Upsert le prospect avec l'état initial pour le wizard.
+    const existing = await ctx.db
+      .query("prospects")
+      .filter((q) => q.eq(q.field("name"), E2E_W_PROSPECT_NAME))
+      .first();
+
+    const milestones = {
+      contratSigne: now,
+      kbisRecu: now,
+      pieceIdentiteRecue: now,
+      ribRecu: now,
+    };
+    const juridiquePayload = {
+      siret: "81234567800015",
+      address: "12 rue de la République, 75011 Paris",
+      contactName: "Jean Dupont",
+      email: "wizard-e2e@kb-e2e.test",
+    };
+
+    if (existing === null) {
+      const prospectId = await ctx.db.insert("prospects", {
+        name: E2E_W_PROSPECT_NAME,
+        phone: "+33600000601",
+        phase: "preparation",
+        source: "cold_call",
+        tabletteMode: "appareil_existant",
+        milestones,
+        ...juridiquePayload,
+        createdAt: now,
+        updatedAt: now,
+      });
+      return { prospectId, prospectCreated: true, tenantsWiped };
+    }
+
+    // Re-run : reset state (incl. tenantId backlink à undefined pour
+    // permettre de re-tester W3 step 1 from scratch).
+    await ctx.db.patch(existing._id, {
+      phase: "preparation",
+      tabletteMode: "appareil_existant",
+      milestones,
+      ...juridiquePayload,
+      tenantId: undefined,
+      updatedAt: now,
+    });
+    return { prospectId: existing._id, prospectCreated: false, tenantsWiped };
+  },
+});
+
+/**
+ * Wipe the E2E-W wizard seed : supprime le prospect sentinellé + tous les
+ * tenants dont le slug commence par `e2e-w-` (créés pendant les tests
+ * wizard).
+ */
+export const wipeE2EWizardProspect = internalMutation({
+  args: {},
+  returns: v.object({
+    prospectsDeleted: v.number(),
+    tenantsDeleted: v.number(),
+  }),
+  handler: async (ctx) => {
+    let prospectsDeleted = 0;
+    let tenantsDeleted = 0;
+
+    const prospect = await ctx.db
+      .query("prospects")
+      .filter((q) => q.eq(q.field("name"), E2E_W_PROSPECT_NAME))
+      .first();
+    if (prospect !== null) {
+      await ctx.db.delete(prospect._id);
+      prospectsDeleted += 1;
+    }
+
+    const allTenants = await ctx.db.query("tenants").collect();
+    for (const t of allTenants) {
+      if (t.slug.startsWith(E2E_W_TENANT_SLUG_PREFIX)) {
+        await ctx.db.delete(t._id);
+        tenantsDeleted += 1;
+      }
+    }
+
+    return { prospectsDeleted, tenantsDeleted };
+  },
+});
