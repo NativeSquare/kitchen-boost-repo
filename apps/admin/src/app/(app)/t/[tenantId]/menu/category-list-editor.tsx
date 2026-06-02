@@ -22,15 +22,17 @@
  *
  * Optimistic UI strategy (ADR 0015 « optimistic UI Convex + rollback + toast
  * sur erreur »):
- *   - Rename: the input is CONTROLLED via a local `draft` state seeded from
- *     `category.name` and resynced (via `useEffect`) when the server-side
- *     name changes out-of-band. The debounced mutation fires after 600 ms
- *     of inactivity OR on blur (`flush()`); on resolve the incoming
- *     `category.name` matches the draft and the row settles; on reject the
- *     page surfaces `toast.error` and we revert to `category.name`. (We
- *     went controlled — not `defaultValue`-uncontrolled — because React
- *     forbids passing both, and we need `draft` to drive the displayed
- *     value during in-flight edits.)
+ *   - Rename: the input is CONTROLLED via a local `draft` state seeded
+ *     ONCE from `category.name` at mount. From then on, the draft is the
+ *     user's input — never re-overwritten by a Convex live-query echo (see
+ *     the long comment inside `CategoryRow` for the race the previous
+ *     useEffect resync introduced : fast typists lost letters mid-typing).
+ *     The debounced mutation fires after 600 ms of inactivity OR on blur
+ *     (`flush()`) ; on resolve the row settles ; on reject the page surfaces
+ *     `toast.error` (and the draft stays at the user's last input — they can
+ *     correct + retry without re-typing). Row identity is the load-bearing
+ *     key : the editor keys each row by `category._id`, so a different
+ *     category gets a fresh `useState(category.name)`.
  *   - Create: relies on Convex's natural reactivity — `categories.list`
  *     re-runs after the mutation resolves and a new row appears. We surface
  *     the new row with a `data-autofocus-pending` marker so a future
@@ -273,16 +275,35 @@ function CategoryRow({
   style,
   setNodeRef,
 }: CategoryRowProps) {
+  // The local `draft` is seeded ONCE from `category.name` and from then on it
+  // is the user's input — never re-overwritten by Convex live-query echoes.
+  //
+  // Why no `useEffect(() => setDraft(category.name), [category.name])` :
+  // ----------------------------------------------------------------------
+  // The earlier version of this row resynced `draft` on every `category.name`
+  // change. With Convex's reactive queries + a 600 ms debounce, that resync
+  // ran into a race against fast typists :
+  //   1. user types "B" → `draft = "B"` → debounce schedules `rename("B")`
+  //   2. user types "Bu" → `draft = "Bu"` (debounce reschedules)
+  //   3. (out-of-band) a stale Convex re-fire re-emits `category.name = "B"`
+  //      (or, after the round-trip, `"B"` lands AFTER the user typed "Bu")
+  //   4. the resync useEffect ran `setDraft("B")` → the "u" disappears
+  //      visually mid-typing
+  // The local draft IS the source of truth while the user edits ; the backend
+  // catches up via the debounced `onRename`. We never need to overwrite the
+  // user's input from server data. Row identity is the load-bearing key here :
+  // the parent `CategoryListEditor` keys each `<CategoryRow>` by
+  // `category._id`, so a different category gets a different React component
+  // instance with its own fresh `useState(category.name)`. The only « rename
+  // by another tab while I'm editing » scenario is intentionally not
+  // supported — there are no concurrent editors of the same row in V1 (single
+  // KB Admin per provisioning session, ADR 0015).
+  //
+  // The empty-string revert path (debounce body below) is the ONLY allowed
+  // server→draft overwrite, and it only fires when the user explicitly typed
+  // an empty value (caught BEFORE the mutation).
   const [draft, setDraft] = useState<string>(category.name);
   const [confirmOpen, setConfirmOpen] = useState(false);
-
-  // Keep the displayed draft in sync if the server-side name updates
-  // out-of-band (e.g. successful rename round-trip resolves with the same
-  // string we just typed — already a no-op — OR a future slice mutates the
-  // row from elsewhere).
-  useEffect(() => {
-    setDraft(category.name);
-  }, [category.name]);
 
   const debouncedRename = useDebouncedCallback<string>((next) => {
     const trimmed = next.trim();
