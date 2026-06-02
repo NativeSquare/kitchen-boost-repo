@@ -26,7 +26,7 @@ import Link from "next/link";
 import type {
   CampaignLaunchSummary,
   CampaignResult,
-} from "@packages/backend/convex/lib/notifications";
+} from "@packages/backend/convex/lib/notifications/campaigns";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
 
 import { Skeleton } from "@/components/ui/skeleton";

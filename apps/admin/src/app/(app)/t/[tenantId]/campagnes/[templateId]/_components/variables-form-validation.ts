@@ -29,7 +29,12 @@
  * which substitutes a missing value with the empty string).
  */
 
-import { MAX_DISCOUNT_PERCENT } from "@packages/backend/convex/lib/notifications";
+// Import from the pure submodule, not the barrel: the barrel re-exports
+// `engine.ts` which transitively pulls in `getCurrentActor.ts` (defines
+// `whoAmI = query(...)`), so any value-import from the barrel forces the
+// browser bundler to evaluate server-only Convex code. `templateBounds.ts`
+// is a pure module with no Convex ctx — safe for client surfaces.
+import { MAX_DISCOUNT_PERCENT } from "@packages/backend/convex/lib/notifications/templateBounds";
 
 /**
  * Conservative per-field length cap (chars). The send-time rendered cap on

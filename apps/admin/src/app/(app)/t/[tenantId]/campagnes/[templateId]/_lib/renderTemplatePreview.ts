@@ -25,11 +25,16 @@
  * Pure — no React, no Convex.
  */
 
+// Value imports from the pure submodule (`templateBounds.ts`) — the barrel
+// `notifications/index.ts` re-exports `engine.ts` which transitively pulls
+// `getCurrentActor.ts` (defines `whoAmI = query(...)`), so a value-import
+// from the barrel evaluates server-only Convex code in the browser bundle.
+// `templateBounds.ts` is a pure module — safe for client surfaces.
 import {
   type TemplateBoundViolation,
   findRenderedViolation,
   renderTemplate,
-} from "@packages/backend/convex/lib/notifications";
+} from "@packages/backend/convex/lib/notifications/templateBounds";
 import type { TenantTemplateSummary } from "@packages/backend/convex/lib/notifications/campaigns";
 
 /**

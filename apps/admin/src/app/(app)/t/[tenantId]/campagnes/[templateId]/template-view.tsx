@@ -34,7 +34,7 @@ import {
   type SendCampaignArgs,
   VariablesForm,
 } from "./_components/VariablesForm";
-import type { CampaignResult } from "@packages/backend/convex/lib/notifications";
+import type { CampaignResult } from "@packages/backend/convex/lib/notifications/campaigns";
 
 export type TemplateViewProps = {
   /** Current tenant — forwarded into `VariablesForm` (parity with the

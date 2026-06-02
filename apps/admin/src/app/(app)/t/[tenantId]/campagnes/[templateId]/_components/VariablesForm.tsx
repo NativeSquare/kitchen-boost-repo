@@ -52,12 +52,17 @@
 import { useState } from "react";
 import { toast } from "sonner";
 
-import {
-  type CampaignResult,
-  type TemplateVariable,
-  MAX_DISCOUNT_PERCENT,
-} from "@packages/backend/convex/lib/notifications";
-import type { TenantTemplateSummary } from "@packages/backend/convex/lib/notifications/campaigns";
+// Value imports from the pure submodule (`templateBounds.ts`) — the barrel
+// re-exports `engine.ts` which transitively pulls `getCurrentActor.ts`
+// (`whoAmI = query(...)`). Any value-import from the barrel forces the
+// browser bundler to evaluate server-only Convex code. `import type` from
+// the barrel is fine (TS elides the import at compile time).
+import { MAX_DISCOUNT_PERCENT } from "@packages/backend/convex/lib/notifications/templateBounds";
+import type { TemplateVariable } from "@packages/backend/convex/lib/notifications/templateBounds";
+import type {
+  CampaignResult,
+  TenantTemplateSummary,
+} from "@packages/backend/convex/lib/notifications/campaigns";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
 
 import { Button } from "@/components/ui/button";

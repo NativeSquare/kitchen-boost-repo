@@ -33,10 +33,11 @@
 
 "use client";
 
-import {
-  MAX_RENDERED_LENGTH,
-  type TemplateVariable,
-} from "@packages/backend/convex/lib/notifications";
+// Value import from the pure submodule (`templateBounds.ts`) — see
+// `variables-form-validation.ts` for the rationale (the barrel re-exports
+// `engine.ts` which transitively evaluates the `whoAmI` server query).
+import { MAX_RENDERED_LENGTH } from "@packages/backend/convex/lib/notifications/templateBounds";
+import type { TemplateVariable } from "@packages/backend/convex/lib/notifications/templateBounds";
 import type { TenantTemplateSummary } from "@packages/backend/convex/lib/notifications/campaigns";
 
 import { Button } from "@/components/ui/button";

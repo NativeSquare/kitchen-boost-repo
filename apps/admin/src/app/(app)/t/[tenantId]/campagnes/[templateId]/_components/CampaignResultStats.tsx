@@ -30,7 +30,7 @@
  * Zero touch to `apps/web`, `apps/native`, or `packages/backend/convex/`.
  */
 
-import type { CampaignResult } from "@packages/backend/convex/lib/notifications";
+import type { CampaignResult } from "@packages/backend/convex/lib/notifications/campaigns";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";

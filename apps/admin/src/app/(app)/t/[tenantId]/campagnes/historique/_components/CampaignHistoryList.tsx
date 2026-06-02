@@ -27,7 +27,7 @@
  */
 import Link from "next/link";
 
-import type { CampaignLaunchSummary as BackendSummary } from "@packages/backend/convex/lib/notifications";
+import type { CampaignLaunchSummary as BackendSummary } from "@packages/backend/convex/lib/notifications/campaigns";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";

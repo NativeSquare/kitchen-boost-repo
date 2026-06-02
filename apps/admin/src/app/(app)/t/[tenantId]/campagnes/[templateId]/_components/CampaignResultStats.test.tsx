@@ -26,7 +26,7 @@
 import { describe, expect, it } from "vitest";
 import type { ReactElement, ReactNode } from "react";
 
-import type { CampaignResult } from "@packages/backend/convex/lib/notifications";
+import type { CampaignResult } from "@packages/backend/convex/lib/notifications/campaigns";
 
 import { CampaignResultStats } from "./CampaignResultStats";
 
