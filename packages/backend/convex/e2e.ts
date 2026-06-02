@@ -3219,3 +3219,374 @@ export const wipeE2EWizardProspect = internalMutation({
     return { prospectsDeleted, tenantsDeleted };
   },
 });
+
+// -----------------------------------------------------------------------------
+// E2E-M seed — populate `test-t1` avec un menu (mode "full") OU le vider
+// (mode "blank") pour le groupe M (M1-M9ter).
+//
+// Deux modes :
+//   - "blank" : wipe COMPLET du menu test-t1 (categories + items + groups +
+//     link table + publishedMenus). Utile pour M1 (catégories CRUD from
+//     scratch), M6 (DnD catégories sur tenant frais), M7 (groupes vides),
+//     M9bis (publish first time).
+//   - "full"  : wipe d'abord, puis seed un menu riche prêt pour les autres
+//     parcours (3 catégories, 5 items, 1 modifier group attaché à Smash
+//     Burger, 1 snapshot publishedMenus aligné sur le brouillon — pour M9
+//     « modifier le prix → badge ‹ modifications non publiées › »).
+//
+// Sentinel : on opère TOUJOURS sur `test-t1` (jamais sur un slug arbitraire
+// pour éviter de wiper le menu d'un tenant non-e2e par accident). Le wipe
+// passe par l'index `by_tenant` exclusivement.
+// -----------------------------------------------------------------------------
+
+const E2E_M_TENANT_SLUG = "test-t1";
+
+async function wipeMenuForTenant(
+  ctx: MutationCtx,
+  tenantId: Id<"tenants">,
+): Promise<{
+  publishedDeleted: number;
+  linksDeleted: number;
+  groupsDeleted: number;
+  itemsDeleted: number;
+  categoriesDeleted: number;
+}> {
+  // Ordre : snapshot → link table → groups → items → categories (FK-safe).
+  let publishedDeleted = 0;
+  const snapshots = await ctx.db
+    .query("publishedMenus")
+    .withIndex("by_tenant", (q) => q.eq("tenantId", tenantId))
+    .collect();
+  for (const s of snapshots) {
+    await ctx.db.delete(s._id);
+    publishedDeleted += 1;
+  }
+
+  let linksDeleted = 0;
+  // No `by_tenant` index on menuItemModifierGroups — scan + filter.
+  const allLinks = await ctx.db.query("menuItemModifierGroups").collect();
+  for (const l of allLinks) {
+    if (l.tenantId === tenantId) {
+      await ctx.db.delete(l._id);
+      linksDeleted += 1;
+    }
+  }
+
+  let groupsDeleted = 0;
+  const groups = await ctx.db
+    .query("modifierGroups")
+    .withIndex("by_tenant", (q) => q.eq("tenantId", tenantId))
+    .collect();
+  for (const g of groups) {
+    await ctx.db.delete(g._id);
+    groupsDeleted += 1;
+  }
+
+  let itemsDeleted = 0;
+  const items = await ctx.db
+    .query("menuItems")
+    .withIndex("by_tenant", (q) => q.eq("tenantId", tenantId))
+    .collect();
+  for (const it of items) {
+    await ctx.db.delete(it._id);
+    itemsDeleted += 1;
+  }
+
+  let categoriesDeleted = 0;
+  const categories = await ctx.db
+    .query("menuCategories")
+    .withIndex("by_tenant", (q) => q.eq("tenantId", tenantId))
+    .collect();
+  for (const c of categories) {
+    await ctx.db.delete(c._id);
+    categoriesDeleted += 1;
+  }
+
+  return {
+    publishedDeleted,
+    linksDeleted,
+    groupsDeleted,
+    itemsDeleted,
+    categoriesDeleted,
+  };
+}
+
+/**
+ * Seed le menu de `test-t1` en deux modes :
+ *  - `"blank"` (défaut) : wipe complet, 0 catégorie / 0 item / 0 groupe /
+ *    0 publishedMenu. Prêt pour M1/M6/M7/M9bis.
+ *  - `"full"` : wipe puis populate (3 cat, 5 items, 1 group attaché Smash
+ *    Burger, snapshot publié aligné). Prêt pour M2/M3/M4/M5/M8/M8bis/M8ter/
+ *    M9/M9ter.
+ *
+ * Idempotent (wipe avant populate).
+ */
+export const seedE2EMenuT1 = internalMutation({
+  args: {
+    mode: v.optional(v.union(v.literal("blank"), v.literal("full"))),
+  },
+  returns: v.object({
+    tenantId: v.id("tenants"),
+    mode: v.union(v.literal("blank"), v.literal("full")),
+    wiped: v.object({
+      publishedDeleted: v.number(),
+      linksDeleted: v.number(),
+      groupsDeleted: v.number(),
+      itemsDeleted: v.number(),
+      categoriesDeleted: v.number(),
+    }),
+    categoriesCreated: v.number(),
+    itemsCreated: v.number(),
+    groupsCreated: v.number(),
+    linksCreated: v.number(),
+    publishedCreated: v.boolean(),
+  }),
+  handler: async (ctx, args) => {
+    const mode = args.mode ?? "blank";
+    const tenant = await ctx.db
+      .query("tenants")
+      .withIndex("by_slug", (q) => q.eq("slug", E2E_M_TENANT_SLUG))
+      .unique();
+    if (tenant === null) {
+      throw new ConvexError({
+        message: `Tenant "${E2E_M_TENANT_SLUG}" not found — run bootstrapE2EInvites first.`,
+      });
+    }
+    const tenantId = tenant._id;
+    const wiped = await wipeMenuForTenant(ctx, tenantId);
+
+    if (mode === "blank") {
+      return {
+        tenantId,
+        mode,
+        wiped,
+        categoriesCreated: 0,
+        itemsCreated: 0,
+        groupsCreated: 0,
+        linksCreated: 0,
+        publishedCreated: false,
+      };
+    }
+
+    // --- mode === "full" ----------------------------------------------------
+    const now = Date.now();
+
+    const entreesId = await ctx.db.insert("menuCategories", {
+      tenantId,
+      name: "Entrées",
+      order: 1,
+      createdAt: now,
+    });
+    const platsId = await ctx.db.insert("menuCategories", {
+      tenantId,
+      name: "Plats",
+      order: 2,
+      createdAt: now,
+    });
+    const dessertsId = await ctx.db.insert("menuCategories", {
+      tenantId,
+      name: "Desserts",
+      order: 3,
+      createdAt: now,
+    });
+
+    const saladeId = await ctx.db.insert("menuItems", {
+      tenantId,
+      categoryId: entreesId,
+      name: "Salade verte",
+      description: "Mesclun, vinaigrette maison",
+      basePrice: 800,
+      allergens: [],
+      available: true,
+      order: 1,
+      createdAt: now,
+    });
+    const smashBurgerId = await ctx.db.insert("menuItems", {
+      tenantId,
+      categoryId: platsId,
+      name: "Smash Burger",
+      description: "Bœuf 150g, cheddar, oignons confits, pain brioché",
+      basePrice: 1290,
+      allergens: ["gluten", "lait"],
+      available: true,
+      order: 1,
+      createdAt: now,
+    });
+    const pizzaId = await ctx.db.insert("menuItems", {
+      tenantId,
+      categoryId: platsId,
+      name: "Pizza Margherita",
+      description: "Tomate, mozzarella, basilic frais",
+      basePrice: 1100,
+      allergens: ["gluten", "lait"],
+      available: true,
+      order: 2,
+      createdAt: now,
+    });
+    const tartareId = await ctx.db.insert("menuItems", {
+      tenantId,
+      categoryId: platsId,
+      name: "Tartare de bœuf",
+      description: "Bœuf coupé au couteau, frites maison",
+      basePrice: 1500,
+      allergens: ["œufs"],
+      available: true,
+      order: 3,
+      createdAt: now,
+    });
+    const tiramisuId = await ctx.db.insert("menuItems", {
+      tenantId,
+      categoryId: dessertsId,
+      name: "Tiramisu",
+      description: "Mascarpone, café, cacao",
+      basePrice: 650,
+      allergens: ["gluten", "lait", "œufs"],
+      available: true,
+      order: 1,
+      createdAt: now,
+    });
+
+    const supplementsId = await ctx.db.insert("modifierGroups", {
+      tenantId,
+      name: "Suppléments",
+      minSelect: 0,
+      maxSelect: 3,
+      options: [
+        { label: "Bacon", priceDelta: 100 },
+        { label: "Fromage", priceDelta: 50 },
+        { label: "Œuf", priceDelta: 80 },
+      ],
+      createdAt: now,
+    });
+
+    await ctx.db.insert("menuItemModifierGroups", {
+      tenantId,
+      itemId: smashBurgerId,
+      modifierGroupId: supplementsId,
+      order: 1,
+    });
+
+    // Snapshot publié aligné sur le brouillon — ainsi le badge « modifications
+    // non publiées » n'apparaît que QUAND Alex modifiera quelque chose (M9).
+    await ctx.db.insert("publishedMenus", {
+      tenantId,
+      publishedAt: now,
+      payload: {
+        categories: [
+          {
+            _id: entreesId,
+            name: "Entrées",
+            items: [
+              {
+                _id: saladeId,
+                name: "Salade verte",
+                description: "Mesclun, vinaigrette maison",
+                basePrice: 800,
+                allergens: [],
+                modifierGroups: [],
+              },
+            ],
+          },
+          {
+            _id: platsId,
+            name: "Plats",
+            items: [
+              {
+                _id: smashBurgerId,
+                name: "Smash Burger",
+                description:
+                  "Bœuf 150g, cheddar, oignons confits, pain brioché",
+                basePrice: 1290,
+                allergens: ["gluten", "lait"],
+                modifierGroups: [
+                  {
+                    _id: supplementsId,
+                    name: "Suppléments",
+                    minSelect: 0,
+                    maxSelect: 3,
+                    options: [
+                      { label: "Bacon", priceDelta: 100 },
+                      { label: "Fromage", priceDelta: 50 },
+                      { label: "Œuf", priceDelta: 80 },
+                    ],
+                  },
+                ],
+              },
+              {
+                _id: pizzaId,
+                name: "Pizza Margherita",
+                description: "Tomate, mozzarella, basilic frais",
+                basePrice: 1100,
+                allergens: ["gluten", "lait"],
+                modifierGroups: [],
+              },
+              {
+                _id: tartareId,
+                name: "Tartare de bœuf",
+                description: "Bœuf coupé au couteau, frites maison",
+                basePrice: 1500,
+                allergens: ["œufs"],
+                modifierGroups: [],
+              },
+            ],
+          },
+          {
+            _id: dessertsId,
+            name: "Desserts",
+            items: [
+              {
+                _id: tiramisuId,
+                name: "Tiramisu",
+                description: "Mascarpone, café, cacao",
+                basePrice: 650,
+                allergens: ["gluten", "lait", "œufs"],
+                modifierGroups: [],
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    return {
+      tenantId,
+      mode,
+      wiped,
+      categoriesCreated: 3,
+      itemsCreated: 5,
+      groupsCreated: 1,
+      linksCreated: 1,
+      publishedCreated: true,
+    };
+  },
+});
+
+/**
+ * Wipe complet du menu de `test-t1`. Idempotent.
+ */
+export const wipeE2EMenuT1 = internalMutation({
+  args: {},
+  returns: v.object({
+    publishedDeleted: v.number(),
+    linksDeleted: v.number(),
+    groupsDeleted: v.number(),
+    itemsDeleted: v.number(),
+    categoriesDeleted: v.number(),
+  }),
+  handler: async (ctx) => {
+    const tenant = await ctx.db
+      .query("tenants")
+      .withIndex("by_slug", (q) => q.eq("slug", E2E_M_TENANT_SLUG))
+      .unique();
+    if (tenant === null) {
+      return {
+        publishedDeleted: 0,
+        linksDeleted: 0,
+        groupsDeleted: 0,
+        itemsDeleted: 0,
+        categoriesDeleted: 0,
+      };
+    }
+    return wipeMenuForTenant(ctx, tenant._id);
+  },
+});
