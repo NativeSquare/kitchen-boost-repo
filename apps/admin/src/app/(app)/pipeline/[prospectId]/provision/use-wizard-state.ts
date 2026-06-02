@@ -218,15 +218,27 @@ export function useWizardState(
 
   // Cursor state.
   //
-  // The operator's manual Prev/Next clicks must not be clobbered by a
-  // re-render after a query resolves, so we keep the cursor in React state.
-  // BUT we don't want to seed it via `useEffect(() => setState(...))` either
-  // — the React Compiler / `react-hooks/incompatible-library` flags that
-  // pattern (cascading renders). Instead we derive the « natural » step from
-  // `computeWizardState` purely during render and store ONLY the OVERRIDE
-  // the operator dialled in via `goToStep`. If they never click, the cursor
-  // tracks the derived step automatically.
-  const [override, setOverride] = useState<WizardStepNumber | null>(null);
+  // The cursor is an EXPLICIT operator-owned position — once seeded from the
+  // live state on the first render where it's available, it ONLY changes via
+  // `goToStep` (Prev/Next clicks + stepper clicks). We deliberately do NOT
+  // track `liveState.currentStep` reactively after the seed: otherwise, when
+  // an in-step mutation flips a completion flag (e.g. step 5's `publishMenu`
+  // sets `step5Complete = true`), `liveState.currentStep` would jump forward
+  // to the next incomplete step and the wizard would auto-advance under the
+  // operator's feet WITHOUT them clicking « Continuer » (W7 bug — they never
+  // saw the « Publié — [date] » badge nor had the choice to keep editing the
+  // current step's surface).
+  //
+  // Seed-once-in-render pattern (React-supported, cf. « Storing information
+  // from previous renders » in React docs): we calling `setCursor(...)` from
+  // render is OK because it ALWAYS stabilises after the first valid seed
+  // (`liveState !== null` is monotonic once the prospect query resolves) —
+  // React detects no further state change and skips the extra render.
+  // Using `useEffect(() => setCursor(...))` would force a cascading render
+  // AND be flagged by the React Compiler — same rationale that pushed
+  // `step2Skipped` / `step3Visited` / `step6Visited` to direct setters
+  // (no effect-based mirroring).
+  const [cursor, setCursor] = useState<WizardStepNumber | null>(null);
 
   // F-WIZARD [4/10] (#268) — local-only « step 2 skipped » flag.
   //
@@ -252,7 +264,7 @@ export function useWizardState(
 
   const goToStep = useCallback((n: WizardStepNumber) => {
     if (n < 1 || n > 8) return;
-    setOverride(n);
+    setCursor(n);
   }, []);
 
   const markStep2Skipped = useCallback(() => {
@@ -284,7 +296,17 @@ export function useWizardState(
       })
     : null;
 
-  const currentStep: WizardStepNumber = override ?? liveState?.currentStep ?? 1;
+  // Seed-once: when `liveState` first becomes available AND the cursor has
+  // never been set yet, take the live-derived step as the starting point.
+  // This is what lets an operator resume on the right step when they reopen
+  // the wizard mid-provisioning. After this first seed, the cursor only
+  // moves via `goToStep` — see the comment on `cursor` above for why we
+  // deliberately do NOT keep tracking `liveState.currentStep`.
+  if (cursor === null && liveState !== null) {
+    setCursor(liveState.currentStep);
+  }
+
+  const currentStep: WizardStepNumber = cursor ?? liveState?.currentStep ?? 1;
 
   return {
     tenantId: liveState?.tenantId ?? null,

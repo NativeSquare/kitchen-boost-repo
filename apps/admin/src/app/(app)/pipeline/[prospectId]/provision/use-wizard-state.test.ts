@@ -86,6 +86,31 @@ describe("use-wizard-state.ts — F-WIZARD [1/10] (#265) wiring contract", () =>
     expect(code).toMatch(/step2Skipped\s*[,:]/);
   });
 
+  // Fix W7 — `publishMenu` must NOT auto-advance the wizard cursor from
+  // step 5 to step 6. The bug was that the cursor was computed as
+  // `override ?? liveState?.currentStep`, so the moment a publication
+  // snapshot landed (`step5Complete` flips to true), `liveState.currentStep`
+  // jumped to the next incomplete step and the operator was teleported
+  // forward WITHOUT ever clicking the « Continuer » button (and without
+  // seeing the « Publié — [date] » badge). The fix is to seed an EXPLICIT
+  // cursor once from the live state, and then only mutate it via the
+  // setter exposed through `goToStep`.
+  it("fix W7 — cursor is operator-owned (seeded once, never tracks liveState reactively)", () => {
+    const code = stripNonCode(HOOK_SOURCE);
+    // The seed-once branch must be present in render (guarded on `cursor
+    // === null && liveState !== null` so it stabilises after the first
+    // valid seed).
+    expect(code).toMatch(/cursor\s*===\s*null\s*&&\s*liveState\s*!==\s*null/);
+    // The cursor setter must be the ONLY thing wired to goToStep — the
+    // old `override` name is gone (we want a single source of truth).
+    expect(code).not.toMatch(/\boverride\b/);
+    expect(code).toMatch(/setCursor\s*\(/);
+    // Defensive: `useEffect` must not be used to mirror the live state into
+    // the cursor (cascading-render anti-pattern flagged by the React
+    // Compiler — same discipline as step2Skipped/step3Visited/step6Visited).
+    expect(code).not.toMatch(/useEffect[^;]*setCursor/);
+  });
+
   // Issue #392 — RBAC skip-sentinel guard.
   //
   // Every Convex query in the hook is exposed via `kbAdminQuery` (ADR 0010),
