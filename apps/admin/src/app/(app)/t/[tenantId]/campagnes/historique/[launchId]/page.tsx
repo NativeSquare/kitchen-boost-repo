@@ -16,6 +16,15 @@
  *     regresses; cross-tenant fuzz pinned by
  *     `listTenantCampaignLaunches.test.ts`).
  *
+ * Shape guard (URL safety): the `[launchId]` segment is user-controlled (URL
+ * editing, stale share links, v0 bookmark formats…). If it does NOT have the
+ * shape of a Convex doc id we MUST NOT forward it to `useTenantQuery` — the
+ * `v.id("campaignLaunches")` validator throws `ArgumentValidationError` and
+ * crashes the React tree. Instead we pass `"skip"` to the hook and feed the
+ * view `launch={null}`, which renders the SAME "Lancement introuvable" branch
+ * we already show for a valid-but-stale launchId (cross-tenant case pinned by
+ * MC18 step 2). See `lib/convex/is-likely-convex-id.ts`.
+ *
  * Scope discipline (#240): only files under
  * `.../campagnes/historique/[launchId]/`. Zero touch to `apps/web`,
  * `apps/native`, or `packages/backend/convex/` beyond the public-query
@@ -29,23 +38,34 @@ import type { Id } from "@packages/backend/convex/_generated/dataModel";
 
 import { useCurrentTenantId } from "@/components/app/tenant-context";
 import { useTenantQuery } from "@/hooks";
+import { isLikelyConvexId } from "@/lib/convex/is-likely-convex-id";
 
 import { LaunchDetailView } from "./launch-detail-view";
 
 export default function CampagneHistoriqueDetailPage() {
   const tenantId = useCurrentTenantId();
   const params = useParams<{ launchId: string }>();
-  const launchId = params.launchId as Id<"campaignLaunches">;
+  const rawLaunchId = params.launchId;
+
+  // URL-safety guard (see file header). When the segment doesn't look like a
+  // Convex doc id we skip the query entirely — the cast below would feed an
+  // invalid string straight into `v.id("campaignLaunches")` and throw at the
+  // call site otherwise.
+  const launchIdLooksValid = isLikelyConvexId(rawLaunchId);
+  const launchId = rawLaunchId as Id<"campaignLaunches">;
 
   // Tri-state contract threaded to the view:
   //   - `undefined` (Convex sentinel) → loading.
   //   - resolved + found              → the launch summary payload.
   //   - resolved + not found          → `null` (stale link, or the launch
-  //     belongs to another tenant — the backend returns null in both cases).
-  const launch = useTenantQuery(
+  //     belongs to another tenant — the backend returns null in both cases;
+  //     a syntactically invalid id short-circuits to `null` here too, so the
+  //     UI is identical across all three "not found" causes).
+  const launchFromQuery = useTenantQuery(
     api.lib.notifications.campaigns.getTenantCampaignLaunch,
-    { launchId },
+    launchIdLooksValid ? { launchId } : "skip",
   );
+  const launch = launchIdLooksValid ? launchFromQuery : null;
 
   return (
     <LaunchDetailView tenantId={tenantId} launchId={launchId} launch={launch} />
