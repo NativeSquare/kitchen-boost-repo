@@ -39,6 +39,8 @@ import { useQuery } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import type { Doc, Id } from "@packages/backend/convex/_generated/dataModel";
 
+import type { SessionState } from "@/lib/session";
+
 import { computeWizardState } from "./wizard.decision";
 import type { WizardStepNumber } from "./wizard-stepper";
 
@@ -112,7 +114,21 @@ export type UseWizardStateResult = {
 
 export function useWizardState(
   prospectId: Id<"prospects"> | undefined,
+  session: SessionState,
 ): UseWizardStateResult {
+  // Issue #392 — RBAC skip guard.
+  //
+  // EVERY Convex query below is exposed via `kbAdminQuery` (ADR 0010), so
+  // calling them from a non-root actor throws `FORBIDDEN: kb_admin role
+  // required`. If we fired the queries unconditionally, a KB Manager landing
+  // on `/pipeline/<id>/provision` (via URL share, etc.) would surface a raw
+  // Convex error boundary INSTEAD of the canonical `UnauthorizedCard` —
+  // exactly what `/monitoring/page.tsx` and `/pipeline/<id>/page.tsx` guard
+  // against with the same skip-sentinel pattern. Gate every query on a
+  // resolved-and-admin session; `WizardView`'s `forbidden` branch then
+  // renders the shared refusal card without any network round-trip.
+  const isAdminReady = session.status === "ready" && session.session.isAdmin;
+
   // Prospect is now LIVE (F-WIZARD [3/10] #267): the wizard cannot do
   // anything without the prospect doc — step 1's pre-fill, the back-link
   // detection (`prospect.tenantId`), and the cursor heuristic all need it.
@@ -159,16 +175,20 @@ export function useWizardState(
   // conservatively (step 7 stays incomplete until the query resolves).
   const prospect = useQuery(
     api.lib.onboarding.crm.getProspect,
-    prospectId !== undefined ? { prospectId } : "skip",
+    isAdminReady && prospectId !== undefined ? { prospectId } : "skip",
   );
   const tenantBackLink = prospect?.tenantId;
   const tenant = useQuery(
     api.lib.stripe.account.loadTenantForStripe,
-    tenantBackLink !== undefined ? { tenantId: tenantBackLink } : "skip",
+    isAdminReady && tenantBackLink !== undefined
+      ? { tenantId: tenantBackLink }
+      : "skip",
   );
   const publicationStatus = useQuery(
     api.lib.menu.publication.hasUnpublishedChanges,
-    tenantBackLink !== undefined ? { tenantId: tenantBackLink } : "skip",
+    isAdminReady && tenantBackLink !== undefined
+      ? { tenantId: tenantBackLink }
+      : "skip",
   );
   // Tri-state mapping:
   //   - `undefined` (query in flight)              → undefined.
@@ -191,7 +211,9 @@ export function useWizardState(
           } as unknown as Doc<"publishedMenus">);
   const managerInvite: ManagerInviteDoc | null | undefined = useQuery(
     api.lib.admin.managerInvites.getLatestManagerInviteForTenant,
-    tenantBackLink !== undefined ? { tenantId: tenantBackLink } : "skip",
+    isAdminReady && tenantBackLink !== undefined
+      ? { tenantId: tenantBackLink }
+      : "skip",
   );
 
   // Cursor state.

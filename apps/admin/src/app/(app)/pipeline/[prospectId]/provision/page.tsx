@@ -41,7 +41,13 @@ export default function ProvisionWizardPage() {
     | Id<"prospects">
     | undefined;
 
-  const wizard = useWizardState(prospectId);
+  // The hook needs `session` to gate its `kbAdminQuery` reads on a resolved
+  // admin actor (issue #392 — same skip-sentinel pattern as `/monitoring`
+  // and `/pipeline/<id>/page.tsx`). Without this guard, a KB Manager hitting
+  // the URL would surface a raw `FORBIDDEN` Convex error boundary instead
+  // of the canonical `UnauthorizedCard` rendered by `WizardView`'s
+  // `forbidden` branch.
+  const wizard = useWizardState(prospectId, session);
 
   return (
     <WizardView

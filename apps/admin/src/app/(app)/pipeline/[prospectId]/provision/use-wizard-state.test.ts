@@ -85,4 +85,34 @@ describe("use-wizard-state.ts — F-WIZARD [1/10] (#265) wiring contract", () =>
     // the operator clicked Skip).
     expect(code).toMatch(/step2Skipped\s*[,:]/);
   });
+
+  // Issue #392 — RBAC skip-sentinel guard.
+  //
+  // Every Convex query in the hook is exposed via `kbAdminQuery` (ADR 0010),
+  // so calling it from a non-root actor throws `FORBIDDEN: kb_admin role
+  // required`. A KB Manager landing on `/pipeline/<id>/provision` would
+  // surface a raw Convex error boundary INSTEAD of the canonical
+  // `UnauthorizedCard` — the same A4 anomaly already guarded against in
+  // `/monitoring/page.tsx` and `/pipeline/<id>/page.tsx`. The hook MUST gate
+  // every read on a resolved-and-admin session.
+  it("issue #392 — accepts `session` as a second argument and gates every kbAdminQuery on a resolved-admin actor (skip-sentinel pattern)", () => {
+    const code = stripNonCode(HOOK_SOURCE);
+    // The hook signature now threads the session through (so the page can
+    // pass `useSession()` straight in).
+    expect(code).toMatch(
+      /useWizardState\s*\(\s*prospectId[^,)]*,\s*session\s*:/,
+    );
+    // The hook derives `isAdminReady` from the session (mirror of
+    // `/monitoring/page.tsx` and `/pipeline/<id>/page.tsx`).
+    expect(code).toMatch(/isAdminReady/);
+    expect(code).toMatch(/session\.status\s*===\s*["']ready["']/);
+    expect(code).toMatch(/session\.session\.isAdmin/);
+    // The four queries (getProspect, loadTenantForStripe,
+    // hasUnpublishedChanges, getLatestManagerInviteForTenant) are ALL skip-
+    // gated on `isAdminReady` — pin the count of `isAdminReady &&` use sites
+    // so a future contributor doesn't add a 5th unguarded query.
+    const guardMatches = code.match(/isAdminReady\s*&&/g);
+    expect(guardMatches).not.toBeNull();
+    expect(guardMatches?.length ?? 0).toBeGreaterThanOrEqual(4);
+  });
 });

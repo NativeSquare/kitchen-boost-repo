@@ -74,4 +74,17 @@ describe("page.tsx — F-WIZARD [1/10] (#265) wiring contract", () => {
   it('page is marked `"use client"` (uses client hooks — useSession, useParams)', () => {
     expect(PAGE_SOURCE).toMatch(/^["']use client["']/m);
   });
+
+  // Issue #392 — RBAC skip guard threading.
+  //
+  // The hook's queries are kbAdminQuery-gated; if the page doesn't pass the
+  // session through, a KB Manager hitting the URL would surface a raw
+  // Convex FORBIDDEN error instead of the canonical `UnauthorizedCard`.
+  // Pin the exact thread (page → hook → skip-sentinel) at the source level
+  // so a future refactor that drops the second arg breaks here BEFORE the
+  // bug ships.
+  it("issue #392 — threads `session` to `useWizardState` so the hook can skip-sentinel its kbAdminQuery reads on a non-admin actor", () => {
+    const code = stripNonCode(PAGE_SOURCE);
+    expect(code).toMatch(/useWizardState\s*\(\s*prospectId\s*,\s*session\s*\)/);
+  });
 });
