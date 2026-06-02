@@ -83,6 +83,23 @@ export type UseWizardStateResult = {
    */
   markStep2Skipped: () => void;
   /**
+   * W4 E2E fix — flip the local-only « step 3 visited » flag. Threaded down
+   * to `Step3Form`, which calls it once on mount. Step 3 (Stripe KYC) has
+   * no persisted completion signal in V1; visiting the step is the only
+   * available « complete » signal so the stepper doesn't pre-tick it ✅
+   * before the operator ever opened it. Never round-tripped to the backend.
+   */
+  markStep3Visited: () => void;
+  /**
+   * W4 E2E fix — flip the local-only « step 6 visited » flag. Threaded down
+   * to `Step6Form`, which calls it once on mount. Step 6 (QR sticker) is
+   * front-only (no backend persistence — the operator downloads the SVG/PDF);
+   * visiting the step is the only available « complete » signal so the
+   * stepper doesn't pre-tick it ✅ before the operator ever opened it.
+   * Never round-tripped to the backend.
+   */
+  markStep6Visited: () => void;
+  /**
    * The hydrated dependencies, surfaced for the wizard view's debug header
    * AND for the (future) Step{N}Form components that need them (e.g. step 4
    * pre-fills branding fields from `tenant.branding`).
@@ -201,6 +218,16 @@ export function useWizardState(
   // cosmetic, not load-bearing).
   const [step2Skipped, setStep2Skipped] = useState<boolean>(false);
 
+  // W4 E2E fix — local-only « visited » flags for the two optional /
+  // non-blocking steps (3 Stripe KYC + 6 QR sticker). Same discipline as
+  // `step2Skipped`: page-scoped React state, never persisted. Each
+  // `Step{3,6}Form` calls the corresponding marker once on mount. Default
+  // `false` so the stepper renders steps 3 and 6 as `pending` until the
+  // operator actually opens them — fixes the anomaly where the stepper
+  // pre-ticked them ✅ the moment a tenant existed.
+  const [step3Visited, setStep3Visited] = useState<boolean>(false);
+  const [step6Visited, setStep6Visited] = useState<boolean>(false);
+
   const goToStep = useCallback((n: WizardStepNumber) => {
     if (n < 1 || n > 8) return;
     setOverride(n);
@@ -208,6 +235,14 @@ export function useWizardState(
 
   const markStep2Skipped = useCallback(() => {
     setStep2Skipped(true);
+  }, []);
+
+  const markStep3Visited = useCallback(() => {
+    setStep3Visited(true);
+  }, []);
+
+  const markStep6Visited = useCallback(() => {
+    setStep6Visited(true);
   }, []);
 
   // The completion check + tenantId always reflect the LIVE snapshot (so
@@ -222,6 +257,8 @@ export function useWizardState(
         publishedMenu,
         managerInvite,
         step2Skipped,
+        step3Visited,
+        step6Visited,
       })
     : null;
 
@@ -233,6 +270,8 @@ export function useWizardState(
     isStepComplete: liveState?.isStepComplete ?? (() => false),
     goToStep,
     markStep2Skipped,
+    markStep3Visited,
+    markStep6Visited,
     prospect,
     tenant,
     publishedMenu,

@@ -77,6 +77,19 @@ export type WizardViewProps = {
    * step 2 green when the operator clicks Skip — non-breaking).
    */
   markStep2Skipped?: () => void;
+  /**
+   * W4 E2E fix — flip the local « step 3 visited » flag. Threaded down to
+   * Step3Form, which calls it once on mount. Optional so test fixtures
+   * don't have to wire it (the wizard will simply not tick step 3 green
+   * when the operator opens it — non-breaking).
+   */
+  markStep3Visited?: () => void;
+  /**
+   * W4 E2E fix — flip the local « step 6 visited » flag. Threaded down to
+   * Step6Form, which calls it once on mount. Optional so test fixtures
+   * don't have to wire it.
+   */
+  markStep6Visited?: () => void;
 };
 
 function ProspectHeader({
@@ -109,6 +122,8 @@ export function WizardView({
   onStepChange,
   isStepComplete,
   markStep2Skipped,
+  markStep3Visited,
+  markStep6Visited,
 }: WizardViewProps) {
   const decision = decideWizardShell({ session, prospect });
 
@@ -212,6 +227,8 @@ export function WizardView({
         onNext={handleNext}
         onStepChange={onStepChange}
         markStep2Skipped={markStep2Skipped}
+        markStep3Visited={markStep3Visited}
+        markStep6Visited={markStep6Visited}
       />
     </div>
   );

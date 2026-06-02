@@ -138,6 +138,30 @@ export type WizardStateInput = {
    * seen the form yet → step 2 stays unticked).
    */
   step2Skipped?: boolean;
+  /**
+   * Local-only « step 3 (Stripe KYC) visited » flag (W4 E2E fix —
+   * docs/tests/E2E-checklist.md groupe W). Step 3 has NO persisted
+   * completion signal in V1 (« step 3 toujours navigable, V1 pas de
+   * tracking ») — but treating it as complete the moment a tenant exists
+   * is UX-misleading (the stepper ticks step 3 ✅ before the operator
+   * ever clicked « Générer le lien Stripe Connect »). Mirror of
+   * `step2Skipped`: the wizard front owns this flag as React state inside
+   * `useWizardState`; `Step3Form` flips it true the first time it mounts.
+   * Default `false` (operator hasn't seen the form yet → step 3 stays
+   * unticked). Never round-tripped to the backend.
+   */
+  step3Visited?: boolean;
+  /**
+   * Local-only « step 6 (QR sticker) visited » flag (W4 E2E fix —
+   * docs/tests/E2E-checklist.md groupe W). Step 6 is « front-only, no
+   * persistence » (the operator downloads the SVG/PDF) — same UX
+   * pitfall as step 3: treating it as complete the moment a tenant
+   * exists ticks step 6 ✅ before the operator ever opened it. Mirror
+   * of `step2Skipped`: the wizard front owns this flag as React state
+   * inside `useWizardState`; `Step6Form` flips it true the first time
+   * it mounts. Default `false`. Never round-tripped to the backend.
+   */
+  step6Visited?: boolean;
 };
 
 export type WizardState = {
@@ -184,6 +208,8 @@ export function computeWizardState(input: WizardStateInput): WizardState {
     publishedMenu,
     managerInvite,
     step2Skipped = false,
+    step3Visited = false,
+    step6Visited = false,
   } = input;
 
   const tenantId: Id<"tenants"> | null = prospect.tenantId ?? null;
@@ -208,11 +234,16 @@ export function computeWizardState(input: WizardStateInput): WizardState {
         typeof tenant.customDomain === "string" &&
         tenant.customDomain.length > 0));
 
-  // Step 3 (Stripe KYC) is always treated as "navigable" but its completion
-  // is not blocking (issue spec: « step 3 toujours navigable, V1 pas de
-  // tracking »). The cursor logic below skips it when looking for the next
-  // incomplete step.
-  const step3Complete = step1Complete;
+  // Step 3 (Stripe KYC) — V1 has no persisted KYC tracking signal (issue spec
+  // « step 3 toujours navigable, V1 pas de tracking »), so the cursor still
+  // skips this step (see STEPS_THAT_PULL_CURSOR below). BUT we no longer
+  // pre-tick it ✅ the moment a tenant exists (W4 E2E fix — the stepper
+  // would show step 3 complete even when the operator NEVER opened it).
+  // The completion gate is now `step3Visited`, a local flag that flips
+  // true the first time `Step3Form` mounts (mirror of `step2Skipped`).
+  // Step 3 remains optional / non-blocking: the cursor never parks here,
+  // so an unvisited step 3 doesn't stop the operator from progressing.
+  const step3Complete = step1Complete && step3Visited;
 
   // Step 4 = branding. Needs the tenant doc + branding fields populated.
   const step4Complete =
@@ -224,9 +255,14 @@ export function computeWizardState(input: WizardStateInput): WizardState {
   const step5Complete =
     step1Complete && publishedMenu !== undefined && publishedMenu !== null;
 
-  // Step 6 = QR sticker rendering (front-only). Always considered complete
-  // when the tenant exists (no persistence — the operator downloads the PDF).
-  const step6Complete = step1Complete;
+  // Step 6 = QR sticker rendering (front-only, no backend persistence — the
+  // operator downloads the SVG/PDF). Same UX pitfall as step 3 fixed here
+  // (W4 E2E fix): pre-ticking step 6 ✅ the moment a tenant exists ticked
+  // a step the operator never opened. The completion gate is now
+  // `step6Visited`, a local flag flipped true the first time `Step6Form`
+  // mounts (mirror of `step2Skipped` / `step3Visited`). Step 6 stays
+  // optional and never pulls the cursor.
+  const step6Complete = step1Complete && step6Visited;
 
   // Step 7 = manager invite sent.
   const step7Complete =

@@ -1566,11 +1566,17 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 
 - **Acteur** : KB Admin
 - **Pré-requis** : step 1 fait
-- **Étapes** : step 2 « Domaine » : saisir `commande.monresto.fr`, vérification DNS, confirmer.
+- **Étapes** :
+  1. Step 2 « Domaine » : saisir `commande.monresto.fr` dans le champ « Domaine personnalisé (optionnel) ».
+  2. Cliquer « Enregistrer et continuer ».
+  3. Variante skip : cliquer « Skip (rester sur le sous-domaine bootstrap) » sans rien saisir.
 - **Attendu** :
-  - `setCustomDomain` (#358) appelé, DNS check OK, step 2 complete.
-  - URL publique tenant utilise le customDomain.
-- **Couvre** : #268 (débloqué) ; #358.
+  - Validation regex `^[a-z0-9.-]+\.[a-z]{2,}$` côté front + re-validée côté backend par `isValidCustomDomain` (toast `INVALID_CUSTOM_DOMAIN` si invalide).
+  - Mutation `api.lib.admin.tenantSettings.updateSettings` appelée avec `{ tenantId, patch: { customDomain } }` (PAS de mutation dédiée `setCustomDomain` — la story #358 n'a finalement pas livré d'endpoint dédié, le customDomain est posé via la mutation settings générique).
+  - Step 2 complete : tick vert affiché. URL publique tenant utilise le customDomain (vérifiable sur la page `/t/<id>/qr` qui affiche l'URL).
+  - Skip → step 2 tické via flag local `step2Skipped` (jamais persisté), navigation step 3.
+- **Caveat V1** : aucune **vraie** vérification DNS n'est faite côté backend (pas de résolution `commande.monresto.fr` → IP avant persist). La validation est purement regex. Le restaurateur qui saisit un FQDN non DNS-configuré ship une URL cassée jusqu'à ce qu'il pose le CNAME chez son registrar. Gap produit P1 tracé dans une issue GH dédiée (`F-WIZARD — Vraie vérification DNS du customDomain avant activation (gap V1)`).
+- **Couvre** : #268 (débloqué) ; #358 (forme finale = settings.updateSettings, pas de mutation dédiée).
 
 ### W5 — Step 3 Stripe Connect KYC
 

@@ -275,6 +275,12 @@ describe("computeWizardState — F-WIZARD [1/10] (#265) step heuristic", () => {
       tenant,
       publishedMenu,
       managerInvite: null,
+      // W4 E2E fix: step 6 is now visit-gated like step 2's skip flag — pass
+      // step6Visited so the « step 6 considered complete » expectation below
+      // still holds. The cursor heuristic itself stays unchanged: even with
+      // step 6 unticked, the cursor jumps over it to step 7 (optional step,
+      // never pulls the cursor).
+      step6Visited: true,
     });
     expect(state.isStepComplete(5)).toBe(true);
     expect(state.isStepComplete(6)).toBe(true);
@@ -412,6 +418,108 @@ describe("computeWizardState — F-WIZARD [1/10] (#265) step heuristic", () => {
     });
     expect(state.isStepComplete(2)).toBe(false);
     expect(state.currentStep).toBe(4);
+  });
+
+  // -------------------------------------------------------------------------
+  // W4 E2E fix — steps 3 (Stripe KYC) and 6 (QR sticker) are no longer
+  // pre-ticked ✅ the moment a tenant exists. Both steps have no persisted
+  // completion signal in V1 (step 3: « pas de tracking » ; step 6:
+  // « front-only, no persistence ») — but treating them as complete the
+  // moment a tenant exists ticks them green before the operator ever
+  // opened them. The fix introduces local-only `step3Visited` /
+  // `step6Visited` flags (mirror of `step2Skipped`); the corresponding
+  // `Step{3,6}Form` flips its flag once on mount. The cursor heuristic
+  // does NOT change: steps 3 and 6 stay « always navigable, skip-allowed »
+  // and never pull the cursor.
+  // -------------------------------------------------------------------------
+  it("W4 E2E fix: step 3 incomplete by default once tenant exists (operator must visit it)", () => {
+    const tenant = makeTenant({
+      branding: { primaryColor: "#1B7A3D", logoUrl: "https://x/logo.png" },
+    });
+    const state = computeWizardState({
+      prospect: makeProspect({ tenantId: TENANT_ID }),
+      tenant,
+      publishedMenu: undefined,
+      managerInvite: undefined,
+    });
+    expect(state.isStepComplete(1)).toBe(true);
+    expect(state.isStepComplete(3)).toBe(false);
+  });
+
+  it("W4 E2E fix: step 3 complete once the operator has visited it (step3Visited flag)", () => {
+    const tenant = makeTenant({
+      branding: { primaryColor: "#1B7A3D", logoUrl: "https://x/logo.png" },
+    });
+    const state = computeWizardState({
+      prospect: makeProspect({ tenantId: TENANT_ID }),
+      tenant,
+      publishedMenu: undefined,
+      managerInvite: undefined,
+      step3Visited: true,
+    });
+    expect(state.isStepComplete(3)).toBe(true);
+  });
+
+  it("W4 E2E fix: step 6 incomplete by default once tenant exists (operator must visit it)", () => {
+    const tenant = makeTenant({
+      branding: { primaryColor: "#1B7A3D", logoUrl: "https://x/logo.png" },
+    });
+    const publishedMenu = {
+      _id: PUBLISHED_MENU_ID,
+      _creationTime: 1,
+      tenantId: TENANT_ID,
+    } as unknown as Doc<"publishedMenus">;
+    const state = computeWizardState({
+      prospect: makeProspect({ tenantId: TENANT_ID }),
+      tenant,
+      publishedMenu,
+      managerInvite: null,
+    });
+    expect(state.isStepComplete(5)).toBe(true);
+    expect(state.isStepComplete(6)).toBe(false);
+  });
+
+  it("W4 E2E fix: step 6 complete once the operator has visited it (step6Visited flag)", () => {
+    const tenant = makeTenant({
+      branding: { primaryColor: "#1B7A3D", logoUrl: "https://x/logo.png" },
+    });
+    const publishedMenu = {
+      _id: PUBLISHED_MENU_ID,
+      _creationTime: 1,
+      tenantId: TENANT_ID,
+    } as unknown as Doc<"publishedMenus">;
+    const state = computeWizardState({
+      prospect: makeProspect({ tenantId: TENANT_ID }),
+      tenant,
+      publishedMenu,
+      managerInvite: null,
+      step6Visited: true,
+    });
+    expect(state.isStepComplete(6)).toBe(true);
+  });
+
+  it("W4 E2E fix: steps 3 + 6 unvisited DO NOT pull the cursor (cursor still falls through to step 7 once 4+5 are done)", () => {
+    // Defensive: confirm the cursor heuristic is unaffected by the fix.
+    // Branding done + menu published + invite missing → cursor parks on 7,
+    // NOT on the still-incomplete optional step 3 or 6.
+    const tenant = makeTenant({
+      branding: { primaryColor: "#1B7A3D", logoUrl: "https://x/logo.png" },
+    });
+    const publishedMenu = {
+      _id: PUBLISHED_MENU_ID,
+      _creationTime: 1,
+      tenantId: TENANT_ID,
+    } as unknown as Doc<"publishedMenus">;
+    const state = computeWizardState({
+      prospect: makeProspect({ tenantId: TENANT_ID }),
+      tenant,
+      publishedMenu,
+      managerInvite: null,
+      // step3Visited and step6Visited deliberately left false
+    });
+    expect(state.isStepComplete(3)).toBe(false);
+    expect(state.isStepComplete(6)).toBe(false);
+    expect(state.currentStep).toBe(7);
   });
 });
 

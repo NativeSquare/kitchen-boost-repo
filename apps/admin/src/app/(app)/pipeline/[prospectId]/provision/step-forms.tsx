@@ -51,7 +51,7 @@
  * obviously-placeholder so an operator never confuses them for a usable
  * form. The follow-up slice will replace the file's content entirely.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAction, useConvex, useMutation, useQuery } from "convex/react";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -106,6 +106,22 @@ export type StepFormProps = {
    * Step2Form wrapper consumes it.
    */
   markStep2Skipped?: () => void;
+  /**
+   * W4 E2E fix — flip the local « step 3 visited » flag. Threaded by the
+   * wizard view from `useWizardState`. `Step3Form` calls it once on mount
+   * so the stepper stops pre-ticking step 3 ✅ before the operator ever
+   * opened the Stripe KYC form. Optional so non-step-3 forms don't have
+   * to wire it.
+   */
+  markStep3Visited?: () => void;
+  /**
+   * W4 E2E fix — flip the local « step 6 visited » flag. Threaded by the
+   * wizard view from `useWizardState`. `Step6Form` calls it once on mount
+   * so the stepper stops pre-ticking step 6 ✅ before the operator ever
+   * opened the QR sticker preview. Optional so non-step-6 forms don't have
+   * to wire it.
+   */
+  markStep6Visited?: () => void;
 };
 
 // F-WIZARD [4/10] (#268) — the placeholder helpers (`placeholderBody`,
@@ -251,7 +267,11 @@ function Step1Form({ onPrev, onNext }: StepFormProps): React.JSX.Element {
  * link has expired — landing back on step 3 lets the operator simply
  * « Régénérer » a fresh one.
  */
-function Step3Form({ onPrev, onNext }: StepFormProps): React.JSX.Element {
+function Step3Form({
+  onPrev,
+  onNext,
+  markStep3Visited,
+}: StepFormProps): React.JSX.Element {
   const params = useParams<{ prospectId: string }>();
   const prospectId = params?.prospectId as unknown as
     | Id<"prospects">
@@ -268,6 +288,16 @@ function Step3Form({ onPrev, onNext }: StepFormProps): React.JSX.Element {
   const [accountLinkUrl, setAccountLinkUrl] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
+
+  // W4 E2E fix — flip the local « step 3 visited » flag once on mount.
+  // Step 3 has NO persisted completion signal in V1 (« step 3 toujours
+  // navigable, V1 pas de tracking »); visiting the step is the only available
+  // « complete » signal so the stepper doesn't pre-tick it ✅ before the
+  // operator ever opened the Stripe KYC form. The setter is idempotent
+  // (React `useState` setter to true) so a re-render does not loop.
+  useEffect(() => {
+    markStep3Visited?.();
+  }, [markStep3Visited]);
 
   // Defensive loading / not-found — the outer `decideWizardShell` normally
   // gates these, but a race between the page-level prospect query and this
@@ -899,7 +929,11 @@ function Step5Form({ onPrev, onNext }: StepFormProps): React.JSX.Element {
  * the wrapper's behaviour is pinned indirectly through the pure form tests
  * (`step6-qr-form.test.tsx`) and directly through CI runtime + E2E.
  */
-function Step6Form({ onPrev, onNext }: StepFormProps): React.JSX.Element {
+function Step6Form({
+  onPrev,
+  onNext,
+  markStep6Visited,
+}: StepFormProps): React.JSX.Element {
   const params = useParams<{ prospectId: string }>();
   const prospectId = params?.prospectId as unknown as
     | Id<"prospects">
@@ -915,6 +949,15 @@ function Step6Form({ onPrev, onNext }: StepFormProps): React.JSX.Element {
     api.lib.stripe.account.loadTenantForStripe,
     tenantId !== undefined ? { tenantId } : "skip",
   );
+
+  // W4 E2E fix — flip the local « step 6 visited » flag once on mount.
+  // Step 6 is front-only (no backend persistence — the operator downloads
+  // the SVG/PDF); visiting the step is the only available « complete »
+  // signal so the stepper doesn't pre-tick it ✅ before the operator
+  // ever opened the QR sticker preview. The setter is idempotent.
+  useEffect(() => {
+    markStep6Visited?.();
+  }, [markStep6Visited]);
 
   // Defensive loading / not-found — outer `decideWizardShell` + the cursor
   // heuristic normally gate these, but races between the page-level queries
