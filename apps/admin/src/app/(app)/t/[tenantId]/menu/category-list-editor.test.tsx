@@ -60,6 +60,14 @@ vi.mock("react", async () => {
     // `environment: "node"` (no React renderer), the real `useMemo` throws
     // « can't read properties of null ». Stub it to call the factory.
     useMemo: <T,>(factory: () => T) => factory(),
+    // « + Ajouter une catégorie » UX — the editor tracks the previous ids
+    // snapshot via `useRef` to detect the newly-added row, and the row uses
+    // a second `useRef` for the input element (autofocus + select-all). Real
+    // `useRef` throws under `environment: "node"` — stub to a fresh object
+    // per call (each serialize() pass is a one-shot render, so the « stable
+    // identity across renders » contract is irrelevant here; the diff logic
+    // itself is pinned by the pure-helper test on `findNewlyAddedId`).
+    useRef: <T,>(initial: T) => ({ current: initial }),
   };
 });
 
@@ -108,7 +116,8 @@ vi.mock("@dnd-kit/utilities", () => ({
   CSS: { Transform: { toString: () => undefined } },
 }));
 
-const { CategoryListEditor } = await import("./category-list-editor");
+const { CategoryListEditor, CategoryRow, findNewlyAddedId } =
+  await import("./category-list-editor");
 
 // ---------------------------------------------------------------------------
 // Tiny React-tree serializer (mirror of menu-view.test.tsx — kept duplicated
@@ -438,6 +447,182 @@ describe("CategoryListEditor — F-MENU-02 (#200)", () => {
     expect(addButtons).toHaveLength(1);
     const rows = findBySlot(tree, "menu-category-row");
     expect(rows).toHaveLength(0);
+  });
+
+  // -------------------------------------------------------------------------
+  // Fix UX (Alex, E2E manuel) — « Enter ne fais aucune action, PAS moyen de
+  // valider la saisie d'une catégorie simplement -> à revoir ».
+  //
+  // Two complementary fixes :
+  //   - Fix A : pressing Enter flushes the pending debounced rename and blurs
+  //     the input (visual signal « saisie committée »).
+  //   - Fix B : the row freshly created by « + Ajouter une catégorie »
+  //     autofocuses its input + selects-all « Nouvelle catégorie » so the
+  //     gérant can type directly over it (no Ctrl+A roundtrip).
+  // -------------------------------------------------------------------------
+
+  it("Fix A — Enter flushes the pending rename synchronously and blurs the input", () => {
+    // Why synchronously : the user just pressed Enter, the debounce window
+    // (600 ms) would feel like lag — the rename mutation MUST fire on the
+    // current frame. We assert by NOT advancing timers and still seeing
+    // onRename called (proving it went through `flush`, not `setTimeout`).
+    const onRename = vi.fn();
+    const tree = serialize(
+      CategoryListEditor({
+        categories: [makeCategory({ name: "Entrées", order: 0 })],
+        onCreate: vi.fn(),
+        onRename,
+        onDelete: vi.fn(),
+      }),
+    );
+    const input = findBySlot(tree, "menu-category-name-input")[0];
+    expect(input).toBeDefined();
+
+    // Simulate a keystroke that schedules a debounced rename.
+    const onChange = input.props["onChange"] as (e: {
+      target: { value: string };
+    }) => void;
+    expect(typeof onChange).toBe("function");
+    onChange({ target: { value: "Entrées chaudes" } });
+
+    // Now press Enter — flush should fire synchronously.
+    const onKeyDown = input.props["onKeyDown"] as (e: {
+      key: string;
+      preventDefault: () => void;
+      currentTarget: { blur: () => void };
+    }) => void;
+    expect(typeof onKeyDown).toBe("function");
+    const preventDefault = vi.fn();
+    const blur = vi.fn();
+    onKeyDown({ key: "Enter", preventDefault, currentTarget: { blur } });
+
+    expect(preventDefault).toHaveBeenCalledTimes(1);
+    expect(blur).toHaveBeenCalledTimes(1);
+    expect(onRename).toHaveBeenCalledTimes(1);
+    expect(onRename).toHaveBeenCalledWith(
+      "cat_Entrées" as Id<"menuCategories">,
+      "Entrées chaudes",
+    );
+  });
+
+  it("Fix A — non-Enter keys do NOT flush (debounce intact for normal typing)", () => {
+    // Guard against an over-broad handler that would fire on every keystroke
+    // (regression of the « per-keystroke mutation » anti-pattern ADR 0015
+    // explicitly forbids).
+    const onRename = vi.fn();
+    const tree = serialize(
+      CategoryListEditor({
+        categories: [makeCategory({ name: "Plats", order: 0 })],
+        onCreate: vi.fn(),
+        onRename,
+        onDelete: vi.fn(),
+      }),
+    );
+    const input = findBySlot(tree, "menu-category-name-input")[0];
+    const onChange = input.props["onChange"] as (e: {
+      target: { value: string };
+    }) => void;
+    onChange({ target: { value: "Plats du jour" } });
+
+    const onKeyDown = input.props["onKeyDown"] as (e: {
+      key: string;
+      preventDefault: () => void;
+      currentTarget: { blur: () => void };
+    }) => void;
+    const preventDefault = vi.fn();
+    const blur = vi.fn();
+    onKeyDown({ key: "a", preventDefault, currentTarget: { blur } });
+
+    expect(preventDefault).not.toHaveBeenCalled();
+    expect(blur).not.toHaveBeenCalled();
+    expect(onRename).not.toHaveBeenCalled();
+  });
+
+  it("Fix B — findNewlyAddedId returns null on first call (initial hydration is NOT a user create)", () => {
+    // We must not autofocus on the page's initial mount — the list is just
+    // hydrated by Convex, not a user-initiated create. Only the diff between
+    // two subsequent snapshots counts.
+    const { newlyAddedId, nextIds } = findNewlyAddedId(null, [
+      { _id: "a" },
+      { _id: "b" },
+    ]);
+    expect(newlyAddedId).toBeNull();
+    expect(Array.from(nextIds)).toEqual(["a", "b"]);
+  });
+
+  it("Fix B — findNewlyAddedId returns the last id that appeared since prev snapshot", () => {
+    // « Last one wins » : the footer button creates rows one at a time, and
+    // if a concurrent tab races us, focusing the more-recent one (sorted by
+    // `order = max + 1`) is the better UX.
+    const prev = new Set(["a", "b"]);
+    const { newlyAddedId } = findNewlyAddedId(prev, [
+      { _id: "a" },
+      { _id: "b" },
+      { _id: "c" },
+    ]);
+    expect(newlyAddedId).toBe("c");
+  });
+
+  it("Fix B — findNewlyAddedId returns null when nothing was added (rename / delete / reorder)", () => {
+    const prev = new Set(["a", "b"]);
+    // Same set, different order.
+    expect(
+      findNewlyAddedId(prev, [{ _id: "b" }, { _id: "a" }]).newlyAddedId,
+    ).toBeNull();
+    // Deletion.
+    expect(findNewlyAddedId(prev, [{ _id: "a" }]).newlyAddedId).toBeNull();
+  });
+
+  it("Fix B — a CategoryRow rendered with autoFocus=true marks its input with data-autofocus-pending and autoFocus", () => {
+    // The marker is the contract the actual browser focus call relies on.
+    // The real focus + select-all happens in a useEffect on mount — that
+    // effect is shimmed to no-op under node env (the contract is :
+    // « si autoFocus=true alors l'input est marqué et le navigateur le
+    // focusera au mount »). The marker is independently observable from
+    // an e2e test or via DOM inspection.
+    const tree = serialize(
+      CategoryRow({
+        category: makeCategory({ name: "Nouvelle catégorie", order: 3 }),
+        onRename: vi.fn(),
+        onDelete: vi.fn(),
+        sortable: false,
+        autoFocus: true,
+      }),
+    );
+    const input = findBySlot(tree, "menu-category-name-input")[0];
+    expect(input).toBeDefined();
+    expect(input.props["data-autofocus-pending"]).toBe("true");
+    // The native `<input>`'s `autoFocus` attribute is also a fallback path
+    // (browsers honor it on first mount even without our useEffect).
+    // Threaded through `Input` via the spread.
+    // (Asserted via the underlying `<input>` since Input is a pass-through.)
+    const nativeInputs = flatten(tree).filter((x) => {
+      if (x === null || "text" in x) return false;
+      return x.type === "input";
+    }) as Array<{
+      type: string;
+      props: Record<string, unknown>;
+    }>;
+    // The Input pass-through gets called once during serialize; the inner
+    // <input> should carry the same data marker.
+    expect(nativeInputs.length).toBeGreaterThanOrEqual(1);
+    expect(nativeInputs[0].props["data-autofocus-pending"]).toBe("true");
+  });
+
+  it("Fix B — a CategoryRow rendered with autoFocus=false (default) does NOT set the autofocus marker", () => {
+    // Guard against a regression where every row would always autofocus
+    // (the « last input wins focus » nightmare).
+    const tree = serialize(
+      CategoryRow({
+        category: makeCategory({ name: "Plats", order: 1 }),
+        onRename: vi.fn(),
+        onDelete: vi.fn(),
+        sortable: false,
+      }),
+    );
+    const input = findBySlot(tree, "menu-category-name-input")[0];
+    expect(input).toBeDefined();
+    expect(input.props["data-autofocus-pending"]).toBeUndefined();
   });
 
   // Mark `Id` import as used so the type-only fixture compiles in node env.

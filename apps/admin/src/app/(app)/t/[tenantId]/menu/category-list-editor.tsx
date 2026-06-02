@@ -48,7 +48,7 @@
  * `apps/native`, or `packages/backend/convex/`.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { IconGripVertical, IconPlus, IconTrash } from "@tabler/icons-react";
 import {
   DndContext,
@@ -88,6 +88,37 @@ import { useDebouncedCallback } from "./use-debounced-callback";
 
 /** Default debounce for the rename input (ADR 0015, story body « 500-800 ms »). */
 const RENAME_DEBOUNCE_MS = 600;
+
+/**
+ * Detect the « last id that just appeared » between two snapshots of the
+ * displayed categories. Pure helper, exported for unit-testing (the React-side
+ * wiring uses a `useRef` to hold the previous snapshot — see
+ * `CategoryListEditor` body).
+ *
+ * Contract:
+ *   - First-time call (`prevIds === null`) returns `{ newlyAddedId: null }`
+ *     — we never autofocus on the initial mount (the user did not just click
+ *     « Ajouter une catégorie », the list was simply hydrated by Convex).
+ *   - Otherwise, returns the LAST id in `current` that wasn't present in
+ *     `prevIds`. « Last one wins » because the only path that creates rows
+ *     is the footer button, which creates them one at a time — and if a
+ *     concurrent tab also creates one, autofocusing the more-recent one
+ *     (sorted by `order = max + 1`) is the better UX.
+ *   - Always returns the new `nextIds` set so the caller can stash it for
+ *     the next comparison without recomputing.
+ */
+export function findNewlyAddedId<T extends { _id: string }>(
+  prevIds: ReadonlySet<string> | null,
+  current: readonly T[],
+): { newlyAddedId: string | null; nextIds: Set<string> } {
+  const nextIds = new Set(current.map((c) => c._id));
+  if (prevIds === null) return { newlyAddedId: null, nextIds };
+  let found: string | null = null;
+  for (const c of current) {
+    if (!prevIds.has(c._id)) found = c._id;
+  }
+  return { newlyAddedId: found, nextIds };
+}
 
 export type CategoryListEditorProps = {
   /** Tenant's categories (sorted defensively by `order` inside this view). */
@@ -169,6 +200,26 @@ export function CategoryListEditor({
     return ordered;
   }, [displayedIds, byId, sorted]);
 
+  // « + Ajouter une catégorie » UX (Alex, E2E manuel) : la row fraîchement
+  // créée doit autofocus son input + select-all le nom par défaut, sinon le
+  // gérant doit cliquer + Ctrl+A + retaper. On détecte la new row par
+  // diff d'ids entre deux renders. On utilise le pattern canonique « reset
+  // state on prop change » (cf. `prevSorted` ci-dessus) plutôt que `useRef`
+  // — le React Compiler interdit la lecture/écriture de ref pendant render,
+  // et ce calcul est dérivé du `displayed` (donc une state-on-prop est la
+  // forme correcte). Premier render = `null` (la liste est juste hydratée
+  // par Convex, pas un create user-initiated → pas d'autofocus).
+  const [prevDisplayed, setPrevDisplayed] = useState(displayed);
+  const [newlyAddedId, setNewlyAddedId] = useState<string | null>(null);
+  if (displayed !== prevDisplayed) {
+    const { newlyAddedId: nextId } = findNewlyAddedId(
+      new Set(prevDisplayed.map((c) => c._id as unknown as string)),
+      displayed,
+    );
+    setPrevDisplayed(displayed);
+    setNewlyAddedId(nextId);
+  }
+
   const sensors = useSensors(
     useSensor(PointerSensor, {
       // A small distance threshold avoids accidental drags when the user
@@ -194,13 +245,15 @@ export function CategoryListEditor({
     onReorder(nextIds);
   };
 
-  const rows = displayed.map((category) =>
-    sortable ? (
+  const rows = displayed.map((category) => {
+    const autoFocus = (category._id as unknown as string) === newlyAddedId;
+    return sortable ? (
       <SortableCategoryRow
         key={category._id}
         category={category}
         onRename={onRename}
         onDelete={onDelete}
+        autoFocus={autoFocus}
       />
     ) : (
       <CategoryRow
@@ -209,9 +262,10 @@ export function CategoryListEditor({
         onRename={onRename}
         onDelete={onDelete}
         sortable={false}
+        autoFocus={autoFocus}
       />
-    ),
-  );
+    );
+  });
 
   const body = sortable ? (
     <DndContext
@@ -248,7 +302,7 @@ export function CategoryListEditor({
   );
 }
 
-type CategoryRowProps = {
+export type CategoryRowProps = {
   category: Doc<"menuCategories">;
   onRename: (categoryId: Id<"menuCategories">, name: string) => void;
   onDelete: (categoryId: Id<"menuCategories">) => void;
@@ -265,15 +319,26 @@ type CategoryRowProps = {
   style?: React.CSSProperties;
   /** F-MENU-03 (#206) — set-node-ref from `useSortable`, attached to the outer Card. */
   setNodeRef?: (node: HTMLElement | null) => void;
+  /**
+   * « + Ajouter une catégorie » UX (Alex, E2E manuel) — `true` when this row
+   * was just appended by the user via the footer button. On the FIRST render
+   * of the row, the rename input is focused + its text fully selected so the
+   * gérant can simply start typing to overwrite the « Nouvelle catégorie »
+   * placeholder (no click + Ctrl+A + retype roundtrip). Subsequent renders
+   * (e.g. live-query echo after the create mutation resolves) do NOT re-focus
+   * — the user may have already tabbed away.
+   */
+  autoFocus?: boolean;
 };
 
-function CategoryRow({
+export function CategoryRow({
   category,
   onRename,
   onDelete,
   dragHandle,
   style,
   setNodeRef,
+  autoFocus = false,
 }: CategoryRowProps) {
   // The local `draft` is seeded ONCE from `category.name` and from then on it
   // is the user's input — never re-overwritten by Convex live-query echoes.
@@ -332,22 +397,51 @@ function CategoryRow({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // « + Ajouter une catégorie » UX — focus + select-all on the first render
+  // of a freshly-created row so the gérant types directly over the « Nouvelle
+  // catégorie » placeholder. We only fire ONCE (no deps that would re-run),
+  // because by the time the row re-renders the user may already have tabbed
+  // away — we'd steal focus mid-flow.
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (!autoFocus) return;
+    const el = inputRef.current;
+    if (el === null) return;
+    el.focus();
+    el.select();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <Card data-slot="menu-category-row" ref={setNodeRef} style={style}>
       <CardContent className="flex items-center gap-3 py-3">
         {dragHandle}
         <Input
+          ref={inputRef}
           value={draft}
           onChange={(e) => {
             const next = e.target.value;
             setDraft(next);
             debouncedRename(next);
           }}
+          onKeyDown={(e) => {
+            // Enter = commit. Fires the pending rename synchronously (no need
+            // to wait 600 ms), then blurs so the user gets a visual signal
+            // « ma saisie a bien été enregistrée ». Reported E2E manuel par
+            // Alex : « Enter ne fais aucune action, PAS moyen de valider la
+            // saisie d'une catégorie simplement ».
+            if (e.key === "Enter") {
+              e.preventDefault();
+              debouncedRename.flush();
+              e.currentTarget.blur();
+            }
+          }}
           onBlur={() => {
             debouncedRename.flush();
           }}
           data-slot="menu-category-name-input"
           data-category-id={category._id as unknown as string}
+          data-autofocus-pending={autoFocus ? "true" : undefined}
           aria-label={`Nom de la catégorie ${category.name}`}
           className="flex-1"
         />
@@ -406,13 +500,14 @@ function CategoryRow({
  */
 type SortableCategoryRowProps = Pick<
   CategoryRowProps,
-  "category" | "onRename" | "onDelete"
+  "category" | "onRename" | "onDelete" | "autoFocus"
 >;
 
 function SortableCategoryRow({
   category,
   onRename,
   onDelete,
+  autoFocus,
 }: SortableCategoryRowProps) {
   const {
     attributes,
@@ -448,6 +543,7 @@ function SortableCategoryRow({
       dragHandle={handle}
       style={style}
       setNodeRef={setNodeRef}
+      autoFocus={autoFocus}
     />
   );
 }

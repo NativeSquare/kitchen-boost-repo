@@ -57,6 +57,10 @@ vi.mock("react", async () => {
     },
     useEffect: () => {},
     useMemo: <T,>(factory: () => T) => factory(),
+    // « + Ajouter une catégorie » UX — CategoryRow uses `useRef` for the
+    // input element (autofocus + select-all on first mount). Real `useRef`
+    // throws under `environment: "node"`. Stub to a fresh object per call.
+    useRef: <T,>(initial: T) => ({ current: initial }),
   };
 });
 vi.mock("@dnd-kit/core", () => {
