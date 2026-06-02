@@ -1178,18 +1178,24 @@ export const seedE2ECustomerKPIs = internalMutation({
         .withIndex("by_user", (q) => q.eq("userId", user._id))
         .first();
       const reachFields = mcReachabilityFields(spec.reach, email);
+      // Marketing-eligible : stamp `cgvAcceptedAt` (ADR 0007 — clic « Payer »
+      // est le consentement). Sans ce champ, `marketingEligible()` retourne
+      // false et tous les sends tombent dans `skippedIneligible` (MC14 bug
+      // découvert 2026-06-02). Pas de `marketingOptOutDate` → eligible.
+      const consentFields = { cgvAcceptedAt: now };
       if (customer === null) {
         const customerId = await ctx.db.insert("customers", {
           userId: user._id,
           firstName: spec.firstName,
           createdAt: now,
           ...reachFields,
+          ...consentFields,
         });
         customer = await ctx.db.get(customerId);
         customersCreated += 1;
       } else {
-        // Re-run: refresh reachability fields in case the spec evolved.
-        await ctx.db.patch(customer._id, reachFields);
+        // Re-run: refresh reachability + consent fields in case the spec evolved.
+        await ctx.db.patch(customer._id, { ...reachFields, ...consentFields });
         customersReused += 1;
       }
       if (customer === null) {
@@ -2472,7 +2478,8 @@ export const seedE2EMCSendCustomers = internalMutation({
         throw new ConvexError({ message: "User insert failed (impossible)" });
       }
 
-      // 2. customers fiche (all-three-reach : email + phone + push enrolled).
+      // 2. customers fiche (all-three-reach : email + phone + push enrolled
+      // + cgvAcceptedAt pour marketing-eligible, cf. consent.ts).
       const reachFields = {
         email,
         phone: spec.phone,
@@ -2480,6 +2487,7 @@ export const seedE2EMCSendCustomers = internalMutation({
           webPushStatus: "enrolled" as const,
         },
       };
+      const consentFields = { cgvAcceptedAt: now };
       let customer = await ctx.db
         .query("customers")
         .withIndex("by_user", (q) => q.eq("userId", user._id))
@@ -2490,11 +2498,12 @@ export const seedE2EMCSendCustomers = internalMutation({
           firstName: spec.firstName,
           createdAt: now,
           ...reachFields,
+          ...consentFields,
         });
         customer = await ctx.db.get(customerId);
         customersCreated += 1;
       } else {
-        await ctx.db.patch(customer._id, reachFields);
+        await ctx.db.patch(customer._id, { ...reachFields, ...consentFields });
         customersReused += 1;
       }
       if (customer === null) {
