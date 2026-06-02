@@ -2805,3 +2805,303 @@ export const wipeE2EMCT2Launch = internalMutation({
     return { launchesDeleted };
   },
 });
+
+// -----------------------------------------------------------------------------
+// E2E-MC-F seed — populate `orders` payées sur 90 jours pour exercer le
+// Dashboard 4 KPI cards (MC20/MC21) + Stats RangePicker (MC22/MC23/MC24) +
+// LineChart Revenus par jour (MC25/MC26/MC27).
+//
+// Sentinellé par `restaurantNote` qui commence par `[E2E MC-F]` (champ peu
+// utilisé en V1, on peut filtrer dessus pour le wipe sans toucher de vrais
+// orders).
+//
+// Distribution sur test-t1 (15 orders) :
+//   - 2 orders aujourd'hui (1 livrée paid + 1 en préparation paid)
+//   - 3 orders dans les 7 derniers jours (livrée paid)
+//   - 5 orders entre J-8 et J-30 (livrée paid)
+//   - 5 orders entre J-31 et J-90 (livrée paid)
+//
+// Distribution sur test-t2 (2 orders) :
+//   - 2 orders aujourd'hui (livrée paid) avec totaux TRÈS différents de T1
+//     pour exercer MC21 (isolation cross-tenant via switcher).
+//
+// MC27 (empty state LineChart) → testable sur test-t2 AVANT le run du seed
+// T2 (séquence imposée, comme MC18/MC19).
+// -----------------------------------------------------------------------------
+
+const E2E_MC_F_NOTE_PREFIX = "[E2E MC-F] ";
+
+type MCFOrderSpec = {
+  /** Position de l'order dans le passé (daysAgo = 0 → aujourd'hui). */
+  daysAgo: number;
+  /** Cents — pricingSnapshot.total. */
+  totalCents: number;
+  /** Si true, l'order reste en « en préparation » (1 « en cours »). Sinon livrée. */
+  enCours?: boolean;
+};
+
+const MC_F_T1_ORDER_SPECS: ReadonlyArray<MCFOrderSpec> = [
+  // 2 aujourd'hui
+  { daysAgo: 0, totalCents: 2450 }, // 24,50 €
+  { daysAgo: 0, totalCents: 1890, enCours: true }, // 18,90 € en cours
+  // 3 dans les 7 derniers jours
+  { daysAgo: 1, totalCents: 3200 }, // 32,00 €
+  { daysAgo: 3, totalCents: 2100 }, // 21,00 €
+  { daysAgo: 5, totalCents: 4550 }, // 45,50 €
+  // 5 entre J-8 et J-30
+  { daysAgo: 9, totalCents: 1850 },
+  { daysAgo: 13, totalCents: 2700 },
+  { daysAgo: 18, totalCents: 3950 },
+  { daysAgo: 22, totalCents: 2350 },
+  { daysAgo: 28, totalCents: 3100 },
+  // 5 entre J-31 et J-90
+  { daysAgo: 38, totalCents: 2200 },
+  { daysAgo: 47, totalCents: 4100 },
+  { daysAgo: 60, totalCents: 1750 },
+  { daysAgo: 74, totalCents: 5200 },
+  { daysAgo: 87, totalCents: 2850 },
+];
+
+const MC_F_T2_ORDER_SPECS: ReadonlyArray<MCFOrderSpec> = [
+  // 2 aujourd'hui avec totaux très distincts de T1 → MC21 « CA distinct »
+  { daysAgo: 0, totalCents: 9800 }, // 98,00 €
+  { daysAgo: 0, totalCents: 10200 }, // 102,00 €
+];
+
+/**
+ * Helper interne : insère 1 order sur (tenantId, customerId) à partir d'un
+ * spec. Idempotent par `restaurantNote` sentinellé.
+ */
+async function insertMCFOrder(
+  ctx: {
+    db: {
+      insert: (table: string, doc: unknown) => Promise<unknown>;
+      query: (table: string) => {
+        filter: (fn: unknown) => { first: () => Promise<unknown> };
+      };
+    };
+  },
+  tenantId: Id<"tenants">,
+  customerId: Id<"customers">,
+  spec: MCFOrderSpec,
+  sentinelTag: string,
+  now: number,
+): Promise<"created" | "reused"> {
+  const createdAt = now - spec.daysAgo * DAY_MS;
+  const paidAt = createdAt + 60 * 1000; // payé 60 s après création.
+  const note = `${E2E_MC_F_NOTE_PREFIX}${sentinelTag}`;
+
+  // Idempotence : si un order avec exactement ce createdAt et cette note
+  // existe déjà sur ce tenant, le réutiliser.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const existing = await (ctx.db.query("orders") as any)
+    .withIndex(
+      "by_tenant",
+      (q: { eq: (field: string, v: unknown) => unknown }) =>
+        q.eq("tenantId", tenantId),
+    )
+    .filter(
+      (q: {
+        eq: (a: unknown, b: unknown) => unknown;
+        field: (n: string) => unknown;
+      }) => q.eq(q.field("restaurantNote"), note),
+    )
+    .first();
+  if (existing !== null) return "reused";
+
+  await ctx.db.insert("orders", {
+    tenantId,
+    customerId,
+    status: spec.enCours ? "en préparation" : "livrée",
+    mode: "delivery",
+    source: "direct",
+    address: "12 rue de la République, 75011 Paris",
+    restaurantNote: note,
+    pricingSnapshot: {
+      subtotal: Math.round(spec.totalCents * 0.85),
+      deliveryFee: Math.round(spec.totalCents * 0.15),
+      total: spec.totalCents,
+    },
+    createdAt,
+    paidAt,
+    acceptedAt: spec.enCours ? createdAt + 5 * 60 * 1000 : undefined,
+    readyAt: spec.enCours ? undefined : createdAt + 25 * 60 * 1000,
+    handedOverAt: spec.enCours ? undefined : createdAt + 35 * 60 * 1000,
+    completedAt: spec.enCours ? undefined : createdAt + 55 * 60 * 1000,
+  });
+  return "created";
+}
+
+/**
+ * Seed 15 orders payées sur test-t1 réparties 7/30/90j + 1 en cours
+ * (status="en préparation"). Réutilise les customers déjà seedés sur
+ * test-t1 (`seedE2ECustomerKPIs` + `seedE2EMCSendCustomers`) en rotation
+ * round-robin. Idempotent par `restaurantNote` sentinellé.
+ */
+export const seedE2EOrdersT1 = internalMutation({
+  args: {
+    tenantSlug: v.optional(v.string()),
+  },
+  returns: v.object({
+    tenantId: v.id("tenants"),
+    ordersCreated: v.number(),
+    ordersReused: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const slug = args.tenantSlug ?? "test-t1";
+    const tenant = await ctx.db
+      .query("tenants")
+      .withIndex("by_slug", (q) => q.eq("slug", slug))
+      .unique();
+    if (tenant === null) {
+      throw new ConvexError({
+        message: `Tenant with slug "${slug}" not found.`,
+      });
+    }
+
+    // Récupérer les customers linkés à ce tenant via customerOrdersPerTenant.
+    const links = await ctx.db
+      .query("customerOrdersPerTenant")
+      .withIndex("by_tenant_customer", (q) => q.eq("tenantId", tenant._id))
+      .collect();
+    if (links.length === 0) {
+      throw new ConvexError({
+        message: `No customers linked to tenant "${slug}" — run seedE2ECustomerKPIs first.`,
+      });
+    }
+    const customerIds = links.map((l) => l.customerId);
+
+    const now = Date.now();
+    let ordersCreated = 0;
+    let ordersReused = 0;
+
+    for (let i = 0; i < MC_F_T1_ORDER_SPECS.length; i++) {
+      const spec = MC_F_T1_ORDER_SPECS[i];
+      // Round-robin sur les customers linkés.
+      const customerId = customerIds[i % customerIds.length];
+      const tag = `T1-${i.toString().padStart(2, "0")}`;
+      const outcome = await insertMCFOrder(
+        ctx as unknown as Parameters<typeof insertMCFOrder>[0],
+        tenant._id,
+        customerId,
+        spec,
+        tag,
+        now,
+      );
+      if (outcome === "created") ordersCreated += 1;
+      else ordersReused += 1;
+    }
+
+    return { tenantId: tenant._id, ordersCreated, ordersReused };
+  },
+});
+
+/**
+ * Seed 2 orders payées aujourd'hui sur test-t2 (totaux distincts de T1)
+ * pour exercer MC21 (isolation cross-tenant via switcher). Réutilise les
+ * customers de test-t1 (link partagé via customerOrdersPerTenant insertion
+ * directe — les customers eux-mêmes sont GLOBAL, ADR 0010).
+ *
+ * Idempotent par `restaurantNote` sentinellé.
+ */
+export const seedE2EOrdersT2 = internalMutation({
+  args: {
+    tenantSlug: v.optional(v.string()),
+  },
+  returns: v.object({
+    tenantId: v.id("tenants"),
+    ordersCreated: v.number(),
+    ordersReused: v.number(),
+    linksCreated: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const slug = args.tenantSlug ?? "test-t2";
+    const tenant = await ctx.db
+      .query("tenants")
+      .withIndex("by_slug", (q) => q.eq("slug", slug))
+      .unique();
+    if (tenant === null) {
+      throw new ConvexError({
+        message: `Tenant with slug "${slug}" not found.`,
+      });
+    }
+
+    // Pour T2 on a besoin d'au moins 2 customers linkés. Vérifier le link
+    // pour les 2 premiers customers globaux et le créer s'il manque.
+    const allCustomers = await ctx.db.query("customers").collect();
+    const seededCustomers = allCustomers
+      .filter(
+        (c) =>
+          c.email?.endsWith("@kb-e2e-kpi.test") ||
+          c.email?.endsWith("@kb-e2e-mc-d.test"),
+      )
+      .slice(0, 2);
+    if (seededCustomers.length < 2) {
+      throw new ConvexError({
+        message: `Not enough seeded customers — run seedE2ECustomerKPIs + seedE2EMCSendCustomers first.`,
+      });
+    }
+
+    const now = Date.now();
+    let linksCreated = 0;
+    for (const customer of seededCustomers) {
+      const existing = await ctx.db
+        .query("customerOrdersPerTenant")
+        .withIndex("by_tenant_customer", (q) =>
+          q.eq("tenantId", tenant._id).eq("customerId", customer._id),
+        )
+        .unique();
+      if (existing === null) {
+        await ctx.db.insert("customerOrdersPerTenant", {
+          customerId: customer._id,
+          tenantId: tenant._id,
+          totalOrders: 1,
+          lastOrderAt: now,
+          ltv: 100,
+        });
+        linksCreated += 1;
+      }
+    }
+
+    let ordersCreated = 0;
+    let ordersReused = 0;
+    for (let i = 0; i < MC_F_T2_ORDER_SPECS.length; i++) {
+      const spec = MC_F_T2_ORDER_SPECS[i];
+      const customerId = seededCustomers[i % seededCustomers.length]._id;
+      const tag = `T2-${i.toString().padStart(2, "0")}`;
+      const outcome = await insertMCFOrder(
+        ctx as unknown as Parameters<typeof insertMCFOrder>[0],
+        tenant._id,
+        customerId,
+        spec,
+        tag,
+        now,
+      );
+      if (outcome === "created") ordersCreated += 1;
+      else ordersReused += 1;
+    }
+
+    return { tenantId: tenant._id, ordersCreated, ordersReused, linksCreated };
+  },
+});
+
+/**
+ * Wipe les orders sentinellés `[E2E MC-F] *` du tenant arg (default test-t1
+ * ET test-t2). Filtre par `restaurantNote.startsWith("[E2E MC-F] ")` — ne
+ * touche pas des vrais orders.
+ */
+export const wipeE2EOrders = internalMutation({
+  args: {},
+  returns: v.object({ ordersDeleted: v.number() }),
+  handler: async (ctx) => {
+    let ordersDeleted = 0;
+    const all = await ctx.db.query("orders").collect();
+    for (const row of all) {
+      if (row.restaurantNote?.startsWith(E2E_MC_F_NOTE_PREFIX) === true) {
+        await ctx.db.delete(row._id);
+        ordersDeleted += 1;
+      }
+    }
+    return { ordersDeleted };
+  },
+});
