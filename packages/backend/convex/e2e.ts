@@ -2390,3 +2390,293 @@ export const wipeE2ECampagnesCorruptedTemplate = internalMutation({
     return { templateDeleted: false };
   },
 });
+
+// -----------------------------------------------------------------------------
+// E2E-MC-D seed — populate the campagnes SEND parcours (MC14-MC16).
+// Adds 4 push-enrolled customers to the existing 6 seedés par MC-A so le
+// tenant atteint la borne du parcours (≥10 clients, ≥5 push-enrolled,
+// ≥3 email-eligible). Insère aussi (optionnel) UN row campaignLaunches
+// daté il y a 1 h pour exercer le path anti-anomaly TOO_FREQUENT_48H
+// (MC15). MC16 (cross-tenant) ne demande aucun seed supplémentaire.
+//
+// Sentinel email suffix (`@kb-e2e-mc-d.test`) pour wipe surgical séparé
+// de MC-A. Sentinel `templateId` du launch = celui de welcome_back MC-B
+// (donc le wipe MC-B ne le casse pas, car la fk vers templateId est
+// optionnelle côté schema).
+// -----------------------------------------------------------------------------
+
+const E2E_MC_D_EMAIL_SUFFIX = "@kb-e2e-mc-d.test";
+
+const MC_D_PUSH_CUSTOMER_SPECS: ReadonlyArray<{
+  local: string;
+  firstName: string;
+  phone: string;
+}> = [
+  { local: "push-1", firstName: "Gabriel", phone: "+33600000501" },
+  { local: "push-2", firstName: "Hugo", phone: "+33600000502" },
+  { local: "push-3", firstName: "Ines", phone: "+33600000503" },
+  { local: "push-4", firstName: "Jasmine", phone: "+33600000504" },
+];
+
+/**
+ * Seed 4 customers all-three-reach (email + phone + push) linkés à
+ * `test-t1` (ou tenant arg) — combinés aux 6 customers déjà seedés par
+ * MC-A, on atteint 10 customers totaux avec 6 push + 4 email + 6 phone.
+ * Idempotent par `users.email` sentinellé.
+ */
+export const seedE2EMCSendCustomers = internalMutation({
+  args: {
+    tenantSlug: v.optional(v.string()),
+  },
+  returns: v.object({
+    tenantId: v.id("tenants"),
+    customersCreated: v.number(),
+    customersReused: v.number(),
+    linksCreated: v.number(),
+    linksUpdated: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const slug = args.tenantSlug ?? "test-t1";
+    const tenant = await ctx.db
+      .query("tenants")
+      .withIndex("by_slug", (q) => q.eq("slug", slug))
+      .unique();
+    if (tenant === null) {
+      throw new ConvexError({
+        message: `Tenant with slug "${slug}" not found.`,
+      });
+    }
+
+    const now = Date.now();
+    let customersCreated = 0;
+    let customersReused = 0;
+    let linksCreated = 0;
+    let linksUpdated = 0;
+
+    for (const spec of MC_D_PUSH_CUSTOMER_SPECS) {
+      const email = `${spec.local}${E2E_MC_D_EMAIL_SUFFIX}`;
+
+      // 1. users row.
+      let user = await ctx.db
+        .query("users")
+        .withIndex("email", (q) => q.eq("email", email))
+        .first();
+      if (user === null) {
+        const userId = await ctx.db.insert("users", {
+          email,
+          name: spec.firstName,
+        });
+        user = await ctx.db.get(userId);
+      }
+      if (user === null) {
+        throw new ConvexError({ message: "User insert failed (impossible)" });
+      }
+
+      // 2. customers fiche (all-three-reach : email + phone + push enrolled).
+      const reachFields = {
+        email,
+        phone: spec.phone,
+        pushEnrollment: {
+          webPushStatus: "enrolled" as const,
+        },
+      };
+      let customer = await ctx.db
+        .query("customers")
+        .withIndex("by_user", (q) => q.eq("userId", user._id))
+        .first();
+      if (customer === null) {
+        const customerId = await ctx.db.insert("customers", {
+          userId: user._id,
+          firstName: spec.firstName,
+          createdAt: now,
+          ...reachFields,
+        });
+        customer = await ctx.db.get(customerId);
+        customersCreated += 1;
+      } else {
+        await ctx.db.patch(customer._id, reachFields);
+        customersReused += 1;
+      }
+      if (customer === null) {
+        throw new ConvexError({
+          message: "Customer insert failed (impossible)",
+        });
+      }
+
+      // 3. customerOrdersPerTenant link (segment actif : commandé < 30 j).
+      const segmentFields = {
+        totalOrders: 2,
+        lastOrderAt: now - 7 * DAY_MS,
+        ltv: 40,
+      };
+      const existingLink = await ctx.db
+        .query("customerOrdersPerTenant")
+        .withIndex("by_tenant_customer", (q) =>
+          q.eq("tenantId", tenant._id).eq("customerId", customer._id),
+        )
+        .unique();
+      if (existingLink === null) {
+        await ctx.db.insert("customerOrdersPerTenant", {
+          customerId: customer._id,
+          tenantId: tenant._id,
+          ...segmentFields,
+        });
+        linksCreated += 1;
+      } else {
+        await ctx.db.patch(existingLink._id, segmentFields);
+        linksUpdated += 1;
+      }
+    }
+
+    return {
+      tenantId: tenant._id,
+      customersCreated,
+      customersReused,
+      linksCreated,
+      linksUpdated,
+    };
+  },
+});
+
+/**
+ * Wipe the E2E-MC-D push customers seed. Filtre par sentinel email suffix
+ * `@kb-e2e-mc-d.test` — ne touche pas le seed MC-A.
+ */
+export const wipeE2EMCSendCustomers = internalMutation({
+  args: {},
+  returns: v.object({
+    customersDeleted: v.number(),
+    usersDeleted: v.number(),
+    linksDeleted: v.number(),
+  }),
+  handler: async (ctx) => {
+    let customersDeleted = 0;
+    let usersDeleted = 0;
+    let linksDeleted = 0;
+
+    for (const spec of MC_D_PUSH_CUSTOMER_SPECS) {
+      const email = `${spec.local}${E2E_MC_D_EMAIL_SUFFIX}`;
+      const user = await ctx.db
+        .query("users")
+        .withIndex("email", (q) => q.eq("email", email))
+        .first();
+      if (user === null) continue;
+
+      const customer = await ctx.db
+        .query("customers")
+        .withIndex("by_user", (q) => q.eq("userId", user._id))
+        .first();
+      if (customer !== null) {
+        for await (const link of ctx.db
+          .query("customerOrdersPerTenant")
+          .withIndex("by_customer", (q) => q.eq("customerId", customer._id))) {
+          await ctx.db.delete(link._id);
+          linksDeleted += 1;
+        }
+        await ctx.db.delete(customer._id);
+        customersDeleted += 1;
+      }
+
+      await ctx.db.delete(user._id);
+      usersDeleted += 1;
+    }
+
+    return { customersDeleted, usersDeleted, linksDeleted };
+  },
+});
+
+/**
+ * Seed 1 `campaignLaunches` row daté il y a 1 h pour le tenant — exerce
+ * la branche anti-anomaly TOO_FREQUENT_48H (MC15) : tout nouvel envoi
+ * dans les 48 h suivant cette ligne doit ouvrir le `CampaignAnomalyDialog`.
+ *
+ * Idempotent : si un row récent (< 48 h) existe déjà pour ce tenant avec
+ * `recipients: 10`, on retourne sans rien réinsérer. Sinon on inserts.
+ *
+ * Pour RE-TESTER MC14 (envoi nominal qui DOIT passer), il faut d'abord
+ * appeler `wipeE2EMCAnomalyLaunch` puis re-déclencher MC15 séparément.
+ */
+export const seedE2EMCAnomalyLaunch = internalMutation({
+  args: {
+    tenantSlug: v.optional(v.string()),
+  },
+  returns: v.object({
+    tenantId: v.id("tenants"),
+    launchCreated: v.boolean(),
+    launchReused: v.boolean(),
+  }),
+  handler: async (ctx, args) => {
+    const slug = args.tenantSlug ?? "test-t1";
+    const tenant = await ctx.db
+      .query("tenants")
+      .withIndex("by_slug", (q) => q.eq("slug", slug))
+      .unique();
+    if (tenant === null) {
+      throw new ConvexError({
+        message: `Tenant with slug "${slug}" not found.`,
+      });
+    }
+
+    const now = Date.now();
+    const oneHourAgo = now - 60 * 60 * 1000;
+
+    // Idempotence : si un row récent (< 48 h) avec recipients=10 et templateId absent existe déjà, réutiliser.
+    const recent = await ctx.db
+      .query("campaignLaunches")
+      .withIndex("by_tenant", (q) => q.eq("tenantId", tenant._id))
+      .collect();
+    const sentinel = recent.find(
+      (r) =>
+        r.launchedAt > now - 48 * 60 * 60 * 1000 &&
+        r.recipients === 10 &&
+        r.templateId === undefined,
+    );
+    if (sentinel !== undefined) {
+      return { tenantId: tenant._id, launchCreated: false, launchReused: true };
+    }
+
+    await ctx.db.insert("campaignLaunches", {
+      tenantId: tenant._id,
+      scope: "tenant",
+      launchedAt: oneHourAgo,
+      recipients: 10,
+      // templateId omis volontairement (legacy-shape) pour distinguer du « vrai » launch
+      // que MC14 produira (qui carry templateId + 6 counters).
+    });
+    return { tenantId: tenant._id, launchCreated: true, launchReused: false };
+  },
+});
+
+/**
+ * Wipe the E2E-MC-D anomaly launch seed. Supprime UNIQUEMENT les rows
+ * avec recipients=10 et templateId absent (notre sentinellé legacy-shape).
+ * Préserve les vrais launches produits par MC14 / MC17 (qui carry
+ * templateId + counters).
+ */
+export const wipeE2EMCAnomalyLaunch = internalMutation({
+  args: {
+    tenantSlug: v.optional(v.string()),
+  },
+  returns: v.object({ launchesDeleted: v.number() }),
+  handler: async (ctx, args) => {
+    const slug = args.tenantSlug ?? "test-t1";
+    const tenant = await ctx.db
+      .query("tenants")
+      .withIndex("by_slug", (q) => q.eq("slug", slug))
+      .unique();
+    if (tenant === null) return { launchesDeleted: 0 };
+
+    let launchesDeleted = 0;
+    const launches = await ctx.db
+      .query("campaignLaunches")
+      .withIndex("by_tenant", (q) => q.eq("tenantId", tenant._id))
+      .collect();
+    for (const row of launches) {
+      if (row.recipients === 10 && row.templateId === undefined) {
+        await ctx.db.delete(row._id);
+        launchesDeleted += 1;
+      }
+    }
+    return { launchesDeleted };
+  },
+});

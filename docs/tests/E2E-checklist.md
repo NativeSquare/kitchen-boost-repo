@@ -94,7 +94,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 
 ## MC — Mes clients
 
-> **Statut partiel** : ✅ **MC1-MC9 validés le 2026-06-01 → 2026-06-02** (vagues MC-A KPIs + MC-B Campagnes liste + picker). Seeds : `seedE2ECustomerKPIs(test-t1)` + `seedE2ECampagnesTemplates(test-t1)` (2 templates actifs : `on-t-a-manqué` + `Promo weekend`). `test-t2` reste vide côté templates pour exercer l'empty-state CSM (MC8). Reste à valider : MC10-MC13 (vague MC-C, template form + violation — seed corrupted template à ajouter), MC14-MC16 (vague MC-D, send + anomaly + cross-tenant), MC17-MC19 (vague MC-E, historique), MC20-MC27 (vague MC-F, dashboard + stats + LineChart — seed orders à ajouter).
+> **Statut partiel** : ✅ **MC1-MC13 validés le 2026-06-01 → 2026-06-02** (vagues MC-A KPIs + MC-B Campagnes liste + picker + MC-C Template form + violation). Seeds : `seedE2ECustomerKPIs(test-t1)` + `seedE2ECampagnesTemplates(test-t1)` + `seedE2ECampagnesCorruptedTemplate(test-t1)`. 1 fix critique pendant MC-C : `fd084ef` (barrel `convex/lib/notifications/index.ts` réexportait `engine.ts` → `getCurrentActor.whoAmI` qui leakait `query()` dans le bundle browser — fix par import direct des sous-modules purs `templateBounds` + `campaigns` au lieu du barrel). **Gap produit logué #387** : `nom_resto` et `prenom_client` ne devraient PAS être saisis par le gérant (auto-inject depuis tenant + per-recipient au send) — bloquant V1, à fix avant déploiement réel resto. Reste à valider : MC14-MC16 (vague MC-D, send + anomaly + cross-tenant), MC17-MC19 (vague MC-E, historique), MC20-MC27 (vague MC-F, dashboard + stats + LineChart — seed orders à ajouter).
 
 ### MC1 — Open « Mes clients » + audit event `customer.kpi.consult`
 
