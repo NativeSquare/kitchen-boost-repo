@@ -22,8 +22,8 @@
  * Step 3 (« Stripe KYC ») is the second slice charnière: #269 replaces its
  * placeholder with the real `Step3StripeKycForm` and a thin wiring wrapper
  * (`Step3Form` below) that owns:
- *   - the prospect read (for the `prefill` arg — SIRET, email, firstName,
- *     lastName) + the tenantId back-link,
+ *   - the prospect read (for the `prefill` arg — SIRET, email) + the tenantId
+ *     back-link,
  *   - the `createStripeAccountLink` action call,
  *   - the URL state + the « step non-bloquant » warning toast on Continue
  *     without generation,
@@ -248,7 +248,9 @@ function Step1Form({ onPrev, onNext }: StepFormProps): React.JSX.Element {
  * F-WIZARD [5/10] (#269) — Step3Form: thin wiring wrapper around the pure
  * `Step3StripeKycForm`. Owns:
  *   - the prospect read (`useQuery(api.lib.onboarding.crm.getProspect)`) so
- *     we have the `prefill` Stripe needs (siret, email, firstName, lastName);
+ *     we have the `prefill` Stripe needs (siret, email — the legal
+ *     representative's name is collected by Stripe Express KYC UI, see the
+ *     `business_type: "company"` constraint in `createStripeAccountLink`);
  *   - the `createStripeAccountLink` action — Convex `useAction` directly
  *     (NOT `useTenantAction`: this wizard lives under `/pipeline`, OUTSIDE
  *     the `/t/[tenantId]` shell that backs the auto-injection, and the
@@ -344,13 +346,11 @@ function Step3Form({
     setIsGenerating(true);
     setGenError(null);
     try {
-      // Naïve split of `contactName` into first/last (Stripe Express requires
-      // both). Empty fallbacks keep the call well-formed even if the prospect
-      // doc is bare-bones — Stripe Express will surface the missing fields
-      // during onboarding for the gérant to fill in.
-      const contact = (prospect.contactName ?? "").trim();
-      const [firstName, ...rest] = contact.split(/\s+/);
-      const lastName = rest.join(" ");
+      // Stripe Express collects the legal representative's first / last name and
+      // personal email during the KYC UI itself (we only prefill what's
+      // unambiguously tenant-level: SIRET + business email). The `company`
+      // business_type forbids `individual[*]` params, so we deliberately do NOT
+      // forward `prospect.contactName` here.
       const refreshUrl =
         typeof window !== "undefined" ? window.location.href : "";
       const returnUrl = refreshUrl;
@@ -361,8 +361,6 @@ function Step3Form({
         prefill: {
           siret: prospect.siret ?? "",
           email: prospect.email ?? "",
-          firstName: firstName ?? "",
-          lastName,
         },
       });
       setAccountLinkUrl(result.url);

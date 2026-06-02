@@ -121,8 +121,6 @@ export const createStripeAccountLink = action({
     prefill: v.object({
       siret: v.string(),
       email: v.string(),
-      firstName: v.string(),
-      lastName: v.string(),
     }),
   },
   handler: async (ctx, args): Promise<{ accountId: string; url: string }> => {
@@ -138,7 +136,17 @@ export const createStripeAccountLink = action({
     if (!secret) throw missingSecret();
 
     // 1. Reuse the account if already created for this tenant, else create one
-    //    pre-filled with the resto's known data (SIRET + email + name).
+    //    pre-filled with the resto's known data (SIRET + email).
+    //
+    //    `business_type: "company"` is the V1 default — most KitchenBoost restos
+    //    are SARL / SAS / SASU (sociétés). For `company`, Stripe REJECTS any
+    //    `individual[*]` param (the two contracts are mutually exclusive). The
+    //    legal representative's first name / last name / personal email are
+    //    collected by the Stripe Express KYC UI during onboarding (the gérant
+    //    fills them in via the `account_link` URL we hand off). If we later need
+    //    to support EI / micro-entreprise, add a `businessType` arg + map to
+    //    `business_type: "individual"` + send `individual[*]` (mutually exclusive
+    //    with the `company` branch).
     let accountId = tenant.stripeAccountId;
     if (accountId === undefined) {
       const account = await stripePost(secret, "/accounts", {
@@ -147,9 +155,6 @@ export const createStripeAccountLink = action({
         business_type: "company",
         email: args.prefill.email,
         "company[tax_id]": args.prefill.siret,
-        "individual[first_name]": args.prefill.firstName,
-        "individual[last_name]": args.prefill.lastName,
-        "individual[email]": args.prefill.email,
         "capabilities[card_payments][requested]": "true",
         "capabilities[transfers][requested]": "true",
       });

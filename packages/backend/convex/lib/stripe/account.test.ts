@@ -90,8 +90,6 @@ describe("2.5-A stripe account root surface — kb_admin only + audited", () => 
         prefill: {
           siret: "12345678900011",
           email: "resto@x.fr",
-          firstName: "Jean",
-          lastName: "Dupont",
         },
       }),
     ).rejects.toThrow(/Forbidden/);
