@@ -151,7 +151,7 @@ describe("decideSidebarNav", () => {
 
   // --- Operational space (manager OR admin under /t/[id]) ------------------
 
-  it("KB Manager on `/t/<A>/menu` → `manager-operational` items scoped to /t/<A>/...", () => {
+  it("KB Manager on `/t/<A>/menu` → `manager-operational` items scoped to /t/<A>/... (9 items, Tableau de bord top + Statistiques between Mes clients and Campagnes — issues #389/#390)", () => {
     const input: SidebarNavInput = {
       session: managerSession([
         { id: TENANT_A, slug: "lartisan", name: "L'Artisan" },
@@ -161,23 +161,30 @@ describe("decideSidebarNav", () => {
     const result = decideSidebarNav(input);
     expect(result.kind).toBe("manager-operational");
     expect(result.items.map((i) => i.label)).toEqual([
+      "Tableau de bord",
       "Menu",
       "Commandes",
       "Mes clients",
+      "Statistiques",
       "Campagnes",
       "Pricing",
       "QR",
       "Paramètres",
     ]);
     expect(result.items.map((i) => i.href)).toEqual([
+      `/t/${TENANT_A}`,
       `/t/${TENANT_A}/menu`,
       `/t/${TENANT_A}/commandes`,
       `/t/${TENANT_A}/mes-clients`,
+      `/t/${TENANT_A}/stats`,
       `/t/${TENANT_A}/campagnes`,
       `/t/${TENANT_A}/pricing`,
       `/t/${TENANT_A}/qr`,
       `/t/${TENANT_A}/parametres`,
     ]);
+    // Pins requested by the issues #389/#390 spec.
+    expect(result.items[0].href).toBe(`/t/${TENANT_A}`);
+    expect(result.items[4].href).toBe(`/t/${TENANT_A}/stats`);
   });
 
   it("KB Admin on `/t/<A>/menu` → `manager-operational` scoped to /t/<A>/... (root override in operational view)", () => {
@@ -187,7 +194,8 @@ describe("decideSidebarNav", () => {
     };
     const result = decideSidebarNav(input);
     expect(result.kind).toBe("manager-operational");
-    expect(result.items[0].href).toBe(`/t/${TENANT_A}/menu`);
+    // items[0] = Tableau de bord, scoped to the URL tenant base path.
+    expect(result.items[0].href).toBe(`/t/${TENANT_A}`);
   });
 
   it("KB Admin on `/t/<B>/parametres` → operational scoped to /t/<B>/... (URL tenant wins, not the first session tenant)", () => {
@@ -197,8 +205,13 @@ describe("decideSidebarNav", () => {
     };
     const result = decideSidebarNav(input);
     expect(result.kind).toBe("manager-operational");
+    // Every href is either the base `/t/<B>` (Tableau de bord) or a `/t/<B>/...`
+    // sub-route — none should leak the first session tenant.
     expect(
-      result.items.every((i) => i.href.startsWith(`/t/${TENANT_B}/`)),
+      result.items.every(
+        (i) =>
+          i.href === `/t/${TENANT_B}` || i.href.startsWith(`/t/${TENANT_B}/`),
+      ),
     ).toBe(true);
   });
 
@@ -213,7 +226,10 @@ describe("decideSidebarNav", () => {
     const result = decideSidebarNav(input);
     expect(result.kind).toBe("manager-operational");
     expect(
-      result.items.every((i) => i.href.startsWith(`/t/${TENANT_A}/`)),
+      result.items.every(
+        (i) =>
+          i.href === `/t/${TENANT_A}` || i.href.startsWith(`/t/${TENANT_A}/`),
+      ),
     ).toBe(true);
   });
 
@@ -245,7 +261,8 @@ describe("decideSidebarNav", () => {
     };
     const result = decideSidebarNav(input);
     expect(result.kind).toBe("manager-operational");
-    expect(result.items[0].href).toBe(`/t/${TENANT_A}/menu`);
+    // items[0] = Tableau de bord at the tenant base.
+    expect(result.items[0].href).toBe(`/t/${TENANT_A}`);
   });
 
   it("URL `/team` does NOT trigger operational space (only `/t/[id]` does — guard against `/team`/`/teams` false positives)", () => {

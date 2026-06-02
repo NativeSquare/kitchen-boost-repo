@@ -116,16 +116,21 @@ function allText(n: SerializedNode): string {
 
 const TENANT_ID = "tenant_abc" as Id<"tenants">;
 
-/**
+/*
  * `Revenus` was retired by #257 (replaced by the real `RevenuePerDayBlock`).
- * The other 4 placeholders stay until stories 5-8 land them.
+ * The other 4 placeholders (Top items / Heures de pointe / Conversion /
+ * Direct vs Marketplace) were COMMENTÉS V1 par issue #389 — leur libellé
+ * leakait la nomenclature dev (« (story 5/6/7/8) »). À ré-activer (côté
+ * stats-view.tsx + ici) quand les slices F-STATS 5-8 atterriront avec leur
+ * vraie data + un wording final propre.
+ *
+ * const PLACEHOLDER_TITLES = [
+ *   "Top items",
+ *   "Heures de pointe",
+ *   "Conversion",
+ *   "Direct vs Marketplace",
+ * ] as const;
  */
-const PLACEHOLDER_TITLES = [
-  "Top items",
-  "Heures de pointe",
-  "Conversion",
-  "Direct vs Marketplace",
-] as const;
 
 describe("StatsView — F-STATS-DASHBOARD [3/8] (#253)", () => {
   it("renders the page title « Statistiques » on the populated branch", () => {
@@ -158,7 +163,11 @@ describe("StatsView — F-STATS-DASHBOARD [3/8] (#253)", () => {
     expect(text).toMatch(/Statistiques/);
   });
 
-  it("surfaces the remaining placeholder card titles (stories 5-8)", () => {
+  it("does NOT surface dev-nomenclature placeholder titles in V1 (issue #389)", () => {
+    // Inverse pin de l'ancien test : tant que les slices F-STATS 5-8 ne sont
+    // pas livrées, AUCUN libellé qui leakait la nomenclature dev ne doit
+    // remonter à l'écran. Re-flip ce test (et dé-commenter PLACEHOLDER_TITLES
+    // ci-dessus + le bloc JSX dans stats-view.tsx) quand ces slices arrivent.
     const text = allText(
       serialize(
         StatsView({
@@ -170,9 +179,30 @@ describe("StatsView — F-STATS-DASHBOARD [3/8] (#253)", () => {
         }),
       ),
     );
-    for (const title of PLACEHOLDER_TITLES) {
-      expect(text).toContain(title);
+    for (const title of [
+      "Top items",
+      "Heures de pointe",
+      "Conversion",
+      "Direct vs Marketplace",
+    ]) {
+      expect(text).not.toContain(title);
     }
+    // Et plus aucune carte n'expose le slot `stats-placeholder-card`.
+    const tree = serialize(
+      StatsView({
+        tenantId: TENANT_ID,
+        range: 30,
+        onRangeChange: () => {},
+        rangeAggregates: { panierMoyen: 0, totalCommandes: 0 },
+        revenuePerDay: [],
+      }),
+    );
+    const hasPlaceholderSlot = flatten(tree).some((n) => {
+      if (n === null || "text" in n) return false;
+      const slot = (n.props as Record<string, unknown>)["data-slot"];
+      return slot === "stats-placeholder-card";
+    });
+    expect(hasPlaceholderSlot).toBe(false);
   });
 
   it("loading branch (rangeAggregates === undefined) surfaces at least one skeleton", () => {

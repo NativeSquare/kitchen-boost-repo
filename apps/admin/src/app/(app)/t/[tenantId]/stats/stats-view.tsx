@@ -6,9 +6,12 @@
  *   1. Title « Statistiques » + the `RangePicker` (7 / 30 / 90 jours).
  *   2. « Chiffres bruts » bloc — 2 `KpiCard`s (panier moyen + total commandes)
  *      driven by the `rangeAggregates` Convex query.
- *   3. Responsive grid of 5 placeholder cards (Revenus, Top items, Heures
- *      de pointe, Conversion, Direct vs Marketplace) — real graph blocks
- *      will land in stories 4-8 (PRD 70 §4.10).
+ *   3. Responsive grid — `RevenuePerDayBlock` (story 4) plus a section
+ *      réservée aux blocs des stories 5-8 (Top items, Heures de pointe,
+ *      Conversion, Direct vs Marketplace). Les 4 cartes placeholders ont été
+ *      COMMENTÉES V1 (issue #389) parce que leur libellé « (story X) »
+ *      leakait la nomenclature dev — dé-commenter quand les vraies slices
+ *      atterrissent (PRD 70 §4.10).
  *
  * Tri-state contract for `rangeAggregates` (mirror of the backend query) :
  *   - `undefined` → loading : KpiCards show `<Skeleton/>` ; placeholder cards
@@ -34,8 +37,11 @@ import type { Id } from "@packages/backend/convex/_generated/dataModel";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+// Card + Skeleton primitives are only used by the V1-disabled placeholder grid
+// below (issue #389). Re-enable these imports when the F-STATS slices 5-8 land
+// their real blocks.
+// import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+// import { Skeleton } from "@/components/ui/skeleton";
 
 import { KpiCard } from "../_components/KpiCard";
 
@@ -81,24 +87,26 @@ export type StatsViewProps = {
   onRetry?: () => void;
 };
 
-/**
- * Placeholder cards for stories 5-8. The « Revenus » card was retired by this
- * story (#257) — replaced by the real `RevenuePerDayBlock`.
+/*
+ * DESACTIVÉ V1 — placeholders « (story 5/6/7/8) » leakaient la nomenclature
+ * dev (issue #389). Dé-commenter quand les slices F-STATS 5-8 atterrissent
+ * avec leur vraie data + un wording final propre.
+ *
+ * const PLACEHOLDER_CARDS: { key: string; title: string; hint: string }[] = [
+ *   { key: "top-items", title: "Top items", hint: "Bar chart (story 5)" },
+ *   {
+ *     key: "heures-pointe",
+ *     title: "Heures de pointe",
+ *     hint: "Heatmap (story 6)",
+ *   },
+ *   { key: "conversion", title: "Conversion", hint: "Funnel (story 7)" },
+ *   {
+ *     key: "direct-vs-marketplace",
+ *     title: "Direct vs Marketplace",
+ *     hint: "Comparatif (story 8)",
+ *   },
+ * ];
  */
-const PLACEHOLDER_CARDS: { key: string; title: string; hint: string }[] = [
-  { key: "top-items", title: "Top items", hint: "Bar chart (story 5)" },
-  {
-    key: "heures-pointe",
-    title: "Heures de pointe",
-    hint: "Heatmap (story 6)",
-  },
-  { key: "conversion", title: "Conversion", hint: "Funnel (story 7)" },
-  {
-    key: "direct-vs-marketplace",
-    title: "Direct vs Marketplace",
-    hint: "Comparatif (story 8)",
-  },
-];
 
 function formatEuros(cents: number): string {
   return new Intl.NumberFormat("fr-FR", {
@@ -181,6 +189,10 @@ export function StatsView({
         <div className="md:col-span-2 lg:col-span-3">
           <RevenuePerDayBlock range={range} revenuePerDay={revenuePerDay} />
         </div>
+        {/* DESACTIVÉ V1 — placeholders « (story 5/6/7/8) » leakaient la nomenclature
+          dev (issue #389). Dé-commenter quand les slices F-STATS 5-8 atterrissent
+          avec leur vraie data + un wording final propre. */}
+        {/*
         {PLACEHOLDER_CARDS.map((c) => (
           <Card
             key={c.key}
@@ -196,6 +208,7 @@ export function StatsView({
             </CardContent>
           </Card>
         ))}
+        */}
       </div>
     </div>
   );

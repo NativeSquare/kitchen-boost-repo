@@ -39,6 +39,7 @@ import {
   IconChartBar,
   IconGauge,
   IconInnerShadowTop,
+  IconLayoutDashboard,
   IconLayoutKanban,
   IconSpeakerphone,
   IconQrcode,
@@ -88,9 +89,11 @@ export type SidebarIconName =
   | "crm"
   | "monitoring"
   | "tenants"
+  | "dashboard"
   | "menu"
   | "commandes"
   | "mes-clients"
+  | "stats"
   | "campagnes"
   | "pricing"
   | "qr"
@@ -133,6 +136,7 @@ const ADMIN_SUPERVISION_ITEMS: SidebarNavItem[] = [
 function buildOperationalItems(tenantId: Id<"tenants">): SidebarNavItem[] {
   const base = `/t/${tenantId as unknown as string}`;
   return [
+    { label: "Tableau de bord", href: base, iconName: "dashboard" },
     { label: "Menu", href: `${base}/menu`, iconName: "menu" },
     { label: "Commandes", href: `${base}/commandes`, iconName: "commandes" },
     {
@@ -140,6 +144,7 @@ function buildOperationalItems(tenantId: Id<"tenants">): SidebarNavItem[] {
       href: `${base}/mes-clients`,
       iconName: "mes-clients",
     },
+    { label: "Statistiques", href: `${base}/stats`, iconName: "stats" },
     { label: "Campagnes", href: `${base}/campagnes`, iconName: "campagnes" },
     { label: "Pricing", href: `${base}/pricing`, iconName: "pricing" },
     { label: "QR", href: `${base}/qr`, iconName: "qr" },
@@ -202,16 +207,27 @@ const ICONS: Record<
   crm: IconUsersGroup,
   monitoring: IconGauge,
   tenants: IconBuildingStore,
+  dashboard: IconLayoutDashboard,
   menu: IconToolsKitchen2,
   commandes: IconShoppingCart,
   "mes-clients": IconUsersGroup,
+  stats: IconChartBar,
   campagnes: IconSpeakerphone,
   pricing: IconTag,
   qr: IconQrcode,
   parametres: IconSettings,
 };
 
-function isRouteActive(pathname: string, href: string): boolean {
+function isRouteActive(
+  pathname: string,
+  href: string,
+  iconName: SidebarIconName,
+): boolean {
+  // "Tableau de bord" points at the base `/t/<id>` — without strict-equal it
+  // would prefix-match every operational sub-route and stay permanently active.
+  if (iconName === "dashboard") {
+    return pathname === href;
+  }
   return pathname === href || pathname.startsWith(href + "/");
 }
 
@@ -223,7 +239,7 @@ const NavRow = ({
   pathname: string;
 }) => {
   const Icon = ICONS[item.iconName] ?? IconChartBar;
-  const active = isRouteActive(pathname, item.href);
+  const active = isRouteActive(pathname, item.href, item.iconName);
   return (
     <SidebarMenuItem>
       <SidebarMenuButton asChild isActive={active} tooltip={item.label}>
