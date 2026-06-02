@@ -22,34 +22,20 @@
  * Falls back to the bootstrap sub-domain `<slug>.kitchen-boost.fr` via the
  * existing `tenantPwaUrl` helper.
  *
- * The standalone wizard step 6 (`step6-qr-form.tsx`) still mounts the legacy
- * `QrGeneratorView` (PDF pipeline) — that path is unaffected. This page no
- * longer depends on `QrGeneratorView`.
+ * The preview + download UI is delegated to the shared
+ * `<QrDownloadCard slug pwaUrl />` component, which is ALSO mounted by the
+ * wizard step 6 (`step6-qr-form.tsx`, simplification 2026-06-02). Keeping the
+ * UI in one component guarantees the two surfaces stay visually identical.
  */
 
-import { useEffect, useState } from "react";
 import { useQuery } from "convex/react";
-import QRCode from "qrcode";
 import { api } from "@packages/backend/convex/_generated/api";
 
+import { QrDownloadCard } from "@/components/qr/QrDownloadCard";
 import { useCurrentTenantId } from "@/components/app/tenant-context";
 import { useTenantQuery } from "@/hooks";
 import { useSession } from "@/lib/session";
 import { tenantPwaUrl } from "@/lib/tenant-url";
-
-/**
- * Build the SVG QR code for the given URL. Black on white, zero margin (the
- * design tool will add the bleed). `qrcode`'s `toString({type:'svg'})`
- * returns a standalone `<svg>` document we can drop straight into the DOM
- * or into a `data:image/svg+xml` href.
- */
-async function buildQrSvg(url: string): Promise<string> {
-  return QRCode.toString(url, {
-    type: "svg",
-    margin: 0,
-    color: { dark: "#000000", light: "#FFFFFF" },
-  });
-}
 
 export default function QrPage() {
   const tenantId = useCurrentTenantId();
@@ -82,43 +68,14 @@ export default function QrPage() {
   const customDomain: string | undefined =
     adminTenantDoc?.customDomain ?? settings?.customDomain ?? undefined;
 
-  // Compute the encoded URL only when we have a stable slug. We pre-compute
-  // it (rather than guarding inside the effect) so the JSX preview can show
-  // it under the QR as plain text.
+  // Compute the encoded URL only when we have a stable slug.
   const pwaUrl = slug !== null ? tenantPwaUrl({ slug, customDomain }) : null;
-
-  const [svg, setSvg] = useState<string | null>(null);
-
-  useEffect(() => {
-    // While `pwaUrl` is null (session still resolving) we skip the build
-    // entirely — the page early-returns below for the null branch, so a
-    // stale `svg` value is never rendered. Avoids a synchronous setState
-    // inside the effect body (react-hooks/set-state-in-effect).
-    if (pwaUrl === null) return;
-    let cancelled = false;
-    buildQrSvg(pwaUrl)
-      .then((next) => {
-        if (!cancelled) setSvg(next);
-      })
-      .catch(() => {
-        // Silent : the disabled-button branch already covers the "no svg"
-        // UX, and the only realistic failure here is a malformed input URL
-        // (which we control via `tenantPwaUrl`).
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [pwaUrl]);
 
   // Loading sentinels — keep the page mute until we have all inputs.
   if (session.status !== "ready") return null;
   if (isAdmin && adminTenantDoc === undefined) return null;
   if (!isAdmin && settings === undefined) return null;
   if (slug === null || pwaUrl === null) return null;
-
-  const fileName = `qr-${slug}.svg`;
-  const downloadHref =
-    svg !== null ? `data:image/svg+xml;utf8,${encodeURIComponent(svg)}` : null;
 
   return (
     <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
@@ -129,50 +86,8 @@ export default function QrPage() {
           dans votre support visuel (sticker, affiche, packaging&hellip;).
         </p>
       </div>
-      <div className="flex flex-col items-center gap-4 px-4 lg:px-6">
-        <div
-          data-slot="qr-preview"
-          className="border-input bg-white flex h-[340px] w-[340px] items-center justify-center overflow-hidden rounded-md border p-4"
-        >
-          {svg !== null ? (
-            // `qrcode` returns a fully self-contained <svg> document — safe
-            // to inline (no script, no external refs). We render it via
-            // dangerouslySetInnerHTML because constructing a React tree
-            // from the SVG string would lose nothing and gain nothing.
-            <div
-              className="h-full w-full"
-              dangerouslySetInnerHTML={{ __html: svg }}
-            />
-          ) : (
-            <span className="text-muted-foreground text-sm">
-              Génération du QR code&hellip;
-            </span>
-          )}
-        </div>
-        <code
-          data-slot="qr-url"
-          className="text-muted-foreground bg-muted/40 max-w-full break-all rounded px-2 py-1 text-xs"
-        >
-          {pwaUrl}
-        </code>
-        {downloadHref !== null ? (
-          <a
-            href={downloadHref}
-            download={fileName}
-            data-slot="qr-download"
-            className="bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:border-ring focus-visible:ring-ring/50 inline-flex h-9 items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium shadow-xs outline-none focus-visible:ring-[3px]"
-          >
-            Télécharger SVG
-          </a>
-        ) : (
-          <button
-            type="button"
-            disabled
-            className="bg-primary/60 text-primary-foreground inline-flex h-9 cursor-not-allowed items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium opacity-60 shadow-xs"
-          >
-            Télécharger SVG
-          </button>
-        )}
+      <div className="px-4 lg:px-6">
+        <QrDownloadCard pwaUrl={pwaUrl} slug={slug} />
       </div>
     </div>
   );

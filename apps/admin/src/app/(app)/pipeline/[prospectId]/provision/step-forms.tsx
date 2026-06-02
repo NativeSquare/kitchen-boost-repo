@@ -1034,9 +1034,7 @@ function Step6Form({
   return (
     <Step6QrForm
       pwaUrl={pwaUrl}
-      restoName={tenantDoc.name}
-      logoUrl={tenantDoc.branding?.logoUrl}
-      primaryColor={tenantDoc.branding?.primaryColor}
+      slug={tenantDoc.slug}
       onPrev={onPrev}
       onNext={onNext}
     />

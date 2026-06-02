@@ -1627,17 +1627,17 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
   - Aucune navigation vers Step 6 tant que `lastPublishedAt === null`.
 - **Couvre** : #271 ; #176 ; #155 ; #160 ; ADR 0015.
 
-### W8 — Step 6 QR sticker PDF
+### W8 — Step 6 QR code SVG
 
 - **Acteur** : KB Admin
 - **Pré-requis** : step 5 complete
 - **Étapes** :
-  1. Step 6 « QR sticker » : preview + sélecteur 3 formats (Sticker rond 50 mm / Carte A6 / Affiche A4).
-  2. Cliquer « Télécharger PDF » pour chaque format.
+  1. Step 6 « QR code » : preview du QR (carré 340 px, noir sur blanc) + URL PWA affichée en clair sous le QR.
+  2. Cliquer « Télécharger SVG » (bouton unique — plus de sélecteur 3 formats, plus de pipeline PDF).
 - **Attendu** :
-  - Preview QR vers PWA URL. 3 PDF distincts téléchargés `qr-<slug>-<format>.pdf`.
-  - Step 6 complete après premier téléchargement (ou nav suivante).
-- **Couvre** : #272.
+  - Preview QR vers PWA URL. Un fichier `qr-<slug>.svg` téléchargé (vector noir-sur-blanc, importable dans Canva / Figma / Illustrator).
+  - Step 6 complete après visite (flag `step6Visited`, indépendant du clic Télécharger — le téléchargement reste facultatif côté wizard).
+- **Couvre** : #272, simplification SVG-only 2026-06-02 (parité avec la page standalone `/t/<id>/qr`).
 
 ### W9 — Step 7 Invitation gérant
 

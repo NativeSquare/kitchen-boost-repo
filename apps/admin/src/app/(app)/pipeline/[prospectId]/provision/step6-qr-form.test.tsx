@@ -1,26 +1,32 @@
 /**
  * F-WIZARD [8/10] (#272) — `Step6QrForm` test matrix.
  *
- * Pure presentational form for Step 6 of the provisioning wizard (QR sticker
- * PDF imprimable). The Convex wiring (prospect read for `tenantId` back-link
- * + tenant doc read via `loadTenantForStripe` for `slug` / `customDomain` /
- * branding) is owned by the `Step6Form` wrapper in `step-forms.tsx`; this
- * pure component just receives the already-resolved `pwaUrl` / `restoName` /
- * `logoUrl` / `primaryColor` and mounts the shared F-QR `QrGeneratorView`
- * (#182), which itself handles the @react-pdf/renderer → jspdf preview +
- * download + format selector.
+ * Pure presentational form for Step 6 of the provisioning wizard (QR code
+ * SVG imprimable). The Convex wiring (prospect read for `tenantId` back-link
+ * + tenant doc read via `loadTenantForStripe` for `slug` / `customDomain`)
+ * is owned by the `Step6Form` wrapper in `step-forms.tsx` ; this pure
+ * component just receives the already-resolved `pwaUrl` / `slug` and mounts
+ * the shared `QrDownloadCard`, which itself owns the SVG build + preview +
+ * download anchor.
  *
- * Acceptance criteria covered (issue #272):
- *   - The form mounts the SHARED F-QR `QrGeneratorView` (DO NOT duplicate
- *     PDF logic — explicit reuse is the WHOLE point of the epic F-QR #142).
- *   - The `pwaUrl` / `restoName` / `logoUrl` / `primaryColor` props are
- *     threaded straight through to `QrGeneratorView` (the wrapper resolves
- *     them — this form is a pure passthrough).
+ * Historique (2026-06-02) :
+ * -------------------------
+ * Le composant historique `QrGeneratorView` (pipeline PDF 3 formats) a été
+ * retiré au profit du `QrDownloadCard` SVG-only — même UX que la page
+ * standalone `/t/[tenantId]/qr`. Les pins de ce test reflètent la nouvelle
+ * surface.
+ *
+ * Acceptance criteria couverts :
+ *   - The form mounts the shared `QrDownloadCard` (DO NOT duplicate the QR
+ *     logic — explicit reuse is the WHOLE point).
+ *   - The `pwaUrl` + `slug` props are threaded straight through to
+ *     `QrDownloadCard` (the wrapper resolves them — this form is a pure
+ *     passthrough).
  *   - The « Continuer » button is ALWAYS active (« step non-bloquant » —
  *     issue body, PRD §4.7) and wired to `onNext`.
  *   - The « Précédent » button is wired to `onPrev`.
  *   - Scope discipline: the form module does not import from `apps/web` or
- *     `apps/native`.
+ *     `apps/native`, and does not call backend hooks.
  */
 import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
@@ -103,13 +109,13 @@ function unwrap(type: unknown): { fn: (props: unknown) => ReactNode } | null {
 }
 
 /**
- * Serializer that does NOT recurse into `QrGeneratorView` (and any other
+ * Serializer that does NOT recurse into `QrDownloadCard` (and any other
  * component named below). Stops at the boundary so we can assert on the
- * mounted shape + threaded props WITHOUT executing the QR pipeline (which
- * would invoke `useEffect` + `URL.createObjectURL`, both unavailable / no-op
- * under the lean `node` vitest env).
+ * mounted shape + threaded props WITHOUT executing the QR build (which
+ * would invoke `useEffect` + the async `qrcode` call, neither useful under
+ * the lean `node` vitest env).
  */
-const STOP_AT_TYPE_NAMES = new Set(["QrGeneratorView"]);
+const STOP_AT_TYPE_NAMES = new Set(["QrDownloadCard"]);
 
 function serialize(node: ReactNode): SerializedNode {
   if (node === null || node === undefined || node === false || node === true) {
@@ -129,8 +135,6 @@ function serialize(node: ReactNode): SerializedNode {
   }
   if (isReactElement(node)) {
     const name = typeName(node.type);
-    // Hard stop at the F-QR boundary so we pin « mount + prop threading »
-    // without executing the QR/PDF pipeline.
     if (STOP_AT_TYPE_NAMES.has(name)) {
       const props = { ...(node.props as Record<string, unknown>) };
       delete props.children;
@@ -228,9 +232,7 @@ function defaultProps(
 ): Step6QrFormProps {
   return {
     pwaUrl: "https://lartisan.kitchen-boost.fr",
-    restoName: "L'Artisan",
-    logoUrl: undefined,
-    primaryColor: undefined,
+    slug: "lartisan",
     onPrev: vi.fn(),
     onNext: vi.fn(),
     ...overrides,
@@ -240,37 +242,45 @@ function defaultProps(
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
-describe("Step6QrForm — F-WIZARD [8/10] (#272)", () => {
-  it("mounts the shared F-QR `QrGeneratorView` (NO PDF logic duplicated)", () => {
+describe("Step6QrForm — F-WIZARD [8/10] (#272), SVG-only 2026-06-02", () => {
+  it("mounts the shared `QrDownloadCard` (NO QR logic duplicated)", () => {
     const tree = serialize(Step6QrForm(defaultProps()));
-    const qr = findByType(tree, "QrGeneratorView");
+    const qr = findByType(tree, "QrDownloadCard");
     expect(qr).not.toBeNull();
   });
 
-  it("threads `pwaUrl` / `restoName` / `logoUrl` / `primaryColor` straight through to QrGeneratorView", () => {
+  it("threads `pwaUrl` + `slug` straight through to QrDownloadCard", () => {
     const tree = serialize(
       Step6QrForm(
         defaultProps({
           pwaUrl: "https://artisan-test.kitchen-boost.fr",
-          restoName: "Test Artisan",
-          logoUrl: "https://cdn.example.com/test/logo.png",
-          primaryColor: "#1B7A3D",
+          slug: "artisan-test",
         }),
       ),
     );
-    const qr = findByType(tree, "QrGeneratorView") as {
+    const qr = findByType(tree, "QrDownloadCard") as {
       props: {
         pwaUrl?: string;
-        restoName?: string;
-        logoUrl?: string;
-        primaryColor?: string;
+        slug?: string;
       };
     } | null;
     expect(qr).not.toBeNull();
     expect(qr?.props.pwaUrl).toBe("https://artisan-test.kitchen-boost.fr");
-    expect(qr?.props.restoName).toBe("Test Artisan");
-    expect(qr?.props.logoUrl).toBe("https://cdn.example.com/test/logo.png");
-    expect(qr?.props.primaryColor).toBe("#1B7A3D");
+    expect(qr?.props.slug).toBe("artisan-test");
+  });
+
+  it("does NOT mount the legacy PDF pipeline (QrGeneratorView / QrPdfDocument)", () => {
+    const source = readFileSync(
+      path.resolve(__dirname, "./step6-qr-form.tsx"),
+      "utf8",
+    );
+    const code = source
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "");
+    expect(code).not.toMatch(/QrGeneratorView/);
+    expect(code).not.toMatch(/QrPdfDocument/);
+    expect(code).not.toMatch(/jspdf/);
+    expect(code).not.toMatch(/@react-pdf\/renderer/);
   });
 
   it("« Continuer » button is ALWAYS active (« step non-bloquant ») and wired to `onNext`", () => {
@@ -280,7 +290,6 @@ describe("Step6QrForm — F-WIZARD [8/10] (#272)", () => {
       props: { onClick?: () => void; disabled?: boolean };
     } | null;
     expect(btn).not.toBeNull();
-    // « non-bloquant » — the button is NEVER disabled (no gate).
     expect(btn?.props.disabled).toBeFalsy();
     btn?.props.onClick?.();
     expect(onNext).toHaveBeenCalledTimes(1);
@@ -310,10 +319,6 @@ describe("Step6QrForm — F-WIZARD [8/10] (#272)", () => {
   });
 
   it("scope discipline: the form module does NOT call backend (zero `useMutation` / `useAction` / `useQuery` import)", () => {
-    // The wrapper `Step6Form` in `step-forms.tsx` owns ALL the Convex wiring.
-    // The pure form must remain backend-free (issue acceptance: « Aucun appel
-    // backend (zéro mutation, zéro action) ») so its prop contract stays the
-    // single contract surface.
     const source = readFileSync(
       path.resolve(__dirname, "./step6-qr-form.tsx"),
       "utf8",
