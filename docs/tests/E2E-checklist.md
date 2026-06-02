@@ -2,8 +2,8 @@
 
 Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / M / CMD / PR / SUP / W). Chaque parcours est à exécuter à la main contre `apps/admin` en dev (Convex live + seeds e2e).
 
-- **Date** : 2026-06-01
-- **Statut global** : 41 stories mergées (#317→#358), 0 bloquée. Wizard complet à 10/10.
+- **Date** : 2026-06-03
+- **Statut global** : 41 stories mergées (#317→#358), 0 bloquée. Wizard complet à 10/10. **Groupes validés** : A (7/7), MC (26/27), QR, MO, T-A/B/C/D/E, W (10/10). **Restants** : M, CMD, PR, SUP, AC.
 - **Pré-requis transverses** : seeds `e2e` chargées (≥ 2 tenants distincts, un KB Admin root, ≥ 1 KB Manager mono-tenant, ≥ 1 KB Manager multi-tenant, un staff). Stripe en mode test avec un `stripeAccountId` rattaché à au moins un tenant. Resend en mode test pour les magic-links et OTP.
 - **Convention** : les parcours référencent ces pré-requis par leur étiquette (« seeds e2e ») sans les reproduire. Format strict : **Acteur / Pré-requis / Étapes / Attendu / Couvre**.
 
@@ -1532,6 +1532,8 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 ---
 
 ## W — Wizard provisioning (10/10 steps)
+
+> **Statut** : ✅ **10/10 validés le 2026-06-02 → 2026-06-03** (W-A spot-check W1/W2/W3 + W-B parcours complet W4/W6/W6bis/W7/W8/W10 ; W-C : W5 Stripe KYC + W9 Invitation gérant repris depuis AC2/AC2bis). Seeds : `seedE2EWizardProspect` (slug prefix `e2e-w-`). 5 fixes critiques pendant cette vague : **fe52361** (steps 3/6 marqués ✅ par défaut → flags `step{3,6}Visited` mirror `step2Skipped`) + **1d2f376** (manager qui hit URL wizard recevait `ConvexError` raw → skip-sentinel sur 4 queries `useWizardState` + `UnauthorizedCard` early return) + **c16fd6f** (W8 step 6 utilisait pipeline PDF obsolète → migration vers shared `QrDownloadCard` SVG, suppression jspdf) + **9ef58a1**/**4daf357** (W7 input catégorie controlled value+defaultValue + useEffect resync wipait la frappe pendant le debounce 600ms → seed once via useState, no resync) + **204b692**/**bd5ad92** (W7 step 5 publish auto-advançait vers step 6 — cause : `useWizardState` calculait `currentStep = override ?? liveState.currentStep` et `liveState.currentStep` sautait à 7/8 quand `publishMenu` flippait `step5Complete=true` → remplacé `override` par cursor explicite seedé une fois, ensuite mutable uniquement via `goToStep`). 1 gap produit logué (P1, non bloquant V1) : **#391** (pas de vraie vérification DNS du customDomain avant activation — caveat dans W4).
 
 ### W1 — Skeleton + stepper
 
