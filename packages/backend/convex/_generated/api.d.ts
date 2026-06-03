@@ -162,6 +162,7 @@ import type * as table_contracts from "../table/contracts.js";
 import type * as table_customerOrdersPerTenant from "../table/customerOrdersPerTenant.js";
 import type * as table_customers from "../table/customers.js";
 import type * as table_deliveries from "../table/deliveries.js";
+import type * as table_devices from "../table/devices.js";
 import type * as table_feedback from "../table/feedback.js";
 import type * as table_menuCategories from "../table/menuCategories.js";
 import type * as table_menuItemModifierGroups from "../table/menuItemModifierGroups.js";
@@ -346,6 +347,7 @@ declare const fullApi: ApiFromModules<{
   "table/customerOrdersPerTenant": typeof table_customerOrdersPerTenant;
   "table/customers": typeof table_customers;
   "table/deliveries": typeof table_deliveries;
+  "table/devices": typeof table_devices;
   "table/feedback": typeof table_feedback;
   "table/menuCategories": typeof table_menuCategories;
   "table/menuItemModifierGroups": typeof table_menuItemModifierGroups;

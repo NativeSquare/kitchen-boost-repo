@@ -7,6 +7,7 @@ import { contracts } from "./table/contracts";
 import { customerOrdersPerTenant } from "./table/customerOrdersPerTenant";
 import { customers } from "./table/customers";
 import { deliveries } from "./table/deliveries";
+import { devices } from "./table/devices";
 import { feedback } from "./table/feedback";
 import { menuCategories } from "./table/menuCategories";
 import { menuItemModifierGroups } from "./table/menuItemModifierGroups";
@@ -171,4 +172,16 @@ export default defineSchema({
   // keys + reactivate), soft `inactive` on 410 Gone (no hard delete). The SEND
   // itself is #54 (2.7) — this slice is storage only.
   webPushSubscriptions,
+  // #393 (KB Orders, PRD 20 §1a / §1b / §12) — per-(user, device) preference
+  // row owned by the native app. USER-SCOPED, NO `tenantId` scoping key
+  // (accessed via the self-identity seam `lib/tenancy/devicesStore`, never raw
+  // `ctx.db.query("devices")`). Drives the FIRST-login kiosque/téléphone
+  // toggle, the kiosque `pinnedTenantId` (#399 reads it to hide the switcher
+  // + audit monolithique V1), the phone-mode `lastSelectedTenantId` (#399
+  // hydrates the switcher default), and the `onboardingCompleted` skip flag.
+  // The cross-tenant constraint on `pinnedTenantId` (user must have an ACTIVE
+  // `userTenants` attachment on the tenant) lives in the BUSINESS layer —
+  // `lib/devices/setMyDeviceMode` resolves access via `getCurrentActor` and
+  // throws Forbidden otherwise; the cross-tenant fuzz pins that.
+  devices,
 });
