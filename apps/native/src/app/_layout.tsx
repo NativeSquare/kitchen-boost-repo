@@ -74,7 +74,6 @@ function RootStack() {
   const { isAuthenticated, isLoading } = useConvexAuth();
   const { signOut } = useAuthActions();
   const user = useQuery(api.table.users.currentUser);
-  const hasCompletedOnboarding = user?.hasCompletedOnboarding ?? false;
 
   // #393 — per-(user, device) preference row. Drives the kiosque/téléphone
   // gate at first login (PRD 20 §1a) + `expo-keep-awake` activation in
@@ -88,6 +87,13 @@ function RootStack() {
   );
   const hasDeviceMode = device !== null && device !== undefined;
   const isKiosqueMode = hasDeviceMode && device.mode === "kiosque";
+  // #398 — per-(user, device) skip flag for the post-login onboarding
+  // sequence (push prompt + checklist réglages volume/veille). Set to true at
+  // the end of `OnboardingFlow.markOnboardingCompleted`; subsequent launches
+  // see `true` here and skip straight to `(app)` (PRD 20 §1a « séquence skip
+  // aux re-launches »).
+  const hasOnboardingCompleted =
+    hasDeviceMode && device.onboardingCompleted === true;
 
   // PRD 20 §12 — kiosque ⇒ écran toujours allumé tant que l'app est foreground.
   // L'effet est idempotent : un tag déjà activé reste activé, un tag manquant
@@ -155,14 +161,19 @@ function RootStack() {
           <Stack.Screen name="(device-setup)" />
         </Stack.Protected>
 
+        {/* #398 — post-login sequence (push prompt + checklist réglages device,
+            PRD 20 §1a steps 2 + 4). Mounted between `(device-setup)` and
+            `(app)` while `device.onboardingCompleted` is not yet true. The
+            flow flips it to true via `markOnboardingCompleted`, the Convex
+            sub refreshes, and the gate below rebases onto `(app)`. */}
         <Stack.Protected
-          guard={isAuthenticated && hasDeviceMode && !hasCompletedOnboarding}
+          guard={isAuthenticated && hasDeviceMode && !hasOnboardingCompleted}
         >
           <Stack.Screen name="(onboarding)" />
         </Stack.Protected>
 
         <Stack.Protected
-          guard={isAuthenticated && hasDeviceMode && hasCompletedOnboarding}
+          guard={isAuthenticated && hasDeviceMode && hasOnboardingCompleted}
         >
           <Stack.Screen name="(app)" />
         </Stack.Protected>
