@@ -8,7 +8,7 @@ import {
   runCrossTenantFuzz,
   seedTwoTenantsAllRoles,
 } from "../tenancy/fuzz";
-import { acceptsOrders, isPauseActive } from "./status";
+import { acceptsOrders, isClosureActive, isPauseActive } from "./status";
 
 // convex-test needs the function modules; array-negation glob form is required —
 // extglob `!(*.test)` returns ZERO modules (project memory). This file lives in
@@ -102,6 +102,99 @@ describe("2.3-F acceptsOrders — pure combine of service hours + pause", () => 
         nowMs: now,
       }),
     ).toBe(false);
+  });
+});
+
+describe("#397 isClosureActive — pure (closure window + clock → boolean), auto-expiry from `until`", () => {
+  // PRD 20 §7b « Fermeture exceptionnelle » — durable 1+ jour vacances /
+  // panne frigo / intempéries. Auto-reprise dérivée de `until` (no cron), même
+  // pattern que la pause exceptionnelle (PRD 20 §7a).
+  const now = 10_000;
+  const DAY = 24 * HOUR;
+
+  it("is INACTIVE when there is no closure configured", () => {
+    expect(isClosureActive(null, now)).toBe(false);
+  });
+
+  it("is ACTIVE while `now` is within [from, until)", () => {
+    expect(isClosureActive({ from: now - DAY, until: now + DAY }, now)).toBe(
+      true,
+    );
+  });
+
+  it("is INACTIVE when `now` is BEFORE `from` (scheduled future closure)", () => {
+    expect(
+      isClosureActive({ from: now + DAY, until: now + 2 * DAY }, now),
+    ).toBe(false);
+  });
+
+  it("is INACTIVE once `until` has passed (auto-reprise, no manual clear)", () => {
+    expect(
+      isClosureActive({ from: now - 2 * DAY, until: now - DAY }, now),
+    ).toBe(false);
+  });
+
+  it("treats `until` as EXCLUSIVE — at exactly `until` the closure is over", () => {
+    expect(isClosureActive({ from: now - DAY, until: now }, now)).toBe(false);
+  });
+});
+
+describe("#397 acceptsOrders — closure gate is composable with hours + pause", () => {
+  // PRD 20 §7b + ADR 0018 : la fermeture exceptionnelle bloque les nouvelles
+  // commandes au même titre que la pause. Combine deux signaux orthogonaux
+  // (closure ≠ pause par durée + signal métier) plus l'ouverture horaire.
+  const now = 10_000;
+  const DAY = 24 * HOUR;
+
+  it("REFUSES when open and not paused, BUT exceptionally closed (active window)", () => {
+    expect(
+      acceptsOrders({
+        isOpen: true,
+        pause: null,
+        closure: { from: now - DAY, until: now + DAY },
+        nowMs: now,
+      }),
+    ).toBe(false);
+  });
+
+  it("ACCEPTS when open + not paused + closure already expired", () => {
+    expect(
+      acceptsOrders({
+        isOpen: true,
+        pause: null,
+        closure: { from: now - 2 * DAY, until: now - DAY },
+        nowMs: now,
+      }),
+    ).toBe(true);
+  });
+
+  it("ACCEPTS when open + not paused + future closure not yet active", () => {
+    expect(
+      acceptsOrders({
+        isOpen: true,
+        pause: null,
+        closure: { from: now + DAY, until: now + 2 * DAY },
+        nowMs: now,
+      }),
+    ).toBe(true);
+  });
+
+  it("REFUSES when both paused AND exceptionally closed (any one gate is enough)", () => {
+    expect(
+      acceptsOrders({
+        isOpen: true,
+        pause: { until: now + HOUR },
+        closure: { from: now - DAY, until: now + DAY },
+        nowMs: now,
+      }),
+    ).toBe(false);
+  });
+
+  it("the `closure` arg is OPTIONAL: undefined behaves as no-closure for backward compat with siblings", () => {
+    // Existing call sites that don't pass `closure` keep working — pure
+    // function gate stays composable. (Pinned so callers don't need to thread
+    // an explicit `closure: null` everywhere.)
+    expect(acceptsOrders({ isOpen: true, pause: null, nowMs: now })).toBe(true);
   });
 });
 
@@ -206,6 +299,42 @@ describe("2.3-F acceptsOrderNow — PUBLIC gate read (publicTenantQuery)", () =>
     // A pause whose ETA is already in the PAST — derived expiry, no cron.
     await asMgr.mutation(api.lib.orders.orders.setOperationalPause, {
       tenantId: seed.tenantA.tenantId,
+      until: Date.now() - 1,
+    });
+    const accepts = await t.query(api.lib.orders.status.acceptsOrderNow, {
+      tenantId: seed.tenantA.tenantId,
+    });
+    expect(accepts).toBe(true);
+  });
+
+  it("#397 — REFUSES when open and not paused but an exceptional closure is active (PRD 20 §7b)", async () => {
+    const asMgr = t.withIdentity({ subject: seed.tenantA.managerId });
+    await asMgr.mutation(api.lib.menu.serviceHours.set, {
+      tenantId: seed.tenantA.tenantId,
+      windows: ALWAYS_OPEN,
+    });
+    const now = Date.now();
+    await asMgr.mutation(api.lib.orders.orders.setExceptionalClosure, {
+      tenantId: seed.tenantA.tenantId,
+      from: now - HOUR,
+      until: now + 24 * HOUR,
+    });
+    const accepts = await t.query(api.lib.orders.status.acceptsOrderNow, {
+      tenantId: seed.tenantA.tenantId,
+    });
+    expect(accepts).toBe(false);
+  });
+
+  it("#397 — ACCEPTS again once the exceptional closure has expired (auto-reprise, no cron)", async () => {
+    const asMgr = t.withIdentity({ subject: seed.tenantA.managerId });
+    await asMgr.mutation(api.lib.menu.serviceHours.set, {
+      tenantId: seed.tenantA.tenantId,
+      windows: ALWAYS_OPEN,
+    });
+    // A closure entirely in the PAST — `until` already passed, derived expiry.
+    await asMgr.mutation(api.lib.orders.orders.setExceptionalClosure, {
+      tenantId: seed.tenantA.tenantId,
+      from: Date.now() - 2 * HOUR,
       until: Date.now() - 1,
     });
     const accepts = await t.query(api.lib.orders.status.acceptsOrderNow, {

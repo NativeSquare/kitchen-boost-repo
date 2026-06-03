@@ -376,6 +376,91 @@ describe("2.3-A operationalPause — transient tenant status (PRD 20 §7)", () =
   });
 });
 
+describe("#397 exceptionalClosure — durable closure 1+ jour (PRD 20 §7b, ADR 0018)", () => {
+  let t: ReturnType<typeof convexTest>;
+  let seed: Seed;
+  beforeEach(async () => {
+    t = convexTest(schema, modules);
+    seed = await seedTwoTenantsAllRoles(t);
+  });
+
+  it("get returns null when no exceptional closure is configured on the tenant", async () => {
+    const status = await t
+      .withIdentity({ subject: seed.tenantA.managerId })
+      .query(api.lib.orders.orders.getExceptionalClosure, {
+        tenantId: seed.tenantA.tenantId,
+      });
+    expect(status).toBeNull();
+  });
+
+  it("sets a durable exceptional closure ({from, until}) on the calling tenant, then clears it", async () => {
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    const from = Date.now();
+    const until = from + 3 * 24 * 60 * 60 * 1000; // 3 days
+
+    await asManager.mutation(api.lib.orders.orders.setExceptionalClosure, {
+      tenantId: seed.tenantA.tenantId,
+      from,
+      until,
+    });
+    let status = await asManager.query(
+      api.lib.orders.orders.getExceptionalClosure,
+      { tenantId: seed.tenantA.tenantId },
+    );
+    expect(status?.from).toBe(from);
+    expect(status?.until).toBe(until);
+
+    await asManager.mutation(api.lib.orders.orders.clearExceptionalClosure, {
+      tenantId: seed.tenantA.tenantId,
+    });
+    status = await asManager.query(
+      api.lib.orders.orders.getExceptionalClosure,
+      { tenantId: seed.tenantA.tenantId },
+    );
+    expect(status).toBeNull();
+  });
+
+  it("rejects an exceptional closure where `from >= until` (zero-length / inverted window)", async () => {
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    const from = Date.now();
+    // Inverted: `until` is before `from` — no meaningful closure window can be
+    // derived. Throws so a typo in the date picker never persists garbage.
+    await expect(
+      asManager.mutation(api.lib.orders.orders.setExceptionalClosure, {
+        tenantId: seed.tenantA.tenantId,
+        from,
+        until: from - 1,
+      }),
+    ).rejects.toThrow();
+    // Zero-length is also rejected (same code path).
+    await expect(
+      asManager.mutation(api.lib.orders.orders.setExceptionalClosure, {
+        tenantId: seed.tenantA.tenantId,
+        from,
+        until: from,
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("closing tenant A does not leak onto tenant B (independent field per tenant, ADR 0010)", async () => {
+    const from = Date.now();
+    await t
+      .withIdentity({ subject: seed.tenantA.managerId })
+      .mutation(api.lib.orders.orders.setExceptionalClosure, {
+        tenantId: seed.tenantA.tenantId,
+        from,
+        until: from + 24 * 60 * 60 * 1000,
+      });
+
+    const bStatus = await t
+      .withIdentity({ subject: seed.tenantB.managerId })
+      .query(api.lib.orders.orders.getExceptionalClosure, {
+        tenantId: seed.tenantB.tenantId,
+      });
+    expect(bStatus).toBeNull();
+  });
+});
+
 describe("2.3-A cross-tenant fuzz — orders wrappers, 0 leak (ADR 0010)", () => {
   let t: ReturnType<typeof convexTest>;
   let seed: Seed;
@@ -403,11 +488,16 @@ describe("2.3-A cross-tenant fuzz — orders wrappers, 0 leak (ADR 0010)", () =>
         api.lib.orders.orders.setOperationalPause,
         api.lib.orders.orders.getOperationalPause,
         api.lib.orders.orders.clearOperationalPause,
+        // #397 — Fermeture exceptionnelle (PRD 20 §7b, ADR 0018).
+        api.lib.orders.orders.setExceptionalClosure,
+        api.lib.orders.orders.getExceptionalClosure,
+        api.lib.orders.orders.clearExceptionalClosure,
       ],
       isQuery: (fn) =>
         fn === api.lib.orders.orders.listOrders ||
         fn === api.lib.orders.orders.getOrder ||
-        fn === api.lib.orders.orders.getOperationalPause,
+        fn === api.lib.orders.orders.getOperationalPause ||
+        fn === api.lib.orders.orders.getExceptionalClosure,
       tenantId: seed.tenantA.tenantId,
       actors: [
         { label: "B-manager", subject: seed.tenantB.managerId },
@@ -423,9 +513,14 @@ describe("2.3-A cross-tenant fuzz — orders wrappers, 0 leak (ADR 0010)", () =>
         orderId: "nonexistent",
         status: "refusée",
         until: Date.now() + 60_000,
+        // #397 — `setExceptionalClosure` needs a valid (from < until) couple
+        // so the fuzz is testing AUTH refusal, not arg validation. `from` is
+        // strictly before `until` (60_000 above), so the validator never short-
+        // circuits a Forbidden assertion.
+        from: Date.now(),
       },
     });
-    expect(pairs).toBe(35);
+    expect(pairs).toBe(50);
     expect(leaks).toEqual([]);
   });
 });

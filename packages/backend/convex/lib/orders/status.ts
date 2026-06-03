@@ -2,6 +2,7 @@ import type { Id } from "../../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../../_generated/server";
 import { isWithinServiceHours } from "../menu/serviceHours";
 import {
+  getTenantExceptionalClosure,
   getTenantOperationalPause,
   listTenantServiceWindows,
   publicTenantQuery,
@@ -39,6 +40,14 @@ import {
 export type OperationalPause = { until: number } | null;
 
 /**
+ * A durable exceptional closure (1+ jour) as stored on `tenants` (PRD 20 §7b,
+ * #397 / ADR 0018), or none. Distinct from `OperationalPause` (transient
+ * 15-60 min) AND from the lifecycle `status` (KB Admin ops suspension): a
+ * gérant-initiated absence with an explicit réouverture window.
+ */
+export type ExceptionalClosure = { from: number; until: number } | null;
+
+/**
  * Whether a transient operational pause is ACTIVE at `nowMs`. PURE. `until` is
  * EXCLUSIVE: at exactly `until` the pause is over (auto-reprise), so a pause set in
  * the past never gates — no cron is needed to lift it.
@@ -48,16 +57,40 @@ export function isPauseActive(pause: OperationalPause, nowMs: number): boolean {
 }
 
 /**
+ * Whether a durable exceptional closure is ACTIVE at `nowMs`. PURE. `until` is
+ * EXCLUSIVE (same auto-reprise discipline as the pause), and `from` is
+ * INCLUSIVE — a closure scheduled for the future (`now < from`) does NOT gate
+ * yet. Together: `from <= now < until`.
+ */
+export function isClosureActive(
+  closure: ExceptionalClosure,
+  nowMs: number,
+): boolean {
+  if (closure === null) return false;
+  return closure.from <= nowMs && closure.until > nowMs;
+}
+
+/**
  * Whether the resto accepts an order at `nowMs`. PURE — the single decision point
- * the checkout gates on: OPEN (within a service window) AND NOT paused. Closed OR
- * paused ⇒ refused (PRD 10 edge "resto fermé / pause").
+ * the checkout gates on: OPEN (within a service window) AND NOT paused AND NOT
+ * exceptionally closed. Closed OR paused OR exceptionally closed ⇒ refused (PRD
+ * 10 edge "resto fermé / pause", PRD 20 §7b « Fermeture exceptionnelle »).
+ *
+ * `closure` is OPTIONAL on the args shape for backward compat: legacy call
+ * sites that don't pass it keep working — `undefined` behaves as no-closure
+ * (the closure gate stays inert) so the existing pause + service-hours
+ * combination is preserved untouched.
  */
 export function acceptsOrders(args: {
   isOpen: boolean;
   pause: OperationalPause;
+  closure?: ExceptionalClosure;
   nowMs: number;
 }): boolean {
-  return args.isOpen && !isPauseActive(args.pause, args.nowMs);
+  if (!args.isOpen) return false;
+  if (isPauseActive(args.pause, args.nowMs)) return false;
+  if (isClosureActive(args.closure ?? null, args.nowMs)) return false;
+  return true;
 }
 
 /**
@@ -74,13 +107,19 @@ export async function tenantAcceptsOrderNow(
   tenantId: Id<"tenants">,
 ): Promise<boolean> {
   const now = Date.now();
-  const [windows, pause] = await Promise.all([
+  const [windows, pause, closure] = await Promise.all([
     listTenantServiceWindows(ctx, tenantId),
     getTenantOperationalPause(ctx, tenantId),
+    // #397 — the exceptional closure (PRD 20 §7b) is the third independent
+    // signal the gate fuses. Reading it through the sanctioned seam means
+    // the PWA gate inherits the closure check for free — no checkout-side
+    // duplication, no future drift between the gate and the toggle.
+    getTenantExceptionalClosure(ctx, tenantId),
   ]);
   return acceptsOrders({
     isOpen: isWithinServiceHours(windows, now),
     pause,
+    closure,
     nowMs: now,
   });
 }

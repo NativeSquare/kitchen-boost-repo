@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import type { Id } from "../../_generated/dataModel";
 import {
   frozenModifier,
@@ -9,13 +9,16 @@ import {
 import {
   type OrderWithDetail,
   type TenantRole,
+  clearTenantExceptionalClosure,
   clearTenantOperationalPause,
+  getTenantExceptionalClosure,
   getTenantOperationalPause,
   getTenantOrderWithDetail,
   insertTenantOrder,
   listTenantOrders,
   listTenantOrdersByStatus,
   recordTenantOrderStatus,
+  setTenantExceptionalClosure,
   setTenantOperationalPause,
   tenantMutation,
   tenantQuery,
@@ -180,5 +183,64 @@ export const clearOperationalPause = tenantMutation()({
   action: "tenant.operationalPause.clear",
   handler: async (ctx): Promise<void> => {
     await clearTenantOperationalPause(ctx, ctx.tenantId);
+  },
+});
+
+// ---------------------------------------------------------------------------
+// exceptionalClosure — durable closure 1+ jour (#397, PRD 20 §7b, ADR 0018)
+// ---------------------------------------------------------------------------
+
+/**
+ * The calling tenant's exceptional closure (or `null` if not closed).
+ *
+ * `exceptionalClosure` is a DURABLE closure (PRD 20 §7b) — vacances, panne
+ * frigo, intempéries — with an explicit `from`/`until` window. Distinct from
+ * the transient `operationalPause` (15-60 min, PRD 20 §7a) AND from the
+ * lifecycle `status` (durable suspension via KB Admin ops): closure is a
+ * gérant-initiated action with an explicit réouverture date, surfaced live to
+ * the PWA client (« Resto fermé jusqu'au JJ/MM »).
+ *
+ * Same operational-allow as the pause read (kb_manager + staff) — staff can
+ * observe whether the resto is closed even if they don't toggle it.
+ */
+export const getExceptionalClosure = tenantQuery(OPERATIONAL_ALLOW)({
+  args: {},
+  handler: async (ctx): Promise<{ from: number; until: number } | null> =>
+    getTenantExceptionalClosure(ctx, ctx.tenantId),
+});
+
+/**
+ * Set the calling tenant's exceptional closure (manager). Audited. Validates
+ * `from < until` so a typo in the date picker (zero-length or inverted window)
+ * never persists garbage — the PWA gate `acceptsOrderNow` reads this row
+ * directly and a meaningless window would silently leave the resto open.
+ */
+export const setExceptionalClosure = tenantMutation()({
+  args: { from: v.number(), until: v.number() },
+  audit: true,
+  action: "tenant.exceptionalClosure.set",
+  handler: async (ctx, args): Promise<void> => {
+    if (args.from >= args.until) {
+      throw new ConvexError({
+        code: "INVALID_CLOSURE_WINDOW",
+        message:
+          "Exceptional closure requires `from < until` (zero-length / inverted windows are refused).",
+      });
+    }
+    await setTenantExceptionalClosure(ctx, ctx.tenantId, args.from, args.until);
+  },
+});
+
+/**
+ * Clear the calling tenant's exceptional closure (manager). Audited. PRD 20
+ * §7b — réversible à tout moment côté KB Admin OU app native (state Convex
+ * partagé, ADR 0018).
+ */
+export const clearExceptionalClosure = tenantMutation()({
+  args: {},
+  audit: true,
+  action: "tenant.exceptionalClosure.clear",
+  handler: async (ctx): Promise<void> => {
+    await clearTenantExceptionalClosure(ctx, ctx.tenantId);
   },
 });

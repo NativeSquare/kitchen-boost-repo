@@ -76,6 +76,17 @@ export const tenants = defineTable({
   // concern; this slice lays only the transient pause domain field, leaving the
   // 1.x identity / lifecycle fields untouched.
   operationalPause: v.optional(v.object({ until: v.number() })),
+  // #397 — Fermeture exceptionnelle 1+ jour (PRD 20 §7b, ADR 0018). Distinct
+  // from `operationalPause` (transient 15-60 min) AND from the lifecycle
+  // `status` (durable suspension): a durable absence (vacances, panne frigo,
+  // intempéries) avec date de réouverture explicite. When set AND `from <= now
+  // < until`, PWA checkout is disabled with message « Resto fermé jusqu'au
+  // JJ/MM ». Auto-reprise dérivée de `until` (no cron), même pattern que
+  // operationalPause. Réversible à tout moment via `clearExceptionalClosure`
+  // depuis KB Admin OU l'app native (state Convex partagé, ADR 0018).
+  exceptionalClosure: v.optional(
+    v.object({ from: v.number(), until: v.number() }),
+  ),
   createdAt: v.number(),
 })
   .index("by_slug", ["slug"]) // slug is unique (enforced applicatively)
