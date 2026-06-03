@@ -77,26 +77,48 @@ vi.mock("react", async () => {
   };
 });
 
-// The page passes a `Dialog`-rendered modal — radix's Dialog primitive calls
-// React hooks internally (`useId`, `useContext`) which throw under node env.
-// Passthrough the dialog primitives so the inner form renders to the tree.
-vi.mock("@/components/ui/dialog", () => {
+// The page wraps the form in a `Sheet` (right-side drawer) — Radix' Sheet
+// is built on the same dialog primitive (calls React hooks internally:
+// `useId`, `useContext`) which throw under node env. Passthrough the
+// primitives so the inner form renders to the tree, AND forward
+// `data-slot` from `SheetContent` so the « menu-item-modal » root marker
+// keeps surfacing in the serialized tree (load-bearing for page.test).
+vi.mock("@/components/ui/sheet", () => {
   const passthrough = ({
     children,
   }: {
     children?: React.ReactNode;
   }): React.ReactNode => children ?? null;
+  const passthroughWithSlot = ({
+    children,
+    ...rest
+  }: {
+    children?: React.ReactNode;
+    [k: string]: unknown;
+  }): React.ReactNode => {
+    // Render a flat wrapper so `data-slot="menu-item-modal"` (passed by
+    // the page on <SheetContent>) survives the serializer's flatten().
+    const slot = rest["data-slot"];
+    if (typeof slot === "string") {
+      return {
+        type: "div",
+        props: { "data-slot": slot, children: children ?? null },
+        $$typeof: Symbol.for("react.element"),
+      } as unknown as React.ReactNode;
+    }
+    return children ?? null;
+  };
   return {
-    Dialog: passthrough,
-    DialogContent: passthrough,
-    DialogHeader: passthrough,
-    DialogTitle: passthrough,
-    DialogDescription: passthrough,
-    DialogFooter: passthrough,
-    DialogClose: passthrough,
-    DialogTrigger: passthrough,
-    DialogPortal: passthrough,
-    DialogOverlay: passthrough,
+    Sheet: passthrough,
+    SheetContent: passthroughWithSlot,
+    SheetHeader: passthrough,
+    SheetTitle: passthrough,
+    SheetDescription: passthrough,
+    SheetFooter: passthrough,
+    SheetClose: passthrough,
+    SheetTrigger: passthrough,
+    SheetPortal: passthrough,
+    SheetOverlay: passthrough,
   };
 });
 

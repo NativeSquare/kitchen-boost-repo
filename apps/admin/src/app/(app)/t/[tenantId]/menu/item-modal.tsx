@@ -95,13 +95,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -233,22 +233,32 @@ export type ItemModalProps = {
 
 export function ItemModal(props: ItemModalProps) {
   const { mode, open, onOpenChange } = props;
+  // Right-side drawer (UX: a generous form with prix/allergens/photo/
+  // personnalisations reads better as a vertical scroll panel than as a
+  // centred dialog that needs to compete with the menu list behind it).
+  // Radix' Sheet is built on the same dialog primitive — overlay click,
+  // Escape, and the embedded X button all close it; ARIA role stays
+  // `dialog` so the existing test selectors keep working.
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent data-slot="menu-item-modal">
-        <DialogHeader>
-          <DialogTitle>
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent
+        side="right"
+        data-slot="menu-item-modal"
+        className="w-full overflow-y-auto sm:max-w-xl"
+      >
+        <SheetHeader>
+          <SheetTitle>
             {mode === "create" ? "Nouvel item" : "Éditer l'item"}
-          </DialogTitle>
-          <DialogDescription>
+          </SheetTitle>
+          <SheetDescription>
             {mode === "create"
               ? "Ajoutez un nouvel article à votre menu."
               : "Modifiez les informations de l'article. Les changements sont enregistrés automatiquement."}
-          </DialogDescription>
-        </DialogHeader>
+          </SheetDescription>
+        </SheetHeader>
         <ItemModalForm {...props} />
-      </DialogContent>
-    </Dialog>
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -610,7 +620,7 @@ function ItemModalForm({
         </div>
       </div>
 
-      <DialogFooter className="flex-row items-center justify-between gap-2 sm:justify-between">
+      <SheetFooter className="flex-row items-center justify-between gap-2 sm:justify-between">
         {/* Delete (edit mode only), confirmation-gated */}
         <div>
           {mode === "edit" && item !== undefined ? (
@@ -652,7 +662,7 @@ function ItemModalForm({
             </Button>
           ) : null}
         </div>
-      </DialogFooter>
+      </SheetFooter>
 
       {/* Delete confirmation dialog (mirror of category-list-editor pattern) */}
       {mode === "edit" && item !== undefined ? (
