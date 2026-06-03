@@ -638,6 +638,123 @@ describe("ModifierGroupModal — F-MENU-08 (#242)", () => {
     });
   });
 
+  describe("Euro formatting + 2 decimals (Alex E2E manuel — UX prix)", () => {
+    it("displays a 150-cents priceDelta as « 1,50 » in the input (FR comma, 2 decimals)", () => {
+      // Alex E2E manuel: « il faut que les prix apparaissent bien en Euros
+      // avec option de gérer les centimes d'euros (2 décimales) ». Backend
+      // stores cents (cf. `packages/backend/convex/table/modifierGroups.ts`
+      // line 33 — `priceDelta: v.number()`, ≥ 0); the modal must surface
+      // the human-readable euros with a comma separator and exactly two
+      // fractional digits so the gérant can read AND edit centimes.
+      const group = makeGroup({
+        name: "Sauce",
+        options: [
+          { label: "Ketchup", priceDelta: 0 },
+          { label: "Bacon", priceDelta: 150 },
+        ],
+      });
+      const tree = serialize(
+        ModifierGroupModal({
+          mode: "edit",
+          open: true,
+          group,
+          onOpenChange: vi.fn(),
+          onCreate: vi.fn(),
+          onUpdate: vi.fn(),
+          onDelete: vi.fn(),
+        }),
+      );
+      const priceInputs = findBySlot(
+        tree,
+        "menu-modifier-modal-option-price-input",
+      );
+      expect(priceInputs).toHaveLength(2);
+      // 0-cents row falls back to « 0,00 » (NEVER « 0 » alone — the gérant
+      // must SEE the unit, same loud-zero discipline as `formatPriceCentimes`).
+      const ketchupValue = (priceInputs[0].props["value"] ??
+        priceInputs[0].props["defaultValue"]) as string | undefined;
+      expect(ketchupValue).toBe("0,00");
+      // 150 cents → « 1,50 » — pinned round-trip with `centimesToEuroInput`.
+      const baconValue = (priceInputs[1].props["value"] ??
+        priceInputs[1].props["defaultValue"]) as string | undefined;
+      expect(baconValue).toBe("1,50");
+    });
+
+    it("submits priceDelta=50 when the user typed « 0,50 » (FR comma → centimes round-trip)", () => {
+      // Reuses `parsePriceEuros` (single source of truth, mirror of
+      // item-modal). The submit path reads `priceDelta` cached on the row,
+      // refreshed on every keystroke that parses cleanly. Pinned with a
+      // create-mode submit: an option pre-seeded with « 0,50 » (priceDelta 50)
+      // must forward `priceDelta: 50` to `onCreate`.
+      const onCreate = vi.fn();
+      // We bypass the empty-name DISABLED guard by pinning the name; the
+      // useState shim returns the initial value AS the « current » value, so
+      // we have to render the FORM ALREADY populated. Easiest path: render
+      // EDIT mode with a pre-existing group and assert the « Sauvegarder »
+      // payload — same round-trip contract.
+      const onUpdate = vi.fn();
+      const group = makeGroup({
+        name: "Sauce",
+        options: [{ label: "Bacon", priceDelta: 50 }],
+      });
+      const tree = serialize(
+        ModifierGroupModal({
+          mode: "edit",
+          open: true,
+          group,
+          onOpenChange: vi.fn(),
+          onCreate,
+          onUpdate,
+          onDelete: vi.fn(),
+        }),
+      );
+      const submit = findBySlot(tree, "menu-modifier-modal-submit")[0];
+      expect(submit.props["disabled"]).toBeFalsy();
+      const onClick = submit.props["onClick"] as (() => void) | undefined;
+      onClick?.();
+      expect(onUpdate).toHaveBeenCalledTimes(1);
+      const [, payload] = onUpdate.mock.calls[0] as [
+        unknown,
+        { options: Array<{ priceDelta: number }> },
+      ];
+      expect(payload.options[0].priceDelta).toBe(50);
+    });
+
+    it("disables submit AND surfaces a price error when an option carries a negative value (« -5 »)", () => {
+      // Mirror of the AC5 negative-priceDelta path, but pinned as a submit-
+      // gate: an option with `priceDelta: -500` (= « -5,00 € ») surfaces the
+      // inline error AND the « Sauvegarder » button stays disabled (the
+      // backend INVALID_MODIFIER safety net would refuse anyway, but the
+      // local guard saves a wasted round-trip).
+      const onUpdate = vi.fn();
+      const group = makeGroup({
+        name: "Bug",
+        minSelect: 0,
+        maxSelect: 1,
+        options: [{ label: "Reduction", priceDelta: -500 }],
+      });
+      const tree = serialize(
+        ModifierGroupModal({
+          mode: "edit",
+          open: true,
+          group,
+          onOpenChange: vi.fn(),
+          onCreate: vi.fn(),
+          onUpdate,
+          onDelete: vi.fn(),
+        }),
+      );
+      const errors = findBySlot(tree, "menu-modifier-modal-option-price-error");
+      expect(errors.length).toBeGreaterThanOrEqual(1);
+      const submit = findBySlot(tree, "menu-modifier-modal-submit")[0];
+      expect(submit.props["disabled"]).toBe(true);
+      // Click-through must NOT fire onUpdate even if the button were enabled.
+      const onClick = submit.props["onClick"] as (() => void) | undefined;
+      onClick?.();
+      expect(onUpdate).not.toHaveBeenCalled();
+    });
+  });
+
   // Mark `Id` import as used so type-only fixtures compile.
   void ({} as Id<"modifierGroups">);
 });

@@ -77,8 +77,33 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
+import { parsePriceEuros, type ParsedPrice } from "./parse-price";
+
 /** A draft option row — same shape as the backend `modifierOption` validator. */
 type OptionDraft = { label: string; priceDelta: number };
+
+/**
+ * Centimes → French euro input string (« 50 » → « 0,50 », « 1290 » → « 12,90 »).
+ *
+ * Pre-fills the editable « supplément » input in EDIT mode and seeds new
+ * option rows to « 0,00 » so the gérant always sees an euro-shaped value (Alex
+ * E2E manuel — « il faut que les prix apparaissent bien en Euros avec option
+ * de gérer les centimes d'euros (2 décimales) »). Always renders 2 decimals
+ * with the FR comma separator — the round-trip `parsePriceEuros` accepts it.
+ *
+ * Negative input is preserved as a leading « - » so a contract violation
+ * (`priceDelta < 0` arriving from the wire) surfaces in the input AND triggers
+ * the inline error via `parsePriceEuros` (`{ ok: false, reason: "negative" }`).
+ */
+function centimesToEuroInput(centimes: number): string {
+  if (!Number.isFinite(centimes)) return "0,00";
+  const negative = centimes < 0;
+  const abs = Math.abs(Math.round(centimes));
+  const euros = Math.floor(abs / 100);
+  const cents = abs % 100;
+  const fractional = cents.toString().padStart(2, "0");
+  return `${negative ? "-" : ""}${euros},${fractional}`;
+}
 
 /** Payload sent to `api.lib.menu.modifiers.createGroup`. */
 export type ModifierGroupCreatePayload = {
@@ -118,8 +143,46 @@ export type ModifierGroupModalProps = {
   onDelete: (groupId: Id<"modifierGroups">) => void;
 };
 
-/** Default new-option row (label empty, priceDelta=0 → the « offert » case). */
-const EMPTY_OPTION: OptionDraft = { label: "", priceDelta: 0 };
+/**
+ * Local draft row — same shape as `OptionDraft` PLUS a `priceInput` string
+ * (the raw text the gérant types). We keep BOTH `priceInput` and `priceDelta`
+ * in state because (a) the input is uncontrolled-feeling (locale-friendly,
+ * comma OR dot accepted, lets the user type a half-formed « 12, » without
+ * the model wiping it) and (b) the payload sent to the backend MUST be the
+ * parsed centimes integer. `priceDelta` is recomputed by `parsePriceEuros`
+ * on every keystroke so the submit path always reads a fresh value.
+ */
+type OptionRow = { label: string; priceInput: string; priceDelta: number };
+
+/** Default new-option row (« offert » case — « 0,00 € » so the gérant sees the unit). */
+const EMPTY_OPTION_ROW: OptionRow = {
+  label: "",
+  priceInput: "0,00",
+  priceDelta: 0,
+};
+
+/**
+ * Map a `ParsedPrice` failure to the user-facing French message — strict
+ * mirror of the item-modal price-error vocabulary (F-MENU-05 #219) so a
+ * gérant who learns the wording on item « Prix » recognises it instantly on a
+ * modifier option « Supplément ». The « empty » branch is intentionally
+ * unreachable here (caller short-circuits on empty input = 0 cents) but kept
+ * exhaustive for the type checker.
+ */
+function priceErrorMessage(
+  parsed: Extract<ParsedPrice, { ok: false }>,
+): string {
+  switch (parsed.reason) {
+    case "negative":
+      return "Le supplément doit être positif ou nul.";
+    case "fraction":
+      return "Le supplément accepte au maximum 2 décimales (centimes).";
+    case "format":
+      return "Format invalide (ex. 1,50).";
+    case "empty":
+      return "Le supplément est obligatoire.";
+  }
+}
 
 /**
  * Pre-fill the lowest-legal bounds for create mode: `minSelect=0`, `maxSelect=1`
@@ -169,9 +232,12 @@ function ModifierGroupForm({
   const [maxSelect, setMaxSelect] = useState<number>(
     group?.maxSelect ?? CREATE_DEFAULT_MAX,
   );
-  const [options, setOptions] = useState<OptionDraft[]>(
-    group?.options.map((o) => ({ label: o.label, priceDelta: o.priceDelta })) ??
-      [],
+  const [options, setOptions] = useState<OptionRow[]>(
+    group?.options.map((o) => ({
+      label: o.label,
+      priceInput: centimesToEuroInput(o.priceDelta),
+      priceDelta: o.priceDelta,
+    })) ?? [],
   );
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
@@ -191,11 +257,27 @@ function ModifierGroupForm({
     return null;
   }, [minSelect, maxSelect]);
 
+  // Per-option price errors — single source of truth = `parsePriceEuros`,
+  // strictly mirroring the item-modal pattern (F-MENU-05 #219). Both
+  // « priceInput is parseable euros » (UX validation) and « priceDelta ≥ 0 »
+  // (schema mirror) go through the same helper so the wording matches the
+  // user-facing messages on the item « Prix » input. The « empty » reason is
+  // tolerated as a 0-cent supplement (« option offerte ») — same behaviour as
+  // the previous integer-only input that defaulted to 0.
+  //
+  // The defensive `priceDelta < 0` branch catches a contract-violation row
+  // (e.g. a bogus group seeded with `priceDelta: -50` — pinned by the
+  // existing AC5 test) so the inline error fires even when the input string
+  // would otherwise look clean.
   const optionPriceErrors = useMemo<Array<string | null>>(
     () =>
       options.map((o) => {
-        if (!Number.isInteger(o.priceDelta) || o.priceDelta < 0) {
-          return "Le supplément doit être un entier ≥ 0 (en centimes).";
+        const trimmed = o.priceInput.trim();
+        if (trimmed.length === 0) return null;
+        const parsed = parsePriceEuros(trimmed);
+        if (!parsed.ok) return priceErrorMessage(parsed);
+        if (o.priceDelta < 0) {
+          return "Le supplément ne peut pas être négatif.";
         }
         return null;
       }),
@@ -205,7 +287,7 @@ function ModifierGroupForm({
 
   // -- Option-row handlers ---------------------------------------------------
   const handleAddOption = () => {
-    setOptions([...options, { ...EMPTY_OPTION }]);
+    setOptions([...options, { ...EMPTY_OPTION_ROW }]);
   };
   const handleRemoveOption = (index: number) => {
     setOptions(options.filter((_, i) => i !== index));
@@ -214,23 +296,33 @@ function ModifierGroupForm({
     setOptions(options.map((o, i) => (i === index ? { ...o, label } : o)));
   };
   const handleOptionPrice = (index: number, raw: string) => {
-    // Parse euros input → centimes integer. We keep the same UX as the item
-    // modal (locale-friendly decimal separator) but only forward valid integers
-    // to state; an invalid keystroke leaves the previous valid value (no
-    // « NaN » in the model). Empty input → 0 (the « gratuit » case).
-    const trimmed = raw.trim().replace(",", ".");
-    if (trimmed === "") {
-      setOptions(
-        options.map((o, i) => (i === index ? { ...o, priceDelta: 0 } : o)),
-      );
-      return;
-    }
-    const euros = Number(trimmed);
-    if (!Number.isFinite(euros)) return;
-    // Round to nearest centime to avoid float-noise (1.10 -> 110).
-    const centimes = Math.round(euros * 100);
+    // Locale-friendly text input (« 1.50 » OR « 1,50 ») — we KEEP the raw
+    // typed string in `priceInput` so the field never wipes a half-typed
+    // « 12, » mid-keystroke. The centimes integer is derived strictly from
+    // `parsePriceEuros` (single source of truth, mirror of item-modal's
+    // F-MENU-05 contract): if it parses, we cache the result on the row so
+    // the submit path reads a fresh value without re-parsing; if it doesn't,
+    // we leave the last-known-good `priceDelta` in place AND surface the
+    // inline error through `optionPriceErrors` (`canSubmit` blocks « Créer »
+    // until every row parses).
     setOptions(
-      options.map((o, i) => (i === index ? { ...o, priceDelta: centimes } : o)),
+      options.map((o, i) => {
+        if (i !== index) return o;
+        const trimmed = raw.trim();
+        if (trimmed.length === 0) {
+          // Empty input = « offert » (0 cents) — same behaviour as the
+          // previous integer-only input that fell back to 0 on blank.
+          return { ...o, priceInput: raw, priceDelta: 0 };
+        }
+        const parsed = parsePriceEuros(trimmed);
+        if (!parsed.ok) {
+          // Keep the raw string so the user can see + correct what they
+          // typed; preserve the prior `priceDelta` so a transient invalid
+          // keystroke doesn't poison the model.
+          return { ...o, priceInput: raw };
+        }
+        return { ...o, priceInput: raw, priceDelta: parsed.centimes };
+      }),
     );
   };
 
@@ -277,13 +369,6 @@ function ModifierGroupForm({
     onDelete(group._id);
     setConfirmDeleteOpen(false);
     onOpenChange(false);
-  };
-
-  // -- Display euros from centimes (mirror of item-modal) --------------------
-  const displayPrice = (centimes: number): string => {
-    const euros = centimes / 100;
-    if (Number.isInteger(euros)) return String(euros);
-    return String(euros);
   };
 
   // -- Impact panel (edit mode only) -----------------------------------------
@@ -382,17 +467,34 @@ function ModifierGroupForm({
                     className="flex-1"
                     aria-label={`Libellé de l'option ${index + 1}`}
                   />
-                  <Input
-                    data-slot="menu-modifier-modal-option-price-input"
-                    type="text"
-                    inputMode="decimal"
-                    value={displayPrice(opt.priceDelta)}
-                    onChange={(e) => handleOptionPrice(index, e.target.value)}
-                    placeholder="0"
-                    className="w-24"
-                    aria-label={`Supplément de l'option ${index + 1}`}
-                    aria-invalid={priceErr !== null || undefined}
-                  />
+                  {/* Euro-suffixed price input — Alex E2E manuel : « il faut
+                      que les prix apparaissent bien en Euros avec option de
+                      gérer les centimes d'euros (2 décimales) ». Wrapping
+                      `div.relative` + absolute `€` glyph mirrors the standard
+                      shadcn pattern for suffixed inputs; the input keeps
+                      `pr-7` (right padding) so the typed digits never collide
+                      with the symbol. Plain text input (no `type="number"` —
+                      same rationale as item-modal: better touch UX, lockable
+                      locale via `parsePriceEuros`). */}
+                  <div className="relative w-28">
+                    <Input
+                      data-slot="menu-modifier-modal-option-price-input"
+                      type="text"
+                      inputMode="decimal"
+                      value={opt.priceInput}
+                      onChange={(e) => handleOptionPrice(index, e.target.value)}
+                      placeholder="0,00"
+                      className="pr-7 text-right"
+                      aria-label={`Supplément en euros de l'option ${index + 1}`}
+                      aria-invalid={priceErr !== null || undefined}
+                    />
+                    <span
+                      aria-hidden="true"
+                      className="text-muted-foreground pointer-events-none absolute inset-y-0 right-2 flex items-center text-sm"
+                    >
+                      €
+                    </span>
+                  </div>
                   <Button
                     type="button"
                     variant="ghost"
