@@ -343,3 +343,101 @@ describe("#393 devices.markOnboardingCompleted — skip flag on re-launch (PRD 2
     expect(row?.onboardingCompleted).toBe(true);
   });
 });
+
+describe("#408 devices.markItemToggleTooltipSeen — first-usage tooltip flag (PRD 20 §7c)", () => {
+  let t: ReturnType<typeof convexTest>;
+  let seed: Seed;
+  beforeEach(async () => {
+    t = convexTest(schema, modules);
+    seed = await seedTwoTenantsAllRoles(t);
+  });
+
+  it("throws Unauthenticated when no caller identity", async () => {
+    await expect(
+      t.mutation(api.lib.devices.devices.markItemToggleTooltipSeen, {
+        deviceId: "dev-x",
+      }),
+    ).rejects.toThrow(/unauthenticated/i);
+  });
+
+  it("sets the flag on the caller's own (user, device) row and getMyDevice surfaces it (no re-prompt)", async () => {
+    const asA = t.withIdentity({ subject: seed.tenantA.managerId });
+
+    // First seed a device row in telephone mode (the safest baseline).
+    await asA.mutation(api.lib.devices.devices.setMyDeviceMode, {
+      deviceId: "phone-mgr",
+      mode: "telephone",
+    });
+
+    // Initially the tooltip has NEVER been seen — the flag is absent.
+    const before = await asA.query(api.lib.devices.devices.getMyDevice, {
+      deviceId: "phone-mgr",
+    });
+    expect(before?.itemToggleTooltipSeen).toBeUndefined();
+
+    // Flip the flag (called by the native UI after the gérant dismisses the
+    // first-usage tooltip — PRD 20 §7c « Tooltip dismissé pour usages
+    // suivants »).
+    await asA.mutation(api.lib.devices.devices.markItemToggleTooltipSeen, {
+      deviceId: "phone-mgr",
+    });
+
+    const after = await asA.query(api.lib.devices.devices.getMyDevice, {
+      deviceId: "phone-mgr",
+    });
+    expect(after?.itemToggleTooltipSeen).toBe(true);
+  });
+
+  it("first call upserts a row even when no device row existed (idempotent first-flip)", async () => {
+    const asA = t.withIdentity({ subject: seed.tenantA.managerId });
+
+    // No prior `setMyDeviceMode` — fresh device.
+    expect(
+      await asA.query(api.lib.devices.devices.getMyDevice, {
+        deviceId: "fresh-tab",
+      }),
+    ).toBeNull();
+
+    await asA.mutation(api.lib.devices.devices.markItemToggleTooltipSeen, {
+      deviceId: "fresh-tab",
+    });
+
+    const row = await asA.query(api.lib.devices.devices.getMyDevice, {
+      deviceId: "fresh-tab",
+    });
+    // The upsert path defaults `mode` to telephone (safest baseline, no pin)
+    // and stamps the tooltip-seen flag.
+    expect(row?.mode).toBe("telephone");
+    expect(row?.itemToggleTooltipSeen).toBe(true);
+  });
+
+  it("never leaks: setting the flag on A's deviceId does NOT surface on B's session for the same deviceId string", async () => {
+    const asA = t.withIdentity({ subject: seed.tenantA.managerId });
+    await asA.mutation(api.lib.devices.devices.markItemToggleTooltipSeen, {
+      deviceId: "shared-id",
+    });
+
+    // Manager B asks for the SAME deviceId string — they own NO row, get null.
+    const peek = await t
+      .withIdentity({ subject: seed.tenantB.managerId })
+      .query(api.lib.devices.devices.getMyDevice, {
+        deviceId: "shared-id",
+      });
+    expect(peek).toBeNull();
+  });
+
+  it("is idempotent — flipping it again leaves it true (no double-prompt regression)", async () => {
+    const asA = t.withIdentity({ subject: seed.tenantA.managerId });
+    await asA.mutation(api.lib.devices.devices.markItemToggleTooltipSeen, {
+      deviceId: "dev-1",
+    });
+    await asA.mutation(api.lib.devices.devices.markItemToggleTooltipSeen, {
+      deviceId: "dev-1",
+    });
+
+    const row = await asA.query(api.lib.devices.devices.getMyDevice, {
+      deviceId: "dev-1",
+    });
+    expect(row?.itemToggleTooltipSeen).toBe(true);
+  });
+});

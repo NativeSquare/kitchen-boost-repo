@@ -36,6 +36,8 @@ export type DevicePatch = {
   pinnedTenantId?: Id<"tenants"> | null;
   lastSelectedTenantId?: Id<"tenants"> | null;
   onboardingCompleted?: boolean;
+  // #408 — toggle dispo item first-usage tooltip flag (PRD 20 §7c).
+  itemToggleTooltipSeen?: boolean;
 };
 
 /** The (user, device) row, or `null` if none exists yet (first launch). */
@@ -86,6 +88,7 @@ export async function upsertUserDevice(
           ? undefined
           : patch.lastSelectedTenantId,
       onboardingCompleted: patch.onboardingCompleted,
+      itemToggleTooltipSeen: patch.itemToggleTooltipSeen,
       createdAt: now,
       updatedAt: now,
     });
@@ -106,6 +109,8 @@ export async function upsertUserDevice(
         : patch.lastSelectedTenantId;
   if (patch.onboardingCompleted !== undefined)
     dbPatch.onboardingCompleted = patch.onboardingCompleted;
+  if (patch.itemToggleTooltipSeen !== undefined)
+    dbPatch.itemToggleTooltipSeen = patch.itemToggleTooltipSeen;
 
   await ctx.db.patch(existing._id, dbPatch);
   return existing._id;
