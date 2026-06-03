@@ -3,6 +3,7 @@ import { ClosureControl } from "@/lib/closure";
 import { ItemAvailabilityEntry } from "@/lib/item-availability";
 import { OrderCard } from "@/lib/orders";
 import { PauseControl } from "@/lib/pause";
+import { QuickStats } from "@/lib/quick-stats";
 import { ServiceHoursEntry } from "@/lib/service-hours";
 import { useActiveTenantId } from "@/lib/tenant-switcher";
 import { api } from "@packages/backend/convex/_generated/api";
@@ -139,6 +140,18 @@ export default function Home() {
        * client (même discipline que pause / fermeture exceptionnelle).
        */}
       <ServiceHoursEntry />
+
+      {/*
+       * #410 — Stats rapides V1 (PRD 20 §9).
+       * 4 KPI minimaux (CA jour, nb cmds jour, CA semaine, comparatif S-1)
+       * dans une grille 2×2 sous les entry pills de disponibilité commerciale.
+       * Pas de graphes — les graphes Recharts vivent côté KB Admin
+       * (F-STATS-DASHBOARD #252/#253/#257). Subscription Convex temps réel,
+       * le delta % est dérivé client-side via `decideQuickStats`.
+       * Les états terminaux `refusée` et `auto_expired` sont EXCLUS du CA
+       * (PRD 20 §9 « c'est du CA réalisé »).
+       */}
+      <QuickStats />
 
       <View className="mb-4 flex-row items-center justify-between">
         <Text className="text-foreground text-xl font-semibold">
