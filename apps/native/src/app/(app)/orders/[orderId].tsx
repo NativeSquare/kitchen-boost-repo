@@ -5,10 +5,13 @@ import { useActiveTenantId } from "@/lib/tenant-switcher";
 import { cn } from "@/lib/utils";
 import { getConvexErrorMessage } from "@/utils/getConvexErrorMessage";
 import {
+  RefuseDialog,
   decideModeTag,
   decidePickupHandoffNote,
+  decideRefuseButton,
   decideStatusLabel,
   decideWorkflowButton,
+  type RefusalReason,
 } from "@/lib/orders";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "@packages/backend/convex/_generated/api";
@@ -76,11 +79,18 @@ export default function OrderDetailScreen() {
   const acknowledge = useMutation(api.lib.orders.workflow.acknowledge);
   const markPrepared = useMutation(api.lib.orders.workflow.markPrepared);
   const markHandedOff = useMutation(api.lib.orders.workflow.markHandedOff);
+  const refuse = useMutation(api.lib.orders.workflow.refuse);
 
   // Tap-to-reveal the delivery address (PRD 20 §4 — same UX rationale as the
   // tap-to-reveal phones the schema doesn't yet expose at the order level).
   const [addressRevealed, setAddressRevealed] = useState(false);
   const [busy, setBusy] = useState(false);
+  // #403 — local visibility flag for the 2-step Refuser dialog. The dialog's
+  // internal 2-step state (motif → confirm) is owned by `RefuseDialog` via
+  // its own `refuseFlowReducer`; this screen only toggles the dialog's
+  // mount/visibility and surfaces the busy state of the refuse mutation.
+  const [refuseDialogOpen, setRefuseDialogOpen] = useState(false);
+  const [refusing, setRefusing] = useState(false);
 
   if (activeTenantId === null || detail === undefined) {
     return (
@@ -114,6 +124,7 @@ export default function OrderDetailScreen() {
   const modeTag = decideModeTag(order.mode);
   const statusLabel = decideStatusLabel(order.status);
   const buttonDecision = decideWorkflowButton(order.status, order.mode);
+  const refuseButton = decideRefuseButton(order.status);
   const pickupNote = decidePickupHandoffNote(order.mode);
   const totalEuros =
     order.pricingSnapshot !== undefined
@@ -145,6 +156,35 @@ export default function OrderDetailScreen() {
       Alert.alert("Erreur", getConvexErrorMessage(err));
     } finally {
       setBusy(false);
+    }
+  };
+
+  // #403 — fire the refuse mutation after the dialog's Step 2 confirmation.
+  // The dialog closes itself BEFORE this resolves (so a double-tap can't
+  // queue a second refund); we only flip `refusing` so the Confirm button
+  // shows a spinner if the network is slow. The backend handles atomicity
+  // (transition `nouvelle → refusée` + queue `refund_issued` notif + schedule
+  // the Stripe refund action — all in one Convex transaction), so on success
+  // the order falls out of the live `tenantOrders` query and the home archives
+  // it immediately. On error we surface the Convex message; the order stays
+  // `nouvelle` so the cuisinier can retry.
+  const onRefuseConfirm = async (reason: RefusalReason) => {
+    if (refusing) return;
+    setRefusing(true);
+    try {
+      await refuse({
+        tenantId: activeTenantId,
+        orderId: order._id,
+        reason,
+      });
+      // The order is now `refusée` — pop the screen so the kiosque returns to
+      // the home (the refused order is filtered out of the live queue and
+      // surfaces in the history #417, not on the home).
+      router.back();
+    } catch (err) {
+      Alert.alert("Erreur", getConvexErrorMessage(err));
+    } finally {
+      setRefusing(false);
     }
   };
 
@@ -316,22 +356,42 @@ export default function OrderDetailScreen() {
         </Card>
       ) : null}
 
-      {/* Workflow button */}
+      {/* Workflow buttons — primary (Accepter / Prête / Remise) + the #403
+          secondary "Refuser" button when applicable (PRD 20 §6a: only from
+          `nouvelle`). Both buttons live side by side on `nouvelle` so the
+          cuisinier reads the binary choice (accept vs refuse) at a glance;
+          on later states the Refuser button is hidden and only the primary
+          workflow button is rendered. */}
       {buttonDecision.kind === "show" ? (
-        <Button
-          size="lg"
-          onPress={onWorkflowPress}
-          disabled={busy}
-          accessibilityLabel={buttonDecision.label}
-        >
-          {busy ? (
-            <ActivityIndicator color="white" />
-          ) : (
-            <Text className="text-primary-foreground font-semibold">
-              {buttonDecision.label}
-            </Text>
-          )}
-        </Button>
+        <View className="flex-row items-center gap-2">
+          {refuseButton.kind === "show" ? (
+            <Button
+              size="lg"
+              variant="outline"
+              onPress={() => setRefuseDialogOpen(true)}
+              disabled={busy || refusing}
+              accessibilityLabel={refuseButton.label}
+              className="flex-1"
+            >
+              <Text className="font-semibold">{refuseButton.label}</Text>
+            </Button>
+          ) : null}
+          <Button
+            size="lg"
+            onPress={onWorkflowPress}
+            disabled={busy || refusing}
+            accessibilityLabel={buttonDecision.label}
+            className="flex-1"
+          >
+            {busy ? (
+              <ActivityIndicator color="white" />
+            ) : (
+              <Text className="text-primary-foreground font-semibold">
+                {buttonDecision.label}
+              </Text>
+            )}
+          </Button>
+        </View>
       ) : (
         <View className="items-center gap-1 py-4">
           <Text className="text-muted-foreground text-center text-sm">
@@ -339,6 +399,16 @@ export default function OrderDetailScreen() {
           </Text>
         </View>
       )}
+
+      {/* #403 — 2-step Refusal dialog (PRD 20 §6a). The dialog's internal
+          2-step state machine lives in `refuse-dialog.tsx`; this screen owns
+          the mutation + the busy state + the navigation after success. */}
+      <RefuseDialog
+        open={refuseDialogOpen}
+        busy={refusing}
+        onClose={() => setRefuseDialogOpen(false)}
+        onConfirm={onRefuseConfirm}
+      />
     </ScrollView>
   );
 }
