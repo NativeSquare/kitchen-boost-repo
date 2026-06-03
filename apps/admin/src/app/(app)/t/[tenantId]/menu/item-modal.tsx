@@ -67,12 +67,28 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "convex/react";
 import {
-  IconLink,
-  IconLinkOff,
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  horizontalListSortingStrategy,
+  sortableKeyboardCoordinates,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
+  IconGripVertical,
   IconPhoto,
   IconPlus,
   IconTrash,
   IconUpload,
+  IconX,
 } from "@tabler/icons-react";
 
 import { api } from "@packages/backend/convex/_generated/api";
@@ -95,6 +111,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
   Sheet,
   SheetContent,
   SheetDescription,
@@ -111,6 +132,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 
 import { parsePriceEuros, type ParsedPrice } from "./parse-price";
+import { reorderById } from "./reorder-utils";
 import { useDebouncedCallback } from "./use-debounced-callback";
 
 /** Default debounce for text autosave (ADR 0015, story body « 500-800 ms »). */
@@ -126,13 +148,26 @@ export type ItemUpdatePatch = {
   categoryId?: Id<"menuCategories">;
 };
 
-/** Payload sent to `api.lib.menu.items.create` from the « Créer » action. */
+/**
+ * Payload sent to `api.lib.menu.items.create` from the « Créer » action.
+ *
+ * `pendingAttachedGroupIds` (Alex E2E manuel — bug « section invisible en mode
+ * CREATE ») carries the modifier groups the gérant picked in the « Personnalisations »
+ * tag selector BEFORE the item existed. The page-level `onCreate` handler is
+ * responsible for chaining `attachGroupToItem({ itemId: newItemId, modifierGroupId })`
+ * for each id AFTER the create resolves — the modal cannot do it itself because
+ * the item has no `_id` until the create round-trip lands. The order of the
+ * array is the order the gérant wants on the chips (mirror of the edge `order`
+ * field on `menuItemModifierGroups`). Empty in edit mode (attach/detach happens
+ * live via the dedicated handlers).
+ */
 export type ItemCreatePayload = {
   categoryId: Id<"menuCategories">;
   name: string;
   description: string;
   basePrice: number;
   allergens: Allergen[];
+  pendingAttachedGroupIds: Id<"modifierGroups">[];
 };
 
 export type ItemModalProps = {
@@ -218,6 +253,34 @@ export type ItemModalProps = {
     modifierGroupId: Id<"modifierGroups">,
   ) => void;
   /**
+   * Alex E2E manuel — fired when the gérant rearranges the « Personnalisations »
+   * tag chips via drag&drop. The full ordered set of `modifierGroups` ids the
+   * item is attached to (strict mirror of `items.reorder`: no partial, the
+   * backend `reorderItemGroups` rejects anything that isn't the complete
+   * currently-attached set). EDIT mode only — pre-create, reorder happens
+   * locally on `pendingAttachedGroupIds` (no round-trip).
+   */
+  onReorderGroups?: (
+    itemId: Id<"menuItems">,
+    orderedGroupIds: Id<"modifierGroups">[],
+  ) => void;
+  /**
+   * Alex E2E manuel — CREATE-mode pending attaches. Pre-create the item has
+   * no `_id`, so `attachGroupToItem` can't target it ; we stash the picked
+   * group ids on the PAGE (so an inline-create modifier-group flow can also
+   * push to this list after the new group lands) and forward them in
+   * `ItemCreatePayload.pendingAttachedGroupIds` on submit — the page-level
+   * `onCreate` handler chains the per-id `attachGroupToItem` calls AFTER the
+   * `items.create` resolves with the new id. In edit mode this state is
+   * unused (attach/detach happens live via the dedicated handlers).
+   */
+  pendingAttachedGroupIds?: Id<"modifierGroups">[];
+  setPendingAttachedGroupIds?: (
+    next:
+      | Id<"modifierGroups">[]
+      | ((prev: Id<"modifierGroups">[]) => Id<"modifierGroups">[]),
+  ) => void;
+  /**
    * F-MENU-09 (#246) — fired when the gérant clicks « Créer un nouveau
    * groupe ». The page handles stacking the `ModifierGroupModal` over the
    * item modal (issue body « ouvre la modale groupe (F-MENU-08) par-dessus
@@ -227,8 +290,16 @@ export type ItemModalProps = {
    * open intent — keeping the cross-modal state on the page is what makes
    * the stacking robust to a successful create (the page closes the group
    * modal but keeps the item modal open).
+   *
+   * In CREATE mode (Alex E2E manuel — bug « section invisible »), the page
+   * receives `null` instead of an item id (no item exists yet). The page
+   * still stacks the group modal, but on save it stashes the new group id in
+   * `pendingAttachedGroupIds` on the item modal local state (via Convex
+   * reactivity: the new group lands in `availableGroups`, the page tags it
+   * as « pending-attach for the open item modal », the chip surfaces). The
+   * item-create-then-attach chain runs only when the gérant clicks « Créer ».
    */
-  onCreateInlineGroup?: (itemId: Id<"menuItems">) => void;
+  onCreateInlineGroup?: (itemId: Id<"menuItems"> | null) => void;
 };
 
 export function ItemModal(props: ItemModalProps) {
@@ -281,10 +352,23 @@ function ItemModalForm({
   onRemovePhoto,
   attachedGroups,
   availableGroups,
+  pendingAttachedGroupIds,
+  setPendingAttachedGroupIds,
   onAttachGroup,
   onDetachGroup,
+  onReorderGroups,
   onCreateInlineGroup,
 }: ItemModalProps) {
+  // Defaults — the page is the canonical owner of `pendingAttachedGroupIds`
+  // (so an inline-create flow on the modifier-group modal can push the new
+  // group's id onto this list when the item modal is in CREATE mode). When
+  // the page doesn't wire them (legacy callers / EDIT mode), fall back to a
+  // stable empty array + a no-op setter — no behaviour change for EDIT.
+  const resolvedPendingIds: Id<"modifierGroups">[] = useMemo(
+    () => pendingAttachedGroupIds ?? [],
+    [pendingAttachedGroupIds],
+  );
+  const resolvedSetPending = setPendingAttachedGroupIds ?? (() => {});
   // -- Local form state ------------------------------------------------------
   // Edit mode: pre-fill from the item doc. Create mode: empty defaults.
   const initialPriceEuros = useMemo(() => {
@@ -431,6 +515,7 @@ function ItemModalForm({
       description,
       basePrice: parsedPrice.centimes,
       allergens: selectedAllergens,
+      pendingAttachedGroupIds: resolvedPendingIds,
     });
   };
 
@@ -572,29 +657,36 @@ function ItemModalForm({
         />
       ) : null}
 
-      {/* Personnalisations — F-MENU-09 (#246). Edit mode only AND wired only
-          when the page passes the three Personnalisations handlers (slice
-          OPT-IN to preserve the F-MENU-05/06/08 contracts: callers from the
-          previous slices don't pass these). The section surfaces three
-          affordances on the issue body's (a/b/c):
-            (a) the list of REUSABLE groups currently attached to the item
-                (name + min/max + options summary + « Détacher »);
-            (b) a picker over the tenant's full `availableGroups` MINUS the
-                already-attached set — selecting one fires `onAttachGroup`;
-            (c) a « Créer un nouveau groupe » button that fires
-                `onCreateInlineGroup(itemId)` — the page handles stacking
-                the modifier-group modal on top + auto-attaching on save. */}
-      {mode === "edit" &&
-      item !== undefined &&
-      onAttachGroup !== undefined &&
+      {/* Personnalisations — F-MENU-09 (#246) + Alex E2E manuel (UX refonte +
+          fix « section invisible en mode CREATE »). Rendered in BOTH modes
+          when the page wires the three Personnalisations handlers (slice
+          OPT-IN to preserve the F-MENU-05/06/08 contracts).
+            CREATE mode: the chips reflect `pendingAttachedGroupIds` (local
+              state). The submit `onCreate` payload carries them; the page
+              chains `attachGroupToItem(newItemId, gid)` after the create
+              resolves.
+            EDIT mode: the chips reflect `attachedGroups` (the live Convex
+              query result, threaded down from the page). Picker selection /
+              chip detach / chip DnD reorder all fire the dedicated handlers
+              (`onAttachGroup` / `onDetachGroup` / `onReorderGroups`).
+          UX (Alex, E2E manuel): « multiselect avec tags qui s'agrègent comme
+          des chips, réordonnables avec du DnD ». Each chip = group NAME ONLY
+          (« pas nécessairement un supplément » — explicit no min/max badge,
+          no « Supplément » mention). Tags are reorderable via dnd-kit
+          (`useSortable` per chip, horizontal strategy). */}
+      {onAttachGroup !== undefined &&
       onDetachGroup !== undefined &&
       onCreateInlineGroup !== undefined ? (
         <ModifiersSection
+          mode={mode}
           item={item}
           attachedGroups={attachedGroups}
           availableGroups={availableGroups}
+          pendingAttachedGroupIds={resolvedPendingIds}
+          setPendingAttachedGroupIds={resolvedSetPending}
           onAttachGroup={onAttachGroup}
           onDetachGroup={onDetachGroup}
+          onReorderGroups={onReorderGroups}
           onCreateInlineGroup={onCreateInlineGroup}
         />
       ) : null}
@@ -816,41 +908,57 @@ function ItemPhotoSection({
 }
 
 /**
- * F-MENU-09 (#246) — Personnalisations section: the attach / detach / create-
- * inline surface for REUSABLE modifier groups on ONE item.
+ * F-MENU-09 (#246) + Alex E2E manuel — Personnalisations section. UX refonte :
+ * un SEUL composant unifié « tag multiselect » (chips inline + popover picker
+ * + DnD reorder) qui remplace l'ancienne séquence « liste verticale + 2è
+ * section picker ». Reporté par Alex en test E2E :
+ *   « il faut utiliser un composant type multiselect avec les personalisations
+ *   qui s'agrègent comme des tags, qu'on peut réordonner facilement avec du DnD »
  *
- * Three affordances mirror the issue body:
- *   (a) `attachedGroups` rows — each row carries the group name, a min/max
- *       badge (« 1/1 », « 0/3 »…), a short option summary, and a « Détacher »
- *       button that fires `onDetachGroup(itemId, groupId)`. The backend
- *       `detachGroupFromItem` removes ONE edge (siblings + group untouched —
- *       issue body « n affecte ni le groupe ni les autres items »).
- *   (b) a picker built over `availableGroups MINUS attachedGroups`: each
- *       remaining group is exposed as a clickable row that fires
- *       `onAttachGroup(itemId, groupId)`. Idempotency is the SAFETY net
- *       (re-attach = no-op backend-side); the filter keeps the affordance
- *       from offering an obvious no-op. We use a plain text-input filter
- *       (no Base UI / Radix Combobox) so the testable surface stays a flat
- *       React tree under the lean `node` test env.
- *   (c) a « Créer un nouveau groupe » button that fires
- *       `onCreateInlineGroup(itemId)`. The page handles stacking the
- *       `ModifierGroupModal` over the item modal AND auto-attaching the
- *       newly-created group to the originating item (pinned by `page.test.ts`).
+ * Deux modes :
+ *  - CREATE — l'item n'a pas encore d'`_id` ; les chips reflètent
+ *    `pendingAttachedGroupIds` (local state du form), résolus en `Doc<...>`
+ *    via lookup dans `availableGroups`. Sur submit `onCreate`, la page chaine
+ *    `attachGroupToItem(newItemId, gid)` pour chaque id.
+ *  - EDIT — les chips reflètent `attachedGroups` (live Convex query). Picker
+ *    selection / chip detach / chip reorder firent `onAttachGroup` /
+ *    `onDetachGroup` / `onReorderGroups` côté backend immédiatement.
  *
- * Layout: a single section after the photo block and before the allergens
- * checkboxes — same data-slot discipline as the rest of the modal.
+ * Contenu d'un chip : LE NOM DU GROUPE UNIQUEMENT (« pas nécessairement un
+ * supplément » — Alex E2E). PAS de badge min/max, PAS de mention « Supplément ».
+ * Bouton × pour détacher (équivalent du « Détacher » d'avant). Grip handle
+ * dnd-kit pour réordonner.
+ *
+ * Picker : popover avec input de recherche + liste filtrée des groupes
+ * disponibles (= `availableGroups` MINUS chips déjà présents). Click sur une
+ * option → l'ajoute aux chips + ferme le popover. Plain React (pas cmdk) pour
+ * garder le tree testable sous `environment: "node"`.
+ *
+ * « Créer un nouveau groupe » : bouton outline persistant à côté de la zone
+ * tags ; fire `onCreateInlineGroup(itemId | null)` selon le mode.
  */
 function ModifiersSection({
+  mode,
   item,
   attachedGroups,
   availableGroups,
+  pendingAttachedGroupIds,
+  setPendingAttachedGroupIds,
   onAttachGroup,
   onDetachGroup,
+  onReorderGroups,
   onCreateInlineGroup,
 }: {
-  item: Doc<"menuItems">;
+  mode: "create" | "edit";
+  item: Doc<"menuItems"> | undefined;
   attachedGroups: Doc<"modifierGroups">[] | undefined;
   availableGroups: Doc<"modifierGroups">[] | undefined;
+  pendingAttachedGroupIds: Id<"modifierGroups">[];
+  setPendingAttachedGroupIds: (
+    next:
+      | Id<"modifierGroups">[]
+      | ((prev: Id<"modifierGroups">[]) => Id<"modifierGroups">[]),
+  ) => void;
   onAttachGroup: (
     itemId: Id<"menuItems">,
     modifierGroupId: Id<"modifierGroups">,
@@ -859,28 +967,123 @@ function ModifiersSection({
     itemId: Id<"menuItems">,
     modifierGroupId: Id<"modifierGroups">,
   ) => void;
-  onCreateInlineGroup: (itemId: Id<"menuItems">) => void;
+  onReorderGroups:
+    | ((
+        itemId: Id<"menuItems">,
+        orderedGroupIds: Id<"modifierGroups">[],
+      ) => void)
+    | undefined;
+  onCreateInlineGroup: (itemId: Id<"menuItems"> | null) => void;
 }) {
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerQuery, setPickerQuery] = useState("");
 
-  // Filter the picker source: full available set MINUS already-attached ids.
-  // Idempotent backend (issue body « ré-attacher = no-op ») — this filter
-  // is the UX-clarity layer, not the safety net.
-  const attachedIds = useMemo(
-    () => new Set((attachedGroups ?? []).map((g) => g._id)),
-    [attachedGroups],
+  // Lookup: `_id` → `Doc<"modifierGroups">`. Source of truth for chip render
+  // names. The full tenant list (`availableGroups`) is the only place every
+  // group is guaranteed to be — `attachedGroups` may not contain a freshly-
+  // created group yet if the inline-create just landed.
+  const groupById = useMemo(() => {
+    const map = new Map<string, Doc<"modifierGroups">>();
+    for (const g of availableGroups ?? []) {
+      map.set(g._id as unknown as string, g);
+    }
+    // Defensive: edit-mode attached groups may include rows not in
+    // `availableGroups` if the two queries paged differently — overlay them so
+    // a chip never silently drops.
+    for (const g of attachedGroups ?? []) {
+      map.set(g._id as unknown as string, g);
+    }
+    return map;
+  }, [availableGroups, attachedGroups]);
+
+  // Resolve the chip set: edit mode reads from `attachedGroups` (sorted by
+  // the edge `order`, ASC — handled backend-side by `listItemGroups`); create
+  // mode reads from `pendingAttachedGroupIds` (the local order = the gérant's
+  // intent). Both yield `Doc<"modifierGroups">` arrays — the chip render is
+  // mode-agnostic.
+  const chipGroups: Doc<"modifierGroups">[] = useMemo(() => {
+    if (mode === "create") {
+      return pendingAttachedGroupIds
+        .map((id) => groupById.get(id as unknown as string))
+        .filter((g): g is Doc<"modifierGroups"> => g !== undefined);
+    }
+    return attachedGroups ?? [];
+  }, [mode, pendingAttachedGroupIds, attachedGroups, groupById]);
+
+  const chipIds: Id<"modifierGroups">[] = useMemo(
+    () => chipGroups.map((g) => g._id),
+    [chipGroups],
+  );
+
+  // Picker source: full tenant set MINUS already-chipped ids. The backend
+  // attach is idempotent (safety net); the filter is the UX-clarity layer.
+  const chipIdSet = useMemo(
+    () => new Set(chipIds as unknown as string[]),
+    [chipIds],
   );
   const pickerSource = useMemo(() => {
     const candidates = (availableGroups ?? []).filter(
-      (g) => !attachedIds.has(g._id),
+      (g) => !chipIdSet.has(g._id as unknown as string),
     );
     const q = pickerQuery.trim().toLowerCase();
     if (q === "") return candidates;
     return candidates.filter((g) => g.name.toLowerCase().includes(q));
-  }, [availableGroups, attachedIds, pickerQuery]);
+  }, [availableGroups, chipIdSet, pickerQuery]);
 
-  const hasAttached =
-    Array.isArray(attachedGroups) && attachedGroups.length > 0;
+  // Sensors mirror `category-list-editor.tsx` — pointer + keyboard sortable.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
+
+  // DnD reorder. CREATE: rewrite `pendingAttachedGroupIds`. EDIT: fire
+  // `onReorderGroups` with the new ordered set (the page commits via the
+  // `reorderItemGroups` mutation; Convex reactivity refires `listItemGroups`
+  // with the new order).
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over === null || active.id === over.id) return;
+    const activeId = active.id as Id<"modifierGroups">;
+    const overId = over.id as Id<"modifierGroups">;
+    const nextIds = reorderById(chipIds, activeId, overId);
+    if (mode === "create") {
+      setPendingAttachedGroupIds(nextIds);
+      return;
+    }
+    if (item === undefined || onReorderGroups === undefined) return;
+    onReorderGroups(item._id, nextIds);
+  };
+
+  // Attach a group. CREATE: push to local pending state. EDIT: fire backend.
+  const handlePickGroup = (groupId: Id<"modifierGroups">) => {
+    if (mode === "create") {
+      setPendingAttachedGroupIds((prev) =>
+        prev.includes(groupId) ? prev : [...prev, groupId],
+      );
+    } else if (item !== undefined) {
+      onAttachGroup(item._id, groupId);
+    }
+    setPickerOpen(false);
+    setPickerQuery("");
+  };
+
+  // Detach a chip. CREATE: drop from local pending state. EDIT: fire backend.
+  const handleDetachChip = (groupId: Id<"modifierGroups">) => {
+    if (mode === "create") {
+      setPendingAttachedGroupIds((prev) => prev.filter((id) => id !== groupId));
+    } else if (item !== undefined) {
+      onDetachGroup(item._id, groupId);
+    }
+  };
+
+  const inlineCreateTargetId: Id<"menuItems"> | null =
+    mode === "edit" && item !== undefined ? item._id : null;
+
+  // Loading sentinel — only meaningful in edit mode (CREATE has no Convex
+  // round-trip to wait for: pending state starts at `[]`).
+  const showLoading = mode === "edit" && attachedGroups === undefined;
 
   return (
     <div
@@ -894,31 +1097,18 @@ function ModifiersSection({
           variant="outline"
           size="sm"
           data-slot="menu-item-modal-modifier-create-inline"
-          onClick={() => onCreateInlineGroup(item._id)}
+          onClick={() => onCreateInlineGroup(inlineCreateTargetId)}
         >
           <IconPlus className="mr-1.5 size-4" aria-hidden="true" />
           Créer un nouveau groupe
         </Button>
       </div>
       <p className="text-muted-foreground text-xs">
-        Groupes d&apos;options réutilisables attachés à cet item (édité une
-        fois, répercuté partout).
+        Groupes d&apos;options réutilisables attachés à cet item. Cliquez sur la
+        zone pour en ajouter, faites-les glisser pour réordonner.
       </p>
 
-      {/* (a) Attached rows OR empty state. */}
-      {hasAttached ? (
-        <div className="flex flex-col gap-2">
-          {(attachedGroups ?? []).map((group) => (
-            <AttachedGroupRow
-              key={group._id}
-              group={group}
-              onDetach={() => onDetachGroup(item._id, group._id)}
-            />
-          ))}
-        </div>
-      ) : attachedGroups === undefined ? (
-        // Loading sentinel — Convex returns undefined while listItemGroups
-        // is in flight. Keep the layout stable so the section doesn't pop.
+      {showLoading ? (
         <p
           data-slot="menu-item-modal-modifiers-loading"
           className="text-muted-foreground text-xs"
@@ -926,131 +1116,259 @@ function ModifiersSection({
           Chargement…
         </p>
       ) : (
-        <div
-          data-slot="menu-item-modal-modifiers-empty"
-          className="text-muted-foreground rounded-md border border-dashed p-3 text-center text-xs"
-        >
-          Aucun groupe attaché à cet item pour le moment.
-        </div>
-      )}
-
-      {/* (b) Picker — autocomplete on availableGroups MINUS attached. */}
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor={`menu-item-modal-modifier-picker-${item._id}`}>
-          Ajouter un groupe existant
-        </Label>
-        <Input
-          id={`menu-item-modal-modifier-picker-${item._id}`}
-          data-slot="menu-item-modal-modifier-picker-input"
-          value={pickerQuery}
-          onChange={(e) => setPickerQuery(e.target.value)}
-          placeholder="Rechercher un groupe…"
+        <ModifiersTagSelector
+          chipGroups={chipGroups}
+          chipIds={chipIds}
+          pickerOpen={pickerOpen}
+          setPickerOpen={setPickerOpen}
+          pickerQuery={pickerQuery}
+          setPickerQuery={setPickerQuery}
+          pickerSource={pickerSource}
+          availableGroups={availableGroups}
+          sensors={sensors}
+          onDragEnd={handleDragEnd}
+          onPickGroup={handlePickGroup}
+          onDetachChip={handleDetachChip}
+          onOpenCreateInline={() => onCreateInlineGroup(inlineCreateTargetId)}
         />
-        {pickerSource.length > 0 ? (
-          <div
-            data-slot="menu-item-modal-modifier-picker-list"
-            className="max-h-48 overflow-y-auto rounded-md border"
-          >
-            {pickerSource.map((group) => (
-              <button
-                type="button"
-                key={group._id}
-                data-slot="menu-item-modal-modifier-picker-option"
-                data-group-id={group._id as unknown as string}
-                className="hover:bg-accent flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm"
-                onClick={() => onAttachGroup(item._id, group._id)}
-              >
-                <span className="flex flex-col">
-                  <span className="font-medium">{group.name}</span>
-                  <span className="text-muted-foreground text-xs">
-                    {summariseBoundsBadge(group.minSelect, group.maxSelect)} ·{" "}
-                    {group.options.length} option
-                    {group.options.length > 1 ? "s" : ""}
-                  </span>
-                </span>
-                <IconLink className="size-4" aria-hidden="true" />
-              </button>
-            ))}
-          </div>
-        ) : (
-          <p
-            data-slot="menu-item-modal-modifier-picker-empty"
-            className="text-muted-foreground text-xs"
-          >
-            {(availableGroups ?? []).length === attachedIds.size
-              ? "Tous les groupes du tenant sont déjà attachés."
-              : "Aucun groupe ne correspond à la recherche."}
-          </p>
-        )}
-      </div>
+      )}
     </div>
   );
 }
 
-/** Mini-row for an attached group — name + min/max badge + options summary + Détacher. */
-function AttachedGroupRow({
+/**
+ * The unified tag multiselect itself — chips zone + popover picker + DnD. Pure
+ * presentational : every state ref + handler is owned by the parent
+ * `ModifiersSection` (so the create/edit branching stays in one place).
+ *
+ * Layout :
+ *   - container with `border` styled like an input ;
+ *   - each chip = a `SortableChip` (drag handle + name + ×) ;
+ *   - a `+ ajouter` button at the end opens the popover ;
+ *   - the popover contains a search input + filtered list of options (each
+ *     a clickable row firing `onPickGroup`) OR an empty-state message.
+ */
+function ModifiersTagSelector({
+  chipGroups,
+  chipIds,
+  pickerOpen,
+  setPickerOpen,
+  pickerQuery,
+  setPickerQuery,
+  pickerSource,
+  availableGroups,
+  sensors,
+  onDragEnd,
+  onPickGroup,
+  onDetachChip,
+  onOpenCreateInline,
+}: {
+  chipGroups: Doc<"modifierGroups">[];
+  chipIds: Id<"modifierGroups">[];
+  pickerOpen: boolean;
+  setPickerOpen: (open: boolean) => void;
+  pickerQuery: string;
+  setPickerQuery: (q: string) => void;
+  pickerSource: Doc<"modifierGroups">[];
+  availableGroups: Doc<"modifierGroups">[] | undefined;
+  sensors: ReturnType<typeof useSensors>;
+  onDragEnd: (event: DragEndEvent) => void;
+  onPickGroup: (groupId: Id<"modifierGroups">) => void;
+  onDetachChip: (groupId: Id<"modifierGroups">) => void;
+  onOpenCreateInline: () => void;
+}) {
+  const hasChips = chipGroups.length > 0;
+  // `availableGroups === undefined` means the tenant query is still loading
+  // (CREATE mode just-opened, no fetch yet for the picker source). When
+  // there's nothing in the tenant at all, the empty-state nudges the gérant
+  // toward the inline create.
+  const tenantEmpty =
+    Array.isArray(availableGroups) && availableGroups.length === 0;
+  const noMoreToPick =
+    Array.isArray(availableGroups) &&
+    pickerSource.length === 0 &&
+    pickerQuery.trim() === "" &&
+    !tenantEmpty;
+  const noSearchResult =
+    Array.isArray(availableGroups) &&
+    pickerSource.length === 0 &&
+    pickerQuery.trim() !== "";
+
+  return (
+    <div
+      data-slot="menu-item-modal-modifier-tag-selector"
+      className="border-input bg-background focus-within:ring-ring/50 flex min-h-10 flex-wrap items-center gap-1.5 rounded-md border p-1.5 focus-within:ring-[3px]"
+    >
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={onDragEnd}
+      >
+        <SortableContext
+          items={chipIds as unknown as string[]}
+          strategy={horizontalListSortingStrategy}
+        >
+          {chipGroups.map((group) => (
+            <SortableModifierChip
+              key={group._id}
+              group={group}
+              onDetach={() => onDetachChip(group._id)}
+            />
+          ))}
+        </SortableContext>
+      </DndContext>
+      {/* Trigger : « + ajouter ». Always present so the gérant has a stable
+          affordance even with zero chips (no « cliquez dans la zone » mystery). */}
+      <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            data-slot="menu-item-modal-modifier-picker-trigger"
+            className="text-muted-foreground hover:bg-accent hover:text-foreground inline-flex items-center gap-1 rounded-full border border-dashed px-2.5 py-1 text-xs font-medium"
+          >
+            <IconPlus className="size-3.5" aria-hidden="true" />
+            {hasChips ? "Ajouter" : "Ajouter une personnalisation"}
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          align="start"
+          className="w-72 p-0"
+          data-slot="menu-item-modal-modifier-picker-popover"
+        >
+          <div className="border-b p-2">
+            <Input
+              data-slot="menu-item-modal-modifier-picker-input"
+              value={pickerQuery}
+              onChange={(e) => setPickerQuery(e.target.value)}
+              placeholder="Rechercher un groupe…"
+              autoFocus
+              className="h-8"
+            />
+          </div>
+          <div
+            data-slot="menu-item-modal-modifier-picker-list"
+            className="max-h-56 overflow-y-auto p-1"
+          >
+            {pickerSource.length > 0 ? (
+              pickerSource.map((group) => (
+                <button
+                  type="button"
+                  key={group._id}
+                  data-slot="menu-item-modal-modifier-picker-option"
+                  data-group-id={group._id as unknown as string}
+                  className="hover:bg-accent flex w-full items-center justify-between gap-2 rounded-sm px-2 py-1.5 text-left text-sm"
+                  onClick={() => onPickGroup(group._id)}
+                >
+                  <span className="truncate">{group.name}</span>
+                </button>
+              ))
+            ) : tenantEmpty ? (
+              <div
+                data-slot="menu-item-modal-modifier-picker-empty"
+                className="flex flex-col gap-2 p-2 text-xs"
+              >
+                <p className="text-muted-foreground">
+                  Aucun groupe disponible. Créez-en un pour commencer.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setPickerOpen(false);
+                    onOpenCreateInline();
+                  }}
+                  data-slot="menu-item-modal-modifier-picker-empty-create"
+                >
+                  <IconPlus className="mr-1.5 size-4" aria-hidden="true" />
+                  Créer un nouveau groupe
+                </Button>
+              </div>
+            ) : noMoreToPick ? (
+              <p
+                data-slot="menu-item-modal-modifier-picker-empty"
+                className="text-muted-foreground p-2 text-xs"
+              >
+                Tous les groupes du tenant sont déjà attachés.
+              </p>
+            ) : noSearchResult ? (
+              <p
+                data-slot="menu-item-modal-modifier-picker-empty"
+                className="text-muted-foreground p-2 text-xs"
+              >
+                Aucun résultat.
+              </p>
+            ) : (
+              // availableGroups undefined (loading sentinel) — keep layout
+              // stable rather than flashing a misleading « empty » message.
+              <p
+                data-slot="menu-item-modal-modifier-picker-loading"
+                className="text-muted-foreground p-2 text-xs"
+              >
+                Chargement…
+              </p>
+            )}
+          </div>
+        </PopoverContent>
+      </Popover>
+    </div>
+  );
+}
+
+/**
+ * One sortable chip — grip handle (drag activator) + group name + × (detach).
+ * Mirror of the `SortableCategoryRow` pattern (`useSortable`, handle = drag
+ * activator so the × stays clickable without triggering a drag).
+ */
+function SortableModifierChip({
   group,
   onDetach,
 }: {
   group: Doc<"modifierGroups">;
   onDetach: () => void;
 }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: group._id });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
   return (
-    <div
-      data-slot="menu-item-modal-modifier-attached-row"
+    <span
+      ref={setNodeRef}
+      style={style}
+      data-slot="menu-item-modal-modifier-tag"
       data-group-id={group._id as unknown as string}
-      className="flex items-center justify-between gap-2 rounded-md border p-2"
+      className="bg-muted text-foreground inline-flex items-center gap-1 rounded-full pl-1 pr-2 py-1 text-xs font-medium"
     >
-      <div className="flex min-w-0 flex-col">
-        <span className="flex items-center gap-2 text-sm font-medium">
-          <span className="truncate">{group.name}</span>
-          <span
-            data-slot="menu-item-modal-modifier-attached-bounds"
-            className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[10px] font-semibold tracking-wide"
-          >
-            {group.minSelect}/{group.maxSelect}
-          </span>
-        </span>
-        <span className="text-muted-foreground truncate text-xs">
-          {summariseOptions(group.options)}
-        </span>
-      </div>
-      <Button
+      <button
         type="button"
-        variant="ghost"
-        size="sm"
-        data-slot="menu-item-modal-modifier-detach"
-        onClick={onDetach}
-        className="text-muted-foreground hover:text-destructive"
-        aria-label={`Détacher le groupe ${group.name}`}
+        data-slot="menu-item-modal-modifier-tag-drag-handle"
+        aria-label={`Réordonner ${group.name}`}
+        className="text-muted-foreground hover:text-foreground cursor-grab touch-none rounded-full p-0.5 outline-none focus-visible:ring-2 active:cursor-grabbing"
+        {...attributes}
+        {...listeners}
       >
-        <IconLinkOff className="mr-1.5 size-4" aria-hidden="true" />
-        Détacher
-      </Button>
-    </div>
+        <IconGripVertical className="size-3" aria-hidden="true" />
+      </button>
+      <span className="truncate">{group.name}</span>
+      <button
+        type="button"
+        data-slot="menu-item-modal-modifier-tag-detach"
+        data-group-id={group._id as unknown as string}
+        aria-label={`Détacher ${group.name}`}
+        onClick={onDetach}
+        className="text-muted-foreground hover:text-destructive rounded-full p-0.5 outline-none focus-visible:ring-2"
+      >
+        <IconX className="size-3" aria-hidden="true" />
+      </button>
+    </span>
   );
-}
-
-/**
- * Same heuristic as `modifier-groups-section.tsx::summariseBounds`, but kept
- * short for the per-row badge in the item modal. We KEEP both numbers visible
- * (« 1/1 » badge) AND a textual paraphrase next to it for accessibility —
- * tested by `item-modal.test.tsx` which accepts either form.
- */
-function summariseBoundsBadge(minSelect: number, maxSelect: number): string {
-  if (minSelect === 0 && maxSelect === 1) return "choix unique optionnel";
-  if (minSelect === 0) return `jusqu'à ${maxSelect} (optionnel)`;
-  if (minSelect === maxSelect && minSelect === 1)
-    return "choix unique obligatoire";
-  if (minSelect === maxSelect) return `exactement ${minSelect}`;
-  return `entre ${minSelect} et ${maxSelect}`;
-}
-
-/** Compact options summary — first 2 labels + « +N » when there are more. */
-function summariseOptions(options: Doc<"modifierGroups">["options"]): string {
-  if (options.length === 0) return "Aucune option";
-  const labels = options.map((o) => o.label).filter((l) => l.trim() !== "");
-  if (labels.length === 0) return `${options.length} option(s)`;
-  if (labels.length <= 2) return labels.join(", ");
-  return `${labels.slice(0, 2).join(", ")} +${labels.length - 2}`;
 }

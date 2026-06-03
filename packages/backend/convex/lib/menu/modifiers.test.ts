@@ -417,6 +417,155 @@ describe("2.2-B modifierGroups (reusable) — tenant-scoped via kb_manager", () 
       }),
     ).rejects.toThrow();
   });
+  it("reorderItemGroups rewrites the `order` of every attached group; listItemGroups reflects the new order", async () => {
+    // Drives the DnD reorder of the « Personnalisations » tag chips inside
+    // the item modal. The edge `order` is the customer-facing order, so the
+    // mutation must accept the FULL ordered set (no partial) and refuse a
+    // foreign group id (same set-equality discipline as items.reorder).
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    const item = await makeItem(t, seed, "Burger");
+    const groupA = await asManager.mutation(
+      api.lib.menu.modifiers.createGroup,
+      {
+        tenantId: seed.tenantA.tenantId,
+        name: "Sauce",
+        minSelect: 0,
+        maxSelect: 1,
+        options: [{ label: "Ketchup", priceDelta: 0 }],
+      },
+    );
+    const groupB = await asManager.mutation(
+      api.lib.menu.modifiers.createGroup,
+      {
+        tenantId: seed.tenantA.tenantId,
+        name: "Cuisson",
+        minSelect: 1,
+        maxSelect: 1,
+        options: [{ label: "Saignant", priceDelta: 0 }],
+      },
+    );
+    const groupC = await asManager.mutation(
+      api.lib.menu.modifiers.createGroup,
+      {
+        tenantId: seed.tenantA.tenantId,
+        name: "Taille",
+        minSelect: 1,
+        maxSelect: 1,
+        options: [{ label: "M", priceDelta: 0 }],
+      },
+    );
+    // Attach in A, B, C order — the `order` of each edge is the append index.
+    for (const g of [groupA, groupB, groupC]) {
+      await asManager.mutation(api.lib.menu.modifiers.attachGroupToItem, {
+        tenantId: seed.tenantA.tenantId,
+        itemId: item,
+        modifierGroupId: g,
+      });
+    }
+    const before = await asManager.query(
+      api.lib.menu.modifiers.listItemGroups,
+      { tenantId: seed.tenantA.tenantId, itemId: item },
+    );
+    expect(before.map((g) => g._id)).toEqual([groupA, groupB, groupC]);
+
+    // Drag C to first, A to last → [C, B, A].
+    await asManager.mutation(api.lib.menu.modifiers.reorderItemGroups, {
+      tenantId: seed.tenantA.tenantId,
+      itemId: item,
+      orderedGroupIds: [groupC, groupB, groupA],
+    });
+    const after = await asManager.query(api.lib.menu.modifiers.listItemGroups, {
+      tenantId: seed.tenantA.tenantId,
+      itemId: item,
+    });
+    expect(after.map((g) => g._id)).toEqual([groupC, groupB, groupA]);
+  });
+
+  it("reorderItemGroups refuses a partial / extraneous / duplicated set (INVALID_REORDER)", async () => {
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    const item = await makeItem(t, seed, "Burger");
+    const groupA = await asManager.mutation(
+      api.lib.menu.modifiers.createGroup,
+      {
+        tenantId: seed.tenantA.tenantId,
+        name: "Sauce",
+        minSelect: 0,
+        maxSelect: 1,
+        options: [{ label: "Ketchup", priceDelta: 0 }],
+      },
+    );
+    const groupB = await asManager.mutation(
+      api.lib.menu.modifiers.createGroup,
+      {
+        tenantId: seed.tenantA.tenantId,
+        name: "Cuisson",
+        minSelect: 1,
+        maxSelect: 1,
+        options: [{ label: "Saignant", priceDelta: 0 }],
+      },
+    );
+    await asManager.mutation(api.lib.menu.modifiers.attachGroupToItem, {
+      tenantId: seed.tenantA.tenantId,
+      itemId: item,
+      modifierGroupId: groupA,
+    });
+    await asManager.mutation(api.lib.menu.modifiers.attachGroupToItem, {
+      tenantId: seed.tenantA.tenantId,
+      itemId: item,
+      modifierGroupId: groupB,
+    });
+    // Missing one.
+    await expect(
+      asManager.mutation(api.lib.menu.modifiers.reorderItemGroups, {
+        tenantId: seed.tenantA.tenantId,
+        itemId: item,
+        orderedGroupIds: [groupA],
+      }),
+    ).rejects.toThrow();
+    // Duplicated.
+    await expect(
+      asManager.mutation(api.lib.menu.modifiers.reorderItemGroups, {
+        tenantId: seed.tenantA.tenantId,
+        itemId: item,
+        orderedGroupIds: [groupA, groupA],
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("reorderItemGroups refuses a foreign group id (caught by the set-equality check)", async () => {
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    const bMgr = t.withIdentity({ subject: seed.tenantB.managerId });
+    const item = await makeItem(t, seed, "Burger");
+    const groupA = await asManager.mutation(
+      api.lib.menu.modifiers.createGroup,
+      {
+        tenantId: seed.tenantA.tenantId,
+        name: "Sauce",
+        minSelect: 0,
+        maxSelect: 1,
+        options: [{ label: "Ketchup", priceDelta: 0 }],
+      },
+    );
+    const bGroup = await bMgr.mutation(api.lib.menu.modifiers.createGroup, {
+      tenantId: seed.tenantB.tenantId,
+      name: "B-sauce",
+      minSelect: 0,
+      maxSelect: 1,
+      options: [{ label: "x", priceDelta: 0 }],
+    });
+    await asManager.mutation(api.lib.menu.modifiers.attachGroupToItem, {
+      tenantId: seed.tenantA.tenantId,
+      itemId: item,
+      modifierGroupId: groupA,
+    });
+    await expect(
+      asManager.mutation(api.lib.menu.modifiers.reorderItemGroups, {
+        tenantId: seed.tenantA.tenantId,
+        itemId: item,
+        orderedGroupIds: [bGroup], // foreign id, not attached
+      }),
+    ).rejects.toThrow();
+  });
 });
 
 describe("2.2-B cross-tenant fuzz — modifierGroups + N-N link, 0 leak (ADR 0010)", () => {
@@ -458,6 +607,7 @@ describe("2.2-B cross-tenant fuzz — modifierGroups + N-N link, 0 leak (ADR 001
         api.lib.menu.modifiers.removeGroup,
         api.lib.menu.modifiers.attachGroupToItem,
         api.lib.menu.modifiers.detachGroupFromItem,
+        api.lib.menu.modifiers.reorderItemGroups,
       ],
       isQuery: (fn) =>
         fn === api.lib.menu.modifiers.listGroups ||
@@ -472,9 +622,10 @@ describe("2.2-B cross-tenant fuzz — modifierGroups + N-N link, 0 leak (ADR 001
         minSelect: 0,
         maxSelect: 1,
         options: [{ label: "x", priceDelta: 0 }],
+        orderedGroupIds: [groupAId],
       },
     });
-    expect(pairs).toBe(48); // 8 functions × 6 actors
+    expect(pairs).toBe(54); // 9 functions × 6 actors
     expect(leaks).toEqual([]);
   });
 });

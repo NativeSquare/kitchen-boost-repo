@@ -13,6 +13,7 @@ import {
   listTenantModifierGroupItems,
   listTenantModifierGroups,
   patchTenantModifierGroup,
+  reorderTenantItemModifierGroups,
   tenantMutation,
   tenantQuery,
 } from "../tenancy";
@@ -185,6 +186,33 @@ export const listItemGroups = tenantQuery()({
   args: { itemId: v.id("menuItems") },
   handler: async (ctx, args): Promise<Doc<"modifierGroups">[]> =>
     listTenantItemModifierGroups(ctx, ctx.tenantId, args.itemId),
+});
+
+/**
+ * Rewrite the display `order` of the modifier groups attached to ONE item.
+ * `orderedGroupIds` MUST list every CURRENTLY-attached group exactly once,
+ * else throws INVALID_REORDER — strict mirror of `items.reorder`, no silent
+ * partial. Refuses a foreign `itemId` (NOT_FOUND) and a foreign group id
+ * (caught by the same set-equality check, ADR 0010). Atomic via the Convex
+ * mutation tx: a failure mid-loop rolls back any partial patch.
+ *
+ * Drives the DnD reorder of the « Personnalisations » tag chips inside the
+ * item modal (Alex E2E manuel — « qu'on peut réordonner facilement avec du
+ * DnD »). The edge `order` is the customer-facing order, hence reordering
+ * here propagates everywhere the item is rendered.
+ */
+export const reorderItemGroups = tenantMutation()({
+  args: {
+    itemId: v.id("menuItems"),
+    orderedGroupIds: v.array(v.id("modifierGroups")),
+  },
+  handler: async (ctx, args): Promise<void> =>
+    reorderTenantItemModifierGroups(
+      ctx,
+      ctx.tenantId,
+      args.itemId,
+      args.orderedGroupIds,
+    ),
 });
 
 /** The items reusing ONE group — impact set of a group edit (NOT_FOUND foreign). */

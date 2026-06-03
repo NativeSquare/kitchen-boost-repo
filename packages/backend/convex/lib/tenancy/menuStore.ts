@@ -621,6 +621,60 @@ export async function listTenantItemModifierGroups(
 }
 
 /**
+ * Rewrite the `order` of the modifier-group edges attached to ONE item (owned
+ * by `tenantId`). Mirror of `reorderTenantItems` discipline: `orderedGroupIds`
+ * MUST list every CURRENTLY-attached group exactly once, else throws
+ * INVALID_REORDER — no silent partial. A foreign `itemId` surfaces as NOT_FOUND
+ * via `requireTenantItem`; a foreign group id surfaces as INVALID_REORDER
+ * (caught by the set-equality check). Atomic via the Convex mutation tx — a
+ * failure mid-loop rolls back any partial patch.
+ *
+ * Drives the DnD reorder of the « Personnalisations » tag chips inside the
+ * item modal (the chip order = `order` on the edge, which the customer-facing
+ * surfaces use to render the modifier groups in the gérant-chosen order).
+ */
+export async function reorderTenantItemModifierGroups(
+  ctx: MutationCtx,
+  tenantId: Id<"tenants">,
+  itemId: Id<"menuItems">,
+  orderedGroupIds: Id<"modifierGroups">[],
+): Promise<void> {
+  await requireTenantItem(ctx, tenantId, itemId);
+  const edges = await ctx.db
+    .query("menuItemModifierGroups")
+    .withIndex("by_item", (q) => q.eq("itemId", itemId))
+    .collect();
+  // Defensive: drop any cross-tenant edge that wandered onto this item via a
+  // foreign attach (the attach helper rejects those, but the seam stays paranoid).
+  const ownEdges = edges.filter((e) => e.tenantId === tenantId);
+  if (orderedGroupIds.length !== ownEdges.length) {
+    throw new ConvexError({
+      code: "INVALID_REORDER",
+      message:
+        "orderedGroupIds must list every attached group of the item exactly once.",
+    });
+  }
+  const edgeByGroup = new Map(
+    ownEdges.map((e) => [e.modifierGroupId as Id<"modifierGroups">, e]),
+  );
+  const seen = new Set<string>();
+  for (const groupId of orderedGroupIds) {
+    if (!edgeByGroup.has(groupId) || seen.has(groupId)) {
+      throw new ConvexError({
+        code: "INVALID_REORDER",
+        message:
+          "orderedGroupIds must list every attached group of the item exactly once.",
+      });
+    }
+    seen.add(groupId);
+  }
+  for (let i = 0; i < orderedGroupIds.length; i += 1) {
+    const edge = edgeByGroup.get(orderedGroupIds[i] as Id<"modifierGroups">)!;
+    await ctx.db.patch(edge._id, { order: i });
+  }
+}
+
+/**
  * The items reusing ONE group (owned by `tenantId`) — the impact set of a group
  * edit. Keyed on `by_group`, resolves each edge's item BY ID.
  */

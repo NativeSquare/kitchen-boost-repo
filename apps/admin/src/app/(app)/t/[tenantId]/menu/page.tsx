@@ -111,7 +111,15 @@ type ModifierGroupModalState =
   | null
   | { kind: "create" }
   | { kind: "edit"; groupId: Id<"modifierGroups"> }
-  | { kind: "inline-from-item"; itemId: Id<"menuItems"> };
+  /**
+   * `itemId === null` (Alex E2E manuel) — the item modal is in CREATE mode
+   * and has no id yet. On a successful `createGroup`, the page appends the
+   * new group id to `pendingAttachedGroupIds` (page-level) so it surfaces as
+   * a chip on the item modal ; the actual attach-to-item happens later, when
+   * the gérant clicks « Créer » on the item modal (handled by
+   * `handleCreateItemSubmit`).
+   */
+  | { kind: "inline-from-item"; itemId: Id<"menuItems"> | null };
 
 export default function MenuPage() {
   // `useTenantQuery` / `useTenantMutation` read `tenantId` from
@@ -183,6 +191,12 @@ export default function MenuPage() {
   const detachGroupFromItem = useTenantMutation(
     api.lib.menu.modifiers.detachGroupFromItem,
   );
+  // Alex E2E manuel — DnD reorder on the « Personnalisations » tag chips.
+  // Backend `reorderItemGroups` rejects any payload that isn't the full
+  // currently-attached set (INVALID_REORDER, same discipline as items.reorder).
+  const reorderItemGroups = useTenantMutation(
+    api.lib.menu.modifiers.reorderItemGroups,
+  );
 
   // F-MENU-10 (#254) — Publication wiring (ADR 0015 « édition brouillon →
   // publication globale atomique »):
@@ -209,6 +223,14 @@ export default function MenuPage() {
   const [publishLoading, setPublishLoading] = useState(false);
   const [modifierGroupModalState, setModifierGroupModalState] =
     useState<ModifierGroupModalState>(null);
+  // Alex E2E manuel — CREATE mode pending attaches for the item modal. Lifted
+  // to the page so the inline-create-modifier-group flow can push the new
+  // group id here (the flow opens the group modal on top of the item modal ;
+  // on save we Append the new id to this list rather than to a never-rendered
+  // edge in the backend). Reset to `[]` whenever the modal opens fresh.
+  const [pendingAttachedGroupIds, setPendingAttachedGroupIds] = useState<
+    Id<"modifierGroups">[]
+  >([]);
 
   // F-MENU-08 (#242) — Impact items query: resolved ON DEMAND when the modal
   // is open in edit mode, skipped otherwise (no round-trip when the modal is
@@ -323,18 +345,45 @@ export default function MenuPage() {
   // modal in CREATE mode); the actual mutation runs when the user clicks
   // « Créer » in the modal (handled by `handleCreateItemSubmit`).
   const handleCreateItem = (categoryId: Id<"menuCategories">) => {
+    setPendingAttachedGroupIds([]); // reset stale pending attaches between opens
     setModalState({ kind: "create", categoryId });
   };
   const handleItemClick = (itemId: Id<"menuItems">) => {
+    setPendingAttachedGroupIds([]); // EDIT doesn't use it but keep state clean
     setModalState({ kind: "edit", itemId });
   };
 
   // Modal callbacks — wrap each mutation in try/catch + toast.error (same
   // discipline as the category CRUD handlers above).
+  //
+  // Alex E2E manuel — fix bug « Personnalisations invisibles en mode CREATE ».
+  // The modal hands us `pendingAttachedGroupIds` (modifier groups the gérant
+  // picked in the tag selector BEFORE the item existed). We split the payload:
+  // (1) create the item, (2) chain `attachGroupToItem({ itemId: newItemId, ... })`
+  // for each pending id, IN ORDER so the edge `order` reflects the chip
+  // order the gérant chose. Per-id failures are surfaced as a toast but DO
+  // NOT roll back the item creation — the item is still created, the gérant
+  // can re-attach manually from the edit modal afterward.
   const handleCreateItemSubmit = async (payload: ItemCreatePayload) => {
+    const { pendingAttachedGroupIds, ...createArgs } = payload;
     try {
-      await createItem(payload);
+      const newItemId = await createItem(createArgs);
+      // Per-id attach — sequential so the backend's append-at-end ordering
+      // matches the chip order. Each failure surfaces as a non-fatal toast.
+      for (const groupId of pendingAttachedGroupIds) {
+        try {
+          await attachGroupToItem({
+            itemId: newItemId,
+            modifierGroupId: groupId,
+          });
+        } catch (error) {
+          toast.error("Impossible d'attacher un groupe à l'item créé", {
+            description: getConvexErrorMessage(error),
+          });
+        }
+      }
       setModalState(null);
+      setPendingAttachedGroupIds([]);
     } catch (error) {
       toast.error("Impossible de créer l'item", {
         description: getConvexErrorMessage(error),
@@ -426,15 +475,27 @@ export default function MenuPage() {
       // (issue body « à la confirmation, attache automatiquement le nouveau
       // groupe à l item courant »). The standalone « + Personnalisation »
       // create path skips this branch (no originating item).
+      //
+      // Alex E2E manuel — CREATE-mode item modal (`itemId === null`) : the
+      // item doesn't exist yet, so we can't attach. Instead, push the new
+      // group id onto `pendingAttachedGroupIds` so the chip surfaces in the
+      // item modal's tag selector ; the actual attach-to-item runs once the
+      // gérant clicks « Créer » (see `handleCreateItemSubmit`).
       if (
         modifierGroupModalState !== null &&
         modifierGroupModalState.kind === "inline-from-item" &&
         newGroupId !== undefined
       ) {
-        await attachGroupToItem({
-          itemId: modifierGroupModalState.itemId,
-          modifierGroupId: newGroupId,
-        });
+        if (modifierGroupModalState.itemId !== null) {
+          await attachGroupToItem({
+            itemId: modifierGroupModalState.itemId,
+            modifierGroupId: newGroupId,
+          });
+        } else {
+          setPendingAttachedGroupIds((prev) =>
+            prev.includes(newGroupId) ? prev : [...prev, newGroupId],
+          );
+        }
       }
       setModifierGroupModalState(null);
     } catch (error) {
@@ -495,6 +556,18 @@ export default function MenuPage() {
       });
     }
   };
+  const handleReorderItemGroups = async (
+    itemId: Id<"menuItems">,
+    orderedGroupIds: Id<"modifierGroups">[],
+  ) => {
+    try {
+      await reorderItemGroups({ itemId, orderedGroupIds });
+    } catch (error) {
+      toast.error("Impossible de réordonner les personnalisations", {
+        description: getConvexErrorMessage(error),
+      });
+    }
+  };
   // F-MENU-10 (#254) — Publish handler. Wraps `publishMenu` in try/catch +
   // toast.success / toast.error + getConvexErrorMessage (same discipline as
   // the rest of the CRUD). Tracks an `publishLoading` flag so the button
@@ -527,7 +600,7 @@ export default function MenuPage() {
   // successful `createGroup`, `handleCreateModifierGroup` chains
   // `attachGroupToItem({ itemId, modifierGroupId: newId })` BEFORE closing
   // the group modal — see the inline-from-item branch above.
-  const handleOpenInlineModifierGroup = (itemId: Id<"menuItems">) => {
+  const handleOpenInlineModifierGroup = (itemId: Id<"menuItems"> | null) => {
     setModifierGroupModalState({ kind: "inline-from-item", itemId });
   };
 
@@ -625,7 +698,10 @@ export default function MenuPage() {
             (modalState.kind === "edit" && editingItem !== undefined)
           }
           onOpenChange={(open) => {
-            if (!open) setModalState(null);
+            if (!open) {
+              setModalState(null);
+              setPendingAttachedGroupIds([]);
+            }
           }}
           categories={categories}
           categoryId={
@@ -648,8 +724,11 @@ export default function MenuPage() {
             modalState.kind === "edit" ? attachedGroups : undefined
           }
           availableGroups={modifierGroups}
+          pendingAttachedGroupIds={pendingAttachedGroupIds}
+          setPendingAttachedGroupIds={setPendingAttachedGroupIds}
           onAttachGroup={handleAttachGroupToItem}
           onDetachGroup={handleDetachGroupFromItem}
+          onReorderGroups={handleReorderItemGroups}
           onCreateInlineGroup={handleOpenInlineModifierGroup}
         />
       ) : null}
