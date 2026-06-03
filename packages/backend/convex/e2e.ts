@@ -3091,6 +3091,42 @@ export const wipeE2EOrders = internalMutation({
   },
 });
 
+/**
+ * Récupère le token de l'invite la plus récente pour `wizard-e2e@kb-e2e.test`
+ * (gérant invité par le wizard step 7). Utilisé pendant les tests AC2 / AC2bis
+ * pour shortcircuiter Resend en dev : on copie le token et on forge l'URL
+ * `/accept-invite?token=<token>` directement.
+ */
+export const getWizardManagerInviteToken = internalQuery({
+  args: {},
+  returns: v.union(
+    v.null(),
+    v.object({
+      token: v.string(),
+      acceptedAt: v.optional(v.number()),
+      expiresAt: v.number(),
+      createdAt: v.number(),
+    }),
+  ),
+  handler: async (ctx) => {
+    const invites = await ctx.db
+      .query("adminInvites")
+      .withIndex("by_email", (q) => q.eq("email", "wizard-e2e@kb-e2e.test"))
+      .collect();
+    if (invites.length === 0) return null;
+    // Most recent first (highest createdAt).
+    const latest = invites.reduce((a, b) =>
+      a.createdAt > b.createdAt ? a : b,
+    );
+    return {
+      token: latest.token,
+      acceptedAt: latest.acceptedAt,
+      expiresAt: latest.expiresAt,
+      createdAt: latest.createdAt,
+    };
+  },
+});
+
 // -----------------------------------------------------------------------------
 // E2E-W seed — populate 1 prospect prêt pour le Wizard Provisioning (W1-W10).
 // Le prospect a :
