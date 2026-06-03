@@ -2,63 +2,29 @@
  * F-SUPPORT/3 (#235) — Smoke test for the tenant operational route
  * `/t/[tenantId]/support`.
  *
- * Troisième tracer-bullet de l'épique F-SUPPORT (#150) : la route monte EXACTEMENT
- * le même composant partagé `SupportContent` (figé en #210) que la route
- * supervision `/support` (#232), sans la moindre divergence de config — zéro
- * duplication, zéro fetch, zéro state, zéro router dep.
+ * La route monte EXACTEMENT le même composant partagé `SupportContent` que la
+ * route supervision `/support` (#232) — zéro divergence de config, zéro
+ * duplication. Cette propriété AC3 « rendu strictement identique » est ce qui
+ * justifie l'épique tracer-bullet F-SUPPORT.
+ *
+ * Post-E2E SUP revisit (2026-06-03) — la surface a été drastiquement réduite
+ * (cf. `SupportContent.tsx` docblock). L'invariant « les deux routes rendent
+ * la même chose » reste intact : les deux pages prennent la même
+ * `supportConfig` en argument.
  *
  * Why React-tree serializer (no jsdom, no Testing Library)?
  * --------------------------------------------------------
- * `apps/admin/vitest.config.ts` runs vitest in `environment: "node"` — there
- * is no DOM. The codebase pins React components by recursively expanding the
- * tree to plain DOM nodes (same shape as `(app)/support/page.test.tsx`,
- * `SupportContent.test.tsx`, `unauthorized-card.test.tsx`,
- * `QrGeneratorView.test.tsx`). We reuse the EXACT pattern verbatim so this
- * smoke test stays portable in the same env as the rest of `apps/admin`.
- *
- * Acceptance criteria covered (#235):
- *   - AC1 « `page.tsx` existe et rend `SupportContent` » → the page module's
- *     default export, when invoked, renders the `SupportContent` component
- *     (asserted via the CSM name + every resource title from the live
- *     `supportConfig`).
- *   - AC3 « rendu strictement identique à `/support` (même composant, même
- *     config) » → text-content equality between this page and the supervision
- *     `/support` page (both must surface the same visible markers — CSM name
- *     and every resource title). Asserts the operational route reuses the
- *     SHARED `SupportContent` + `supportConfig` without any divergence.
- *   - AC5 « Smoke test vérifie rendu + présence d'un marqueur visible de
- *     `SupportContent` » → asserts the page invocation does not throw AND
- *     surfaces the CSM name + every resource title.
+ * `apps/admin/vitest.config.ts` runs vitest in `environment: "node"`. Le
+ * pattern serializer est utilisé partout dans `apps/admin`.
  *
  * AC2 « accessible à `/t/[tenantId]/support` dans l'espace opérationnel »
- * is OWNED by Next.js' file-system router — placing the file at
- * `apps/admin/src/app/(app)/t/[tenantId]/support/page.tsx` IS the binding
- * (the `(app)` group is parenthesised → it does NOT segment the URL ; the
- * `t/[tenantId]` segments DO, cf. ADR 0014 §3). Route resolution itself is a
- * framework concern that an E2E (Playwright) covers, not a unit test. We do
- * NOT pin Next's URL resolution in this node-env smoke test.
+ * is OWNED par Next.js' file-system router — placer le fichier à
+ * `apps/admin/src/app/(app)/t/[tenantId]/support/page.tsx` EST le binding.
  *
- * AC4 « accessible même quand le tenant est suspendu » is OWNED by the
- * parent `(app)/t/[tenantId]/layout.tsx` (F-SHELL-04 #175). That layout
- * gates on existence + ownership ONLY (`decideTenantGate` — `allow` /
- * `not-found` / `not-authorized` / `wait`) — there is NO `suspended` branch.
- * A KB Manager attached to a suspended tenant therefore reaches this route
- * exactly like an active one. No code is needed here to "allow suspended" —
- * the absence of a suspended gate IS the allow. If a future F-SHELL slice
- * introduces such a gate, it MUST explicitly except `/support` (PRD
- * `70_kb_admin.md` §Edge cases : « KB Manager attaché à un tenant suspendu
- * uniquement : message d'explication + lien vers support »). Documented in
- * the page header comment.
- *
- * AC6 « pnpm typecheck / lint / test passent » is OWNED by CI (it runs the
- * triple on every push to `agent/<n>`).
- *
- * Scope discipline (#235 hard constraint, mirrors `(app)/support/page.test.tsx`):
- * this file (and its sibling `page.tsx` under
- * `apps/admin/src/app/(app)/t/[tenantId]/support/`) is the ONLY surface
- * touched by this story. Zero touch to `apps/web`, `apps/native`,
- * `packages/backend/convex/`, the shared `@/components/support` (figé en
- * #210), or the supervision route `(app)/support/`.
+ * AC4 « accessible même quand le tenant est suspendu » is OWNED par le
+ * parent `(app)/t/[tenantId]/layout.tsx` (F-SHELL-04 #175) : aucune branche
+ * `suspended` n'existe dans `decideTenantGate`. L'absence de gate suspendue
+ * EST l'autorisation.
  */
 import { describe, expect, it } from "vitest";
 import type { ReactElement, ReactNode } from "react";
@@ -143,8 +109,6 @@ function serialize(node: ReactNode): SerializedNode {
       try {
         return serialize(unwrapped.fn(node.props));
       } catch {
-        // Radix primitives may use hooks that need a renderer; treat them as
-        // opaque and surface their type name so we can still find them.
         const props = { ...(node.props as Record<string, unknown>) };
         const rawChildren = props.children as ReactNode | undefined;
         delete props.children;
@@ -188,6 +152,18 @@ function allText(n: SerializedNode): string {
     .join(" ");
 }
 
+function findAllByType(n: SerializedNode, type: string): SerializedNode[] {
+  return flatten(n).filter(
+    (
+      x,
+    ): x is {
+      type: string;
+      props: Record<string, unknown>;
+      children: SerializedNode[];
+    } => x !== null && "type" in x && x.type === type,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -196,27 +172,27 @@ describe("TenantSupportPage — F-SUPPORT/3 (#235) smoke", () => {
     expect(() => serialize(TenantSupportPage())).not.toThrow();
   });
 
-  it("surfaces the CSM name from the live `supportConfig` (visible marker)", () => {
+  it("surface l'email contact du live `supportConfig` (marqueur visible)", () => {
     const tree = serialize(TenantSupportPage());
     const text = allText(tree);
-    expect(text).toContain(supportConfig.csm.name);
+    expect(text).toContain(supportConfig.contactEmail);
   });
 
-  it("surfaces every static resource title (one card per entry)", () => {
+  it("ne porte QUE le mailto vers `contactEmail` (zéro autre anchor)", () => {
     const tree = serialize(TenantSupportPage());
-    const text = allText(tree);
-    for (const r of supportConfig.resources) {
-      expect(text).toContain(r.title);
-    }
+    const anchors = findAllByType(tree, "a") as Array<{
+      props: { href?: string };
+    }>;
+    expect(anchors).toHaveLength(1);
+    expect(anchors[0].props.href).toBe(`mailto:${supportConfig.contactEmail}`);
   });
 
-  it("AC3 — renders the EXACT same visible content as `/support` (zero duplication, single shared SupportContent + supportConfig)", () => {
-    // Text-content equality between the operational and supervision routes.
-    // If they ever diverge (e.g. someone forks the config or wraps one with
-    // an extra header), this test fails — which is the whole point of the
-    // tracer-bullet pattern: both routes are a thin call site of the SAME
-    // pre-built component. We compare collapsed text streams to absorb
-    // whitespace differences that don't affect the visible UI.
+  it("AC3 — rend EXACTEMENT le même contenu visible que `/support` (zéro duplication, single shared SupportContent + supportConfig)", () => {
+    // Text-content equality entre les routes opérationnelle et supervision.
+    // Si elles divergent (fork de config ou wrapper extra), ce test casse —
+    // c'est le coeur de la promesse tracer-bullet : les deux routes sont un
+    // call site mince du MÊME composant pré-construit. On compare les flux de
+    // texte normalisés pour absorber les diffs whitespace sans impact UI.
     const tenantText = allText(serialize(TenantSupportPage())).replace(
       /\s+/g,
       " ",

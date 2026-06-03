@@ -7,36 +7,41 @@
  * router dependency. The caller picks where to mount it (PRD §4.11 +
  * ADR 0014 §1).
  *
- * Layout :
- *   - CSM bandeau pleine largeur en haut : avatar (photo ou initiales) +
- *     nom + email cliquable + téléphone cliquable (si présent) + créneaux.
- *   - Grid de cards ressources sous le bandeau : 1 col mobile / 2 cols
- *     desktop, lien externe (`target="_blank"`, `rel="noopener noreferrer"`)
- *     + icône `ExternalLink` aria-hidden.
+ * Post-E2E SUP revisit (2026-06-03, demande Alex en review terrain)
+ * -----------------------------------------------------------------
+ * « Sur l'onglet support tu me retires ce Alex Michelet c'est personne.
+ *   L'adresse c'est office@kitchen-boost.com. tu met pas de numéro de tel,
+ *   enlève les mention du lundi au vendredi etc. Enlève les liens pour le
+ *   moment on en a pas. »
+ *
+ * Conséquences sur la surface :
+ *   - SUPPRIMÉ : bandeau identité « Alex Michelet · Votre interlocuteur
+ *     KitchenBoost » (avatar + nom + créneaux + tel). Il n'y a aujourd'hui
+ *     PAS de CSM nommé en face — afficher une personne fictive trompait le
+ *     restaurateur. La per-tenant assignation (vraie CSM avec photo) revient
+ *     en V2 (cf. PRD `70_kb_admin.md` §4.11).
+ *   - SUPPRIMÉ : la grid de cards ressources (FAQ / Guide / Vidéo tuto / Kit
+ *     commercial). Les URLs étaient des placeholders V1 — les vraies pages
+ *     n'existent pas encore. Plutôt qu'envoyer un 404 ou une « coming soon »,
+ *     on cache la grid jusqu'à ce qu'on ait au moins un lien réel à offrir.
+ *   - CONSERVÉ : un message court + un mailto vers l'adresse contact générique
+ *     `office@kitchen-boost.com`. C'est le seul canal V1 — Alex le récupère
+ *     directement.
+ *
+ * Padding (post-revisit) : la surface adopte la convention shell
+ * `flex flex-col gap-4 py-4 md:gap-6 md:py-6` + inner `px-4 lg:px-6`
+ * appliquée partout ailleurs (`dashboard-view`, `menu-view`, `pricing-view`,
+ * etc.). C'était l'OUTLIER qui collait au bord supérieur — root cause du
+ * « problème de padding » remonté par Alex sur la grille E2E SUP.
  *
  * Accessibilité :
- *   - `alt` significatif sur la photo CSM (nom de la personne).
- *   - Liens externes annoncés au lecteur d'écran via `<span class="sr-only">
- *     (ouvre dans un nouvel onglet)</span>` accolé au titre de la carte.
- *   - Icônes `ExternalLink` marquées `aria-hidden` (purement décoratives).
+ *   - Le mailto est un `<a href="mailto:…">` standard, annoncé tel quel par
+ *     les lecteurs d'écran (pas de `target=_blank`, pas de `sr-only` à
+ *     ajouter — c'est un lien interne mailto, pas une externalisation).
  */
 import type { ReactNode } from "react";
-import { ExternalLink } from "lucide-react";
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-
-import type {
-  SupportConfig,
-  SupportCsm,
-  SupportResource,
-} from "./support.config";
+import type { SupportConfig } from "./support.config";
 
 export type SupportContentProps = SupportConfig;
 
@@ -45,119 +50,26 @@ export type SupportContentProps = SupportConfig;
  * rester découplée de la config (testable, réutilisable sur les deux routes).
  */
 export function SupportContent({
-  csm,
-  resources,
+  contactEmail,
 }: SupportContentProps): ReactNode {
   return (
-    <div className="flex flex-col gap-6">
-      <CsmBanner csm={csm} />
-      <ResourceGrid resources={resources} />
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// CSM bandeau
-// ---------------------------------------------------------------------------
-function CsmBanner({ csm }: { csm: SupportCsm }): ReactNode {
-  const initials = getInitials(csm.name);
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-center gap-4">
-        <Avatar className="size-16">
-          {csm.photoUrl !== undefined ? (
-            <AvatarImage src={csm.photoUrl} alt={`Photo de ${csm.name}`} />
-          ) : null}
-          <AvatarFallback className="text-base font-semibold">
-            {initials}
-          </AvatarFallback>
-        </Avatar>
-        <div className="flex flex-col gap-1">
-          <CardTitle>{csm.name}</CardTitle>
-          <CardDescription>Votre interlocuteur KitchenBoost</CardDescription>
-        </div>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-2 text-sm">
-        <div>
+    <div
+      data-slot="support-view"
+      className="flex flex-col gap-4 py-4 md:gap-6 md:py-6"
+    >
+      <div className="px-4 lg:px-6">
+        <h1 className="text-2xl font-bold">Besoin d&apos;aide&nbsp;?</h1>
+        <p className="text-muted-foreground mt-2 text-sm">
+          Pour toute question, contacte-nous :{" "}
           <a
-            href={`mailto:${csm.email}`}
+            data-slot="support-email"
+            href={`mailto:${contactEmail}`}
             className="text-primary underline-offset-4 hover:underline"
           >
-            {csm.email}
+            {contactEmail}
           </a>
-        </div>
-        {csm.phone !== undefined ? (
-          <div>
-            <a
-              href={`tel:${csm.phone}`}
-              className="text-primary underline-offset-4 hover:underline"
-            >
-              {csm.phone}
-            </a>
-          </div>
-        ) : null}
-        <div className="text-muted-foreground">{csm.availability}</div>
-      </CardContent>
-    </Card>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Grid de ressources
-// ---------------------------------------------------------------------------
-function ResourceGrid({
-  resources,
-}: {
-  resources: ReadonlyArray<SupportResource>;
-}): ReactNode {
-  return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-      {resources.map((resource) => (
-        <ResourceCard key={resource.url} resource={resource} />
-      ))}
+        </p>
+      </div>
     </div>
   );
-}
-
-function ResourceCard({ resource }: { resource: SupportResource }): ReactNode {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <a
-            href={resource.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hover:underline"
-          >
-            {resource.title}
-            <span className="sr-only"> (ouvre dans un nouvel onglet)</span>
-          </a>
-          <ExternalLink aria-hidden className="size-4 text-muted-foreground" />
-        </CardTitle>
-        {resource.description !== undefined ? (
-          <CardDescription>{resource.description}</CardDescription>
-        ) : null}
-      </CardHeader>
-    </Card>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-/**
- * "Alex Michelet" → "AM" ; "Alex" → "A" ; "  " → "?".
- * Garde au plus 2 lettres pour respecter le gabarit avatar.
- */
-function getInitials(name: string): string {
-  const parts = name
-    .split(/\s+/)
-    .map((p) => p.trim())
-    .filter((p) => p.length > 0);
-  if (parts.length === 0) return "?";
-  if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
-  const first = parts[0].charAt(0).toUpperCase();
-  const last = parts[parts.length - 1].charAt(0).toUpperCase();
-  return `${first}${last}`;
 }

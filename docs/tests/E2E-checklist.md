@@ -1506,8 +1506,8 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Acteur** : tout rôle
 - **Étapes** : charger `/support` ou `/t/[id]/support`.
 - **Attendu** :
-  - Même composant `SupportPanel` rendu (config statique : CSM + 4 cards).
-  - Pas de duplication HTML entre les 2 routes.
+  - Même composant `SupportContent` rendu (config statique : `contactEmail` only — surface réduite post-revisit 2026-06-03).
+  - Pas de duplication HTML entre les 2 routes (asserté par `t/[tenantId]/support/page.test.tsx` AC3).
 - **Couvre** : #210.
 
 ### SUP2 — Route supervision `/support`
@@ -1515,15 +1515,17 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 - **Acteur** : KB Admin (root)
 - **Étapes** : naviguer `/support`.
 - **Attendu** :
-  - Bandeau CSM : « Alex Michelet » + `mailto:` + `tel:` + « Lun–Ven, 9h–19h ».
-  - 4 cards (FAQ, Guide démarrage, Vidéo tuto, Kit commercial), icône `ExternalLink` aria-hidden, liens `target="_blank"` + `rel="noopener noreferrer"`.
+  - Titre sobre « Besoin d'aide ? » + une ligne d'intro.
+  - Un seul `<a href="mailto:office@kitchen-boost.com">` (`data-slot="support-email"`).
+  - **Aucun bandeau personne nommée**, **aucun téléphone**, **aucune mention d'horaires**, **aucune card de ressources** (Alex 2026-06-03 : « tu me retires ce Alex Michelet c'est personne », « tu met pas de numéro de tel », « enlève les mention du lundi au vendredi », « Enlève les liens pour le moment on en a pas »).
+  - Le contenu ne colle PAS au bord supérieur (convention shell `py-4 md:py-6` appliquée).
 - **Couvre** : #232 ; #210.
 
 ### SUP3 — Route opérationnelle `/t/[tenantId]/support` (y compris tenant suspendu)
 
 - **Acteur** : KB Manager sur T1 (actif) puis T2 (suspended)
 - **Étapes** :
-  1. `/t/T1/support` : bandeau + 4 cards. Cliquer « FAQ » → lien externe nouvel onglet.
+  1. `/t/T1/support` : titre + ligne d'intro + mailto. Cliquer le mailto → ouverture client mail.
   2. Logout, login manager T2 (suspendu), `/t/T2/support`.
 - **Attendu** : T1 et T2 même contenu, aucune redirection, aucune erreur sur T2.
 - **Couvre** : #235 ; #150.
@@ -1532,7 +1534,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 
 - **Acteur** : KB Admin
 - **Étapes** : comparer visuellement `/support` (admin) vs `/t/T1/support`.
-- **Attendu** : mêmes textes, mêmes 4 cards, même ordre, même grid 1col mobile / 2cols desktop.
+- **Attendu** : mêmes textes, même mailto, même padding.
 - **Couvre** : #235 (AC3) ; #210.
 
 ---

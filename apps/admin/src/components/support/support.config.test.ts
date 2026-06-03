@@ -1,68 +1,34 @@
 /**
  * F-SUPPORT/1 (#210) — Static contract of the support config.
  *
- * The default `supportConfig` is the V1 figée config (csm = Alex, no per-tenant
- * mapping). We pin:
- *   - the shape: `csm` (name + email + availability mandatory) + `resources[]`,
- *   - the URL hygiene of every resource (https + plausibly external),
- *   - the email/phone hygiene of the CSM (parseable into mailto:/tel:).
+ * Post-E2E SUP revisit (2026-06-03) la config V1 ne porte plus qu'un seul
+ * champ : `contactEmail`. On pin :
+ *   - la shape (un seul champ, type string),
+ *   - l'hygiène de l'email (parseable en `mailto:`),
+ *   - le fait que l'adresse pointe sur la VRAIE inbox V1
+ *     (`office@kitchen-boost.com`), pas sur une personne nommée fictive.
  *
  * Why not just rely on TypeScript?
  * --------------------------------
- * `tsc --noEmit` enforces *shape*; vitest pins *content* (no `mailto:` in the
- * email field, no relative URL in a resource, etc.). This keeps the static
- * config from drifting silently when Alex edits the URLs at PR-review time.
+ * `tsc --noEmit` enforces *shape*; vitest pins *content* (le bon email,
+ * pas un placeholder, pas un `mailto:` en double). Ça empêche un revert
+ * silencieux vers `alex@kitchen-boost.fr` si quelqu'un réimporte l'ancienne
+ * config par mégarde.
  */
 import { describe, expect, it } from "vitest";
 import { supportConfig, type SupportConfig } from "./support.config";
 
-describe("supportConfig — F-SUPPORT/1 (#210) static contract", () => {
-  it("exposes a typed `csm` block with at least name + email + availability", () => {
+describe("supportConfig — surface email-only (post-E2E SUP revisit)", () => {
+  it("expose un `contactEmail` typé string et plausiblement-mailable", () => {
     const config: SupportConfig = supportConfig;
-    expect(typeof config.csm.name).toBe("string");
-    expect(config.csm.name.length).toBeGreaterThan(0);
-    expect(typeof config.csm.email).toBe("string");
-    expect(config.csm.email).toMatch(/^[^@\s]+@[^@\s]+\.[^@\s]+$/);
-    expect(typeof config.csm.availability).toBe("string");
-    expect(config.csm.availability.length).toBeGreaterThan(0);
+    expect(typeof config.contactEmail).toBe("string");
+    expect(config.contactEmail.length).toBeGreaterThan(0);
+    expect(config.contactEmail).toMatch(/^[^@\s]+@[^@\s]+\.[^@\s]+$/);
+    // Pas de préfixe `mailto:` dans le champ — le composant l'ajoute.
+    expect(config.contactEmail).not.toMatch(/^mailto:/i);
   });
 
-  it("CSM phone, when set, is a plain dial-able string (no `tel:` prefix)", () => {
-    const phone = supportConfig.csm.phone;
-    if (phone !== undefined) {
-      expect(phone).not.toMatch(/^tel:/i);
-      // At least 6 dial-able digits — the component will wrap into `tel:${phone}`.
-      const digits = phone.replace(/\D/g, "");
-      expect(digits.length).toBeGreaterThanOrEqual(6);
-    }
-  });
-
-  it("CSM photoUrl, when set, points under `/csm/` (asset lives in apps/admin/public/csm/)", () => {
-    const photoUrl = supportConfig.csm.photoUrl;
-    if (photoUrl !== undefined) {
-      expect(photoUrl).toMatch(/^\/csm\//);
-    }
-  });
-
-  it("exposes a non-empty typed `resources` array (V1 placeholder URLs are valid)", () => {
-    expect(Array.isArray(supportConfig.resources)).toBe(true);
-    expect(supportConfig.resources.length).toBeGreaterThan(0);
-  });
-
-  it("every resource has a non-empty title + an absolute https URL", () => {
-    for (const r of supportConfig.resources) {
-      expect(typeof r.title).toBe("string");
-      expect(r.title.length).toBeGreaterThan(0);
-      expect(r.url).toMatch(/^https:\/\//);
-      if (r.description !== undefined) {
-        expect(typeof r.description).toBe("string");
-      }
-    }
-  });
-
-  it("no duplicate resource URL (defensive against copy/paste regressions)", () => {
-    const urls = supportConfig.resources.map((r) => r.url);
-    const unique = new Set(urls);
-    expect(unique.size).toBe(urls.length);
+  it("pointe sur l'inbox générique V1 (`office@kitchen-boost.com`, pas une personne nommée)", () => {
+    expect(supportConfig.contactEmail).toBe("office@kitchen-boost.com");
   });
 });

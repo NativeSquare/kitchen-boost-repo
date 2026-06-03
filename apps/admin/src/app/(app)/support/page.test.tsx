@@ -1,40 +1,21 @@
 /**
  * F-SUPPORT/2 (#232) — Smoke test for the `/support` supervision route.
  *
- * The page is the second tracer-bullet of the F-SUPPORT épique (#150): it
- * mounts the shared `SupportContent` (figé en #210) under the supervision
- * shell. There is NO Convex query, NO router dependency, NO state — the page
- * is statically wired to the V1 `supportConfig` and renders.
+ * La page monte le composant partagé `SupportContent` figé en #210 (revisité
+ * post-E2E SUP le 2026-06-03 — surface réduite à un mailto unique vers
+ * `contactEmail`, cf. docblock `SupportContent.tsx`).
  *
  * Why React-tree serializer (no jsdom, no Testing Library)?
  * --------------------------------------------------------
  * `apps/admin/vitest.config.ts` runs vitest in `environment: "node"` — there
- * is no DOM. The codebase pins React components by recursively expanding the
- * tree to plain DOM nodes (same shape as `SupportContent.test.tsx`,
- * `unauthorized-card.test.tsx`, `QrGeneratorView.test.tsx`). We reuse the
- * exact pattern verbatim so this smoke test stays portable in the same env
- * as the rest of `apps/admin`.
+ * is no DOM. Le pattern serializer est utilisé partout dans `apps/admin`
+ * (`SupportContent.test.tsx`, `unauthorized-card.test.tsx`,
+ * `QrGeneratorView.test.tsx`).
  *
- * Acceptance criteria covered (#232):
- *   - AC1 « `page.tsx` existe et rend `SupportContent` » → the page module's
- *     default export, when invoked, renders the `SupportContent` component
- *     (we assert on the CSM name + at least one resource card title, both
- *     visible markers fed by the static `supportConfig`).
- *   - AC3 « Smoke test vérifie que la page rend sans erreur et contient au
- *     moins un marqueur visible de `SupportContent` (nom CSM ou titre card) »
- *     → asserts the page invocation does not throw AND the rendered output
- *     surfaces the CSM name from the live `supportConfig` AND every static
- *     resource title.
- *
- * AC2 « accessible à `/support` » is OWNED by Next.js' file-system router —
- * placing the file at `apps/admin/src/app/(app)/support/page.tsx` IS the
- * binding (the `(app)` group is parenthesised → it does NOT segment the URL,
- * cf. ADR 0014 §3). The route resolution itself is a framework concern that
- * an E2E (Playwright) covers, not a unit test. No infra here would change
- * Next's URL resolution, so we don't pin it in this node-env smoke test.
- *
- * AC4 « pnpm typecheck / lint / test passent » is OWNED by CI (it runs the
- * triple on every push to `agent/<n>`).
+ * AC2 « accessible à `/support` » est OWNED par Next.js' file-system router —
+ * placer le fichier à `apps/admin/src/app/(app)/support/page.tsx` EST le
+ * binding. La résolution d'URL est une concern framework couverte par un E2E,
+ * pas un unit test.
  */
 import { describe, expect, it } from "vitest";
 import type { ReactElement, ReactNode } from "react";
@@ -118,8 +99,6 @@ function serialize(node: ReactNode): SerializedNode {
       try {
         return serialize(unwrapped.fn(node.props));
       } catch {
-        // Radix primitives may use hooks that need a renderer; treat them as
-        // opaque and surface their type name so we can still find them.
         const props = { ...(node.props as Record<string, unknown>) };
         const rawChildren = props.children as ReactNode | undefined;
         delete props.children;
@@ -163,6 +142,18 @@ function allText(n: SerializedNode): string {
     .join(" ");
 }
 
+function findAllByType(n: SerializedNode, type: string): SerializedNode[] {
+  return flatten(n).filter(
+    (
+      x,
+    ): x is {
+      type: string;
+      props: Record<string, unknown>;
+      children: SerializedNode[];
+    } => x !== null && "type" in x && x.type === type,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -171,17 +162,18 @@ describe("SupportPage — F-SUPPORT/2 (#232) smoke", () => {
     expect(() => serialize(SupportPage())).not.toThrow();
   });
 
-  it("surfaces the CSM name from the live `supportConfig` (visible marker)", () => {
+  it("surface l'email contact du live `supportConfig` (marqueur visible)", () => {
     const tree = serialize(SupportPage());
     const text = allText(tree);
-    expect(text).toContain(supportConfig.csm.name);
+    expect(text).toContain(supportConfig.contactEmail);
   });
 
-  it("surfaces every static resource title (one card per entry)", () => {
+  it("ne porte QUE le mailto vers `contactEmail` (zéro autre anchor)", () => {
     const tree = serialize(SupportPage());
-    const text = allText(tree);
-    for (const r of supportConfig.resources) {
-      expect(text).toContain(r.title);
-    }
+    const anchors = findAllByType(tree, "a") as Array<{
+      props: { href?: string };
+    }>;
+    expect(anchors).toHaveLength(1);
+    expect(anchors[0].props.href).toBe(`mailto:${supportConfig.contactEmail}`);
   });
 });

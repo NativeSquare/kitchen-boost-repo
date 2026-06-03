@@ -8,8 +8,4 @@
 export { SupportContent } from "./SupportContent";
 export type { SupportContentProps } from "./SupportContent";
 export { supportConfig } from "./support.config";
-export type {
-  SupportConfig,
-  SupportCsm,
-  SupportResource,
-} from "./support.config";
+export type { SupportConfig } from "./support.config";
