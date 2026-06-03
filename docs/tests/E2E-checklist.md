@@ -3,7 +3,7 @@
 Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / M / CMD / PR / SUP / W). Chaque parcours est à exécuter à la main contre `apps/admin` en dev (Convex live + seeds e2e).
 
 - **Date** : 2026-06-03
-- **Statut global** : 41 stories mergées (#317→#358), 0 bloquée. Wizard complet à 10/10. **Groupes validés** : A (7/7), MC (26/27), QR, MO, T-A/B/C/D/E, W (10/10), M (15/15 + 7 fixes UX), CMD (11/11), PR (7/7 + 1 fix critique). **Restants** : SUP, AC.
+- **Statut global** : 41 stories mergées (#317→#358), 0 bloquée. Wizard complet à 10/10. **Groupes validés** : A (7/7), MC (26/27), QR, MO, T-A/B/C/D/E, W (10/10), M (15/15 + 7 fixes UX), CMD (11/11), PR (7/7 + 1 fix critique), SUP (4/4 + 2 fixes). **Restants** : AC.
 - **Pré-requis transverses** : seeds `e2e` chargées (≥ 2 tenants distincts, un KB Admin root, ≥ 1 KB Manager mono-tenant, ≥ 1 KB Manager multi-tenant, un staff). Stripe en mode test avec un `stripeAccountId` rattaché à au moins un tenant. Resend en mode test pour les magic-links et OTP.
 - **Convention** : les parcours référencent ces pré-requis par leur étiquette (« seeds e2e ») sans les reproduire. Format strict : **Acteur / Pré-requis / Étapes / Attendu / Couvre**.
 
@@ -1500,6 +1500,8 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 ---
 
 ## SUP — Support
+
+> **Statut** : ✅ **4/4 validés le 2026-06-03** (SUP1/SUP2/SUP3/SUP3bis). **2 fixes shippés pendant cette vague** : **c9c258c** (route /support + /t/[id]/support existait mais n'était PAS linkée depuis la sidebar — Alex devait forger l'URL ; ajout entrée « Support » épinglée en bas de SidebarContent via `mt-auto` + `SidebarSeparator`, icône `IconLifebuoy`, URL contextuelle `/support` admin vs `/t/[id]/support` manager) + **cd7207a** (page Support contenait du fake : « Alex Michelet · Votre interlocuteur KitchenBoost » + tel + horaires + 4 cards ressources avec liens externes inexistants ; strip total → email-only `office@kitchen-boost.com` mailto + ligne d'intro sobre ; padding `SupportContent` aligné sur la convention shell `py-4 md:py-6 + px-4 lg:px-6` que les 18 autres pages appliquaient déjà via leurs `*-view.tsx` — SupportContent était le seul outlier, fix ciblé pour éviter double-padding sur les autres pages). **Note debug session** (cf. mémoire `never-switch-branch-while-dev-runs`) : ~30 min perdues à diagnostiquer un faux bug « Support invisible » qui venait d'un `git switch agent/394` que j'avais fait pour debug — le dev server compilait depuis la mauvaise branche, le code Support était bien sur `main`.
 
 ### SUP1 — Composant partagé
 
