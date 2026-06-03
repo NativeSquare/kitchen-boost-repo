@@ -168,6 +168,11 @@ export {
 } from "./usersStore";
 export { attachUserToTenant, getActiveUserTenant } from "./userTenantsStore";
 export {
+  DEFAULT_MIN_SUPPORTED_BUILD_VERSION,
+  readMinSupportedBuildVersion,
+  setMinSupportedBuildVersion,
+} from "./appConfigStore";
+export {
   type DeviceMode,
   type DevicePatch,
   getUserDevice,
