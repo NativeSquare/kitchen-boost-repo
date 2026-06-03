@@ -1,4 +1,5 @@
 import { Text } from "@/components/ui/text";
+import { ClosureControl } from "@/lib/closure";
 import { OrderCard } from "@/lib/orders";
 import { PauseControl } from "@/lib/pause";
 import { useActiveTenantId } from "@/lib/tenant-switcher";
@@ -99,6 +100,18 @@ export default function Home() {
        * NEW checkouts server-side via `acceptsOrderNow`.
        */}
       <PauseControl />
+
+      {/*
+       * #407 — Fermeture exceptionnelle (PRD 20 §7b + ADR 0018).
+       * Sibling of `<PauseControl />` for the DURABLE 1+ day absence
+       * (vacances, panne frigo, intempéries). Idle = entry-point pill that
+       * opens a bottom sheet with quick presets (Aujourd'hui / J+1 / J+7) +
+       * custom YYYY-MM-DD. Live = rose badge « Fermé jusqu'au JJ/MM » with
+       * « Rouvrir » button. Same backend gate path as the pause — the
+       * cmds en cours queue below stays untouched, the closure only blocks
+       * NEW checkouts via `acceptsOrderNow`.
+       */}
+      <ClosureControl />
 
       <View className="mb-4 flex-row items-center justify-between">
         <Text className="text-foreground text-xl font-semibold">
