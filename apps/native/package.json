@@ -10,7 +10,8 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@convex-dev/auth": "^0.0.90",
@@ -52,6 +53,7 @@
     "clsx": "^2.1.1",
     "convex": "^1.29.3",
     "expo": "~55.0.4",
+    "expo-application": "~55.0.8",
     "expo-auth-session": "~55.0.7",
     "expo-camera": "~55.0.9",
     "expo-clipboard": "~55.0.8",
@@ -97,6 +99,7 @@
   "devDependencies": {
     "@types/react": "~19.1.0",
     "cross-env": "^10.1.0",
+    "vitest": "^4.1.7",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
     "prettier-plugin-tailwindcss": "^0.5.14",

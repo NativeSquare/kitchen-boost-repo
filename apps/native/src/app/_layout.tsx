@@ -1,7 +1,7 @@
 import "@/lib/nativewind-interop";
 import { ThemeStatusBar } from "@/lib/theme-status-bar";
 import { useDeviceId } from "@/hooks/use-device-id";
-import { checkForUpdates } from "@/utils/expo/check-for-updates";
+import { ForceUpdateGate } from "@/lib/force-update";
 import { ConvexAuthProvider, useAuthActions } from "@convex-dev/auth/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
@@ -33,11 +33,6 @@ const secureStorage = {
 };
 
 export default function RootLayout() {
-  useEffect(() => {
-    if (!__DEV__) {
-      checkForUpdates();
-    }
-  }, []);
   return (
     <KeyboardProvider>
       <ConvexAuthProvider
@@ -48,15 +43,27 @@ export default function RootLayout() {
             : undefined
         }
       >
-        <GestureHandlerRootView>
-          <BottomSheetModalProvider>
-            <SafeAreaProvider>
-              <ThemeStatusBar />
-              <RootStack />
-              <PortalHost />
-            </SafeAreaProvider>
-          </BottomSheetModalProvider>
-        </GestureHandlerRootView>
+        {/*
+         * #394 — boot force-update gate (PRD 20 §13 + ADR 0017).
+         * Mounted INSIDE the Convex provider (it calls `useQuery` against the
+         * PUBLIC `app.minBuildVersion()` — no auth required) but OUTSIDE
+         * every auth-dependent provider so the gate runs PRE-AUTH and the
+         * red "Mise à jour requise" screen surfaces even for signed-out
+         * users on a too-old binary. The OTA layer + native layer are both
+         * resolved inside the gate; children never render until the verdict
+         * is `allow`.
+         */}
+        <ForceUpdateGate>
+          <GestureHandlerRootView>
+            <BottomSheetModalProvider>
+              <SafeAreaProvider>
+                <ThemeStatusBar />
+                <RootStack />
+                <PortalHost />
+              </SafeAreaProvider>
+            </BottomSheetModalProvider>
+          </GestureHandlerRootView>
+        </ForceUpdateGate>
       </ConvexAuthProvider>
     </KeyboardProvider>
   );

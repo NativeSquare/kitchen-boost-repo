@@ -24,6 +24,8 @@ import type * as lib_admin_tenantLifecycle from "../lib/admin/tenantLifecycle.js
 import type * as lib_admin_tenantSettings from "../lib/admin/tenantSettings.js";
 import type * as lib_admin_tenantSettingsValidation from "../lib/admin/tenantSettingsValidation.js";
 import type * as lib_admin_tenants from "../lib/admin/tenants.js";
+import type * as lib_app_app from "../lib/app/app.js";
+import type * as lib_app_index from "../lib/app/index.js";
 import type * as lib_auth_ResendOTP from "../lib/auth/ResendOTP.js";
 import type * as lib_auth_ResendOTPPasswordReset from "../lib/auth/ResendOTPPasswordReset.js";
 import type * as lib_auth_getCurrentActor from "../lib/auth/getCurrentActor.js";
@@ -214,6 +216,8 @@ declare const fullApi: ApiFromModules<{
   "lib/admin/tenantSettings": typeof lib_admin_tenantSettings;
   "lib/admin/tenantSettingsValidation": typeof lib_admin_tenantSettingsValidation;
   "lib/admin/tenants": typeof lib_admin_tenants;
+  "lib/app/app": typeof lib_app_app;
+  "lib/app/index": typeof lib_app_index;
   "lib/auth/ResendOTP": typeof lib_auth_ResendOTP;
   "lib/auth/ResendOTPPasswordReset": typeof lib_auth_ResendOTPPasswordReset;
   "lib/auth/getCurrentActor": typeof lib_auth_getCurrentActor;
