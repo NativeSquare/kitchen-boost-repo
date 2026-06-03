@@ -3120,9 +3120,12 @@ export const seedE2EWizardProspect = internalMutation({
     prospectId: v.id("prospects"),
     prospectCreated: v.boolean(),
     tenantsWiped: v.number(),
+    invitedUserWiped: v.boolean(),
+    managerInvitesWiped: v.number(),
   }),
   handler: async (ctx) => {
     const now = Date.now();
+    const invitedEmail = "wizard-e2e@kb-e2e.test";
 
     // 1. Wipe any tenant created during a previous wizard run (filter by slug
     // prefix sentinellé `e2e-w-`). Important pour idempotence : sans ça,
@@ -3134,6 +3137,34 @@ export const seedE2EWizardProspect = internalMutation({
         await ctx.db.delete(t._id);
         tenantsWiped += 1;
       }
+    }
+
+    // 1bis. Wipe l'user gérant invité par tests AC précédents — sinon, lors d'un
+    // re-test AC2, `inviteManager` lève `ALREADY_MEMBER` parce qu'une
+    // `userTenants` link orpheline subsiste (ou pire, parce qu'au prochain
+    // accept-invite l'user va re-pointer vers le NOUVEAU tenant). Reset
+    // complet : auth (sessions/refresh/accounts/verif) + userTenants + le row
+    // `users`. Plus tous les `managerInvites` pour cet email (peu importe le
+    // tenant), pour que le path nominal "Envoyer l'invitation" soit toujours
+    // l'unique row côté UI.
+    let invitedUserWiped = false;
+    const invitedUser = await ctx.db
+      .query("users")
+      .withIndex("email", (q) => q.eq("email", invitedEmail))
+      .first();
+    if (invitedUser !== null) {
+      await wipeUserAttachments(ctx, invitedUser._id);
+      await wipeUserCompletely(ctx, invitedUser._id);
+      invitedUserWiped = true;
+    }
+    let managerInvitesWiped = 0;
+    const allManagerInvites = await ctx.db
+      .query("adminInvites")
+      .withIndex("by_email", (q) => q.eq("email", invitedEmail))
+      .collect();
+    for (const inv of allManagerInvites) {
+      await ctx.db.delete(inv._id);
+      managerInvitesWiped += 1;
     }
 
     // 2. Upsert le prospect avec l'état initial pour le wizard.
@@ -3167,7 +3198,13 @@ export const seedE2EWizardProspect = internalMutation({
         createdAt: now,
         updatedAt: now,
       });
-      return { prospectId, prospectCreated: true, tenantsWiped };
+      return {
+        prospectId,
+        prospectCreated: true,
+        tenantsWiped,
+        invitedUserWiped,
+        managerInvitesWiped,
+      };
     }
 
     // Re-run : reset state (incl. tenantId backlink à undefined pour
@@ -3180,7 +3217,13 @@ export const seedE2EWizardProspect = internalMutation({
       tenantId: undefined,
       updatedAt: now,
     });
-    return { prospectId: existing._id, prospectCreated: false, tenantsWiped };
+    return {
+      prospectId: existing._id,
+      prospectCreated: false,
+      tenantsWiped,
+      invitedUserWiped,
+      managerInvitesWiped,
+    };
   },
 });
 
