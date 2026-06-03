@@ -20,7 +20,13 @@
  *    jour sur la fenêtre N (7/30/90 jours) pour le LineChart Recharts de la
  *    page Stats. Entrées remplies à 0 sur les jours sans commande (continuité
  *    temporelle pour le graphique).
+ *  - `quickStats` (#410) — 4 KPI minimalistes (CA jour + nb cmds jour + CA
+ *    semaine + CA semaine précédente) pour la home native KB Orders (PRD 20
+ *    §9). EXCLUT `refusée` et `auto_expired` (CA réalisé only) — contrat
+ *    fondamentalement différent de `dailyKpis` (qui sert F-STATS-DASHBOARD KB
+ *    Admin avec panier moyen). Le delta % S-1 est dérivé CÔTÉ CLIENT.
  */
 export { dailyKpis } from "./dailyKpis";
+export { quickStats } from "./quickStats";
 export { rangeAggregates } from "./rangeAggregates";
 export { revenuePerDay } from "./revenuePerDay";
