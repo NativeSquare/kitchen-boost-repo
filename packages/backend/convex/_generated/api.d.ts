@@ -31,6 +31,7 @@ import type * as lib_auth_ResendOTPPasswordReset from "../lib/auth/ResendOTPPass
 import type * as lib_auth_getCurrentActor from "../lib/auth/getCurrentActor.js";
 import type * as lib_auth_getSession from "../lib/auth/getSession.js";
 import type * as lib_auth_index from "../lib/auth/index.js";
+import type * as lib_auth_sessions from "../lib/auth/sessions.js";
 import type * as lib_cart_cart from "../lib/cart/cart.js";
 import type * as lib_cart_index from "../lib/cart/index.js";
 import type * as lib_crypto_credentials from "../lib/crypto/credentials.js";
@@ -223,6 +224,7 @@ declare const fullApi: ApiFromModules<{
   "lib/auth/getCurrentActor": typeof lib_auth_getCurrentActor;
   "lib/auth/getSession": typeof lib_auth_getSession;
   "lib/auth/index": typeof lib_auth_index;
+  "lib/auth/sessions": typeof lib_auth_sessions;
   "lib/cart/cart": typeof lib_cart_cart;
   "lib/cart/index": typeof lib_cart_index;
   "lib/crypto/credentials": typeof lib_crypto_credentials;

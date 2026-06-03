@@ -42,6 +42,7 @@ import {
   IconLayoutDashboard,
   IconLayoutKanban,
   IconLifebuoy,
+  IconShieldLock,
   IconSpeakerphone,
   IconQrcode,
   IconSettings,
@@ -99,6 +100,7 @@ export type SidebarIconName =
   | "campagnes"
   | "pricing"
   | "qr"
+  | "sessions"
   | "parametres"
   | "support";
 
@@ -159,6 +161,11 @@ function buildOperationalItems(tenantId: Id<"tenants">): SidebarNavItem[] {
     { label: "Campagnes", href: `${base}/campagnes`, iconName: "campagnes" },
     { label: "Pricing", href: `${base}/pricing`, iconName: "pricing" },
     { label: "QR", href: `${base}/qr`, iconName: "qr" },
+    // #396 — Sessions actives par tenant + révocation distante (PRD 20 §13,
+    // RGPD Article 2 ter contrat). Placée entre QR et Paramètres : c'est de
+    // la config tenant (sécurité-adjacente), pas un onglet opérationnel
+    // quotidien.
+    { label: "Sessions", href: `${base}/sessions`, iconName: "sessions" },
     { label: "Paramètres", href: `${base}/parametres`, iconName: "parametres" },
   ];
 }
@@ -256,6 +263,7 @@ const ICONS: Record<
   campagnes: IconSpeakerphone,
   pricing: IconTag,
   qr: IconQrcode,
+  sessions: IconShieldLock,
   parametres: IconSettings,
   support: IconLifebuoy,
 };

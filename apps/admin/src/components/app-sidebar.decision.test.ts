@@ -159,7 +159,7 @@ describe("decideSidebarNav", () => {
 
   // --- Operational space (manager OR admin under /t/[id]) ------------------
 
-  it("KB Manager on `/t/<A>/menu` → `manager-operational` items scoped to /t/<A>/... (9 items, Tableau de bord top + Statistiques between Mes clients and Campagnes — issues #389/#390)", () => {
+  it("KB Manager on `/t/<A>/menu` → `manager-operational` items scoped to /t/<A>/... (10 items now: #396 adds Sessions before Paramètres — RGPD revocation page, PRD 20 §13)", () => {
     const input: SidebarNavInput = {
       session: managerSession([
         { id: TENANT_A, slug: "lartisan", name: "L'Artisan" },
@@ -177,6 +177,7 @@ describe("decideSidebarNav", () => {
       "Campagnes",
       "Pricing",
       "QR",
+      "Sessions",
       "Paramètres",
     ]);
     expect(result.items.map((i) => i.href)).toEqual([
@@ -188,11 +189,15 @@ describe("decideSidebarNav", () => {
       `/t/${TENANT_A}/campagnes`,
       `/t/${TENANT_A}/pricing`,
       `/t/${TENANT_A}/qr`,
+      `/t/${TENANT_A}/sessions`,
       `/t/${TENANT_A}/parametres`,
     ]);
     // Pins requested by the issues #389/#390 spec.
     expect(result.items[0].href).toBe(`/t/${TENANT_A}`);
     expect(result.items[4].href).toBe(`/t/${TENANT_A}/stats`);
+    // #396 — Sessions entry is between QR and Paramètres (security-adjacent
+    // section, sits next to tenant config).
+    expect(result.items[8].href).toBe(`/t/${TENANT_A}/sessions`);
   });
 
   it("KB Admin on `/t/<A>/menu` → `manager-operational` scoped to /t/<A>/... (root override in operational view)", () => {

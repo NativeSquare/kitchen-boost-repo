@@ -26,3 +26,15 @@ export {
  * function by file path (`api.lib.auth.getSession.getSession`).
  */
 export { getSession } from "./getSession";
+
+/**
+ * `listTenantSessions` / `revokeSession` (#396) — KB Admin Sessions actives
+ * page + auto-logout côté native (#400). NOT re-exported through this barrel
+ * to avoid a load-time cycle: `lib/auth/sessions.ts` depends on
+ * `lib/tenancy/withTenant.ts` (for the `tenantQuery` / `tenantMutation`
+ * wrappers), which in turn depends on `lib/auth/getCurrentActor.ts`. The
+ * Convex `api.lib.auth.sessions.*` reference works without the barrel
+ * re-export (Convex registers functions by file path, not by re-export). If
+ * future callers need a type import, they should reach into `./sessions`
+ * directly.
+ */
