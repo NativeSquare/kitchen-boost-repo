@@ -27,11 +27,10 @@ import {
  *     process? » sticky bit in a `useRef`. The pure decision reads it as
  *     `wasAuthenticated`.
  *
- *  2. Expose `useSessionRevokedActions().markIntentionalSignOut()` so the
- *     Settings « Logout » button (#418) and the banned-user alert in
- *     `_layout.tsx` can flag « this drop in auth is voluntary, don't show
- *     the revoked overlay ». Without that flag, every local logout would
- *     mistakenly trigger the overlay.
+ *  2. Expose `markIntentionalSignOut()` so the Settings « Logout » button
+ *     (#418) and the banned-user alert in `_layout.tsx` can flag « this
+ *     drop in auth is voluntary, don't show the revoked overlay ». Without
+ *     that flag, every local logout would mistakenly trigger the overlay.
  *
  *  3. When the verdict flips to `revoked`, show the full-screen overlay for
  *     ~3 seconds (« écran bloquant pendant ~3s » PRD 20 §13) then call
