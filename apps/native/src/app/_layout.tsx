@@ -1,5 +1,6 @@
 import "@/lib/nativewind-interop";
 import { ThemeStatusBar } from "@/lib/theme-status-bar";
+import { useDeviceId } from "@/hooks/use-device-id";
 import { checkForUpdates } from "@/utils/expo/check-for-updates";
 import { ConvexAuthProvider, useAuthActions } from "@convex-dev/auth/react";
 import { api } from "@packages/backend/convex/_generated/api";
@@ -7,6 +8,7 @@ import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { PortalHost } from "@rn-primitives/portal";
 import { ConvexReactClient, useConvexAuth, useQuery } from "convex/react";
 import { Stack } from "expo-router";
+import * as KeepAwake from "expo-keep-awake";
 import * as SecureStore from "expo-secure-store";
 import { useColorScheme } from "nativewind";
 import { useEffect } from "react";
@@ -67,6 +69,34 @@ function RootStack() {
   const user = useQuery(api.table.users.currentUser);
   const hasCompletedOnboarding = user?.hasCompletedOnboarding ?? false;
 
+  // #393 — per-(user, device) preference row. Drives the kiosque/téléphone
+  // gate at first login (PRD 20 §1a) + `expo-keep-awake` activation in
+  // kiosque mode (PRD 20 §12). `null` while the SecureStore read is in flight
+  // or while Convex Auth resolves; `undefined` from Convex = query loading;
+  // `null` value = no row yet (= show device-setup, AC1).
+  const deviceId = useDeviceId();
+  const device = useQuery(
+    api.lib.devices.devices.getMyDevice,
+    isAuthenticated && deviceId !== null ? { deviceId } : "skip",
+  );
+  const hasDeviceMode = device !== null && device !== undefined;
+  const isKiosqueMode = hasDeviceMode && device.mode === "kiosque";
+
+  // PRD 20 §12 — kiosque ⇒ écran toujours allumé tant que l'app est foreground.
+  // L'effet est idempotent : un tag déjà activé reste activé, un tag manquant
+  // est désactivé silencieusement par expo-keep-awake.
+  useEffect(() => {
+    if (isKiosqueMode) {
+      KeepAwake.activateKeepAwakeAsync("kb-kiosque").catch(() => {
+        /* expo-keep-awake n'a pas de side-effect critique si la perm tombe */
+      });
+      return () => {
+        KeepAwake.deactivateKeepAwake("kb-kiosque").catch(() => {});
+      };
+    }
+    return undefined;
+  }, [isKiosqueMode]);
+
   // Detect banned users and show alert before signing them out
   const isBanned =
     user?.banned && (!user.banExpires || user.banExpires > Date.now());
@@ -78,12 +108,19 @@ function RootStack() {
         user?.banReason
           ? `Your account has been suspended: ${user.banReason}. Contact support if you believe this is an error.`
           : "Your account has been suspended. Contact support if you believe this is an error.",
-        [{ text: "OK", onPress: () => signOut() }]
+        [{ text: "OK", onPress: () => signOut() }],
       );
     }
   }, [isAuthenticated, isBanned, signOut, user?.banReason]);
 
-  if (isLoading) {
+  // While auth is loading, OR while we're authenticated but still resolving
+  // the device row (SecureStore + Convex query), keep the splash spinner —
+  // a flash to (device-setup) for a row that actually exists would be a
+  // first-launch / re-launch UX bug.
+  const isResolvingDevice =
+    isAuthenticated &&
+    (deviceId === null || (deviceId !== null && device === undefined));
+  if (isLoading || isResolvingDevice) {
     return (
       <View className="flex-1 justify-center items-center bg-background">
         <ActivityIndicator color={colorScheme === "dark" ? "white" : "black"} />
@@ -103,11 +140,23 @@ function RootStack() {
           <Stack.Screen name="(auth)" />
         </Stack.Protected>
 
-        <Stack.Protected guard={isAuthenticated && !hasCompletedOnboarding}>
+        {/* #393 — au premier login sur un device sans préférence enregistrée,
+           affiche le toggle « Mode kiosque ? Oui / Non » (PRD 20 §1a step 3,
+           §12). Une fois la mutation passée, `device` se rafraîchit en temps
+           réel et le stack rebascule sur (onboarding) ou (app). */}
+        <Stack.Protected guard={isAuthenticated && !hasDeviceMode}>
+          <Stack.Screen name="(device-setup)" />
+        </Stack.Protected>
+
+        <Stack.Protected
+          guard={isAuthenticated && hasDeviceMode && !hasCompletedOnboarding}
+        >
           <Stack.Screen name="(onboarding)" />
         </Stack.Protected>
 
-        <Stack.Protected guard={isAuthenticated && hasCompletedOnboarding}>
+        <Stack.Protected
+          guard={isAuthenticated && hasDeviceMode && hasCompletedOnboarding}
+        >
           <Stack.Screen name="(app)" />
         </Stack.Protected>
       </Stack>
