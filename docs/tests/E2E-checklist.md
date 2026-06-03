@@ -3,7 +3,7 @@
 Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / M / CMD / PR / SUP / W). Chaque parcours est à exécuter à la main contre `apps/admin` en dev (Convex live + seeds e2e).
 
 - **Date** : 2026-06-03
-- **Statut global** : 41 stories mergées (#317→#358), 0 bloquée. Wizard complet à 10/10. **Groupes validés** : A (7/7), MC (26/27), QR, MO, T-A/B/C/D/E, W (10/10), M (15/15 + 7 fixes UX). **Restants** : CMD, PR, SUP, AC.
+- **Statut global** : 41 stories mergées (#317→#358), 0 bloquée. Wizard complet à 10/10. **Groupes validés** : A (7/7), MC (26/27), QR, MO, T-A/B/C/D/E, W (10/10), M (15/15 + 7 fixes UX), CMD (11/11). **Restants** : PR, SUP, AC.
 - **Pré-requis transverses** : seeds `e2e` chargées (≥ 2 tenants distincts, un KB Admin root, ≥ 1 KB Manager mono-tenant, ≥ 1 KB Manager multi-tenant, un staff). Stripe en mode test avec un `stripeAccountId` rattaché à au moins un tenant. Resend en mode test pour les magic-links et OTP.
 - **Convention** : les parcours référencent ces pré-requis par leur étiquette (« seeds e2e ») sans les reproduire. Format strict : **Acteur / Pré-requis / Étapes / Attendu / Couvre**.
 
@@ -1304,6 +1304,8 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 ---
 
 ## CMD — Commandes
+
+> **Statut** : ✅ **11/11 validés le 2026-06-03** (CMD1/CMD2/CMD3/CMD4/CMD4bis/CMD4ter/CMD5/CMD5ter/CMD6 path nominal + CMD5bis et CMD6bis spot-check). Seeds : `seedE2EOrdersT1` (15 orders MC-F livrées 0-90j, préfixe note `[E2E MC-F]`) + nouveau `seedE2ECMDOrders` (3 orders sentinellés CMD : `pending-payment` sans pricingSnapshot pour CMD4bis, `refund-target-2750` 27,50 € pour CMD5, `already-refused` avec orderEvent pour CMD5ter — préfixe note `[E2E CMD]`). **CMD5bis** (staff RBAC) marqué spot-check code-review — même raison que MC24, pas de bootstrap user staff dans les seeds (allow-list `kb_manager` only vérifiée en unit test). **CMD6bis** (tenant vide) validé via un tenant `e2e-w-*` créé par le wizard. **CMD5 caveat tiers** (cf. mémoire `e2e-scope-what-we-control`) : la mutation refund est testée + UI, mais le seed n'attache pas de PaymentIntent Stripe réel — le path success complet (refund Stripe → status `refusée`) demande soit un PaymentIntent réel via Stripe sandbox + CLI, soit un patch manuel du tenant. On valide NOTRE bouton + AlertDialog + mutation, pas le sandbox tiers.
 
 ### CMD1 — Page shell
 
