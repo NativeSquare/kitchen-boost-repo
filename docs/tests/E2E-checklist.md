@@ -3,7 +3,7 @@
 Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / M / CMD / PR / SUP / W). Chaque parcours est à exécuter à la main contre `apps/admin` en dev (Convex live + seeds e2e).
 
 - **Date** : 2026-06-03
-- **Statut global** : 41 stories mergées (#317→#358), 0 bloquée. Wizard complet à 10/10. **Groupes validés** : A (7/7), MC (26/27), QR, MO, T-A/B/C/D/E, W (10/10), M (15/15 + 7 fixes UX), CMD (11/11), PR (7/7 + 1 fix critique), SUP (4/4 + 2 fixes). **Restants** : AC.
+- **Statut global** : ✅ **CAMPAGNE E2E V1 ENTIÈREMENT VALIDÉE le 2026-06-03**. 12/12 groupes PASS, ~117 parcours testés à la main, ~22 fixes UX/UI/bug shippés pendant la campagne. Détail groupes : A (7/7), P (5/5), QR (2/2), MO (3/3), T (25/25), MC (26/27), W (10/10 + 6 fixes), M (15/15 + 7 fixes UX), CMD (11/11 + 2 spot-checks), PR (7/7 + 1 fix critique), SUP (4/4 + 2 fixes), AC (2/2 + 3 fixes). Issues backlog non bloquantes : #419 (PR2 aperçu live FR builder), #391 (vraie vérification DNS customDomain V2), #387 (auto-inject nom_resto/prenom_client), #388 (live spot-check Wallet APNS + Resend prod).
 - **Pré-requis transverses** : seeds `e2e` chargées (≥ 2 tenants distincts, un KB Admin root, ≥ 1 KB Manager mono-tenant, ≥ 1 KB Manager multi-tenant, un staff). Stripe en mode test avec un `stripeAccountId` rattaché à au moins un tenant. Resend en mode test pour les magic-links et OTP.
 - **Convention** : les parcours référencent ces pré-requis par leur étiquette (« seeds e2e ») sans les reproduire. Format strict : **Acteur / Pré-requis / Étapes / Attendu / Couvre**.
 
@@ -1090,6 +1090,8 @@ Voir A4b (identique).
 ---
 
 ## AC — Auth core
+
+> **Statut** : ✅ **2/2 validés le 2026-06-03** (AC2 + AC2bis ; AC1 hors scope V1 — retiré). Seed : `seedE2EWizardProspect` étendu pour wiper aussi l'user invité + ses `adminInvites` (cf. fix `86c9763`). **3 fixes critiques shippés pendant cette vague** : **86c9763** (seed laissait orpheliner l'user `wizard-e2e@kb-e2e.test` + son adminInvites row → ALREADY_MEMBER au re-test ; wipe étendu via helpers existants `wipeUserAttachments` + `wipeUserCompletely`) + **ec384f3** (bug racine : `provisionTenant` step 1 crée DÉJÀ l'user manager + sa userTenants link, donc step 7 `inviteManager` levait toujours `ALREADY_MEMBER` et bloquait le premier magic-link ; fix = `ALREADY_MEMBER` ne fire désormais QUE si l'user a un password account fonctionnel — l'user attached par step 1 sans compte setup laisse passer le premier magic-link) + **381ae38** (magic-link Resend pointait vers `localhost:3001` PWA au lieu de `localhost:3000` admin où vit `/accept-invite` — fix via SITE_URL côté code) + **6f07401** (typecheck annexe : `e2e:getWizardManagerInviteToken` utilisait `createdAt` au lieu de `_creationTime`).
 
 ### AC1 — Accept-invite admin path
 
