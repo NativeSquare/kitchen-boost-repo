@@ -3,7 +3,7 @@
 Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / M / CMD / PR / SUP / W). Chaque parcours est à exécuter à la main contre `apps/admin` en dev (Convex live + seeds e2e).
 
 - **Date** : 2026-06-03
-- **Statut global** : 41 stories mergées (#317→#358), 0 bloquée. Wizard complet à 10/10. **Groupes validés** : A (7/7), MC (26/27), QR, MO, T-A/B/C/D/E, W (10/10), M (15/15 + 7 fixes UX), CMD (11/11). **Restants** : PR, SUP, AC.
+- **Statut global** : 41 stories mergées (#317→#358), 0 bloquée. Wizard complet à 10/10. **Groupes validés** : A (7/7), MC (26/27), QR, MO, T-A/B/C/D/E, W (10/10), M (15/15 + 7 fixes UX), CMD (11/11), PR (7/7 + 1 fix critique). **Restants** : SUP, AC.
 - **Pré-requis transverses** : seeds `e2e` chargées (≥ 2 tenants distincts, un KB Admin root, ≥ 1 KB Manager mono-tenant, ≥ 1 KB Manager multi-tenant, un staff). Stripe en mode test avec un `stripeAccountId` rattaché à au moins un tenant. Resend en mode test pour les magic-links et OTP.
 - **Convention** : les parcours référencent ces pré-requis par leur étiquette (« seeds e2e ») sans les reproduire. Format strict : **Acteur / Pré-requis / Étapes / Attendu / Couvre**.
 
@@ -1418,6 +1418,8 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 ---
 
 ## PR — Pricing
+
+> **Statut** : ✅ **7/7 validés le 2026-06-03** (PR1/PR2/PR3/PR3bis/PR4/PR4bis/PR5). Seeds : `seedE2EPricingRules` (3 règles sur test-t1 : A active panier ≥ 25 € + 1ère commande → livraison offerte resto ; B inactive panier ≥ 50 € → 50 % resto ; C active VE/SA/DI → 2,00 € fixe resto). test-t2 reste naturellement vide → PR1 « tenant B vierge » via switcher manager-multi. **1 fix critique** : **48e9141** (empty-state pricing admin mentait « la règle KitchenBoost par défaut (10 % du panier absorbés par le resto) s'applique » → engine fait fallback `client paie 100% / resto absorbe 0`, AUCUNE règle 10% n'est appliquée. Réécrit pour dire la vérité système + présenter le 10% explicitement comme **recommandation** avec icône 💡, pas un état appliqué. Engine + PWA web vérifiés : aucun autre mensonge). **1 enhancement non bloquant V1** : **#419** (aperçu live FR de la règle dans le builder PR2 — formulaire structuré ne montre pas la phrase équivalente en temps réel ; AFK plus tard, AC1-4 défini). **Intégration finale Stripe** (refund + paymentIntent) reste à vérifier hors E2E manuel.
 
 ### PR1 — Liste règles + auto-priorité
 
