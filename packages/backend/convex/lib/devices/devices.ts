@@ -1,6 +1,12 @@
 import { ConvexError, v } from "convex/values";
-import { mutation, query } from "../../_generated/server";
-import { getCurrentActor } from "../auth";
+import type { Id } from "../../_generated/dataModel";
+import {
+  mutation,
+  query,
+  type MutationCtx,
+  type QueryCtx,
+} from "../../_generated/server";
+import { type Actor, getCurrentActor } from "../auth";
 import { type DeviceMode, getUserDevice, upsertUserDevice } from "../tenancy";
 import { deviceMode } from "../../table/devices";
 
@@ -42,6 +48,25 @@ const unauthenticated = () =>
 
 const invalid = (message: string) =>
   new ConvexError({ code: "INVALID_ARGUMENT", message });
+
+/**
+ * Resolve the current `Actor` (throws Unauthenticated) AND assert it has
+ * access to `tenantId` (throws Forbidden when `effectiveRole === null`).
+ * Mirrors `tenantQuery`'s gate inline because this module's mutations may
+ * have NO tenant at all (telephone mode, fresh device) — we cannot wrap
+ * the whole handler. `kb_admin` is the root override and always passes.
+ */
+async function requireActorWithTenantAccess(
+  ctx: QueryCtx | MutationCtx,
+  tenantId: Id<"tenants">,
+): Promise<Actor> {
+  const actor = await getCurrentActor(ctx, tenantId);
+  if (actor === null) throw unauthenticated();
+  if (actor.effectiveRole === null) {
+    throw forbidden("no access to this tenant");
+  }
+  return actor;
+}
 
 /**
  * `getMyDevice` — read the caller's row for `deviceId`. Returns `null` when no
@@ -98,15 +123,9 @@ export const setMyDeviceMode = mutation({
     // Cross-tenant access guardrail: resolve effective role on the pinned
     // tenant via the SINGLE sanctioned identity point. `kb_admin` passes via
     // the root override; any other caller must have an ACTIVE userTenants
-    // attachment (effectiveRole ∈ kb_manager | staff).
+    // attachment.
     if (args.pinnedTenantId !== undefined) {
-      const scoped = await getCurrentActor(ctx, args.pinnedTenantId);
-      // scoped is non-null (we already proved authentication above), but
-      // narrow defensively for the type checker.
-      if (scoped === null) throw unauthenticated();
-      if (scoped.effectiveRole === null) {
-        throw forbidden("no access to this tenant");
-      }
+      await requireActorWithTenantAccess(ctx, args.pinnedTenantId);
     }
 
     // Persist via the sanctioned seam. `mode = telephone` MUST clear any
@@ -132,11 +151,7 @@ export const setMyDeviceMode = mutation({
 export const setMyDeviceLastSelectedTenant = mutation({
   args: { deviceId: v.string(), tenantId: v.id("tenants") },
   handler: async (ctx, args) => {
-    const actor = await getCurrentActor(ctx, args.tenantId);
-    if (actor === null) throw unauthenticated();
-    if (actor.effectiveRole === null) {
-      throw forbidden("no access to this tenant");
-    }
+    const actor = await requireActorWithTenantAccess(ctx, args.tenantId);
     await upsertUserDevice(ctx, actor.userId, args.deviceId, {
       lastSelectedTenantId: args.tenantId,
     });
