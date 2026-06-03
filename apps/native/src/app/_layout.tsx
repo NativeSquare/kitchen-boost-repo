@@ -2,6 +2,10 @@ import "@/lib/nativewind-interop";
 import { ThemeStatusBar } from "@/lib/theme-status-bar";
 import { useDeviceId } from "@/hooks/use-device-id";
 import { ForceUpdateGate } from "@/lib/force-update";
+import {
+  markIntentionalSignOut,
+  SessionRevokedGate,
+} from "@/lib/session-revoked";
 import { ConvexAuthProvider, useAuthActions } from "@convex-dev/auth/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
@@ -54,15 +58,25 @@ export default function RootLayout() {
          * is `allow`.
          */}
         <ForceUpdateGate>
-          <GestureHandlerRootView>
-            <BottomSheetModalProvider>
-              <SafeAreaProvider>
-                <ThemeStatusBar />
-                <RootStack />
-                <PortalHost />
-              </SafeAreaProvider>
-            </BottomSheetModalProvider>
-          </GestureHandlerRootView>
+          {/*
+           * #400 — « Session révoquée » gate (PRD 20 §13 + AC8).
+           * Mounted INSIDE ConvexAuthProvider (uses `useConvexAuth` +
+           * `useAuthActions`) and ABOVE every screen so the full-screen
+           * overlay surfaces no matter where in `(app)` or `(auth)` the
+           * user is when the remote revocation lands. Delegates the
+           * verdict to the pure `decideSessionRevoked` (#400 test suite).
+           */}
+          <SessionRevokedGate>
+            <GestureHandlerRootView>
+              <BottomSheetModalProvider>
+                <SafeAreaProvider>
+                  <ThemeStatusBar />
+                  <RootStack />
+                  <PortalHost />
+                </SafeAreaProvider>
+              </BottomSheetModalProvider>
+            </GestureHandlerRootView>
+          </SessionRevokedGate>
         </ForceUpdateGate>
       </ConvexAuthProvider>
     </KeyboardProvider>
@@ -121,7 +135,18 @@ function RootStack() {
         user?.banReason
           ? `Your account has been suspended: ${user.banReason}. Contact support if you believe this is an error.`
           : "Your account has been suspended. Contact support if you believe this is an error.",
-        [{ text: "OK", onPress: () => signOut() }],
+        [
+          {
+            text: "OK",
+            onPress: () => {
+              // #400 — this is a voluntary sign-out path (ban → auto logout),
+              // mark it so the « Session révoquée » gate doesn't mistakenly
+              // surface an error overlay on the way out.
+              markIntentionalSignOut();
+              signOut();
+            },
+          },
+        ],
       );
     }
   }, [isAuthenticated, isBanned, signOut, user?.banReason]);

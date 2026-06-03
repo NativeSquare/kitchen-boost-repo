@@ -3,6 +3,7 @@ import { SettingsRow } from "@/components/app/account/settings-row";
 import { ConfirmationSheet } from "@/components/shared/confirmation-sheet";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Text } from "@/components/ui/text";
+import { markIntentionalSignOut } from "@/lib/session-revoked";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
@@ -31,6 +32,9 @@ export default function Account() {
 
   const handleLogout = () => {
     logoutSheetRef.current?.dismiss();
+    // #400 — voluntary logout, mark the intent BEFORE signOut so the
+    // « Session révoquée » overlay (PRD 20 §13 + AC8) does not surface.
+    markIntentionalSignOut();
     signOut();
   };
 
@@ -39,6 +43,8 @@ export default function Account() {
     try {
       await deleteAccount();
       deleteAccountSheetRef.current?.dismiss();
+      // #400 — voluntary teardown, same opt-out as Logout above.
+      markIntentionalSignOut();
       signOut();
     } catch (error) {
       console.error("Failed to delete account:", error);
