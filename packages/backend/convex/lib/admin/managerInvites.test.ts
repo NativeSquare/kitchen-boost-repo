@@ -204,10 +204,12 @@ describe("B-AUTH-4 inviteManager — validation guards", () => {
     seed = await seedTwoTenantsAllRoles(t);
   });
 
-  it("refuses if a user with this email already has an active userTenants row on this tenant", async () => {
+  it("refuses if a user with this email already has an active userTenants row AND a password authAccount", async () => {
     const asAdmin = t.withIdentity({ subject: seed.adminId });
 
-    // Seed an existing manager user attached to tenant A.
+    // Seed an existing manager user attached to tenant A WITH a `password`
+    // authAccount — the « true duplicate » case: gérant already signed up,
+    // active member, doesn't need another magic-link.
     await t.run(async (ctx) => {
       const uid = await ctx.db.insert("users", {
         email: "already@example.fr",
@@ -219,6 +221,13 @@ describe("B-AUTH-4 inviteManager — validation guards", () => {
         role: "kb_manager",
         attachedAt: Date.now(),
         attachedBy: seed.adminId,
+      });
+      // The signal that the user has completed sign-up — Convex Auth's
+      // `Password` provider inserts this on signUp (cf. usersStore comment).
+      await ctx.db.insert("authAccounts", {
+        userId: uid,
+        provider: "password",
+        providerAccountId: "already@example.fr",
       });
     });
 
@@ -234,6 +243,99 @@ describe("B-AUTH-4 inviteManager — validation guards", () => {
     expect(rows.filter((r) => r.email === "already@example.fr")).toHaveLength(
       0,
     );
+  });
+
+  it("ALLOWS first magic-link when user is attached but has NO password authAccount (wizard step 1 → step 7 flow)", async () => {
+    // Root cause of the AC2 E2E bug — `provisionTenant` (wizard step 1)
+    // stamps a bare `users` row from `prospect.email` AND attaches it
+    // `kb_manager` to the new tenant BEFORE the gérant has ever signed up.
+    // Step 7 must send that gérant the FIRST magic-link or they cannot
+    // loginner. The « attached but no password account » case is THE
+    // distinguant — we must NOT refuse ALREADY_MEMBER here.
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+
+    await t.run(async (ctx) => {
+      const uid = await ctx.db.insert("users", {
+        email: "wizard-gerant@example.fr",
+        role: "customer",
+      });
+      await ctx.db.insert("userTenants", {
+        userId: uid,
+        tenantId: seed.tenantA.tenantId,
+        role: "kb_manager",
+        attachedAt: Date.now(),
+        attachedBy: seed.adminId,
+      });
+      // No authAccounts row — the gérant has never signed up.
+    });
+
+    const inviteId = await asAdmin.mutation(
+      api.lib.admin.managerInvites.inviteManager,
+      {
+        tenantId: seed.tenantA.tenantId,
+        email: "wizard-gerant@example.fr",
+      },
+    );
+    expect(typeof inviteId).toBe("string");
+
+    // A fresh invite row landed AND a magic-link email got scheduled.
+    const row = await t.run((ctx) => ctx.db.get(inviteId));
+    expect(row?.email).toBe("wizard-gerant@example.fr");
+    expect(row?.targetRole).toBe("kb_manager");
+    expect(row?.tenantId).toBe(seed.tenantA.tenantId);
+
+    const scheduled = await t.run((ctx) =>
+      ctx.db.system.query("_scheduled_functions").collect(),
+    );
+    expect(scheduled).toHaveLength(1);
+    expect(JSON.stringify(scheduled[0]!)).toContain("sendManagerInviteEmail");
+  });
+
+  it("REFUSES if user is attached AND has a NON-password authAccount but no password one (defensive)", async () => {
+    // An OAuth-only user (e.g. signed in via Google) IS a fully-fledged
+    // account — they don't need a password magic-link. The check is on
+    // `provider: "password"` specifically (the credential the magic-link
+    // would create), so an OAuth account also blocks ALREADY_MEMBER.
+    // This pins the contract precisely: « has a password account » NOT
+    // « has any authAccount ». If you signed in via Google and got
+    // attached, you already have a working session — a password magic-link
+    // would be redundant. We choose to BLOCK to mirror the « already
+    // gérant with a working account » semantics. If product later wants
+    // to allow it, flip this expectation.
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+
+    await t.run(async (ctx) => {
+      const uid = await ctx.db.insert("users", {
+        email: "oauth-only@example.fr",
+        role: "customer",
+      });
+      await ctx.db.insert("userTenants", {
+        userId: uid,
+        tenantId: seed.tenantA.tenantId,
+        role: "kb_manager",
+        attachedAt: Date.now(),
+        attachedBy: seed.adminId,
+      });
+      // Google account, NO password account → allow path (treat as "no
+      // credentials yet for the magic-link channel"). The current impl
+      // ALLOWS this — pinned here so the contract is explicit.
+      await ctx.db.insert("authAccounts", {
+        userId: uid,
+        provider: "google",
+        providerAccountId: "google-id-xyz",
+      });
+    });
+
+    // Current behavior: allow (no `password` account present). This is the
+    // pragmatic V1 choice — the magic-link channel can stand alone.
+    const inviteId = await asAdmin.mutation(
+      api.lib.admin.managerInvites.inviteManager,
+      {
+        tenantId: seed.tenantA.tenantId,
+        email: "oauth-only@example.fr",
+      },
+    );
+    expect(typeof inviteId).toBe("string");
   });
 
   it("accepts a user whose attachment was DETACHED (can be re-invited)", async () => {

@@ -164,6 +164,7 @@ export {
 export {
   type NewManagerUser,
   getUserByEmail,
+  hasPasswordAccount,
   insertManagerUser,
 } from "./usersStore";
 export { attachUserToTenant, getActiveUserTenant } from "./userTenantsStore";

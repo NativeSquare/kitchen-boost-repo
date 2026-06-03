@@ -8,6 +8,7 @@ import {
   getManagerInviteForTenant,
   getTenantById,
   getUserByEmail,
+  hasPasswordAccount,
   insertManagerInvite,
   kbAdminMutation,
   kbAdminQuery,
@@ -34,8 +35,17 @@ import {
  *  - `NOT_FOUND`        — `tenantId` does not resolve to a tenants row;
  *  - `ALREADY_MEMBER`   — an existing user with this email already has an
  *                         ACTIVE `userTenants` row (`detachedAt === undefined`)
- *                         on this tenant — already gérant, no spam magic-link.
- *                         A DETACHED attachment does NOT block (re-invite OK);
+ *                         on this tenant AND has actually completed sign-up
+ *                         (a `password` `authAccounts` row exists for them) —
+ *                         already gérant with a working account, no need for
+ *                         another magic-link. A DETACHED attachment does NOT
+ *                         block (re-invite OK). An ACTIVE attachment with NO
+ *                         `password` authAccount does NOT block either: that
+ *                         is the wizard-step-1-then-step-7 case where
+ *                         `provisionTenant` stamped the `users` row + the
+ *                         `userTenants` link from `prospect.email` BEFORE the
+ *                         gérant has ever signed up — step 7 must send them
+ *                         the first magic-link or they cannot loginner;
  *  - `ALREADY_INVITED`  — a pending non-expired invite for `(email, tenantId)`
  *                         already exists — no spam magic-link;
  *  - else if an EXPIRED invite exists for `(email, tenantId)`, delete it and
@@ -107,9 +117,19 @@ export const inviteManager = kbAdminMutation({
     }
 
     // 2. ALREADY_MEMBER guard — refuse if a user with this email is already an
-    //    ACTIVE member of this tenant (a soft-detached attachment does NOT
-    //    block: an ex-gérant must be re-invitable, mirrors `getCurrentActor`'s
-    //    "detached ⇒ no role" rule).
+    //    ACTIVE member of this tenant AND has actually completed sign-up
+    //    (a `password` `authAccounts` row exists for them). A soft-detached
+    //    attachment does NOT block (ex-gérant must be re-invitable, mirrors
+    //    `getCurrentActor`'s "detached ⇒ no role" rule).
+    //
+    //    The « attached but no password account » case is the wizard
+    //    step-1-then-step-7 flow: `provisionTenant` stamps a bare `users` row
+    //    from `prospect.email` AND attaches it `kb_manager` to the new tenant
+    //    BEFORE the gérant has ever signed up. Step 7 must send that gérant
+    //    the FIRST magic-link — refusing ALREADY_MEMBER here would block the
+    //    canonical onboarding flow and the gérant would have no way to ever
+    //    loginner (root cause AC2 E2E bug). Cf. PRD 70 §3.6: « step 1 crée
+    //    déjà la ligne userTenants ; step 7 = envoi du lien magique ».
     const existingUser = await getUserByEmail(ctx, args.email);
     if (existingUser !== null) {
       const active = await getActiveUserTenant(
@@ -118,10 +138,15 @@ export const inviteManager = kbAdminMutation({
         args.tenantId,
       );
       if (active !== null) {
-        throw new ConvexError({
-          code: "ALREADY_MEMBER",
-          message: `${args.email} is already a gérant on this tenant.`,
-        });
+        const hasAccount = await hasPasswordAccount(ctx, existingUser._id);
+        if (hasAccount) {
+          throw new ConvexError({
+            code: "ALREADY_MEMBER",
+            message: `${args.email} is already a gérant on this tenant.`,
+          });
+        }
+        // else: attached but never signed up → fall through and send the
+        // first magic-link (wizard step 1 → step 7 canonical path).
       }
     }
 
