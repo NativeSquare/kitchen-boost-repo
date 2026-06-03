@@ -3747,6 +3747,158 @@ export const seedE2ECMDOrders = internalMutation({
   },
 });
 
+// -----------------------------------------------------------------------------
+// E2E-PR seed — populate les `pricingRules` de test-t1 pour le groupe PR
+// (Pricing admin) :
+//   - PR1 : ≥ 2 règles (1 active, 1 inactive, actions variées)
+//   - PR3 : 1 règle exactement « panier ≥ 25 EUR + première commande →
+//           livraison offerte resto » (pour vérifier le préfillage modal)
+//   - PR5 : ≥ 2 règles actives (pour le delete + reste-en-vie)
+//
+// On seed 3 règles totales : 2 actives + 1 inactive — satisfait PR1 + PR3 +
+// PR5 d'un coup. test-t2 reste NATURELLEMENT vierge (aucun autre seed ne
+// touche `pricingRules`), ce qui couvre PR1 « tenant B vierge ».
+//
+// Idempotent par sentinelle : on filtre les règles déjà créées par leur
+// signature [conditions + action] hash. Pas d'index dédié — le seed n'est
+// pas hot path.
+// -----------------------------------------------------------------------------
+
+const PR_RULES_SPECS: ReadonlyArray<{
+  conditions: Doc<"pricingRules">["conditions"];
+  action: Doc<"pricingRules">["action"];
+  active: boolean;
+}> = [
+  // Règle A (active) — PR3 préfillage : panier ≥ 25 € + 1ère commande
+  // → livraison offerte par le resto.
+  {
+    conditions: [
+      { kind: "total_panier", operator: "gte", valueCents: 2500 },
+      { kind: "premiere_cmd_client", value: true },
+    ],
+    action: { kind: "livraison_offerte_resto" },
+    active: true,
+  },
+  // Règle B (inactive) — PR1 ligne grisée + PR4 toggle round-trip.
+  {
+    conditions: [{ kind: "total_panier", operator: "gte", valueCents: 5000 }],
+    action: {
+      kind: "frais_livraison_part_resto_pourcentage_panier",
+      percent: 50,
+    },
+    active: false,
+  },
+  // Règle C (active) — PR5 (≥ 2 actives requis pour le delete-and-rest).
+  {
+    conditions: [{ kind: "jour_semaine", days: ["VE", "SA", "DI"] }],
+    action: {
+      kind: "frais_livraison_part_resto_fixe",
+      valueCents: 200, // 2,00 €
+    },
+    active: true,
+  },
+];
+
+/**
+ * Helper : compare deux specs de règle (mêmes conditions ordonnées + même
+ * action) — sert d'idempotence sentinelle (pas d'index dédié sur
+ * `pricingRules`, le seed n'est pas hot path).
+ */
+function pricingRuleSignature(rule: {
+  conditions: Doc<"pricingRules">["conditions"];
+  action: Doc<"pricingRules">["action"];
+}): string {
+  return JSON.stringify({ conditions: rule.conditions, action: rule.action });
+}
+
+/**
+ * Seed 3 pricingRules sur test-t1 (2 actives + 1 inactive) — satisfait
+ * PR1 / PR3 / PR4 / PR5. test-t2 reste naturellement vide.
+ * Idempotent par signature [conditions + action].
+ */
+export const seedE2EPricingRules = internalMutation({
+  args: {
+    tenantSlug: v.optional(v.string()),
+  },
+  returns: v.object({
+    tenantId: v.id("tenants"),
+    rulesCreated: v.number(),
+    rulesReused: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const slug = args.tenantSlug ?? "test-t1";
+    const tenant = await ctx.db
+      .query("tenants")
+      .withIndex("by_slug", (q) => q.eq("slug", slug))
+      .unique();
+    if (tenant === null) {
+      throw new ConvexError({
+        message: `Tenant with slug "${slug}" not found.`,
+      });
+    }
+
+    const now = Date.now();
+    let rulesCreated = 0;
+    let rulesReused = 0;
+
+    const existing = await ctx.db
+      .query("pricingRules")
+      .withIndex("by_tenant", (q) => q.eq("tenantId", tenant._id))
+      .collect();
+    const existingSigs = new Set(existing.map((r) => pricingRuleSignature(r)));
+
+    for (const spec of PR_RULES_SPECS) {
+      if (existingSigs.has(pricingRuleSignature(spec))) {
+        rulesReused += 1;
+        continue;
+      }
+      await ctx.db.insert("pricingRules", {
+        tenantId: tenant._id,
+        conditions: spec.conditions,
+        action: spec.action,
+        active: spec.active,
+        createdAt: now,
+        updatedAt: now,
+      });
+      rulesCreated += 1;
+    }
+
+    return { tenantId: tenant._id, rulesCreated, rulesReused };
+  },
+});
+
+/**
+ * Wipe TOUTES les pricingRules d'un tenant (par slug, défaut test-t1).
+ * Pas de sentinelle « préfixe » possible sur cette table (la signature
+ * conditions+action peut clash avec une vraie règle si on la mappe), donc on
+ * propose un wipe explicite par tenant : à n'utiliser que sur test-t1 / test-t2.
+ */
+export const wipeE2EPricingRules = internalMutation({
+  args: {
+    tenantSlug: v.optional(v.string()),
+  },
+  returns: v.object({ rulesDeleted: v.number() }),
+  handler: async (ctx, args) => {
+    const slug = args.tenantSlug ?? "test-t1";
+    const tenant = await ctx.db
+      .query("tenants")
+      .withIndex("by_slug", (q) => q.eq("slug", slug))
+      .unique();
+    if (tenant === null) return { rulesDeleted: 0 };
+
+    let rulesDeleted = 0;
+    const rules = await ctx.db
+      .query("pricingRules")
+      .withIndex("by_tenant", (q) => q.eq("tenantId", tenant._id))
+      .collect();
+    for (const r of rules) {
+      await ctx.db.delete(r._id);
+      rulesDeleted += 1;
+    }
+    return { rulesDeleted };
+  },
+});
+
 /**
  * Wipe surgical des 3 orders sentinellées CMD + leurs orderEvents.
  * Filtre par `restaurantNote` préfixe `[E2E CMD] `.
