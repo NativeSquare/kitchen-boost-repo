@@ -2,9 +2,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Text } from "@/components/ui/text";
 import { useActiveTenantId } from "@/lib/tenant-switcher";
+import { cn } from "@/lib/utils";
 import { getConvexErrorMessage } from "@/utils/getConvexErrorMessage";
 import {
   decideModeTag,
+  decidePickupHandoffNote,
   decideStatusLabel,
   decideWorkflowButton,
 } from "@/lib/orders";
@@ -112,6 +114,7 @@ export default function OrderDetailScreen() {
   const modeTag = decideModeTag(order.mode);
   const statusLabel = decideStatusLabel(order.status);
   const buttonDecision = decideWorkflowButton(order.status, order.mode);
+  const pickupNote = decidePickupHandoffNote(order.mode);
   const totalEuros =
     order.pricingSnapshot !== undefined
       ? (order.pricingSnapshot.total / 100).toFixed(2)
@@ -170,7 +173,14 @@ export default function OrderDetailScreen() {
         </View>
         {modeTag !== null ? (
           <View
-            className="flex-row items-center gap-1 rounded-md bg-secondary px-2 py-1"
+            className={cn(
+              "flex-row items-center gap-1 rounded-md px-2 py-1",
+              // #402 — discriminate the tag chip color by mode, mirroring the
+              // home card (`order-card.tsx`). Click & collect = `bg-muted` so
+              // the tablet glance distinguishes a mixed-mode home from the
+              // detail at a glance.
+              order.mode === "delivery" ? "bg-secondary" : "bg-muted",
+            )}
             accessibilityLabel={`Mode ${modeTag.label}`}
           >
             <Text className="text-sm">{modeTag.emoji}</Text>
@@ -252,6 +262,24 @@ export default function OrderDetailScreen() {
             <Text className="text-foreground text-sm">
               {order.restaurantNote}
             </Text>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {/* À emporter — handoff note for click & collect (PRD 20 §4 « note "à
+          emporter" (si click & collect) »). Mirror placement of the delivery
+          address card so the cuisinier reads the handoff target at the same
+          spot regardless of mode. No customer name (MOAT, ADR 0010) and no
+          pickup time (not in schema today, not asked by PRD 20 §4). */}
+      {pickupNote.kind === "show" ? (
+        <Card className="mb-3" testID="pickup-handoff-note">
+          <CardHeader>
+            <Text className="text-foreground text-base font-semibold">
+              {pickupNote.heading}
+            </Text>
+          </CardHeader>
+          <CardContent>
+            <Text className="text-foreground text-sm">{pickupNote.body}</Text>
           </CardContent>
         </Card>
       ) : null}

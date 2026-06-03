@@ -187,3 +187,36 @@ export function decideWorkflowButton(
 export function decideOrderBadgeNew(status: OrderStatus): boolean {
   return status === "nouvelle";
 }
+
+/**
+ * #402 — PRD 20 §4 « note "à emporter" (si click & collect) ». The detail
+ * screen mirrors the delivery's « Adresse livraison » card with a discreet
+ * « À emporter » placeholder so the cuisinier sees AT A GLANCE what to do
+ * with the prepped bag. Decided by mode alone — the click & collect signal
+ * is already carried by the mode tag (🛍️ À EMPORTER on every card) and by
+ * the workflow button (« Remise au client »); this card is the third visible
+ * touchpoint of the same signal on the detail screen (mode tag in header,
+ * handoff note as a body card, button at the bottom).
+ *
+ * NO customer name surfaced (the MOAT, ADR 0010 §"Customer rules" — `kb_manager`
+ * cannot read raw customer fields) and NO pickup time (the `orders` row carries
+ * none today; PRD 20 §4 does not ask for it). The body intentionally states
+ * the bare invariant of the click & collect mode: « Le client passera récupérer
+ * la commande. » — no invented copy, no MOAT-breaking detail.
+ */
+export type PickupHandoffNoteDecision =
+  | { kind: "hide" }
+  | { kind: "show"; heading: string; body: string };
+
+export function decidePickupHandoffNote(
+  mode: OrderMode,
+): PickupHandoffNoteDecision {
+  if (mode === "pickup") {
+    return {
+      kind: "show",
+      heading: "À emporter",
+      body: "Le client passera récupérer la commande.",
+    };
+  }
+  return { kind: "hide" };
+}
