@@ -15,10 +15,16 @@ const rawModules = import.meta.glob([
   "!../../**/*.test.*",
 ]);
 const modules = Object.fromEntries(
-  Object.entries(rawModules).map(([path, loader]) => [
-    path.startsWith("./") ? `../../lib/orders/${path.slice(2)}` : path,
-    loader,
-  ]),
+  Object.entries(rawModules).map(([path, loader]) => {
+    // Vite emits keys relative to THIS file's dir (`convex/lib/orders/`); re-
+    // anchor every shorter prefix at the convex root so convex-test's
+    // findModulesRoot has ONE common prefix (same pattern as the refund suite).
+    let key = path;
+    if (key.startsWith("./")) key = `../../lib/orders/${key.slice(2)}`;
+    else if (key.startsWith("../") && !key.startsWith("../../"))
+      key = `../../lib/${key.slice(3)}`;
+    return [key, loader];
+  }),
 );
 
 /**

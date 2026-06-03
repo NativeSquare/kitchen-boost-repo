@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { internal } from "../../_generated/api";
 import type { Doc } from "../../_generated/dataModel";
+import { internalMutation } from "../../_generated/server";
 import { pricingSnapshot, refusalReason } from "../../table/orders";
 import {
   channelAvailabilityFrom,
@@ -9,9 +10,11 @@ import {
 import {
   type OrderWithDetail,
   type TenantRole,
+  autoExpireTenantOrder,
   confirmTenantOrderPayment,
   customerQuery,
   getCustomerOwnOrderWithDetail,
+  getTenantOrder,
   insertTenantNotificationEvent,
   listCustomerOwnOrdersForTenant,
   listTenantLiveOrders,
@@ -261,6 +264,96 @@ export const refuse = tenantMutation(OPERATIONAL_ALLOW)({
       internal.lib.stripe.refund.refundOnRefusal,
       { tenantId: ctx.tenantId, orderId: args.orderId },
     );
+  },
+});
+
+/**
+ * #404 — `expireIfNotAcknowledged`: the SYSTEM-SIDE tick of the 5-min timeout
+ * d'acceptation (PRD 20 §6b + ADR 0016 + kb-orders CONTEXT "Cmd manquée"),
+ * armed at `confirmTenantOrderPayment` (the moment the order becomes
+ * `nouvelle`, BOTH pickup and gated-delivery paths). At fire time, in ONE
+ * Convex transaction:
+ *
+ *  1. THE IDEMPOTENCE GUARD (`autoExpireTenantOrder` re-reads the CURRENT
+ *     status): if the order is still `nouvelle` ⇒ transition `nouvelle →
+ *     auto_expired` (TERMINAL, distinct from `refusée` — ADR 0016 signaux
+ *     orthogonaux: refus humain = signal business, auto_expired = signal
+ *     opérationnel) + append a system-side `auto_expired` `orderEvents` row.
+ *     If the cuisinier already accepted / refused (or the tick fires twice on
+ *     an order already `auto_expired`) ⇒ clean no-op — NO transition, NO
+ *     refund, NO push. This idempotence IS the whole reason ADR 0016 chose a
+ *     single scheduled tick checking current state at fire time; a double
+ *     refund would be a regression. Cross-tenant: the seam's
+ *     `getTenantOrder` ownership check makes a tick armed on tenant A
+ *     unreachable on tenant B (a hardening, not a real scenario — the
+ *     scheduler is always armed with the correct tenant id).
+ *
+ *  2. ON `{ expired: true }` (and ONLY then): EMIT the client `refund_issued`
+ *     notification (PRD 80 §1 trigger 6 — same trigger as the human refus, the
+ *     template differentiation motif/neutre is the 2.7 sender's concern, not
+ *     this slice). Plan the transactional sends from the customer's 2.1
+ *     reachability (ADR 0012, never duplicated) and journal each as `queued`
+ *     (the actual transport is 2.7). An unreachable customer simply yields no
+ *     send — atomic with the transition (all-or-nothing in one tx).
+ *
+ *  3. ON `{ expired: true }` (and ONLY then): SCHEDULE the Stripe refund via
+ *     the EXISTING 2.5-D action `refundOnRefusal` (REUSED — same code path as
+ *     the human refus per the issue body: "réutilise le même helper / la même
+ *     mutation backend"). Scheduled to run AFTER this mutation commits: the
+ *     Stripe network call belongs in an action, and the `auto_expired`
+ *     transition must be durable before we refund. The action is itself
+ *     idempotent — a `payments` row already `refunded` skips the Stripe call.
+ *
+ * SYSTEM-SIDE `internalMutation` — never exposed publicly. The tenant id is
+ * NOT user-supplied: the scheduler armed by `confirmTenantOrderPayment`
+ * passes the tenant id it had already resolved structurally from the
+ * `payments` row (ADR 0010). The seam helpers re-check ownership, so a tick
+ * pointing at a foreign tenant's order is a clean no-op (defence in depth).
+ */
+export const expireIfNotAcknowledged = internalMutation({
+  args: { tenantId: v.id("tenants"), orderId: v.id("orders") },
+  returns: v.object({ expired: v.boolean() }),
+  handler: async (ctx, args): Promise<{ expired: boolean }> => {
+    // 1 — idempotent transition through the seam (the heart of #404).
+    const { expired } = await autoExpireTenantOrder(
+      ctx,
+      args.tenantId,
+      args.orderId,
+    );
+    if (!expired) return { expired: false };
+
+    // 2 — emit the client `refund_issued` notification (sending is 2.7). Resolve
+    // the customer through the same tenant-scoped seam to route the notif.
+    // `getTenantOrder` returns null for a cross-tenant id, but we already
+    // expired ⇒ the order belongs to `tenantId` (NEVER null here in practice).
+    const order = await getTenantOrder(ctx, args.tenantId, args.orderId);
+    if (order !== null) {
+      const fields = await readCustomerAggregateFields(ctx, order.customerId);
+      const availability = channelAvailabilityFrom(fields ?? {});
+      const sends = planTransactionalSends("refund_issued", availability);
+      for (const send of sends) {
+        await insertTenantNotificationEvent(ctx, args.tenantId, {
+          customerId: order.customerId,
+          trigger: "refund_issued",
+          category: send.category,
+          channel: send.channel,
+          status: "queued",
+        });
+      }
+    }
+
+    // 3 — TRIGGER the Stripe refund — REUSE the existing 2.5-D `refundOnRefusal`
+    // action (same code path as the human refus per the issue: "réutilise le
+    // même helper / la même mutation backend"). Scheduled to run AFTER this
+    // mutation commits; the action is idempotent (a row already `refunded`
+    // skips the Stripe call, so a re-trigger refunds exactly once).
+    await ctx.scheduler.runAfter(
+      0,
+      internal.lib.stripe.refund.refundOnRefusal,
+      { tenantId: args.tenantId, orderId: args.orderId },
+    );
+
+    return { expired: true };
   },
 });
 

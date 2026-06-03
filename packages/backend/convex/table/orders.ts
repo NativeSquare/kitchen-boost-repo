@@ -32,8 +32,14 @@ import { type Infer, v } from "convex/values";
 /**
  * Order workflow state — the closed state machine of PRD 20 §5 + the issue body.
  * Not invented: every value is documented (PRD 20 §5 nouvelle → en préparation →
- * prête → remise → livrée/collectée; refusée per PRD 20 §6; en attente de
- * paiement is the pre-payment state, PRD 10 §10/§11).
+ * prête → remise → livrée/collectée; refusée per PRD 20 §6a; auto_expired per PRD
+ * 20 §6b + ADR 0016; en attente de paiement is the pre-payment state, PRD 10
+ * §10/§11).
+ *
+ * `auto_expired` (#404) — system-side terminal: a cmd still `nouvelle` 5 min
+ * after `paymentSucceeded` is automatically refunded + pushed (template neutre).
+ * DISTINCT from `refusée` (human refus with motif) — ADR 0016 explains why mixing
+ * the two would conflate orthogonal signals (business vs operational).
  */
 export const orderStatus = v.union(
   v.literal("en attente de paiement"),
@@ -44,6 +50,7 @@ export const orderStatus = v.union(
   v.literal("livrée"),
   v.literal("collectée"),
   v.literal("refusée"),
+  v.literal("auto_expired"),
 );
 
 /**
@@ -139,6 +146,7 @@ export const orders = defineTable({
   handedOverAt: v.optional(v.number()), // → remise
   completedAt: v.optional(v.number()), // → livrée / collectée
   refusedAt: v.optional(v.number()), // → refusée
+  autoExpiredAt: v.optional(v.number()), // → auto_expired (#404, PRD 20 §6b)
 })
   .index("by_tenant", ["tenantId"])
   .index("by_customer", ["customerId"])
