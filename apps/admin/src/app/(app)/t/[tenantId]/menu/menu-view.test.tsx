@@ -102,6 +102,77 @@ vi.mock("@dnd-kit/utilities", () => ({
   CSS: { Transform: { toString: () => undefined } },
 }));
 
+// Refonte tabs Menu (2026-06-03) — The view now wraps its body in a `<Tabs>`
+// (radix-ui). Radix-ui's primitives call internal React hooks (`useContext`,
+// `useState`, `useId`…) — those throw under `environment: "node"`. We replace
+// the four exports with thin passthroughs that:
+//   - render only the `<TabsContent>` whose `value` matches the active `<Tabs>`
+//     value, so the serializer doesn't walk every tab's content (which would
+//     double-count category rows + leak drag handles into the « Catégories »
+//     tab assertions etc.) — same shape as the real client behaviour.
+//   - keep the `<TabsList>` + `<TabsTrigger>` markers visible so the trigger
+//     count + click handlers stay testable.
+vi.mock("@/components/ui/tabs", async () => {
+  const { createElement, isValidElement, Children } =
+    await vi.importActual<typeof import("react")>("react");
+  type AnyProps = Record<string, unknown> & { children?: React.ReactNode };
+
+  function TabsContent({
+    value,
+    children,
+    ...rest
+  }: AnyProps & { value?: string }) {
+    return createElement(
+      "div",
+      { "data-slot": "tabs-content", "data-value": value, ...rest },
+      children,
+    );
+  }
+  function Tabs({ value, children, ...rest }: AnyProps & { value?: string }) {
+    // Keep ONLY the `<TabsContent>` whose `value` matches the active tab so
+    // the serializer doesn't walk every tab's body (which would double-count
+    // category rows etc.). Filter by reference (the mock module is the single
+    // source of truth — both the JSX <TabsContent ...> elements and our local
+    // `TabsContent` symbol resolve here).
+    const filtered: React.ReactNode[] = [];
+    Children.forEach(children, (child) => {
+      if (
+        isValidElement(child) &&
+        (child as { type?: unknown }).type === TabsContent
+      ) {
+        const cv = (child.props as { value?: string }).value;
+        if (cv === value) filtered.push(child);
+        return;
+      }
+      filtered.push(child);
+    });
+    return createElement(
+      "div",
+      { "data-slot": "tabs", "data-value": value, ...rest },
+      filtered,
+    );
+  }
+  function TabsList({ children, ...rest }: AnyProps) {
+    return createElement(
+      "div",
+      { "data-slot": "tabs-list", ...rest },
+      children,
+    );
+  }
+  function TabsTrigger({
+    value,
+    children,
+    ...rest
+  }: AnyProps & { value?: string }) {
+    return createElement(
+      "button",
+      { "data-slot": "tabs-trigger", "data-value": value, ...rest },
+      children,
+    );
+  }
+  return { Tabs, TabsList, TabsTrigger, TabsContent };
+});
+
 // F-MENU-04 (#211) — the item-list thumbnail resolves `photoStorageId` →
 // URL via `useQuery(api.storage.getImageUrl, ...)`. Under `environment: "node"`
 // (no Convex provider, no React renderer), the real hook throws. Stub it to
@@ -309,15 +380,22 @@ describe("MenuView — F-MENU-01 (#187)", () => {
   it("AC3 — renders the categories sorted by `order` (independent of input array order)", () => {
     // Input is Desserts(2), Entrées(0), Plats(1) — expected visible order:
     // Entrées, Plats, Desserts.
-    const text = allText(
-      serialize(MenuView({ categories: UNORDERED_CATEGORIES })),
-    );
-    const entreesIdx = text.indexOf("Entrées");
-    const platsIdx = text.indexOf("Plats");
-    const dessertsIdx = text.indexOf("Desserts");
-    expect(entreesIdx).toBeGreaterThanOrEqual(0);
-    expect(platsIdx).toBeGreaterThan(entreesIdx);
-    expect(dessertsIdx).toBeGreaterThan(platsIdx);
+    // Refonte tabs Menu (2026-06-03) — the tab triggers also carry the word
+    // « Plats » (the « Plats » tab label), so we narrow the assertion to the
+    // category rows themselves rather than the full page text.
+    const tree = serialize(MenuView({ categories: UNORDERED_CATEGORIES }));
+    const rows = flatten(tree).filter((n) => {
+      if (n === null || "text" in n) return false;
+      return n.props["data-slot"] === "menu-category-row";
+    });
+    const rowNames = rows.map((r) => allText(r));
+    // Find the index of each category name in the rendered row list.
+    const entreesRow = rowNames.findIndex((t) => t.includes("Entrées"));
+    const platsRow = rowNames.findIndex((t) => t.includes("Plats"));
+    const dessertsRow = rowNames.findIndex((t) => t.includes("Desserts"));
+    expect(entreesRow).toBeGreaterThanOrEqual(0);
+    expect(platsRow).toBeGreaterThan(entreesRow);
+    expect(dessertsRow).toBeGreaterThan(platsRow);
   });
 
   it("AC2 — loading branch (categories === undefined) renders skeletons, NOT the empty state, NOT a crash", () => {
@@ -962,5 +1040,334 @@ describe("MenuView — F-MENU-01 (#187)", () => {
       children: SerializedNode[];
     };
     expect(badge.props["aria-disabled"]).not.toBe("true");
+  });
+
+  // ---------------------------------------------------------------------------
+  // Refonte tabs Menu (Alex, 2026-06-03) — 3-tab navigation
+  // ---------------------------------------------------------------------------
+  // The view now wraps its body in a `<Tabs>` with three tabs (Catégories /
+  // Plats / Personnalisations). The page persists the active tab in the URL
+  // via `?tab=...` and forwards `currentTab` + `onTabChange` down. Without
+  // `currentTab` wired, the view falls back to the default tab (« Plats »,
+  // the daily-use surface — rupture toggles + item edits).
+  //
+  // The header (badge + Publier + Aperçu) stays OUTSIDE the tabs container,
+  // so all three tab states keep them visible.
+  describe("Refonte tabs Menu (2026-06-03)", () => {
+    it("renders three tab triggers with the canonical labels and data-slots", () => {
+      const tree = serialize(
+        MenuView({
+          categories: UNORDERED_CATEGORIES,
+          onCreateCategory: () => {},
+          onRenameCategory: () => {},
+          onDeleteCategory: () => {},
+        }),
+      );
+      const triggers = flatten(tree).filter((n) => {
+        if (n === null || "text" in n) return false;
+        const ds = n.props["data-slot"];
+        return (
+          ds === "menu-tab-trigger-categories" ||
+          ds === "menu-tab-trigger-items" ||
+          ds === "menu-tab-trigger-modifiers"
+        );
+      });
+      expect(triggers).toHaveLength(3);
+      const text = allText(tree);
+      expect(text).toMatch(/Catégories/);
+      expect(text).toMatch(/Plats/);
+      expect(text).toMatch(/Personnalisations/);
+    });
+
+    it("defaults to the « Plats » tab when `currentTab` is not wired (daily-use surface)", () => {
+      // Without a `currentTab` prop, the view falls back to DEFAULT_MENU_TAB
+      // (`"items"`). We assert the items-tab content is the one rendered —
+      // the items section (« Ajouter un item » CTA, surfaced ONLY in
+      // `with-items` mode of CategoryListEditor) is present.
+      const tree = serialize(
+        MenuView({
+          categories: UNORDERED_CATEGORIES,
+          onCreateCategory: () => {},
+          onRenameCategory: () => {},
+          onDeleteCategory: () => {},
+          itemsByCategory: {},
+          onToggleItemAvailability: () => {},
+          onCreateItem: () => {},
+          onItemClick: () => {},
+        }),
+      );
+      const itemAdders = flatten(tree).filter((n) => {
+        if (n === null || "text" in n) return false;
+        return n.props["data-slot"] === "menu-item-add";
+      });
+      // Items tab is active → each category surfaces its « + Item » CTA.
+      expect(itemAdders.length).toBeGreaterThan(0);
+    });
+
+    it("Tab « Catégories » (list-only) does NOT render item rows", () => {
+      // The spec: « Tab Catégories en mode list-only ne render PAS d'items ».
+      // We provide a full items map + the toggle handler — the list-only mode
+      // must still strip them. Pin via the canonical item-row data-slot.
+      type Item = Doc<"menuItems">;
+      const cat0 = UNORDERED_CATEGORIES[0]._id as string;
+      const itemsByCategory: Record<string, Item[]> = {
+        [cat0]: [
+          {
+            _id: "item_x" as Item["_id"],
+            _creationTime: 0,
+            tenantId: "tenant_test" as Item["tenantId"],
+            categoryId: cat0 as Item["categoryId"],
+            name: "Tiramisu",
+            description: "",
+            basePrice: 0,
+            allergens: [],
+            available: true,
+            order: 0,
+            createdAt: 0,
+          } as Item,
+        ],
+      };
+      const tree = serialize(
+        MenuView({
+          categories: UNORDERED_CATEGORIES,
+          onCreateCategory: () => {},
+          onRenameCategory: () => {},
+          onDeleteCategory: () => {},
+          itemsByCategory,
+          onToggleItemAvailability: () => {},
+          onCreateItem: () => {},
+          onItemClick: () => {},
+          currentTab: "categories",
+          onTabChange: () => {},
+        }),
+      );
+      const itemRows = flatten(tree).filter((n) => {
+        if (n === null || "text" in n) return false;
+        return n.props["data-slot"] === "menu-item-row";
+      });
+      expect(itemRows).toHaveLength(0);
+      // The category rows ARE still rendered (the list-only spine).
+      const categoryRows = flatten(tree).filter((n) => {
+        if (n === null || "text" in n) return false;
+        return n.props["data-slot"] === "menu-category-row";
+      });
+      expect(categoryRows).toHaveLength(UNORDERED_CATEGORIES.length);
+      // And the « + Item » CTA must NOT surface in list-only mode (no item
+      // creation path from the Catégories tab).
+      const itemAdders = flatten(tree).filter((n) => {
+        if (n === null || "text" in n) return false;
+        return n.props["data-slot"] === "menu-item-add";
+      });
+      expect(itemAdders).toHaveLength(0);
+    });
+
+    it("Tab « Plats » (with-items) renders item rows + « + Item » per category", () => {
+      type Item = Doc<"menuItems">;
+      const cat0 = UNORDERED_CATEGORIES[0]._id as string;
+      const cat1 = UNORDERED_CATEGORIES[1]._id as string;
+      const makeItem = (name: string, catId: string, order: number): Item =>
+        ({
+          _id: `item_${name}` as Item["_id"],
+          _creationTime: 0,
+          tenantId: "tenant_test" as Item["tenantId"],
+          categoryId: catId as Item["categoryId"],
+          name,
+          description: "",
+          basePrice: 0,
+          allergens: [],
+          available: true,
+          order,
+          createdAt: 0,
+        }) as Item;
+      const itemsByCategory: Record<string, Item[]> = {
+        [cat0]: [makeItem("Tiramisu", cat0, 0)],
+        [cat1]: [makeItem("Salade", cat1, 0)],
+      };
+      const tree = serialize(
+        MenuView({
+          categories: UNORDERED_CATEGORIES,
+          onCreateCategory: () => {},
+          onRenameCategory: () => {},
+          onDeleteCategory: () => {},
+          itemsByCategory,
+          onToggleItemAvailability: () => {},
+          onCreateItem: () => {},
+          onItemClick: () => {},
+          currentTab: "items",
+          onTabChange: () => {},
+        }),
+      );
+      const itemRows = flatten(tree).filter((n) => {
+        if (n === null || "text" in n) return false;
+        return n.props["data-slot"] === "menu-item-row";
+      });
+      expect(itemRows.length).toBeGreaterThanOrEqual(2);
+      // One « + Item » CTA per category (3 categories in UNORDERED_CATEGORIES).
+      const itemAdders = flatten(tree).filter((n) => {
+        if (n === null || "text" in n) return false;
+        return n.props["data-slot"] === "menu-item-add";
+      });
+      expect(itemAdders).toHaveLength(UNORDERED_CATEGORIES.length);
+    });
+
+    it("Tab « Personnalisations » renders the modifiersSection passed by the page", () => {
+      // The page mounts `<ModifierGroupsSection ... />` and passes it down as
+      // `modifiersSection`; the view renders it inside the « modifiers » tab
+      // content. We pin via a sentinel React element (the page-side wiring is
+      // pinned by page.test.ts).
+      const sentinel = (
+        <div data-slot="test-modifiers-sentinel">SENTINEL_MODIFIERS</div>
+      );
+      const tree = serialize(
+        MenuView({
+          categories: UNORDERED_CATEGORIES,
+          onCreateCategory: () => {},
+          onRenameCategory: () => {},
+          onDeleteCategory: () => {},
+          currentTab: "modifiers",
+          onTabChange: () => {},
+          modifiersSection: sentinel,
+        }),
+      );
+      const sentinels = flatten(tree).filter((n) => {
+        if (n === null || "text" in n) return false;
+        return n.props["data-slot"] === "test-modifiers-sentinel";
+      });
+      expect(sentinels).toHaveLength(1);
+      // And no category rows should be rendered in the modifiers tab (the
+      // mocked Tabs only walks the active tab's content).
+      const categoryRows = flatten(tree).filter((n) => {
+        if (n === null || "text" in n) return false;
+        return n.props["data-slot"] === "menu-category-row";
+      });
+      expect(categoryRows).toHaveLength(0);
+    });
+
+    it("Tab trigger click forwards the new tab id to `onTabChange`", () => {
+      const onTabChange = vi.fn();
+      const tree = serialize(
+        MenuView({
+          categories: UNORDERED_CATEGORIES,
+          onCreateCategory: () => {},
+          onRenameCategory: () => {},
+          onDeleteCategory: () => {},
+          currentTab: "items",
+          onTabChange,
+        }),
+      );
+      // The radix `<Tabs onValueChange>` fires when a trigger is clicked. Our
+      // test mock surfaces the change via the same channel. We simulate by
+      // walking up to the Tabs root and invoking its `onValueChange`.
+      const tabsRoot = flatten(tree).find((n) => {
+        if (n === null || "text" in n) return false;
+        return n.props["data-slot"] === "tabs";
+      }) as
+        | {
+            type: string;
+            props: Record<string, unknown>;
+            children: SerializedNode[];
+          }
+        | undefined;
+      expect(tabsRoot).toBeDefined();
+      const onValueChange = tabsRoot?.props["onValueChange"] as
+        | ((next: string) => void)
+        | undefined;
+      expect(typeof onValueChange).toBe("function");
+      onValueChange?.("modifiers");
+      expect(onTabChange).toHaveBeenCalledTimes(1);
+      expect(onTabChange).toHaveBeenCalledWith("modifiers");
+    });
+
+    it("`hasUnpublishedChanges` badge stays visible regardless of the active tab", () => {
+      // The header (badge + Publier + Aperçu) lives OUTSIDE the tabs container
+      // so all three tab states keep the publication affordances visible — the
+      // gérant must always be able to publish, no matter which tab they're on.
+      for (const tab of ["categories", "items", "modifiers"] as const) {
+        const tree = serialize(
+          MenuView({
+            categories: UNORDERED_CATEGORIES,
+            onCreateCategory: () => {},
+            onRenameCategory: () => {},
+            onDeleteCategory: () => {},
+            hasUnpublishedChanges: true,
+            currentTab: tab,
+            onTabChange: () => {},
+            modifiersSection: <div>placeholder</div>,
+          }),
+        );
+        const badges = flatten(tree).filter((n) => {
+          if (n === null || "text" in n) return false;
+          return n.props["data-slot"] === "menu-unpublished-badge";
+        });
+        expect(badges, `tab=${tab}`).toHaveLength(1);
+        // Publish + Preview buttons also stay mounted per tab.
+        const publishButtons = flatten(tree).filter((n) => {
+          if (n === null || "text" in n) return false;
+          return n.props["data-slot"] === "menu-publish-button";
+        });
+        expect(publishButtons, `tab=${tab}`).toHaveLength(1);
+        const previewButtons = flatten(tree).filter((n) => {
+          if (n === null || "text" in n) return false;
+          return n.props["data-slot"] === "menu-preview-button";
+        });
+        expect(previewButtons, `tab=${tab}`).toHaveLength(1);
+      }
+    });
+
+    it("Click on an item card (tab Plats) forwards `onItemClick(itemId)` — modal opens at page level", () => {
+      // Acceptance criterion #6 from the spec: « Click sur item (tab Plats)
+      // ouvre ItemModal — préserve le test existant, juste vérifie que ça
+      // marche depuis le tab `items` ». The modal mount is page-level (pinned
+      // by page.test.ts); here we only pin that the row click forwards the
+      // item id through `onItemClick` when the items tab is the active one.
+      type Item = Doc<"menuItems">;
+      const cat0 = UNORDERED_CATEGORIES[0]._id as string;
+      const itemDoc: Item = {
+        _id: "item_tira" as Item["_id"],
+        _creationTime: 0,
+        tenantId: "tenant_test" as Item["tenantId"],
+        categoryId: cat0 as Item["categoryId"],
+        name: "Tiramisu",
+        description: "",
+        basePrice: 0,
+        allergens: [],
+        available: true,
+        order: 0,
+        createdAt: 0,
+      } as Item;
+      const onItemClick = vi.fn();
+      const tree = serialize(
+        MenuView({
+          categories: UNORDERED_CATEGORIES,
+          onCreateCategory: () => {},
+          onRenameCategory: () => {},
+          onDeleteCategory: () => {},
+          itemsByCategory: { [cat0]: [itemDoc] },
+          onToggleItemAvailability: () => {},
+          onCreateItem: () => {},
+          onItemClick,
+          currentTab: "items",
+          onTabChange: () => {},
+        }),
+      );
+      const clickables = flatten(tree).filter((n) => {
+        if (n === null || "text" in n) return false;
+        return n.props["data-slot"] === "menu-item-card-clickable";
+      }) as Array<{
+        type: string;
+        props: Record<string, unknown>;
+        children: SerializedNode[];
+      }>;
+      // At least the one item we provided must have a clickable surface.
+      expect(clickables.length).toBeGreaterThanOrEqual(1);
+      const onClick = clickables[0].props["onClick"] as
+        | (() => void)
+        | undefined;
+      expect(typeof onClick).toBe("function");
+      onClick?.();
+      expect(onItemClick).toHaveBeenCalledTimes(1);
+      // The arg is the item id we threaded down.
+      expect(onItemClick).toHaveBeenCalledWith("item_tira");
+    });
   });
 });

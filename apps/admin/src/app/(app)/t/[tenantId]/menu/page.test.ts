@@ -347,17 +347,19 @@ describe("page.tsx — F-MENU-01 (#187) wiring contract", () => {
     // NOT_FOUND for cross-tenant probes, etc.) surface as a visible toast —
     // never silently swallowed.
     const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
-    // Window widened to 4500 (#246 inserted the attach/detach mutation
+    // Window widened to 7000 (#246 inserted the attach/detach mutation
     // declarations + handlers between the first `createGroup` mention — in
     // the mutation declaration block — and the first downstream
     // `toast.error` in the categories CRUD handlers; #254 layered the
     // publication wiring on top — publishMenu + hasUnpublishedChanges +
-    // previewHref + tenantId + state hooks before the first CRUD handler).
-    // Pairing is intact: each handler still wraps its own mutation in
-    // try/catch + toast.error.
-    expect(collapsed).toMatch(/createGroup[\s\S]{0,4500}toast\.error/);
-    expect(collapsed).toMatch(/updateGroup[\s\S]{0,4500}toast\.error/);
-    expect(collapsed).toMatch(/removeGroup[\s\S]{0,4500}toast\.error/);
+    // previewHref + tenantId + state hooks before the first CRUD handler;
+    // Refonte tabs Menu 2026-06-03 added the URL-driven tab state wiring
+    // — useRouter + useSearchParams + handleTabChange — between the mutation
+    // declarations and the first CRUD handler too). Pairing is intact: each
+    // handler still wraps its own mutation in try/catch + toast.error.
+    expect(collapsed).toMatch(/createGroup[\s\S]{0,7000}toast\.error/);
+    expect(collapsed).toMatch(/updateGroup[\s\S]{0,7000}toast\.error/);
+    expect(collapsed).toMatch(/removeGroup[\s\S]{0,7000}toast\.error/);
   });
 
   // ---------------------------------------------------------------------------
@@ -473,6 +475,62 @@ describe("page.tsx — F-MENU-01 (#187) wiring contract", () => {
     // future refactor that accidentally swaps it for the public PWA host
     // fails loudly.
     expect(PAGE_SOURCE).toMatch(/menu\/preview/);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Refonte tabs Menu (Alex, 2026-06-03) — URL-driven 3-tab navigation
+  // ---------------------------------------------------------------------------
+  // The page now wraps the body in a 3-tab navigation (Catégories / Plats /
+  // Personnalisations) whose active tab is persisted in the URL via the
+  // canonical `?tab=...` search param. The wiring:
+  //   - reads the param via `useSearchParams()` and normalises it through
+  //     `parseMenuTabParam(...)` (re-exported from `./menu-view` so the page
+  //     and the view share the same fallback logic — unknown / missing →
+  //     DEFAULT_MENU_TAB === "items", the daily-use surface).
+  //   - writes the param via `router.replace(...)` (no scroll, no history
+  //     entry → tab switches don't pollute the back button).
+  //   - mounts the `<ModifierGroupsSection ... />` instance INSIDE the
+  //     « Personnalisations » tab content (passed down as `modifiersSection`
+  //     prop) — no more standalone section sibling of `MenuView`.
+
+  it("Refonte tabs — reads the active tab from the URL via `useSearchParams` + `parseMenuTabParam` (default = items)", () => {
+    const code = PAGE_SOURCE.replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "")
+      .replace(/`[^`]*`/g, "");
+    expect(code).toMatch(/useSearchParams/);
+    expect(code).toMatch(/parseMenuTabParam/);
+    // The parsed tab value is forwarded to `MenuView` via the `currentTab`
+    // prop the view exposes.
+    expect(PAGE_SOURCE).toMatch(/currentTab/);
+  });
+
+  it("Refonte tabs — persists the active tab in the URL via `router.replace(?tab=...)` (no scroll, no history pollution)", () => {
+    const code = PAGE_SOURCE.replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "")
+      .replace(/`[^`]*`/g, "");
+    expect(code).toMatch(/useRouter/);
+    // The tab-change handler calls `router.replace` (not `router.push`, so
+    // tab toggles don't add history entries — the back button still
+    // navigates AWAY from the page) with `scroll: false` (no jarring scroll
+    // reset on a simple tab switch).
+    expect(code).toMatch(/router\.replace/);
+    expect(code).toMatch(/scroll:\s*false/);
+    // The page sets the `tab` query param via URLSearchParams.set("tab", ...).
+    const collapsed = code.replace(/\s+/g, " ");
+    expect(collapsed).toMatch(/params\.set\s*\(\s*["']tab["']/);
+    // And forwards the handler to MenuView via the dedicated prop.
+    expect(PAGE_SOURCE).toMatch(/onTabChange/);
+  });
+
+  it("Refonte tabs — mounts `ModifierGroupsSection` INSIDE MenuView via the `modifiersSection` prop (no more standalone sibling)", () => {
+    // The « Personnalisations » section moved from being a sibling of
+    // `MenuView` to being threaded down as the content of MenuView's tab 3.
+    // We pin that the page still constructs the section AND passes it
+    // through the dedicated prop. Negative pin: there's no longer a
+    // standalone `<div ...><ModifierGroupsSection .../></div>` outside
+    // MenuView's JSX (the section is exclusively rendered through the prop).
+    expect(PAGE_SOURCE).toMatch(/ModifierGroupsSection/);
+    expect(PAGE_SOURCE).toMatch(/modifiersSection/);
   });
 
   it("F-MENU-02 — surfaces errors via `toast.error` + `getConvexErrorMessage` (no raw alert / console.error)", () => {

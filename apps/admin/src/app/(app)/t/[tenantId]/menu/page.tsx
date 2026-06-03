@@ -50,7 +50,8 @@
  * `packages/backend/convex/`.
  */
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import { api } from "@packages/backend/convex/_generated/api";
@@ -66,7 +67,7 @@ import {
   type ItemCreatePayload,
   type ItemUpdatePatch,
 } from "./item-modal";
-import { MenuView } from "./menu-view";
+import { MenuView, parseMenuTabParam, type MenuTab } from "./menu-view";
 import {
   ModifierGroupModal,
   type ModifierGroupCreatePayload,
@@ -218,6 +219,30 @@ export default function MenuPage() {
   );
   const tenantId = useCurrentTenantId();
   const previewHref = `/t/${tenantId}/menu/preview`;
+
+  // Refonte tabs Menu (Alex, 2026-06-03) — the active tab lives in the URL
+  // (`?tab=categories|items|modifiers`) so the KB Manager can bookmark a tab
+  // and a hard reload restores it. Default = « Plats » (the daily-use surface
+  // — rupture toggles + item edits). We read the param via `useSearchParams`,
+  // normalise unknown values to the default (see `parseMenuTabParam`), and
+  // push the new value via `router.replace` (no scroll, no history entry so
+  // tab switches don't pollute the back button — back button must still
+  // navigate AWAY from the page, never just toggle tabs).
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const currentTab: MenuTab = parseMenuTabParam(searchParams?.get("tab"));
+  const handleTabChange = useCallback(
+    (next: MenuTab) => {
+      // Build the next query string off the current params so any unrelated
+      // filter we may add later (e.g. ?category=...) is preserved across tab
+      // switches.
+      const params = new URLSearchParams(searchParams?.toString() ?? "");
+      params.set("tab", next);
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    },
+    [router, pathname, searchParams],
+  );
 
   const [modalState, setModalState] = useState<ItemModalState>(null);
   const [publishLoading, setPublishLoading] = useState(false);
@@ -635,6 +660,20 @@ export default function MenuPage() {
     );
   }, [modifierGroupModalState, modifierGroups]);
 
+  // Refonte tabs Menu (2026-06-03) — the « Personnalisations » section is now
+  // mounted INSIDE MenuView (tab 3 content) instead of as a sibling under the
+  // menu page. We hand the configured section instance down so MenuView stays
+  // agnostic of the modifier-group data model (the CRUD callbacks already live
+  // here on the page).
+  const modifiersSection = (
+    <ModifierGroupsSection
+      groups={modifierGroups}
+      onCreateGroup={handleOpenCreateModifierGroup}
+      onEditGroup={handleEditModifierGroup}
+      onDeleteGroup={handleRemoveModifierGroup}
+    />
+  );
+
   return (
     <>
       <MenuView
@@ -652,15 +691,10 @@ export default function MenuPage() {
         publishLoading={publishLoading}
         previewHref={previewHref}
         hasUnpublishedChanges={publicationStatus?.hasChanges}
+        currentTab={currentTab}
+        onTabChange={handleTabChange}
+        modifiersSection={modifiersSection}
       />
-      <div className="px-4 lg:px-6">
-        <ModifierGroupsSection
-          groups={modifierGroups}
-          onCreateGroup={handleOpenCreateModifierGroup}
-          onEditGroup={handleEditModifierGroup}
-          onDeleteGroup={handleRemoveModifierGroup}
-        />
-      </div>
       {modifierGroupModalState !== null ? (
         <ModifierGroupModal
           // F-MENU-09 (#246): both « create » (standalone) and « inline-from-item »

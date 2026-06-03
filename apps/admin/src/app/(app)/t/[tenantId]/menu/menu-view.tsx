@@ -47,16 +47,17 @@
  * surface touched by these stories. Zero touch to `apps/web`, `apps/native`,
  * or `packages/backend/convex/`.
  */
+import type { ReactNode } from "react";
 import type { Doc, Id } from "@packages/backend/convex/_generated/dataModel";
 import { IconPlus } from "@tabler/icons-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
 import { CategoryListEditor } from "./category-list-editor";
-import { ItemList } from "./item-list";
 
 export type MenuViewProps = {
   /**
@@ -155,7 +156,48 @@ export type MenuViewProps = {
    * publication réussie via la réactivité Convex (la query ré-émet `false`).
    */
   hasUnpublishedChanges?: boolean;
+  /**
+   * Refonte tabs Menu (Alex, 2026-06-03) — currently active tab. The page
+   * persists this in the URL via `?tab=<id>` (`useSearchParams` +
+   * `useRouter().replace()`), so a hard reload + bookmark restore the
+   * gérant's tab. Defaults to `"items"` page-side when no param is set —
+   * it's the tab the gérant uses every day (rupture toggles, item edits).
+   */
+  currentTab?: MenuTab;
+  /**
+   * Refonte tabs Menu — fires when the gérant clicks a tab trigger. The page
+   * wires this to a `useRouter().replace(?tab=<next>)` to persist it.
+   */
+  onTabChange?: (next: MenuTab) => void;
+  /**
+   * Refonte tabs Menu — content of the « Personnalisations » tab. The page
+   * passes the `<ModifierGroupsSection ... />` instance (with all its CRUD
+   * callbacks) here so the view doesn't have to know about the modifier-group
+   * data model. When omitted, the tab renders an empty branch (placeholder).
+   */
+  modifiersSection?: ReactNode;
 };
+
+/** Refonte tabs Menu (Alex, 2026-06-03) — the three tabs of the menu page. */
+export type MenuTab = "categories" | "items" | "modifiers";
+
+export const MENU_TABS = ["categories", "items", "modifiers"] as const;
+
+/** Default tab when no `?tab` query param is set (the daily-use surface). */
+export const DEFAULT_MENU_TAB: MenuTab = "items";
+
+/**
+ * Normalise a raw `?tab` search param value to a known `MenuTab`. Unknown or
+ * missing values fall back to `DEFAULT_MENU_TAB` so a malformed URL never
+ * locks the gérant out of the page. Exported so the page wiring + the
+ * page-side wiring test can share the same normalisation.
+ */
+export function parseMenuTabParam(raw: string | null | undefined): MenuTab {
+  if (raw === "categories" || raw === "items" || raw === "modifiers") {
+    return raw;
+  }
+  return DEFAULT_MENU_TAB;
+}
 
 export function MenuView({
   categories,
@@ -172,11 +214,23 @@ export function MenuView({
   publishLoading,
   previewHref,
   hasUnpublishedChanges,
+  currentTab,
+  onTabChange,
+  modifiersSection,
 }: MenuViewProps) {
   const hasCrud =
     onCreateCategory !== undefined &&
     onRenameCategory !== undefined &&
     onDeleteCategory !== undefined;
+  // Refonte tabs Menu (2026-06-03) — the page persists the active tab in the
+  // URL via `?tab=...` (`useSearchParams` + `useRouter().replace()`). When the
+  // page hasn't wired the tabs yet (read-only baseline / older callers), we
+  // fall back to the default tab so the body never renders blank.
+  const activeTab: MenuTab = currentTab ?? DEFAULT_MENU_TAB;
+  const handleTabChange = (next: string) => {
+    if (onTabChange === undefined) return;
+    onTabChange(parseMenuTabParam(next));
+  };
   return (
     <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
       <MenuHeader
@@ -186,19 +240,58 @@ export function MenuView({
         hasUnpublishedChanges={hasUnpublishedChanges}
       />
       <div className="px-4 lg:px-6">
-        <MenuBody
-          categories={categories}
-          hasCrud={hasCrud}
-          onCreateCategory={onCreateCategory}
-          onRenameCategory={onRenameCategory}
-          onDeleteCategory={onDeleteCategory}
-          onReorderCategories={onReorderCategories}
-          itemsByCategory={itemsByCategory}
-          onToggleItemAvailability={onToggleItemAvailability}
-          onCreateItem={onCreateItem}
-          onItemClick={onItemClick}
-          onReorderItems={onReorderItems}
-        />
+        <Tabs value={activeTab} onValueChange={handleTabChange}>
+          <TabsList data-slot="menu-tabs-list">
+            <TabsTrigger
+              value="categories"
+              data-slot="menu-tab-trigger-categories"
+            >
+              Catégories
+            </TabsTrigger>
+            <TabsTrigger value="items" data-slot="menu-tab-trigger-items">
+              Plats
+            </TabsTrigger>
+            <TabsTrigger
+              value="modifiers"
+              data-slot="menu-tab-trigger-modifiers"
+            >
+              Personnalisations
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent
+            value="categories"
+            data-slot="menu-tab-content-categories"
+          >
+            <MenuBody
+              displayMode="list-only"
+              categories={categories}
+              hasCrud={hasCrud}
+              onCreateCategory={onCreateCategory}
+              onRenameCategory={onRenameCategory}
+              onDeleteCategory={onDeleteCategory}
+              onReorderCategories={onReorderCategories}
+            />
+          </TabsContent>
+          <TabsContent value="items" data-slot="menu-tab-content-items">
+            <MenuBody
+              displayMode="with-items"
+              categories={categories}
+              hasCrud={hasCrud}
+              onCreateCategory={onCreateCategory}
+              onRenameCategory={onRenameCategory}
+              onDeleteCategory={onDeleteCategory}
+              onReorderCategories={onReorderCategories}
+              itemsByCategory={itemsByCategory}
+              onToggleItemAvailability={onToggleItemAvailability}
+              onCreateItem={onCreateItem}
+              onItemClick={onItemClick}
+              onReorderItems={onReorderItems}
+            />
+          </TabsContent>
+          <TabsContent value="modifiers" data-slot="menu-tab-content-modifiers">
+            {modifiersSection}
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );
@@ -281,11 +374,21 @@ function MenuHeader({
   );
 }
 
-type MenuBodyProps = MenuViewProps & { hasCrud: boolean };
+type MenuBodyProps = Omit<MenuViewProps, "currentTab" | "onTabChange"> & {
+  hasCrud: boolean;
+  /**
+   * Refonte tabs Menu (2026-06-03) — body display mode, mirror of
+   * `CategoryListEditor.displayMode`. Rendered once per tab content.
+   *   - `"list-only"` (Tab « Catégories »): structural spine only.
+   *   - `"with-items"` (Tab « Plats »): rows + per-category items + « + Item ».
+   */
+  displayMode: "list-only" | "with-items";
+};
 
 function MenuBody({
   categories,
   hasCrud,
+  displayMode,
   onCreateCategory,
   onRenameCategory,
   onDeleteCategory,
@@ -306,123 +409,35 @@ function MenuBody({
       />
     );
   }
-  // F-MENU-04 (#211) — only render the per-category items sections when the
-  // page wires BOTH `itemsByCategory` (the bucketed map) AND
-  // `onToggleItemAvailability` (the live mutation handler). Without the
-  // handler we would render a toggle the gérant could click that wouldn't
-  // do anything — bad UX, worse safety (ADR 0015: the toggle MUST fire the
-  // live mutation, never silently no-op).
-  const showItemsSections =
-    onToggleItemAvailability !== undefined && itemsByCategory !== undefined;
-  const categoriesNode =
+  if (
     hasCrud &&
     onCreateCategory !== undefined &&
     onRenameCategory !== undefined &&
-    onDeleteCategory !== undefined ? (
+    onDeleteCategory !== undefined
+  ) {
+    return (
       <CategoryListEditor
         categories={categories}
         onCreate={onCreateCategory}
         onRename={onRenameCategory}
         onDelete={onDeleteCategory}
         onReorder={onReorderCategories}
+        displayMode={displayMode}
+        itemsByCategory={
+          displayMode === "with-items" ? itemsByCategory : undefined
+        }
+        onToggleItemAvailability={
+          displayMode === "with-items" ? onToggleItemAvailability : undefined
+        }
+        onCreateItem={displayMode === "with-items" ? onCreateItem : undefined}
+        onItemClick={displayMode === "with-items" ? onItemClick : undefined}
+        onReorderItems={
+          displayMode === "with-items" ? onReorderItems : undefined
+        }
       />
-    ) : (
-      <CategoryList categories={categories} />
     );
-  if (!showItemsSections) return categoriesNode;
-  // Defensive resort by `order` — same insurance as `CategoryList` (the
-  // backend returns them sorted via `by_tenant_order`; cheap to repeat).
-  const sortedCategories = [...categories].sort((a, b) => a.order - b.order);
-  return (
-    <div className="flex flex-col gap-6">
-      {categoriesNode}
-      <div
-        className="flex flex-col gap-6"
-        data-slot="menu-categories-items-sections"
-      >
-        {sortedCategories.map((category) => (
-          <CategoryItemsSection
-            key={category._id}
-            category={category}
-            items={itemsByCategory[category._id as unknown as string]}
-            onToggleItemAvailability={onToggleItemAvailability}
-            onCreateItem={onCreateItem}
-            onItemClick={onItemClick}
-            onReorderItems={onReorderItems}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/**
- * F-MENU-04 (#211) — One « section » per category: the category name as the
- * section heading, followed by the per-category `ItemList`. The categories
- * editor above still owns CRUD + drag&drop; THIS block surfaces the items
- * each category contains (with the inline rupture toggle, the load-bearing
- * staff affordance — story body).
- *
- * F-MENU-05 (#219) extension — when `onCreateItem` is wired, the section
- * footer carries a « + Item » CTA whose `onClick` forwards the originating
- * `categoryId`; when `onItemClick` is wired, each row's body becomes a
- * clickable « open edit modal » surface (the toggle stays its own click
- * target — see `item-list.tsx`).
- */
-function CategoryItemsSection({
-  category,
-  items,
-  onToggleItemAvailability,
-  onCreateItem,
-  onItemClick,
-  onReorderItems,
-}: {
-  category: Doc<"menuCategories">;
-  items: Doc<"menuItems">[] | undefined;
-  onToggleItemAvailability: (
-    itemId: Id<"menuItems">,
-    nextAvailable: boolean,
-  ) => void;
-  onCreateItem?: (categoryId: Id<"menuCategories">) => void;
-  onItemClick?: (itemId: Id<"menuItems">) => void;
-  onReorderItems?: (
-    categoryId: Id<"menuCategories">,
-    orderedIds: Id<"menuItems">[],
-  ) => void;
-}) {
-  return (
-    <section
-      data-slot="menu-category-items-section"
-      data-category-id={category._id as unknown as string}
-      className="flex flex-col gap-2"
-    >
-      <h2 className="text-sm font-semibold tracking-wide uppercase">
-        {category.name}
-      </h2>
-      <ItemList
-        items={items}
-        onToggleAvailability={onToggleItemAvailability}
-        onItemClick={onItemClick}
-        categoryId={category._id}
-        onReorder={onReorderItems}
-      />
-      {onCreateItem !== undefined ? (
-        <div className="flex">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            data-slot="menu-item-add"
-            data-category-id={category._id as unknown as string}
-            onClick={() => onCreateItem(category._id)}
-          >
-            <IconPlus className="mr-2 size-4" aria-hidden="true" />
-            Ajouter un item
-          </Button>
-        </div>
-      ) : null}
-    </section>
-  );
+  }
+  return <CategoryList categories={categories} />;
 }
 
 function CategoryList({ categories }: { categories: Doc<"menuCategories">[] }) {

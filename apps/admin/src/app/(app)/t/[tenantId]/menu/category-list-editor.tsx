@@ -83,6 +83,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
+import { ItemList } from "./item-list";
 import { reorderById } from "./reorder-utils";
 import { useDebouncedCallback } from "./use-debounced-callback";
 
@@ -137,6 +138,63 @@ export type CategoryListEditorProps = {
    * the editor renders without drag handles (read-only ordering).
    */
   onReorder?: (orderedIds: Id<"menuCategories">[]) => void;
+  /**
+   * Refonte tabs Menu (Alex, 2026-06-03) — Controls whether each category row
+   * also surfaces the per-category items list + the « + Item » CTA in the same
+   * vertical flow.
+   *   - `"list-only"` (default) → row = name input + delete + drag handle ONLY.
+   *     Used by the « Catégories » tab where the gérant manages the structural
+   *     spine without item noise.
+   *   - `"with-items"`          → row + items section (per-category items list
+   *     with the rupture toggle + intra-cat drag&drop) + « + Item » CTA below
+   *     each row. Used by the « Plats » tab — the items management surface.
+   * The items-section props (`itemsByCategory`, `onToggleItemAvailability`,
+   * `onCreateItem`, `onItemClick`, `onReorderItems`) are only consumed when
+   * `displayMode === "with-items"`. They are silently ignored otherwise — the
+   * « Catégories » tab never displays items even if a caller passes them by
+   * accident.
+   */
+  displayMode?: "list-only" | "with-items";
+  /**
+   * Items bucketed by their `categoryId` (page-owned, via
+   * `bucketItemsByCategory` over the live `items.list` query).
+   *   - `undefined` (the WHOLE map) → items query still in flight; each row's
+   *     items section renders skeletons.
+   *   - present but a category key MISSING → that category has zero items;
+   *     the items section renders its empty branch.
+   * Only consumed when `displayMode === "with-items"`.
+   */
+  itemsByCategory?: Record<string, Doc<"menuItems">[]> | undefined;
+  /**
+   * Fired when the gérant flips the rupture toggle on a card. The page wires
+   * this to `useTenantMutation(api.lib.menu.availability.setItemAvailability)`.
+   * Only consumed when `displayMode === "with-items"`.
+   */
+  onToggleItemAvailability?: (
+    itemId: Id<"menuItems">,
+    nextAvailable: boolean,
+  ) => void;
+  /**
+   * Fired when the gérant clicks the « + Item » CTA in a category section.
+   * The page opens the `ItemModal` in CREATE mode with the originating
+   * category pre-selected. Only consumed when `displayMode === "with-items"`.
+   */
+  onCreateItem?: (categoryId: Id<"menuCategories">) => void;
+  /**
+   * Fired when the gérant clicks an item card. The page opens the `ItemModal`
+   * in EDIT mode pre-filled on the clicked item. Only consumed when
+   * `displayMode === "with-items"`.
+   */
+  onItemClick?: (itemId: Id<"menuItems">) => void;
+  /**
+   * Persist a new full ordered ids list for ONE category after a drag&drop.
+   * Backend `items.reorder` rejects partial payloads. Only consumed when
+   * `displayMode === "with-items"`.
+   */
+  onReorderItems?: (
+    categoryId: Id<"menuCategories">,
+    orderedIds: Id<"menuItems">[],
+  ) => void;
 };
 
 export function CategoryListEditor({
@@ -145,7 +203,19 @@ export function CategoryListEditor({
   onRename,
   onDelete,
   onReorder,
+  displayMode = "list-only",
+  itemsByCategory,
+  onToggleItemAvailability,
+  onCreateItem,
+  onItemClick,
+  onReorderItems,
 }: CategoryListEditorProps) {
+  // Refonte tabs Menu (2026-06-03) — only render the per-category items
+  // section + « + Item » CTA when (a) the caller asks for `with-items` mode
+  // AND (b) the items-section wiring is complete. The boolean is forwarded to
+  // every row so each one decides whether to surface the items block.
+  const withItems =
+    displayMode === "with-items" && onToggleItemAvailability !== undefined;
   // Defensive resort by `order` — mirror of the read-only `CategoryList`.
   const sorted = useMemo(
     () => [...categories].sort((a, b) => a.order - b.order),
@@ -247,6 +317,9 @@ export function CategoryListEditor({
 
   const rows = displayed.map((category) => {
     const autoFocus = (category._id as unknown as string) === newlyAddedId;
+    const itemsForCategory = withItems
+      ? itemsByCategory?.[category._id as unknown as string]
+      : undefined;
     return sortable ? (
       <SortableCategoryRow
         key={category._id}
@@ -254,6 +327,12 @@ export function CategoryListEditor({
         onRename={onRename}
         onDelete={onDelete}
         autoFocus={autoFocus}
+        withItems={withItems}
+        items={itemsForCategory}
+        onToggleItemAvailability={onToggleItemAvailability}
+        onCreateItem={onCreateItem}
+        onItemClick={onItemClick}
+        onReorderItems={onReorderItems}
       />
     ) : (
       <CategoryRow
@@ -263,6 +342,12 @@ export function CategoryListEditor({
         onDelete={onDelete}
         sortable={false}
         autoFocus={autoFocus}
+        withItems={withItems}
+        items={itemsForCategory}
+        onToggleItemAvailability={onToggleItemAvailability}
+        onCreateItem={onCreateItem}
+        onItemClick={onItemClick}
+        onReorderItems={onReorderItems}
       />
     );
   });
@@ -329,6 +414,29 @@ export type CategoryRowProps = {
    * — the user may have already tabbed away.
    */
   autoFocus?: boolean;
+  /**
+   * Refonte tabs Menu (Alex, 2026-06-03) — `true` when this row should also
+   * surface the per-category items list + the « + Item » CTA below the
+   * editable card. Used by the « Plats » tab; the « Catégories » tab passes
+   * `false` so the row stays the structural-spine only.
+   */
+  withItems?: boolean;
+  /** Items for THIS category. See `CategoryListEditorProps.itemsByCategory`. */
+  items?: Doc<"menuItems">[] | undefined;
+  /** Forwarded to the per-category items list when `withItems` is true. */
+  onToggleItemAvailability?: (
+    itemId: Id<"menuItems">,
+    nextAvailable: boolean,
+  ) => void;
+  /** Forwarded to the per-category « + Item » CTA when `withItems` is true. */
+  onCreateItem?: (categoryId: Id<"menuCategories">) => void;
+  /** Forwarded to the per-category items list when `withItems` is true. */
+  onItemClick?: (itemId: Id<"menuItems">) => void;
+  /** Forwarded to the per-category items list when `withItems` is true. */
+  onReorderItems?: (
+    categoryId: Id<"menuCategories">,
+    orderedIds: Id<"menuItems">[],
+  ) => void;
 };
 
 export function CategoryRow({
@@ -339,6 +447,12 @@ export function CategoryRow({
   style,
   setNodeRef,
   autoFocus = false,
+  withItems = false,
+  items,
+  onToggleItemAvailability,
+  onCreateItem,
+  onItemClick,
+  onReorderItems,
 }: CategoryRowProps) {
   // The local `draft` is seeded ONCE from `category.name` and from then on it
   // is the user's input — never re-overwritten by Convex live-query echoes.
@@ -412,75 +526,125 @@ export function CategoryRow({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return (
-    <Card data-slot="menu-category-row" ref={setNodeRef} style={style}>
-      <CardContent className="flex items-center gap-3 py-3">
-        {dragHandle}
-        <Input
-          ref={inputRef}
-          value={draft}
-          onChange={(e) => {
-            const next = e.target.value;
-            setDraft(next);
-            debouncedRename(next);
-          }}
-          onKeyDown={(e) => {
-            // Enter = commit. Fires the pending rename synchronously (no need
-            // to wait 600 ms), then blurs so the user gets a visual signal
-            // « ma saisie a bien été enregistrée ». Reported E2E manuel par
-            // Alex : « Enter ne fais aucune action, PAS moyen de valider la
-            // saisie d'une catégorie simplement ».
-            if (e.key === "Enter") {
-              e.preventDefault();
-              debouncedRename.flush();
-              e.currentTarget.blur();
-            }
-          }}
-          onBlur={() => {
-            debouncedRename.flush();
-          }}
-          data-slot="menu-category-name-input"
-          data-category-id={category._id as unknown as string}
-          data-autofocus-pending={autoFocus ? "true" : undefined}
-          aria-label={`Nom de la catégorie ${category.name}`}
-          className="flex-1"
+  // Refonte tabs Menu (2026-06-03) — In « Plats » tab (withItems=true), the
+  // row carries the per-category items list + the « + Item » CTA directly
+  // below the editable card so the structural spine + items management live in
+  // a single vertical flow. In « Catégories » tab, the row is just the card.
+  const itemsBlock =
+    withItems && onToggleItemAvailability !== undefined ? (
+      <div
+        className="flex flex-col gap-2 pl-2 md:pl-6"
+        data-slot="menu-category-items-section"
+        data-category-id={category._id as unknown as string}
+      >
+        <ItemList
+          items={items}
+          onToggleAvailability={onToggleItemAvailability}
+          onItemClick={onItemClick}
+          categoryId={category._id}
+          onReorder={onReorderItems}
         />
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          onClick={() => setConfirmOpen(true)}
-          data-slot="menu-category-delete"
-          aria-label={`Supprimer la catégorie ${category.name}`}
-        >
-          <IconTrash className="size-4" aria-hidden="true" />
-        </Button>
-      </CardContent>
-      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Supprimer « {category.name} » ?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Cette action est irréversible. Tous les items rattachés à cette
-              catégorie seront également supprimés.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                onDelete(category._id);
-                setConfirmOpen(false);
-              }}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              data-slot="menu-category-delete-confirm"
+        {onCreateItem !== undefined ? (
+          <div className="flex">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              data-slot="menu-item-add"
+              data-category-id={category._id as unknown as string}
+              onClick={() => onCreateItem(category._id)}
             >
-              Confirmer
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </Card>
+              <IconPlus className="mr-2 size-4" aria-hidden="true" />
+              Ajouter un item
+            </Button>
+          </div>
+        ) : null}
+      </div>
+    ) : null;
+
+  // dnd-kit's `setNodeRef` + `style` (transform/transition) must wrap
+  // EVERYTHING that needs to follow the drag — including the items section
+  // below the editable card — so the row + its items move as a single block
+  // during reorder. The Card keeps the `menu-category-row` slot for selector
+  // continuity (E2E + existing tests).
+  return (
+    <div
+      ref={setNodeRef as ((node: HTMLDivElement | null) => void) | undefined}
+      style={style}
+      className="flex flex-col gap-2"
+    >
+      <Card data-slot="menu-category-row">
+        <CardContent className="flex items-center gap-3 py-3">
+          {dragHandle}
+          <Input
+            ref={inputRef}
+            value={draft}
+            onChange={(e) => {
+              const next = e.target.value;
+              setDraft(next);
+              debouncedRename(next);
+            }}
+            onKeyDown={(e) => {
+              // Enter = commit. Fires the pending rename synchronously (no need
+              // to wait 600 ms), then blurs so the user gets a visual signal
+              // « ma saisie a bien été enregistrée ». Reported E2E manuel par
+              // Alex : « Enter ne fais aucune action, PAS moyen de valider la
+              // saisie d'une catégorie simplement ».
+              if (e.key === "Enter") {
+                e.preventDefault();
+                debouncedRename.flush();
+                e.currentTarget.blur();
+              }
+            }}
+            onBlur={() => {
+              debouncedRename.flush();
+            }}
+            data-slot="menu-category-name-input"
+            data-category-id={category._id as unknown as string}
+            data-autofocus-pending={autoFocus ? "true" : undefined}
+            aria-label={`Nom de la catégorie ${category.name}`}
+            className="flex-1"
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => setConfirmOpen(true)}
+            data-slot="menu-category-delete"
+            aria-label={`Supprimer la catégorie ${category.name}`}
+          >
+            <IconTrash className="size-4" aria-hidden="true" />
+          </Button>
+        </CardContent>
+        <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                Supprimer « {category.name} » ?
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                Cette action est irréversible. Tous les items rattachés à cette
+                catégorie seront également supprimés.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Annuler</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  onDelete(category._id);
+                  setConfirmOpen(false);
+                }}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                data-slot="menu-category-delete-confirm"
+              >
+                Confirmer
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </Card>
+      {itemsBlock}
+    </div>
   );
 }
 
@@ -500,7 +664,16 @@ export function CategoryRow({
  */
 type SortableCategoryRowProps = Pick<
   CategoryRowProps,
-  "category" | "onRename" | "onDelete" | "autoFocus"
+  | "category"
+  | "onRename"
+  | "onDelete"
+  | "autoFocus"
+  | "withItems"
+  | "items"
+  | "onToggleItemAvailability"
+  | "onCreateItem"
+  | "onItemClick"
+  | "onReorderItems"
 >;
 
 function SortableCategoryRow({
@@ -508,6 +681,12 @@ function SortableCategoryRow({
   onRename,
   onDelete,
   autoFocus,
+  withItems,
+  items,
+  onToggleItemAvailability,
+  onCreateItem,
+  onItemClick,
+  onReorderItems,
 }: SortableCategoryRowProps) {
   const {
     attributes,
@@ -544,6 +723,12 @@ function SortableCategoryRow({
       style={style}
       setNodeRef={setNodeRef}
       autoFocus={autoFocus}
+      withItems={withItems}
+      items={items}
+      onToggleItemAvailability={onToggleItemAvailability}
+      onCreateItem={onCreateItem}
+      onItemClick={onItemClick}
+      onReorderItems={onReorderItems}
     />
   );
 }
