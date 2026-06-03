@@ -1,121 +1,18 @@
-import { AddPhotoStep } from "@/components/app/onboarding/add-photo-step";
-import { BasicInfoStep } from "@/components/app/onboarding/basic-info-step";
-import { Button } from "@/components/ui/button";
-import { Icon } from "@/components/ui/icon";
-import { Progress } from "@/components/ui/progress";
-import { Text } from "@/components/ui/text";
-import { useAuthActions } from "@convex-dev/auth/react";
-import { api } from "@packages/backend/convex/_generated/api";
-import { useMutation, useQuery } from "convex/react";
-import { ChevronLeft } from "lucide-react-native";
-import React from "react";
-import { ScrollView, View } from "react-native";
+import { OnboardingFlow } from "@/lib/onboarding";
 
-// Whitelisted profile fields a user may self-update (matches the guarded
-// api.table.users.patch mutation). Never role / ban / email.
-export type OnboardingFormData = {
-  name?: string;
-  image?: string;
-  bio?: string;
-  birthDate?: string;
-  hasCompletedOnboarding?: boolean;
-};
-
-export default function Onboarding() {
-  const { signOut } = useAuthActions();
-  const user = useQuery(api.table.users.currentUser);
-  const [currentStep, setCurrentStep] = React.useState(0);
-  const [formData, setFormData] = React.useState<OnboardingFormData>({});
-  const patchUser = useMutation(api.table.users.patch);
-
-  const steps = [
-    { component: AddPhotoStep, id: "photos", canSkip: true },
-    { component: BasicInfoStep, id: "basic", canSkip: true },
-  ];
-  const CurrentStepComponent = steps[currentStep].component;
-
-  const goBack = () => {
-    if (currentStep > 0) {
-      setCurrentStep((prev) => Math.max(prev - 1, 0));
-    } else {
-      signOut();
-    }
-  };
-
-  const goNext = () => {
-    if (currentStep === steps.length - 1) {
-      handleComplete();
-    } else {
-      setCurrentStep((prev) => Math.min(prev + 1, 2));
-    }
-  };
-
-  const handleSkip = () => {
-    if (!user?._id) return;
-    patchUser({ id: user._id, data: { hasCompletedOnboarding: true } });
-  };
-
-  const handleComplete = () => {
-    if (!user?._id) return;
-    patchUser({ id: user._id, data: formData });
-    patchUser({ id: user._id, data: { hasCompletedOnboarding: true } });
-  };
-
-  const renderHeader = () => {
-    const progress = ((currentStep + 1) / steps.length) * 100;
-    return (
-      <View className="gap-3 pt-2">
-        <View className="flex-row items-center justify-between">
-          <Button variant="ghost" onPress={goBack}>
-            <Icon as={ChevronLeft} size={24} />
-          </Button>
-
-          <Button variant="ghost" onPress={handleSkip}>
-            <Text className="text-sm font-medium text-foreground">Skip</Text>
-          </Button>
-        </View>
-        <Progress
-          value={progress}
-          className="h-[3px] bg-primary/20"
-          indicatorClassName="bg-primary"
-        />
-      </View>
-    );
-  };
-
-  const renderFooter = () => {
-    return (
-      <View className="flex-row gap-3">
-        {currentStep > 0 && (
-          <Button
-            variant="outline"
-            className="flex-1 border-primary/80"
-            onPress={goBack}
-          >
-            <Text className="text-primary">Back</Text>
-          </Button>
-        )}
-        <Button className="flex-1" onPress={goNext}>
-          <Text className="text-primary-foreground">Continue</Text>
-        </Button>
-      </View>
-    );
-  };
-
-  return (
-    <ScrollView
-      keyboardShouldPersistTaps="handled"
-      keyboardDismissMode="interactive"
-      contentContainerStyle={{ flexGrow: 1 }}
-      contentContainerClassName="my-safe px-4 pb-4"
-    >
-      <View className="w-full max-w-md self-center flex-1 gap-8">
-        {renderHeader()}
-        <View className="flex-1">
-          <CurrentStepComponent formData={formData} setFormData={setFormData} />
-        </View>
-        {renderFooter()}
-      </View>
-    </ScrollView>
-  );
+/**
+ * #398 — `(onboarding)` route, post-login sequence (PRD 20 §1a).
+ *
+ * Mounted by the root `_layout.tsx` gate when the caller is authenticated, has
+ * already chosen `device.mode` in `(device-setup)` (#393), but has NOT yet
+ * flipped `device.onboardingCompleted` to true. The whole flow (push permission
+ * rationale + checklist réglages device) is implemented inside `OnboardingFlow`
+ * — see `apps/native/src/lib/onboarding/`.
+ *
+ * On completion the Convex mutation `markOnboardingCompleted` flips the flag,
+ * `getMyDevice` refreshes, and the root layout rebases onto `(app)` — no
+ * `router.replace` needed here.
+ */
+export default function OnboardingScreen() {
+  return <OnboardingFlow />;
 }
