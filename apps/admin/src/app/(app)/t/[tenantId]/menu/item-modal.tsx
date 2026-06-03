@@ -246,7 +246,13 @@ export function ItemModal(props: ItemModalProps) {
         data-slot="menu-item-modal"
         className="w-full overflow-y-auto sm:max-w-xl"
       >
-        <SheetHeader>
+        {/* Padding interne au sheet (le SheetContent du DS n'en porte pas).
+            Le `SheetHeader` shadcn embarque un `p-4` par défaut — on le
+            remplace par `px-6 pt-6` (twMerge: la classe d'override gagne)
+            pour aligner sur le `px-6` du corps de formulaire. Le footer est
+            géré séparément (override `p-0 pt-2` car il hérite déjà du
+            wrapper). Objectif: aucun élément ne touche un bord du drawer. */}
+        <SheetHeader className="px-6 pt-6 pb-0">
           <SheetTitle>
             {mode === "create" ? "Nouvel item" : "Éditer l'item"}
           </SheetTitle>
@@ -467,7 +473,13 @@ function ItemModalForm({
   })();
 
   return (
-    <div className="flex flex-col gap-4">
+    // Padding horizontal aligné avec SheetHeader (px-6). Pas de padding-top
+    // ici — `SheetContent` est `flex-col gap-4` donc le `gap` parent crée
+    // déjà l'espacement avec le header. Padding-bottom assuré par l'override
+    // sur le SheetFooter (qui est enfant de ce wrapper, on annule son `p-4`
+    // par défaut au profit de `px-0 pb-6 pt-2` pour ne pas doubler le `px-6`
+    // hérité).
+    <div className="flex flex-col gap-4 px-6 pb-6">
       {/* Name */}
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="menu-item-modal-name">Nom</Label>
@@ -620,7 +632,7 @@ function ItemModalForm({
         </div>
       </div>
 
-      <SheetFooter className="flex-row items-center justify-between gap-2 sm:justify-between">
+      <SheetFooter className="flex-row items-center justify-between gap-2 p-0 pt-2 sm:justify-between">
         {/* Delete (edit mode only), confirmation-gated */}
         <div>
           {mode === "edit" && item !== undefined ? (
