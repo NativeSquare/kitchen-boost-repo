@@ -13,8 +13,7 @@
  *  - `markIntentionalSignOut` — imperative API the Settings « Logout »
  *    button (#418) and the banned-user alert in `_layout.tsx` call BEFORE
  *    `signOut()`. Without it, every local logout would mistakenly trigger
- *    the revoked overlay. Exposed both as a bare function (for non-React
- *    call sites) and via `useSessionRevokedActions()` (stable hook).
+ *    the revoked overlay.
  *
  *  - `decideSessionRevoked` — the PURE decision function (no React, no
  *    Convex). Pinned by the vitest suite next door. Same split convention
@@ -30,7 +29,6 @@
 export {
   SessionRevokedGate,
   markIntentionalSignOut,
-  useSessionRevokedActions,
 } from "./session-revoked-gate";
 export {
   decideSessionRevoked,

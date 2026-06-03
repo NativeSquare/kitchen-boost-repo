@@ -1,6 +1,6 @@
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useConvexAuth } from "convex/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Text, View } from "react-native";
 import {
   decideSessionRevoked,
@@ -72,12 +72,6 @@ let intentionalSignOut = false;
  */
 export function markIntentionalSignOut(): void {
   intentionalSignOut = true;
-}
-
-/** Test seam — reset the flag between vitest suites if we ever add a jsdom
- *  test for the adapter. Not exported via index.ts (internal). */
-export function _resetIntentionalSignOutForTests(): void {
-  intentionalSignOut = false;
 }
 
 // ---------------------------------------------------------------------------
@@ -202,16 +196,4 @@ function SessionRevokedOverlay() {
       </Text>
     </View>
   );
-}
-
-/**
- * React-friendly accessor: lets call sites read + flip the flag without
- * importing the module-scoped binding directly. Returned via a stable object
- * (no useMemo needed — the function reference is stable across renders).
- */
-export function useSessionRevokedActions(): {
-  markIntentionalSignOut: () => void;
-} {
-  const markIntentional = useCallback(() => markIntentionalSignOut(), []);
-  return { markIntentionalSignOut: markIntentional };
 }
