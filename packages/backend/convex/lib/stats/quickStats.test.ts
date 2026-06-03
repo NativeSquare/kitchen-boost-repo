@@ -403,6 +403,98 @@ describe("#410 — quickStats aggregation (PRD 20 §9)", () => {
   });
 });
 
+describe("#410 — E2E acceptance (issue body « 1-3 tests E2E »)", () => {
+  /**
+   * Two E2E acceptances spelled out from the story body, pinning AC18
+   * (PRD 20 AC18 — Stats rapides V1) end-to-end via the public Convex
+   * query the home native consumes:
+   *
+   *  (a) données seed → stats correctes — the canonical happy path: 3
+   *      delivered orders today land their totals into `caToday` /
+   *      `ordersToday` / `caWeek` ; the same data leaves `caPrevWeek` at 0.
+   *      Mirrors the « seed → home affiche les 4 KPIs » contract the
+   *      gérant lit dans l'app.
+   *
+   *  (b) cmd livrée + cmd refusée → stats reflètent SEULEMENT la livrée —
+   *      the core PRD 20 §9 « CA réalisé » discipline, also re-pinned at
+   *      the matrix level above (« EXCLUDES refusée + auto_expired »). Kept
+   *      here as an explicit E2E to keep AC18 traceable in one place when
+   *      the orchestrator audits closed stories.
+   */
+  let t: ReturnType<typeof convexTest>;
+  let seed: Seed;
+  let customerA: Id<"customers">;
+
+  beforeEach(async () => {
+    t = convexTest(schema, modules);
+    seed = await seedTwoTenantsAllRoles(t);
+    customerA = await seedCustomer(t, "e2e@x.fr");
+  });
+
+  it("(a) données seed → home affiche les 4 KPIs correctement (AC18 happy path)", async () => {
+    // 3 cmds livrées aujourd'hui : 12.00 + 18.50 + 9.50 = 40.00 €
+    await seedPaidOrder(t, {
+      tenantId: seed.tenantA.tenantId,
+      customerId: customerA,
+      totalCents: 1200,
+      paidAt: todayNoonUtc(),
+      status: "livrée",
+    });
+    await seedPaidOrder(t, {
+      tenantId: seed.tenantA.tenantId,
+      customerId: customerA,
+      totalCents: 1850,
+      paidAt: todayNoonUtc() + 60_000,
+      status: "livrée",
+    });
+    await seedPaidOrder(t, {
+      tenantId: seed.tenantA.tenantId,
+      customerId: customerA,
+      totalCents: 950,
+      paidAt: todayNoonUtc() + 120_000,
+      status: "collectée",
+    });
+
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    const stats = await asManager.query(api.lib.stats.quickStats.quickStats, {
+      tenantId: seed.tenantA.tenantId,
+    });
+
+    expect(stats.caToday).toBe(4000); // 40,00 €
+    expect(stats.ordersToday).toBe(3);
+    expect(stats.caWeek).toBe(4000); // today ⊆ this week
+    expect(stats.caPrevWeek).toBe(0); // nothing last week
+  });
+
+  it("(b) cmd livrée + cmd refusée → stats reflètent SEULEMENT la livrée (AC18 CA réalisé)", async () => {
+    // 1 cmd livrée — CA réalisé
+    await seedPaidOrder(t, {
+      tenantId: seed.tenantA.tenantId,
+      customerId: customerA,
+      totalCents: 1500,
+      paidAt: todayNoonUtc(),
+      status: "livrée",
+    });
+    // 1 cmd refusée — paidAt set mais refundée, NE compte PAS (PRD 20 §9)
+    await seedPaidOrder(t, {
+      tenantId: seed.tenantA.tenantId,
+      customerId: customerA,
+      totalCents: 9999,
+      paidAt: todayNoonUtc(),
+      status: "refusée",
+    });
+
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    const stats = await asManager.query(api.lib.stats.quickStats.quickStats, {
+      tenantId: seed.tenantA.tenantId,
+    });
+
+    expect(stats.caToday).toBe(1500); // seule la livrée
+    expect(stats.ordersToday).toBe(1);
+    expect(stats.caWeek).toBe(1500);
+  });
+});
+
 describe("#410 — cross-tenant fuzz (MOAT, ADR 0010)", () => {
   let t: ReturnType<typeof convexTest>;
   let seed: Seed;
