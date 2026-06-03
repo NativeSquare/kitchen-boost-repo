@@ -6,11 +6,13 @@ import {
   orderStatus,
   pricingSnapshot,
 } from "../../table/orders";
+import { stripeAccountStatus, tenantStatus } from "../../table/tenants";
 import {
   type OrderWithDetail,
   type TenantRole,
   clearTenantExceptionalClosure,
   clearTenantOperationalPause,
+  getTenantById,
   getTenantExceptionalClosure,
   getTenantOperationalPause,
   getTenantOrderWithDetail,
@@ -242,5 +244,86 @@ export const clearExceptionalClosure = tenantMutation()({
   action: "tenant.exceptionalClosure.clear",
   handler: async (ctx): Promise<void> => {
     await clearTenantExceptionalClosure(ctx, ctx.tenantId);
+  },
+});
+
+// ---------------------------------------------------------------------------
+// #411 — Alertes statut tenant (PRD 20 §13, kb-orders CONTEXT « Alerte statut
+// critique »). Read-only tenant-health probe consumed by the native gate.
+// ---------------------------------------------------------------------------
+
+/**
+ * Expose the slice of `tenants` row the native #411 gate needs to decide
+ * whether to surface a CRITICAL full-screen red overlay (Stripe Connect KO,
+ * OR Uber Direct KO + livraison is the seul mode actif) or a WARNING banner
+ * (KYC pending, Uber dégradé, statut tenant lifecycle pas active). The
+ * decision matrix itself lives PURE in `apps/native/src/lib/tenant-status/
+ * decide-tenant-status.ts`; this query only ships data.
+ *
+ * Fields:
+ *  - `stripeStatus`        — `tenants.stripeStatus` literal or `null` (a fresh
+ *                            tenant has no Stripe account yet, optional field).
+ *                            PRD's « Stripe Connect restricted » maps to our
+ *                            enum's `"disabled"` (cf. `lib/stripe/status.ts`).
+ *  - `uberDirectConfigured` — `true` iff `tenants.uberCustomerId` is set (a
+ *                            sub-account has been linked via
+ *                            `setUberCredentials`, 2.6-A). `false` = "Uber
+ *                            Direct disconnected" in PRD wording.
+ *  - `acceptedModes`       — the delivery / click & collect flags or `null`.
+ *                            `null` for a fresh tenant whose wizard step 4 is
+ *                            not done (the gate treats `null` as loading).
+ *  - `tenantStatus`        — the lifecycle status (`active` / `pending` /
+ *                            `suspended` / `disabled`). Anything ≠ `active` ⇒
+ *                            WARNING tenant-incomplete.
+ *
+ * Same operational-allow as the rest of the kb-orders module: `kb_manager`
+ * AND `staff` can read it (the kitchen tablet, under either actor on V1's
+ * audit monolithique, surfaces the gate via the same Convex sub). `kb_admin`
+ * passes via the root override.
+ *
+ * Tenancy discipline (ADR 0010): no raw `ctx.db` — reads through the
+ * sanctioned `lib/tenancy/tenantsStore.getTenantById` seam. `ctx.tenantId` is
+ * the wrapper-resolved one, so a foreign tenantId throws Forbidden upstream
+ * (cross-tenant fuzz pins it).
+ *
+ * No mutation twin — the underlying writes already exist
+ * (`setTenantStripeStatus`, `setUberCredentials`, `tenant.updateSettings`,
+ * `tenant.activate`). This is pure data exposure for the gate.
+ */
+export const getTenantHealth = tenantQuery(OPERATIONAL_ALLOW)({
+  args: {},
+  returns: v.object({
+    stripeStatus: v.union(v.null(), stripeAccountStatus),
+    uberDirectConfigured: v.boolean(),
+    acceptedModes: v.union(
+      v.null(),
+      v.object({
+        delivery: v.boolean(),
+        clickAndCollect: v.boolean(),
+      }),
+    ),
+    tenantStatus: v.union(v.null(), tenantStatus),
+  }),
+  handler: async (
+    ctx,
+  ): Promise<{
+    stripeStatus: "pending" | "ready" | "disabled" | null;
+    uberDirectConfigured: boolean;
+    acceptedModes: { delivery: boolean; clickAndCollect: boolean } | null;
+    tenantStatus: "active" | "pending" | "suspended" | "disabled" | null;
+  }> => {
+    const tenant = await getTenantById(ctx, ctx.tenantId);
+    if (tenant === null) {
+      throw new ConvexError({
+        code: "NOT_FOUND",
+        message: "Tenant not found.",
+      });
+    }
+    return {
+      stripeStatus: tenant.stripeStatus ?? null,
+      uberDirectConfigured: tenant.uberCustomerId !== undefined,
+      acceptedModes: tenant.acceptedModes ?? null,
+      tenantStatus: tenant.status,
+    };
   },
 });

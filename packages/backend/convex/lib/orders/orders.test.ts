@@ -461,6 +461,125 @@ describe("#397 exceptionalClosure — durable closure 1+ jour (PRD 20 §7b, ADR 
   });
 });
 
+describe("#411 getTenantHealth — alertes statut tenant (PRD 20 §13)", () => {
+  let t: ReturnType<typeof convexTest>;
+  let seed: Seed;
+  beforeEach(async () => {
+    t = convexTest(schema, modules);
+    seed = await seedTwoTenantsAllRoles(t);
+  });
+
+  /**
+   * Helper that patches the seeded tenant A row with the slice of fields the
+   * #411 gate cares about (Stripe Connect status, Uber Direct sub-account link,
+   * accepted modes, lifecycle status). The seed creates tenants with `status:
+   * "active"` and none of the optional fields, so the default snapshot is "no
+   * Stripe yet, no Uber yet, no acceptedModes" which is what a fresh tenant
+   * looks like at the start of the wizard.
+   */
+  async function patchTenantHealth(
+    tenantId: Id<"tenants">,
+    patch: {
+      stripeStatus?: "pending" | "ready" | "disabled";
+      uberCustomerId?: string;
+      acceptedModes?: { delivery: boolean; clickAndCollect: boolean };
+      status?: "active" | "pending" | "suspended" | "disabled";
+    },
+  ) {
+    await t.run(async (ctx) => {
+      await ctx.db.patch(tenantId, patch);
+    });
+  }
+
+  it("returns the slice of tenant fields the #411 gate needs (Stripe / Uber / modes / lifecycle)", async () => {
+    await patchTenantHealth(seed.tenantA.tenantId, {
+      stripeStatus: "ready",
+      uberCustomerId: "uber-cust-a",
+      acceptedModes: { delivery: true, clickAndCollect: false },
+    });
+
+    const health = await t
+      .withIdentity({ subject: seed.tenantA.managerId })
+      .query(api.lib.orders.orders.getTenantHealth, {
+        tenantId: seed.tenantA.tenantId,
+      });
+    expect(health).toEqual({
+      stripeStatus: "ready",
+      uberDirectConfigured: true,
+      acceptedModes: { delivery: true, clickAndCollect: false },
+      tenantStatus: "active",
+    });
+  });
+
+  it("returns null Stripe + acceptedModes + false uberConfigured for a fresh tenant (wizard not done)", async () => {
+    // The seed leaves a tenant with no Stripe / no Uber / no acceptedModes —
+    // a freshly-inserted row at wizard step 1. The query must NOT throw on
+    // missing optional fields — it returns them as `null` / `false` so the
+    // gate's decide function can stay on `none` (loading state) until the
+    // wizard finishes.
+    const health = await t
+      .withIdentity({ subject: seed.tenantA.managerId })
+      .query(api.lib.orders.orders.getTenantHealth, {
+        tenantId: seed.tenantA.tenantId,
+      });
+    expect(health).toEqual({
+      stripeStatus: null,
+      uberDirectConfigured: false,
+      acceptedModes: null,
+      tenantStatus: "active",
+    });
+  });
+
+  it("reflects a Stripe Connect critical state (`disabled` = restricted in PRD wording)", async () => {
+    await patchTenantHealth(seed.tenantA.tenantId, {
+      stripeStatus: "disabled",
+      acceptedModes: { delivery: true, clickAndCollect: true },
+    });
+    const health = await t
+      .withIdentity({ subject: seed.tenantA.managerId })
+      .query(api.lib.orders.orders.getTenantHealth, {
+        tenantId: seed.tenantA.tenantId,
+      });
+    expect(health?.stripeStatus).toBe("disabled");
+  });
+
+  it("staff role (operational-allow) can read the tenant health (kitchen tablet)", async () => {
+    // The kitchen tablet runs under a `staff` actor (audit monolithique V1
+    // pin l'action sur le KB Manager, mais le DEVICE peut tourner sous staff).
+    // The gate doit fonctionner sur ce device — `tenantQuery` doit accepter
+    // `kb_manager` ET `staff`, comme les autres reads opérationnels du module.
+    await patchTenantHealth(seed.tenantA.tenantId, { stripeStatus: "ready" });
+    const health = await t
+      .withIdentity({ subject: seed.tenantA.staffId })
+      .query(api.lib.orders.orders.getTenantHealth, {
+        tenantId: seed.tenantA.tenantId,
+      });
+    expect(health).not.toBeNull();
+    expect(health?.tenantStatus).toBe("active");
+  });
+
+  it("does not leak tenant A's health onto tenant B (independent fields per tenant, ADR 0010)", async () => {
+    await patchTenantHealth(seed.tenantA.tenantId, {
+      stripeStatus: "disabled",
+      uberCustomerId: "uber-cust-a",
+      acceptedModes: { delivery: true, clickAndCollect: false },
+    });
+
+    const bHealth = await t
+      .withIdentity({ subject: seed.tenantB.managerId })
+      .query(api.lib.orders.orders.getTenantHealth, {
+        tenantId: seed.tenantB.tenantId,
+      });
+    // Tenant B was untouched — no Stripe, no Uber, no modes.
+    expect(bHealth).toEqual({
+      stripeStatus: null,
+      uberDirectConfigured: false,
+      acceptedModes: null,
+      tenantStatus: "active",
+    });
+  });
+});
+
 describe("2.3-A cross-tenant fuzz — orders wrappers, 0 leak (ADR 0010)", () => {
   let t: ReturnType<typeof convexTest>;
   let seed: Seed;
@@ -492,12 +611,18 @@ describe("2.3-A cross-tenant fuzz — orders wrappers, 0 leak (ADR 0010)", () =>
         api.lib.orders.orders.setExceptionalClosure,
         api.lib.orders.orders.getExceptionalClosure,
         api.lib.orders.orders.clearExceptionalClosure,
+        // #411 — Alertes statut tenant (PRD 20 §13). Read-only health probe
+        // that exposes tenant.{stripeStatus, uberCustomerId, acceptedModes,
+        // status} to the native gate. Fuzzed like the rest so no foreign
+        // tenant can read another tenant's payment / delivery posture.
+        api.lib.orders.orders.getTenantHealth,
       ],
       isQuery: (fn) =>
         fn === api.lib.orders.orders.listOrders ||
         fn === api.lib.orders.orders.getOrder ||
         fn === api.lib.orders.orders.getOperationalPause ||
-        fn === api.lib.orders.orders.getExceptionalClosure,
+        fn === api.lib.orders.orders.getExceptionalClosure ||
+        fn === api.lib.orders.orders.getTenantHealth,
       tenantId: seed.tenantA.tenantId,
       actors: [
         { label: "B-manager", subject: seed.tenantB.managerId },
@@ -520,7 +645,7 @@ describe("2.3-A cross-tenant fuzz — orders wrappers, 0 leak (ADR 0010)", () =>
         from: Date.now(),
       },
     });
-    expect(pairs).toBe(50);
+    expect(pairs).toBe(55);
     expect(leaks).toEqual([]);
   });
 });
