@@ -3590,3 +3590,194 @@ export const wipeE2EMenuT1 = internalMutation({
     return wipeMenuForTenant(ctx, tenant._id);
   },
 });
+
+// -----------------------------------------------------------------------------
+// E2E-CMD seed — populate les états de commande qui manquent dans
+// `seedE2EOrdersT1` pour exercer le groupe CMD (Commandes admin) :
+//   - CMD4bis : 1 order `en attente de paiement` SANS `pricingSnapshot`
+//   - CMD5    : 1 order payée 27,50 € (status `livrée`, pricingSnapshot 2750)
+//   - CMD5ter : 1 order `refusée` avec `refusedAt` + reason
+//
+// Sentinel `restaurantNote` préfixe `[E2E CMD] ` (distinct du préfixe MC-F)
+// pour wipe surgical séparé. Réutilise les customers déjà linkés à test-t1
+// (round-robin sur `customerOrdersPerTenant`). Idempotent par tag sentinellé.
+// -----------------------------------------------------------------------------
+
+const E2E_CMD_NOTE_PREFIX = "[E2E CMD] ";
+
+type CMDOrderSpec = {
+  tag: string;
+  status:
+    | "en attente de paiement"
+    | "nouvelle"
+    | "en préparation"
+    | "prête"
+    | "remise"
+    | "livrée"
+    | "collectée"
+    | "refusée";
+  totalCents?: number; // si absent → pas de pricingSnapshot (CMD4bis path)
+  refusalReason?: "rupture" | "fermeture" | "surcharge" | "autre";
+};
+
+const CMD_ORDER_SPECS: ReadonlyArray<CMDOrderSpec> = [
+  // CMD4bis — en attente de paiement, pricingSnapshot absent
+  { tag: "pending-payment", status: "en attente de paiement" },
+  // CMD5 — payée 27,50 € pile, status livrée (refund cible)
+  { tag: "refund-target-2750", status: "livrée", totalCents: 2750 },
+  // CMD5ter — déjà refusée (bouton refund doit être masqué)
+  {
+    tag: "already-refused",
+    status: "refusée",
+    totalCents: 1890,
+    refusalReason: "rupture",
+  },
+];
+
+/**
+ * Seed 3 orders sentinellées sur test-t1 pour les états non couverts par
+ * `seedE2EOrdersT1` (en attente de paiement / livrée 27,50 € / refusée).
+ * Idempotent par tag sentinellé dans `restaurantNote`.
+ */
+export const seedE2ECMDOrders = internalMutation({
+  args: {
+    tenantSlug: v.optional(v.string()),
+  },
+  returns: v.object({
+    tenantId: v.id("tenants"),
+    ordersCreated: v.number(),
+    ordersReused: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const slug = args.tenantSlug ?? "test-t1";
+    const tenant = await ctx.db
+      .query("tenants")
+      .withIndex("by_slug", (q) => q.eq("slug", slug))
+      .unique();
+    if (tenant === null) {
+      throw new ConvexError({
+        message: `Tenant with slug "${slug}" not found.`,
+      });
+    }
+
+    const links = await ctx.db
+      .query("customerOrdersPerTenant")
+      .withIndex("by_tenant_customer", (q) => q.eq("tenantId", tenant._id))
+      .collect();
+    if (links.length === 0) {
+      throw new ConvexError({
+        message: `No customers linked to "${slug}" — run seedE2ECustomerKPIs first.`,
+      });
+    }
+    const customerIds = links.map((l) => l.customerId);
+
+    const now = Date.now();
+    let ordersCreated = 0;
+    let ordersReused = 0;
+
+    for (let i = 0; i < CMD_ORDER_SPECS.length; i++) {
+      const spec = CMD_ORDER_SPECS[i];
+      const customerId = customerIds[i % customerIds.length];
+      const note = `${E2E_CMD_NOTE_PREFIX}${spec.tag}`;
+
+      const existing = await ctx.db
+        .query("orders")
+        .withIndex("by_tenant", (q) => q.eq("tenantId", tenant._id))
+        .filter((q) => q.eq(q.field("restaurantNote"), note))
+        .first();
+      if (existing !== null) {
+        ordersReused += 1;
+        continue;
+      }
+
+      const createdAt = now - 30 * 60 * 1000; // 30 min ago
+      const paidAt =
+        spec.status !== "en attente de paiement"
+          ? createdAt + 60 * 1000
+          : undefined;
+      const refusedAt =
+        spec.status === "refusée" ? createdAt + 5 * 60 * 1000 : undefined;
+
+      const pricingSnapshot =
+        spec.totalCents !== undefined
+          ? {
+              subtotal: Math.round(spec.totalCents * 0.85),
+              deliveryFee: Math.round(spec.totalCents * 0.15),
+              total: spec.totalCents,
+            }
+          : undefined;
+
+      await ctx.db.insert("orders", {
+        tenantId: tenant._id,
+        customerId,
+        status: spec.status,
+        mode: "delivery",
+        source: "direct",
+        address: "12 rue de la République, 75011 Paris",
+        restaurantNote: note,
+        pricingSnapshot,
+        createdAt,
+        paidAt,
+        refusedAt,
+      });
+
+      // Pour la commande `refusée`, ajouter aussi un orderEvent qui matérialise
+      // la transition (CMD5ter pin que l'historique modal montre la transition).
+      if (spec.status === "refusée" && spec.refusalReason !== undefined) {
+        const orderRow = await ctx.db
+          .query("orders")
+          .withIndex("by_tenant", (q) => q.eq("tenantId", tenant._id))
+          .filter((q) => q.eq(q.field("restaurantNote"), note))
+          .unique();
+        if (orderRow !== null) {
+          await ctx.db.insert("orderEvents", {
+            tenantId: tenant._id,
+            orderId: orderRow._id,
+            status: "refusée",
+            reason: spec.refusalReason,
+            at: refusedAt ?? createdAt,
+          });
+        }
+      }
+
+      ordersCreated += 1;
+    }
+
+    return { tenantId: tenant._id, ordersCreated, ordersReused };
+  },
+});
+
+/**
+ * Wipe surgical des 3 orders sentinellées CMD + leurs orderEvents.
+ * Filtre par `restaurantNote` préfixe `[E2E CMD] `.
+ */
+export const wipeE2ECMDOrders = internalMutation({
+  args: {},
+  returns: v.object({
+    ordersDeleted: v.number(),
+    eventsDeleted: v.number(),
+  }),
+  handler: async (ctx) => {
+    let ordersDeleted = 0;
+    let eventsDeleted = 0;
+    const all = await ctx.db.query("orders").collect();
+    for (const row of all) {
+      if (row.restaurantNote?.startsWith(E2E_CMD_NOTE_PREFIX) === true) {
+        // Drop matching events first (FK on orderId).
+        const events = await ctx.db
+          .query("orderEvents")
+          .withIndex("by_order", (q) =>
+            q.eq("tenantId", row.tenantId).eq("orderId", row._id),
+          )
+          .collect();
+        for (const e of events) {
+          await ctx.db.delete(e._id);
+          eventsDeleted += 1;
+        }
+        await ctx.db.delete(row._id);
+        ordersDeleted += 1;
+      }
+    }
+    return { ordersDeleted, eventsDeleted };
+  },
+});
