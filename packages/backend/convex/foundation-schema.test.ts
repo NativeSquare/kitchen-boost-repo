@@ -152,6 +152,42 @@ describe("1.x-A foundation schema — transverse tables", () => {
   });
 });
 
+describe("#393 devices schema — (user, device) preference table", () => {
+  it("round-trips a row and exposes by_user_device", async () => {
+    const t = convexTest(schema, modules);
+    await t.run(async (ctx) => {
+      const userId = await ctx.db.insert("users", { email: "kiosque@x.fr" });
+      const tenantId = await ctx.db.insert("tenants", {
+        slug: "tab-tenant",
+        name: "Tab Tenant",
+        siret: "1",
+        status: "active",
+        createdAt: 1,
+      });
+
+      const dId = await ctx.db.insert("devices", {
+        userId,
+        deviceId: "tablet-uuid-1",
+        mode: "kiosque",
+        pinnedTenantId: tenantId,
+        onboardingCompleted: true,
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      expect((await ctx.db.get(dId))?.mode).toBe("kiosque");
+
+      const got = await ctx.db
+        .query("devices")
+        .withIndex("by_user_device", (q) =>
+          q.eq("userId", userId).eq("deviceId", "tablet-uuid-1"),
+        )
+        .unique();
+      expect(got?._id).toBe(dId);
+      expect(got?.pinnedTenantId).toBe(tenantId);
+    });
+  });
+});
+
 describe("1.x-A users role + generateFunctions footgun", () => {
   it("accepts the new role union (kb_admin / customer)", async () => {
     const t = convexTest(schema, modules);

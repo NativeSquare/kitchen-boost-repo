@@ -168,6 +168,12 @@ export {
 } from "./usersStore";
 export { attachUserToTenant, getActiveUserTenant } from "./userTenantsStore";
 export {
+  type DeviceMode,
+  type DevicePatch,
+  getUserDevice,
+  upsertUserDevice,
+} from "./devicesStore";
+export {
   type NewManagerInvite,
   deleteAdminInvite,
   getLatestManagerInviteForTenant,
