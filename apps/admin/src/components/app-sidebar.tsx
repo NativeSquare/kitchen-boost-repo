@@ -41,6 +41,7 @@ import {
   IconInnerShadowTop,
   IconLayoutDashboard,
   IconLayoutKanban,
+  IconLifebuoy,
   IconSpeakerphone,
   IconQrcode,
   IconSettings,
@@ -64,6 +65,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarSeparator,
 } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSession } from "@/lib/session";
@@ -97,7 +99,8 @@ export type SidebarIconName =
   | "campagnes"
   | "pricing"
   | "qr"
-  | "parametres";
+  | "parametres"
+  | "support";
 
 export type SidebarNavInput = {
   session: SessionState;
@@ -106,9 +109,17 @@ export type SidebarNavInput = {
 };
 
 export type SidebarNavDecision =
-  | { kind: "hidden"; items: [] }
-  | { kind: "admin-supervision"; items: SidebarNavItem[] }
-  | { kind: "manager-operational"; items: SidebarNavItem[] };
+  | { kind: "hidden"; items: []; supportItem: null }
+  | {
+      kind: "admin-supervision";
+      items: SidebarNavItem[];
+      supportItem: SidebarNavItem;
+    }
+  | {
+      kind: "manager-operational";
+      items: SidebarNavItem[];
+      supportItem: SidebarNavItem;
+    };
 
 /** Extract `<tenantId>` from a `/t/[tenantId]/...` pathname. Returns `null`
  * when the pathname is not under `/t/`. Strict `/t/` match (not `/team`).
@@ -153,6 +164,30 @@ function buildOperationalItems(tenantId: Id<"tenants">): SidebarNavItem[] {
 }
 
 /**
+ * Support entrée — épinglée en bas de la sidebar (au-dessus du SidebarFooter
+ * qui héberge le profil utilisateur). L'URL est contextuelle :
+ *   - Supervision (KB Admin hors tenant) → `/support`
+ *   - Opérationnel (KB Manager partout, KB Admin sous `/t/[id]/...`) →
+ *     `/t/[tenantId]/support`
+ *
+ * Demandé en E2E manuel SUP par Alex : la route existait mais n'était pas
+ * linkée — l'utilisateur devait forger l'URL.
+ */
+const ADMIN_SUPPORT_ITEM: SidebarNavItem = {
+  label: "Support",
+  href: "/support",
+  iconName: "support",
+};
+
+function buildOperationalSupportItem(tenantId: Id<"tenants">): SidebarNavItem {
+  return {
+    label: "Support",
+    href: `/t/${tenantId as unknown as string}/support`,
+    iconName: "support",
+  };
+}
+
+/**
  * Pure decision — see file-header docblock + acceptance criteria in
  * `app-sidebar.decision.test.ts` for the full behaviour matrix.
  */
@@ -163,11 +198,11 @@ export function decideSidebarNav(input: SidebarNavInput): SidebarNavDecision {
   // returning `hidden` here keeps the sidebar from rendering nav items it
   // would never be allowed to actually navigate to.
   if (session.status !== "ready") {
-    return { kind: "hidden", items: [] };
+    return { kind: "hidden", items: [], supportItem: null };
   }
   const { isAdmin, tenants } = session.session;
   if (!isAdmin && tenants.length === 0) {
-    return { kind: "hidden", items: [] };
+    return { kind: "hidden", items: [], supportItem: null };
   }
 
   // Operational space = URL is under `/t/[id]/...` (any actor) OR KB Manager
@@ -178,6 +213,7 @@ export function decideSidebarNav(input: SidebarNavInput): SidebarNavDecision {
     return {
       kind: "manager-operational",
       items: buildOperationalItems(urlTenantId),
+      supportItem: buildOperationalSupportItem(urlTenantId),
     };
   }
 
@@ -188,11 +224,16 @@ export function decideSidebarNav(input: SidebarNavInput): SidebarNavDecision {
     return {
       kind: "manager-operational",
       items: buildOperationalItems(fallback),
+      supportItem: buildOperationalSupportItem(fallback),
     };
   }
 
   // KB Admin outside `/t/[id]` → supervision space.
-  return { kind: "admin-supervision", items: ADMIN_SUPERVISION_ITEMS };
+  return {
+    kind: "admin-supervision",
+    items: ADMIN_SUPERVISION_ITEMS,
+    supportItem: ADMIN_SUPPORT_ITEM,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -216,6 +257,7 @@ const ICONS: Record<
   pricing: IconTag,
   qr: IconQrcode,
   parametres: IconSettings,
+  support: IconLifebuoy,
 };
 
 function isRouteActive(
@@ -225,7 +267,9 @@ function isRouteActive(
 ): boolean {
   // "Tableau de bord" points at the base `/t/<id>` — without strict-equal it
   // would prefix-match every operational sub-route and stay permanently active.
-  if (iconName === "dashboard") {
+  // Support est une page feuille (pas de sous-routes prévues) : match exact
+  // pour éviter qu'un futur `/support/xxx` n'allume l'entrée par accident.
+  if (iconName === "dashboard" || iconName === "support") {
     return pathname === href;
   }
   return pathname === href || pathname.startsWith(href + "/");
@@ -234,14 +278,20 @@ function isRouteActive(
 const NavRow = ({
   item,
   pathname,
+  itemDataSlot,
 }: {
   item: SidebarNavItem;
   pathname: string;
+  /** Override `data-slot` on the `<SidebarMenuItem>` — used to mark the
+   * Support entry so rendering tests / E2E can locate it unambiguously. */
+  itemDataSlot?: string;
 }) => {
   const Icon = ICONS[item.iconName] ?? IconChartBar;
   const active = isRouteActive(pathname, item.href, item.iconName);
   return (
-    <SidebarMenuItem>
+    <SidebarMenuItem
+      {...(itemDataSlot !== undefined ? { "data-slot": itemDataSlot } : {})}
+    >
       <SidebarMenuButton asChild isActive={active} tooltip={item.label}>
         <Link href={item.href}>
           <Icon className="size-4" />
@@ -326,6 +376,23 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                     pathname={pathname ?? ""}
                   />
                 ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+        {/* Support pinned au bas de SidebarContent (au-dessus du SidebarFooter
+            qui héberge le profil). `mt-auto` pousse le bloc en bas via la
+            colonne flex de SidebarContent. */}
+        {decision.supportItem !== null && (
+          <SidebarGroup data-slot="sidebar-support-group" className="mt-auto">
+            <SidebarSeparator className="mb-2" />
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <NavRow
+                  item={decision.supportItem}
+                  pathname={pathname ?? ""}
+                  itemDataSlot="sidebar-support-item"
+                />
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>

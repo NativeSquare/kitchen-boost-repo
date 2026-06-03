@@ -96,7 +96,11 @@ describe("decideSidebarNav", () => {
       session: { status: "loading" },
       pathname: "/pipeline",
     };
-    expect(decideSidebarNav(input)).toEqual({ kind: "hidden", items: [] });
+    expect(decideSidebarNav(input)).toEqual({
+      kind: "hidden",
+      items: [],
+      supportItem: null,
+    });
   });
 
   it("ready but isAdmin=false + tenants=[] → `hidden` (NoTenantEmptyState owns this case)", () => {
@@ -107,7 +111,11 @@ describe("decideSidebarNav", () => {
       },
       pathname: "/",
     };
-    expect(decideSidebarNav(input)).toEqual({ kind: "hidden", items: [] });
+    expect(decideSidebarNav(input)).toEqual({
+      kind: "hidden",
+      items: [],
+      supportItem: null,
+    });
   });
 
   // --- KB Admin in supervision space ---------------------------------------
@@ -271,5 +279,99 @@ describe("decideSidebarNav", () => {
       pathname: "/team",
     };
     expect(decideSidebarNav(input).kind).toBe("admin-supervision");
+  });
+
+  // --- Support entry (E2E manuel SUP — Alex) -------------------------------
+  //
+  // La route `/support` (admin) et `/t/[id]/support` (manager) existait mais
+  // n'était PAS linkée depuis la sidebar — l'utilisateur devait forger l'URL.
+  // `decideSidebarNav` retourne maintenant un `supportItem` épinglé en bas de
+  // la sidebar (au-dessus du SidebarFooter qui héberge le profil) avec une
+  // URL contextuelle.
+
+  describe("supportItem (E2E manuel SUP)", () => {
+    it("KB Admin hors tenant → supportItem pointe sur `/support` (espace supervision)", () => {
+      const result = decideSidebarNav({
+        session: adminSession(),
+        pathname: "/",
+      });
+      expect(result.supportItem).not.toBeNull();
+      expect(result.supportItem).toEqual({
+        label: "Support",
+        href: "/support",
+        iconName: "support",
+      });
+    });
+
+    it("KB Manager → supportItem pointe sur `/t/<A>/support` (scope tenant)", () => {
+      const result = decideSidebarNav({
+        session: managerSession([{ id: TENANT_A, slug: "a", name: "A" }]),
+        pathname: `/t/${TENANT_A}/menu`,
+      });
+      expect(result.supportItem).toEqual({
+        label: "Support",
+        href: `/t/${TENANT_A}/support`,
+        iconName: "support",
+      });
+    });
+
+    it("KB Admin sur tenant (impersonation) → supportItem pointe sur `/t/<A>/support`", () => {
+      const result = decideSidebarNav({
+        session: adminSession(),
+        pathname: `/t/${TENANT_A}/menu`,
+      });
+      expect(result.supportItem).toEqual({
+        label: "Support",
+        href: `/t/${TENANT_A}/support`,
+        iconName: "support",
+      });
+    });
+
+    it("KB Manager hors `/t/[id]` (fallback first tenant) → supportItem scoped sur le tenant fallback", () => {
+      const result = decideSidebarNav({
+        session: managerSession([
+          { id: TENANT_A, slug: "a", name: "A" },
+          { id: TENANT_B, slug: "b", name: "B" },
+        ]),
+        pathname: "/",
+      });
+      expect(result.supportItem).toEqual({
+        label: "Support",
+        href: `/t/${TENANT_A}/support`,
+        iconName: "support",
+      });
+    });
+
+    it("session=loading → supportItem=null (rien à linker tant que la session n'est pas prête)", () => {
+      const result = decideSidebarNav({
+        session: { status: "loading" },
+        pathname: "/",
+      });
+      expect(result.supportItem).toBeNull();
+    });
+
+    it("ready mais ni admin ni tenant → supportItem=null (NoTenantEmptyState owns the screen)", () => {
+      const result = decideSidebarNav({
+        session: {
+          status: "ready",
+          session: { isAdmin: false, tenants: [], user: FIXTURE_USER },
+        },
+        pathname: "/",
+      });
+      expect(result.supportItem).toBeNull();
+    });
+
+    it("supportItem n'apparaît PAS dans les nav items principaux (épinglée séparément)", () => {
+      const adminResult = decideSidebarNav({
+        session: adminSession(),
+        pathname: "/",
+      });
+      const managerResult = decideSidebarNav({
+        session: managerSession([{ id: TENANT_A, slug: "a", name: "A" }]),
+        pathname: `/t/${TENANT_A}/menu`,
+      });
+      expect(adminResult.items.map((i) => i.label)).not.toContain("Support");
+      expect(managerResult.items.map((i) => i.label)).not.toContain("Support");
+    });
   });
 });
