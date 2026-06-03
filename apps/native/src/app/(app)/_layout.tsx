@@ -1,4 +1,5 @@
 import { PushPermissionBanner } from "@/lib/push-permission";
+import { TenantSwitcher } from "@/lib/tenant-switcher";
 import { Stack } from "expo-router";
 import { View } from "react-native";
 
@@ -14,6 +15,15 @@ export default function AppLayout() {
        * `granted` / `undetermined` / still loading.
        */}
       <PushPermissionBanner />
+      {/*
+       * #399 — Header tenant switcher (PRD 20 §1b + §12 + AC7). Mounted ABOVE
+       * the <Stack> so the chip lives in a thin strip on top of every (tabs)
+       * route in phone mode. Returns null and renders nothing in kiosque mode
+       * (tenant pinné, switcher masqué), for kb_admin, for mono-tenant users,
+       * and while inputs are still loading — defense in depth on top of the
+       * root layout's splash gate.
+       */}
+      <TenantSwitcher />
       <Stack
         screenOptions={{
           headerShown: false,
