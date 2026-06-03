@@ -1,5 +1,6 @@
 import { Text } from "@/components/ui/text";
 import { OrderCard } from "@/lib/orders";
+import { PauseControl } from "@/lib/pause";
 import { useActiveTenantId } from "@/lib/tenant-switcher";
 import { api } from "@packages/backend/convex/_generated/api";
 import { useQuery } from "convex/react";
@@ -90,6 +91,15 @@ export default function Home() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
+      {/*
+       * #406 — Pause exceptionnelle (PRD 20 §7a + ADR 0018).
+       * Renders an entry-point pill in idle, or a « En pause jusqu'à HH:MM »
+       * badge + « Reprendre » button when a pause is active. The cmds en cours
+       * (the queue below) keep their workflow untouched — the pause only gates
+       * NEW checkouts server-side via `acceptsOrderNow`.
+       */}
+      <PauseControl />
+
       <View className="mb-4 flex-row items-center justify-between">
         <Text className="text-foreground text-xl font-semibold">
           Commandes en cours
