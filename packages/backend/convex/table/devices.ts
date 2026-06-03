@@ -33,6 +33,15 @@ import { v } from "convex/values";
  *     on THIS device, so subsequent launches skip straight to home (§1a tail
  *     « séquence skip aux re-launches »).
  *
+ *  5. **`itemToggleTooltipSeen`** (PRD 20 §7c, #408) — true once the gérant
+ *     has dismissed the FIRST-USAGE tooltip on the « toggle dispo item »
+ *     surface on THIS device. The tooltip text is PRD-frozen
+ *     (cf. `ITEM_TOGGLE_TOOLTIP_TEXT` in the native module) and explains the
+ *     ADR 0018 frontière (« masque côté client, pas une suppression
+ *     catalogue »). Per-device on purpose: the gérant might use the app on
+ *     both a tablet kitchen and his phone — both surfaces need the
+ *     pédagogie on first usage.
+ *
  * ── USER-SCOPED, NO `tenantId` SCOPING KEY — accessed via the SELF-IDENTITY seam
  * Unlike most 2.x tables (ADR 0010), this row is NOT a tenant resource: it is
  * per-(user, device). The sanctioned access seam is `devicesStore.ts` in the
@@ -66,6 +75,11 @@ export const devices = defineTable({
   pinnedTenantId: v.optional(v.id("tenants")),
   lastSelectedTenantId: v.optional(v.id("tenants")),
   onboardingCompleted: v.optional(v.boolean()),
+  // #408 — true once the gérant has dismissed the « toggle dispo item »
+  // first-usage tooltip on THIS device (PRD 20 §7c, ADR 0018). Optional so
+  // existing rows (pre-#408) treat absence as « never seen » — the native
+  // decision (`decideTooltipGate`) maps undefined → show-tooltip.
+  itemToggleTooltipSeen: v.optional(v.boolean()),
 
   createdAt: v.number(),
   updatedAt: v.number(),

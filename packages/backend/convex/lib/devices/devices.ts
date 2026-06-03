@@ -176,3 +176,26 @@ export const markOnboardingCompleted = mutation({
     return null;
   },
 });
+
+/**
+ * `markItemToggleTooltipSeen` — flip the per-(user, device) tooltip-seen flag
+ * once the gérant has dismissed the « toggle dispo item » first-usage tooltip
+ * (PRD 20 §7c, #408 / ADR 0018). The native list reads it via `getMyDevice`
+ * and `decideTooltipGate` to decide whether to surface the tooltip BEFORE
+ * firing `setItemAvailability`, or fire it directly. Self-scoped; idempotent
+ * (a second call leaves the flag true). Will upsert a fresh row in telephone
+ * mode if none exists (the gérant may toggle an item before opening the
+ * Settings rebascule, although that's unlikely — the home onboarding usually
+ * created the row first).
+ */
+export const markItemToggleTooltipSeen = mutation({
+  args: { deviceId: v.string() },
+  handler: async (ctx, args) => {
+    const actor = await getCurrentActor(ctx);
+    if (actor === null) throw unauthenticated();
+    await upsertUserDevice(ctx, actor.userId, args.deviceId, {
+      itemToggleTooltipSeen: true,
+    });
+    return null;
+  },
+});

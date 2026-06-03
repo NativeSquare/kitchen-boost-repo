@@ -41,6 +41,17 @@ export default function AppLayout() {
             presentation: "card",
           }}
         />
+        {/* #408 — KB Orders « Disponibilité des items » screen (PRD 20 §7c +
+           ADR 0018). Pushed from the home `<ItemAvailabilityEntry />` pill.
+           Card presentation = same back-nav UX as the order detail screen. */}
+        <Stack.Screen
+          name="disponibilite-items"
+          options={{
+            headerShown: true,
+            headerTitle: "Disponibilité des items",
+            presentation: "card",
+          }}
+        />
       </Stack>
     </View>
   );

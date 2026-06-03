@@ -1,5 +1,6 @@
 import { Text } from "@/components/ui/text";
 import { ClosureControl } from "@/lib/closure";
+import { ItemAvailabilityEntry } from "@/lib/item-availability";
 import { OrderCard } from "@/lib/orders";
 import { PauseControl } from "@/lib/pause";
 import { useActiveTenantId } from "@/lib/tenant-switcher";
@@ -112,6 +113,18 @@ export default function Home() {
        * NEW checkouts via `acceptsOrderNow`.
        */}
       <ClosureControl />
+
+      {/*
+       * #408 — Disponibilité des items (PRD 20 §7c + ADR 0018).
+       * Entry pill that navigates to `/disponibilite-items`. The list
+       * surfaces the first-usage tooltip (`ITEM_TOGGLE_TOOLTIP_TEXT`) before
+       * firing `setItemAvailability`, per the PRD-frozen pédagogie. The
+       * cmds en cours queue below stays untouched — toggling an item dispo
+       * only gates NEW cart additions / checkouts (the backend
+       * `createOrderFromCart` already rejects unavailable items at
+       * `freezeCartItem`, cart.ts §145-147).
+       */}
+      <ItemAvailabilityEntry />
 
       <View className="mb-4 flex-row items-center justify-between">
         <Text className="text-foreground text-xl font-semibold">
