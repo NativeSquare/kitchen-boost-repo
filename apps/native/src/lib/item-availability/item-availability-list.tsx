@@ -133,7 +133,9 @@ export function ItemAvailabilityList(): React.ReactElement {
   }
 
   async function handleTooltipAcknowledge() {
-    if (deviceId === null || pendingToggle === null) {
+    // Three preconditions must hold — narrowing all three FIRST so the
+    // toggle call below stays type-clean (no `as Id<"tenants">` shortcut).
+    if (deviceId === null || pendingToggle === null || tenantId === null) {
       tooltipSheetRef.current?.dismiss();
       setPendingToggle(null);
       return;
@@ -146,7 +148,7 @@ export function ItemAvailabilityList(): React.ReactElement {
       await markTooltipSeen({ deviceId });
       // Then replay the toggle the gérant initiated.
       await setItemAvailability({
-        tenantId: tenantId as Id<"tenants">,
+        tenantId,
         itemId: pendingToggle.itemId,
         available: pendingToggle.nextAvailable,
       });
