@@ -159,7 +159,7 @@ describe("decideSidebarNav", () => {
 
   // --- Operational space (manager OR admin under /t/[id]) ------------------
 
-  it("KB Manager on `/t/<A>/menu` → `manager-operational` items scoped to /t/<A>/... (10 items now: #396 adds Sessions before Paramètres — RGPD revocation page, PRD 20 §13)", () => {
+  it("KB Manager on `/t/<A>/menu` → `manager-operational` items scoped to /t/<A>/... (11 items now: #397 adds Disponibilité between Commandes and Mes clients — opérationnel quotidien, PRD 20 §7 / ADR 0018)", () => {
     const input: SidebarNavInput = {
       session: managerSession([
         { id: TENANT_A, slug: "lartisan", name: "L'Artisan" },
@@ -172,6 +172,7 @@ describe("decideSidebarNav", () => {
       "Tableau de bord",
       "Menu",
       "Commandes",
+      "Disponibilité",
       "Mes clients",
       "Statistiques",
       "Campagnes",
@@ -184,6 +185,7 @@ describe("decideSidebarNav", () => {
       `/t/${TENANT_A}`,
       `/t/${TENANT_A}/menu`,
       `/t/${TENANT_A}/commandes`,
+      `/t/${TENANT_A}/disponibilite`,
       `/t/${TENANT_A}/mes-clients`,
       `/t/${TENANT_A}/stats`,
       `/t/${TENANT_A}/campagnes`,
@@ -194,10 +196,13 @@ describe("decideSidebarNav", () => {
     ]);
     // Pins requested by the issues #389/#390 spec.
     expect(result.items[0].href).toBe(`/t/${TENANT_A}`);
-    expect(result.items[4].href).toBe(`/t/${TENANT_A}/stats`);
+    // #397 — Disponibilité sits right after Commandes (operational quotidien
+    // — frontière ADR 0018 : actions « ici et maintenant »).
+    expect(result.items[3].href).toBe(`/t/${TENANT_A}/disponibilite`);
+    expect(result.items[5].href).toBe(`/t/${TENANT_A}/stats`);
     // #396 — Sessions entry is between QR and Paramètres (security-adjacent
     // section, sits next to tenant config).
-    expect(result.items[8].href).toBe(`/t/${TENANT_A}/sessions`);
+    expect(result.items[9].href).toBe(`/t/${TENANT_A}/sessions`);
   });
 
   it("KB Admin on `/t/<A>/menu` → `manager-operational` scoped to /t/<A>/... (root override in operational view)", () => {
