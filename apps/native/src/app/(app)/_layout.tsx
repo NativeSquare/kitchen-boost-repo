@@ -52,6 +52,20 @@ export default function AppLayout() {
             presentation: "card",
           }}
         />
+        {/* #409 — KB Orders « Modif horaires d'ouverture » screen (PRD 20
+           §7d + ADR 0018). Pushed from the home `<ServiceHoursEntry />`
+           pill. Toggle Aujourd'hui / Cette semaine + per-day slot editor
+           wired to the SAME backend mutation `api.lib.menu.serviceHours.set`
+           the KB Admin mirror uses. Card presentation = same back-nav UX
+           as the other dedicated screens. */}
+        <Stack.Screen
+          name="service-hours"
+          options={{
+            headerShown: true,
+            headerTitle: "Horaires d'ouverture",
+            presentation: "card",
+          }}
+        />
       </Stack>
     </View>
   );

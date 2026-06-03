@@ -3,6 +3,7 @@ import { ClosureControl } from "@/lib/closure";
 import { ItemAvailabilityEntry } from "@/lib/item-availability";
 import { OrderCard } from "@/lib/orders";
 import { PauseControl } from "@/lib/pause";
+import { ServiceHoursEntry } from "@/lib/service-hours";
 import { useActiveTenantId } from "@/lib/tenant-switcher";
 import { api } from "@packages/backend/convex/_generated/api";
 import { useQuery } from "convex/react";
@@ -125,6 +126,19 @@ export default function Home() {
        * `freezeCartItem`, cart.ts §145-147).
        */}
       <ItemAvailabilityEntry />
+
+      {/*
+       * #409 — Horaires d'ouverture (PRD 20 §7d + ADR 0018).
+       * Entry pill that navigates to `/service-hours`. The screen exposes
+       * a toggle « Aujourd'hui » / « Cette semaine » + per-day slot editor
+       * wired to the SAME backend mutation (`serviceHours.set`) the KB
+       * Admin mirror uses (#236 / #397). Édition complète des horaires
+       * permanents (jours fériés annuels) reste KB Admin seul (ADR 0018).
+       * Les cmds en cours sur la home ne sont PAS impactées — la modif
+       * horaires ne gate que les NEW checkouts via `isOpenNow` côté PWA
+       * client (même discipline que pause / fermeture exceptionnelle).
+       */}
+      <ServiceHoursEntry />
 
       <View className="mb-4 flex-row items-center justify-between">
         <Text className="text-foreground text-xl font-semibold">
