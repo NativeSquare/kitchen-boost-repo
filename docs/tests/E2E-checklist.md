@@ -1427,7 +1427,7 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
   1. Tenant A → sidebar « Pricing ».
   2. Vérifier bandeau « Quand plusieurs règles s'appliquent, KitchenBoost applique automatiquement celle qui est la plus avantageuse pour ton client. Pas d'ordre à gérer. ».
   3. Résumés FR + badges Active/Inactive (ligne inactive grisée).
-  4. Switcher vers tenant B → état vide + « Aucune règle pour l'instant… (10 % par défaut s'applique). ».
+  4. Switcher vers tenant B → état vide : « Aucune règle pour l'instant. Sans règle, le client paie l'intégralité des frais de livraison. » + encart **Recommandation KitchenBoost** (icône ampoule) qui suggère 10 % du panier comme nudge — PAS un état appliqué automatiquement.
 - **Attendu** : bandeau auto-priorité sur les 2 tenants. Aucun drag-handle, aucun numéro de priorité visible.
 - **Couvre** : #241.
 

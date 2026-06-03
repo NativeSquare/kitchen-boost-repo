@@ -6,8 +6,12 @@
  * Three branches:
  *   - `rules === undefined` → loading skeleton (the header + banner stay
  *     mounted so the user never sees a blank flash).
- *   - `rules.length === 0`  → empty state with the "règle par défaut 10 %"
- *     copy. NO create CTA here — slice 2 adds it.
+ *   - `rules.length === 0`  → empty state that tells the TRUTH ("sans règle,
+ *     le client paie l'intégralité des frais de livraison") AND surfaces the
+ *     10 % share as an explicit RECOMMANDATION (badge + bulb icon), not an
+ *     applied default. The engine has NO 10 % default — fallback is "client
+ *     pays full gross" (`packages/shared/pricing/engine.ts` :141-148).
+ *     NO create CTA here — slice 2 adds it.
  *   - else                  → list of rule rows (active + inactive),
  *     each one showing condition + action FR summaries and the active state.
  *     Inactive rows are visually de-emphasised (opacity + « Inactive » label).
@@ -28,7 +32,7 @@
  * `menu/menu-view.tsx` and `mes-clients/mes-clients-view.tsx`.
  */
 import { useState } from "react";
-import { IconPlus } from "@tabler/icons-react";
+import { IconBulb, IconPlus } from "@tabler/icons-react";
 
 import type { Doc, Id } from "@packages/backend/convex/_generated/dataModel";
 
@@ -63,7 +67,11 @@ export type PricingViewProps = {
   /**
    * Rules from `useTenantQuery(api.lib.pricing.rules.list)`.
    *   - `undefined` → query in flight (Convex loading sentinel)
-   *   - `[]`        → tenant has no rules yet (default rule applies on backend)
+   *   - `[]`        → tenant has no rules yet. Engine fallback: client pays
+   *                    the FULL gross delivery cost, resto absorbs 0 (see
+   *                    `packages/shared/pricing/engine.ts` :141-148). The UI
+   *                    surfaces a 10 % RECOMMANDATION to nudge the resto to
+   *                    create a rule — nothing 10 % is applied automatically.
    *   - else        → list to render (active + inactive)
    */
   rules: Doc<"pricingRules">[] | undefined;
@@ -209,12 +217,35 @@ function PricingBody({
 }
 
 function PricingEmptyState() {
+  // Honest empty state (PR1 critical fix — Alex E2E manuel) : the previous
+  // copy claimed "la règle KitchenBoost par défaut (10 % du panier absorbés
+  // par le resto) s'applique" — that was a LIE. The engine has NO default
+  // rule; its fallback is "client pays full gross, resto absorbs 0" (see
+  // `packages/shared/pricing/engine.ts` :141-148). We now (1) state the
+  // system truth explicitly, then (2) surface the 10 % as a RECOMMENDATION
+  // (Badge + bulb icon) — a nudge, not a system state.
   return (
-    <div className="rounded-lg border border-dashed p-8 text-center">
-      <p className="text-muted-foreground text-sm">
-        Aucune règle pour l&apos;instant. La règle KitchenBoost par défaut
-        (10&nbsp;% du panier absorbés par le resto) s&apos;applique.
-      </p>
+    <div className="flex flex-col gap-4 rounded-lg border border-dashed p-8 text-center">
+      <div className="flex flex-col gap-1.5">
+        <p className="text-sm font-medium">Aucune règle pour l&apos;instant.</p>
+        <p className="text-muted-foreground text-sm">
+          Sans règle, le client paie l&apos;intégralité des frais de livraison.
+        </p>
+      </div>
+      <div className="bg-muted/50 mx-auto flex max-w-md flex-col gap-2 rounded-lg border p-4 text-left">
+        <div className="flex items-center gap-2">
+          <IconBulb
+            className="text-primary size-4 shrink-0"
+            aria-hidden="true"
+          />
+          <Badge variant="secondary">Recommandation KitchenBoost</Badge>
+        </div>
+        <p className="text-muted-foreground text-sm">
+          Absorbe <strong>10&nbsp;%</strong> du panier (frais de livraison à ta
+          charge) pour rester compétitif face à Uber Eats. Crée une règle en 1
+          clic via «&nbsp;+ Nouvelle règle&nbsp;».
+        </p>
+      </div>
     </div>
   );
 }

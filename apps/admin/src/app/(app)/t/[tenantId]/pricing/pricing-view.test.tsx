@@ -5,8 +5,10 @@
  *
  * Branches the view owns:
  *   - `rules === undefined` → loading skeleton (no blank flash, header stays).
- *   - `rules.length === 0`  → empty state with the « règle par défaut 10 % »
- *     copy promised by the issue body.
+ *   - `rules.length === 0`  → empty state that tells the truth ("sans règle,
+ *     le client paie l'intégralité") AND surfaces the 10 % as an explicit
+ *     RECOMMANDATION (NOT an applied default — engine fallback is "client
+ *     pays full gross"). Old PR1 copy lied; bug raised by Alex in E2E manuel.
  *   - else                  → header (title + auto-priority banner) + list of
  *     rule rows (active + inactive), each one showing condition + action FR
  *     summaries and the active/inactive state. Inactive rows visually distinct.
@@ -264,14 +266,34 @@ describe("PricingView — F-PRICING-1 (#241)", () => {
     expect(allText(tree)).toContain(AUTO_PRIORITY_BANNER_TEXT);
   });
 
-  it("AC — empty state shows the default-rule copy from the issue body", () => {
+  it("AC — empty state tells the system TRUTH and surfaces 10 % as a recommendation, NOT an applied default (PR1 critical fix — bug Alex E2E manuel)", () => {
+    // Previous copy was: « Aucune règle pour l'instant. La règle KitchenBoost
+    // par défaut (10 % du panier absorbés par le resto) s'applique. » — a LIE.
+    // The engine has no 10 % default; fallback is « client pays full gross »
+    // (packages/shared/pricing/engine.ts :141-148). We now pin three load-
+    // bearing phrases:
+    //   (1) « Aucune règle pour l'instant » (kept — accurate);
+    //   (2) « le client paie l'intégralité » → system truth anchor;
+    //   (3) « Recommandation » co-located with « 10 % » → not a default.
+    // Anti-regression: assert the old « par défaut … s'applique » framing is
+    // gone (would re-introduce the lie).
     const tree = serialize(PricingView({ rules: [] }));
     const text = allText(tree);
-    // Verbatim load-bearing phrase from issue body.
     expect(text).toMatch(/Aucune règle pour l'instant/i);
-    expect(text).toMatch(/règle KitchenBoost par défaut/i);
+    // System truth: without a rule, the client pays the full delivery cost.
+    expect(text).toMatch(
+      /le client paie l'intégralité des frais de livraison/i,
+    );
+    // 10 % MUST appear co-located with « Recommandation » (not isolated as if
+    // it were an applied default).
+    expect(text).toMatch(/Recommandation/i);
     expect(text).toMatch(/10\s?%/);
-    expect(text).toMatch(/absorbés par le resto|absorb[ée]s par le resto/i);
+    // Anti-regression on the old lie: « par défaut » + « s'applique » in the
+    // same sentence framed 10 % as an automatic behaviour. Ban the
+    // combination explicitly.
+    expect(text).not.toMatch(/règle KitchenBoost par défaut/i);
+    expect(text).not.toMatch(/par défaut[^.]*s'applique/i);
+    expect(text).not.toMatch(/10\s?%[^.]*s'applique/i);
   });
 
   it("AC F-PRICING-2 (#245) — populated branch surfaces the « + Nouvelle règle » CTA on the header", () => {
