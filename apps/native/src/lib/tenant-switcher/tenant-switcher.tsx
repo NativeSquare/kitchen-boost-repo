@@ -48,7 +48,19 @@ import {
  * « Thai Street Châtelet — Nouvelle commande 22 € »). This component only
  * handles in-app switching.
  */
-export function TenantSwitcher() {
+/**
+ * Internal hook — wraps the two Convex `useQuery`s and maps their raw
+ * responses to the input shape both `decideTenantSwitcher` and
+ * `resolveActiveTenantId` consume. Shared by `<TenantSwitcher />` (header
+ * chip) and `useActiveTenantId` (query-scoping consumers) so they always
+ * see a coherent frame (same Convex subs, same mapping).
+ *
+ * `device === null` (no row yet) is mapped to "phone, no pin, no hint" so
+ * downstream rules treat it as a known-but-empty state rather than loading.
+ * The root layout already gates `(device-setup)` while no row exists; this
+ * is defense in depth.
+ */
+function useTenantSwitcherInputs() {
   const deviceId = useDeviceId();
   // `getMyDevice` returns `null` for "no row yet"; the gate at the root layout
   // keeps the splash up until either a row or null resolves. We pass
@@ -62,31 +74,39 @@ export function TenantSwitcher() {
   // shell is mounted only when authenticated so we don't catch here. Errors
   // surface naturally to the Convex error boundary.
   const session = useQuery(api.lib.auth.getSession.getSession);
-  const setLastSelected = useMutation(
-    api.lib.devices.devices.setMyDeviceLastSelectedTenant,
-  );
 
-  const decision = decideTenantSwitcher({
-    device:
-      device === null || device === undefined
-        ? device === null
-          ? // No row yet: treat as "phone, no pin, no hint" so the switcher
-            // stays hidden until the user lands on (device-setup) and picks a
-            // mode. The root layout already gates this; defense in depth.
-            {
-              mode: undefined,
-              pinnedTenantId: undefined,
-              lastSelectedTenantId: undefined,
-            }
-          : undefined
+  const mappedDevice =
+    device === undefined
+      ? undefined
+      : device === null
+        ? {
+            mode: undefined,
+            pinnedTenantId: undefined,
+            lastSelectedTenantId: undefined,
+          }
         : {
             mode: device.mode,
             pinnedTenantId: device.pinnedTenantId,
             lastSelectedTenantId: device.lastSelectedTenantId,
-          },
-    tenants: session?.tenants,
-    isAdmin: session?.isAdmin ?? false,
-  });
+          };
+
+  return {
+    deviceId,
+    inputs: {
+      device: mappedDevice,
+      tenants: session?.tenants,
+      isAdmin: session?.isAdmin ?? false,
+    },
+  };
+}
+
+export function TenantSwitcher() {
+  const { deviceId, inputs } = useTenantSwitcherInputs();
+  const setLastSelected = useMutation(
+    api.lib.devices.devices.setMyDeviceLastSelectedTenant,
+  );
+
+  const decision = decideTenantSwitcher(inputs);
 
   const sheetRef = useRef<GorhomBottomSheetModal | null>(null);
 
@@ -231,28 +251,6 @@ function TenantPickerSheet({
  * attachment list (race: detached after pin — see `resolveActiveTenantId`).
  */
 export function useActiveTenantId(): Id<"tenants"> | null {
-  const deviceId = useDeviceId();
-  const device = useQuery(
-    api.lib.devices.devices.getMyDevice,
-    deviceId !== null ? { deviceId } : "skip",
-  );
-  const session = useQuery(api.lib.auth.getSession.getSession);
-  return resolveActiveTenantId({
-    device:
-      device === null
-        ? {
-            mode: undefined,
-            pinnedTenantId: undefined,
-            lastSelectedTenantId: undefined,
-          }
-        : device === undefined
-          ? undefined
-          : {
-              mode: device.mode,
-              pinnedTenantId: device.pinnedTenantId,
-              lastSelectedTenantId: device.lastSelectedTenantId,
-            },
-    tenants: session?.tenants,
-    isAdmin: session?.isAdmin ?? false,
-  });
+  const { inputs } = useTenantSwitcherInputs();
+  return resolveActiveTenantId(inputs);
 }
