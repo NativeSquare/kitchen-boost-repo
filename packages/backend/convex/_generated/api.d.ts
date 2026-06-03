@@ -92,6 +92,8 @@ import type * as lib_pricing_defaultRule from "../lib/pricing/defaultRule.js";
 import type * as lib_pricing_evaluate from "../lib/pricing/evaluate.js";
 import type * as lib_pricing_index from "../lib/pricing/index.js";
 import type * as lib_pricing_rules from "../lib/pricing/rules.js";
+import type * as lib_printing_index from "../lib/printing/index.js";
+import type * as lib_printing_printing from "../lib/printing/printing.js";
 import type * as lib_stats_dailyKpis from "../lib/stats/dailyKpis.js";
 import type * as lib_stats_index from "../lib/stats/index.js";
 import type * as lib_stats_quickStats from "../lib/stats/quickStats.js";
@@ -286,6 +288,8 @@ declare const fullApi: ApiFromModules<{
   "lib/pricing/evaluate": typeof lib_pricing_evaluate;
   "lib/pricing/index": typeof lib_pricing_index;
   "lib/pricing/rules": typeof lib_pricing_rules;
+  "lib/printing/index": typeof lib_printing_index;
+  "lib/printing/printing": typeof lib_printing_printing;
   "lib/stats/dailyKpis": typeof lib_stats_dailyKpis;
   "lib/stats/index": typeof lib_stats_index;
   "lib/stats/quickStats": typeof lib_stats_quickStats;

@@ -156,7 +156,7 @@ describe("#412 decidePrinterConfigForm — Settings form state", () => {
 
 describe("#412 buildStarWebPrntTicket — ESC/POS body for ONE order", () => {
   const baseInput = {
-    tenantName: "Buns & Bao",
+    tenantName: "Buns and Bao",
     orderId: "ord-abc1234" as const,
     mode: "delivery" as const,
     createdAtMs: new Date(2026, 0, 15, 19, 5, 0, 0).getTime(),
@@ -181,12 +181,26 @@ describe("#412 buildStarWebPrntTicket — ESC/POS body for ONE order", () => {
 
   it("includes the tenant name as the ticket header (resto identification)", () => {
     const t = buildStarWebPrntTicket(baseInput);
-    expect(t).toContain("Buns & Bao");
+    expect(t).toContain("Buns and Bao");
   });
 
   it("includes the short order id tail (the same #ABCD the home card surfaces)", () => {
     const t = buildStarWebPrntTicket(baseInput);
-    expect(t).toContain("Cmd #1234".toUpperCase());
+    // The card UI rendering uppercases the tail (`order detail` uses
+    // `slice(-4).toUpperCase()`); the printed ticket mirrors that.
+    expect(t).toContain("Cmd #1234");
+  });
+
+  it("XML-escapes a tenant name containing reserved chars (« & ») so the SBP doc stays valid", () => {
+    // A real tenant name like « Buns & Bao » would break the <data><text>...</text></data>
+    // SBP envelope if injected raw — we escape `&` to `&amp;` so the
+    // printer's XML parser still consumes the whole envelope cleanly.
+    const t = buildStarWebPrntTicket({
+      ...baseInput,
+      tenantName: "Buns & Bao",
+    });
+    expect(t).toContain("Buns &amp; Bao");
+    expect(t).not.toMatch(/Buns & Bao/);
   });
 
   it("renders the mode tag for delivery (🚴 LIVRAISON)", () => {
@@ -248,13 +262,13 @@ describe("#412 buildStarWebPrntTicket — ESC/POS body for ONE order", () => {
 
 describe("#412 buildStarWebPrntTestTicket — the « Tester l'impression » payload", () => {
   it("includes a clear « TEST » header so the gérant ne confond pas avec une vraie cmd", () => {
-    const t = buildStarWebPrntTestTicket("Buns & Bao");
+    const t = buildStarWebPrntTestTicket("Buns and Bao");
     expect(t).toContain("TEST");
-    expect(t).toContain("Buns & Bao");
+    expect(t).toContain("Buns and Bao");
   });
 
   it("returns a non-empty <data>...</data> envelope (same shape as the order ticket)", () => {
-    const t = buildStarWebPrntTestTicket("Buns & Bao");
+    const t = buildStarWebPrntTestTicket("Buns and Bao");
     expect(t.startsWith("<data>")).toBe(true);
     expect(t.endsWith("</data>")).toBe(true);
   });

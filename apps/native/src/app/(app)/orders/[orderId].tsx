@@ -13,6 +13,7 @@ import {
   decideWorkflowButton,
   type RefusalReason,
 } from "@/lib/orders";
+import { printOrderTicket } from "@/lib/printing";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "@packages/backend/convex/_generated/api";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
@@ -81,10 +82,30 @@ export default function OrderDetailScreen() {
   const markHandedOff = useMutation(api.lib.orders.workflow.markHandedOff);
   const refuse = useMutation(api.lib.orders.workflow.refuse);
 
+  // #412 — printer config + tenant name source for the auto-print + Réimprimer
+  // ticket. The query is `OPERATIONAL_ALLOW` so the kitchen tablet under audit
+  // monolithique V1 (staff actor) still reads — same shape as
+  // `getOperationalPause`. Resolves to `null` when no printer is configured
+  // (PRD 20 §14 — auto-print is then a clean no-op). `getSession` carries the
+  // attached tenants with their names: we pluck the active tenant's name to
+  // power the ticket header (same name surfaced by the header switcher).
+  const printerConfig = useQuery(
+    api.lib.printing.printing.getPrinterConfig,
+    activeTenantId !== null ? { tenantId: activeTenantId } : "skip",
+  );
+  const session = useQuery(api.lib.auth.getSession.getSession);
+  const tenantName =
+    session?.tenants.find((t) => t.tenantId === activeTenantId)?.name ??
+    "Restaurant";
+
   // Tap-to-reveal the delivery address (PRD 20 §4 — same UX rationale as the
   // tap-to-reveal phones the schema doesn't yet expose at the order level).
   const [addressRevealed, setAddressRevealed] = useState(false);
   const [busy, setBusy] = useState(false);
+  // #412 — local busy flag for the « Réimprimer » button. Distinct from
+  // `busy` (workflow buttons) so a reprint mid-workflow doesn't disable the
+  // Accept / Prête / Remise primary actions.
+  const [reprinting, setReprinting] = useState(false);
   // #403 — local visibility flag for the 2-step Refuser dialog. The dialog's
   // internal 2-step state (motif → confirm) is owned by `RefuseDialog` via
   // its own `refuseFlowReducer`; this screen only toggles the dialog's
@@ -132,6 +153,42 @@ export default function OrderDetailScreen() {
       : null;
   const idTail = (order._id as unknown as string).slice(-4).toUpperCase();
 
+  /**
+   * #412 — fire-and-forget Star WebPRNT POST for THIS order. Used by:
+   *  - auto-print right after a successful `acknowledge` (PRD 20 §14, auto-
+   *    print à l'ack);
+   *  - the « Réimprimer » button (manual recourse if the first print failed).
+   *
+   * No-printer → silent no-op. Network / HTTP / timeout error → non-blocking
+   * Alert « Impression échouée — vérifie l'imprimante » (PRD 20 §14). The
+   * workflow has ALREADY committed by the time we get here, so a failed
+   * print never blocks the cuisinier.
+   */
+  const printThisOrder = async (): Promise<void> => {
+    const verdict = await printOrderTicket({
+      starWebPrntUrl: printerConfig?.starWebPrntUrl ?? null,
+      ticket: {
+        tenantName,
+        orderId: order._id as unknown as string,
+        mode: order.mode,
+        createdAtMs: order.createdAt,
+        items: items.map((item) => ({
+          quantity: item.quantity,
+          itemName: item.itemName,
+          modifiers: item.modifiers,
+        })),
+        restaurantNote: order.restaurantNote,
+        totalCents: order.pricingSnapshot?.total,
+      },
+    });
+    if (verdict.kind === "error") {
+      Alert.alert(
+        "Impression échouée",
+        "Vérifie l'imprimante (alimentation, réseau, IP). La commande reste acceptée.",
+      );
+    }
+  };
+
   const onWorkflowPress = async () => {
     if (buttonDecision.kind !== "show" || busy) return;
     setBusy(true);
@@ -141,6 +198,10 @@ export default function OrderDetailScreen() {
           tenantId: activeTenantId,
           orderId: order._id,
         });
+        // #412 — auto-print right after the mutation commits. Fire-and-
+        // forget: a failure here is surfaced through a toast but does NOT
+        // throw — the cmd is `en préparation` regardless of the printer.
+        await printThisOrder();
       } else if (buttonDecision.action === "markPrepared") {
         await markPrepared({
           tenantId: activeTenantId,
@@ -156,6 +217,19 @@ export default function OrderDetailScreen() {
       Alert.alert("Erreur", getConvexErrorMessage(err));
     } finally {
       setBusy(false);
+    }
+  };
+
+  // #412 — « Réimprimer » manual button (PRD 20 §4 + §14). Tap once →
+  // re-fire the same payload at the configured printer. Same non-blocking
+  // toast on error.
+  const onReprintPress = async () => {
+    if (reprinting) return;
+    setReprinting(true);
+    try {
+      await printThisOrder();
+    } finally {
+      setReprinting(false);
     }
   };
 
@@ -354,6 +428,33 @@ export default function OrderDetailScreen() {
             )}
           </CardContent>
         </Card>
+      ) : null}
+
+      {/* #412 — « Réimprimer » manual button (PRD 20 §4 + §14). Available
+          at any time (even after handoff) so the cuisinier can recover from
+          a tag tombé, mal sorti, etc. Hidden when no printer is configured:
+          there is nothing to print to, and the gérant should configure one
+          in Settings first (PrinterEntry → /printer). */}
+      {printerConfig !== undefined &&
+      printerConfig !== null &&
+      printerConfig.starWebPrntUrl !== "" ? (
+        <View className="mb-3">
+          <Button
+            variant="outline"
+            onPress={onReprintPress}
+            disabled={reprinting || busy || refusing}
+            accessibilityLabel="Réimprimer le ticket"
+          >
+            {reprinting ? (
+              <ActivityIndicator />
+            ) : (
+              <View className="flex-row items-center gap-2">
+                <Ionicons name="print-outline" size={18} color="#444" />
+                <Text>Réimprimer le ticket</Text>
+              </View>
+            )}
+          </Button>
+        </View>
       ) : null}
 
       {/* Workflow buttons — primary (Accepter / Prête / Remise) + the #403
