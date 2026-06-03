@@ -87,6 +87,30 @@ export const tenants = defineTable({
   exceptionalClosure: v.optional(
     v.object({ from: v.number(), until: v.number() }),
   ),
+  // #412 — Star Micronics WebPRNT kitchen printer config (PRD 20 §14 + kb-
+  // orders CONTEXT « Impression thermique cuisine »). Optional URL the native
+  // app POSTs an ESC/POS payload to when a cmd is acknowledged + when the
+  // gérant taps « Réimprimer » on the detail screen. **State partagé Convex**
+  // — KB Admin (#416) AND KB Orders Settings (#418 / #412) write through the
+  // SAME field, so a change on the web admin is reflected live on the kitchen
+  // tablet through the Convex sub (PRD 20 §14 « même state Convex partagé »).
+  //
+  // Stored as a SUB-OBJECT (not a top-level `printerIp` string) so future
+  // printer-related fields (paper width, drawer kick, redundant printer) stay
+  // co-located without polluting the root tenant row. V1 carries only
+  // `starWebPrntUrl` — the full HTTP URL including scheme + host + path
+  // (`http://192.168.1.42/StarWebPRNT/SendMessage` is the canonical Star
+  // endpoint, but the gérant configures whatever the printer's web UI
+  // advertises). The native helper `buildStarWebPrntEndpoint(ip)` derives a
+  // sane default when the gérant only supplies an IP.
+  //
+  // Absent (= `undefined`) ⇒ auto-print is a clean no-op (PRD 20 §14 « si le
+  // tenant a une printerConfig.starWebPrntUrl non-vide, fire-and-forget HTTP
+  // POST »). NOT a blocker for the kitchen workflow: a cmd is acknowledged
+  // (or refused, or auto-expired) regardless of the printer's reachability.
+  printerConfig: v.optional(
+    v.object({ starWebPrntUrl: v.optional(v.string()) }),
+  ),
   createdAt: v.number(),
 })
   .index("by_slug", ["slug"]) // slug is unique (enforced applicatively)

@@ -155,10 +155,13 @@ export {
   type NewTenant,
   type TenantSettingsPatch,
   activateTenant,
+  clearTenantPrinterConfig,
   getTenantById,
   getTenantBySlug,
+  getTenantPrinterConfig,
   insertTenant,
   listAllTenants,
+  setTenantPrinterConfig,
   updateTenantSettings,
 } from "./tenantsStore";
 export {

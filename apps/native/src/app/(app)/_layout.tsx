@@ -92,6 +92,20 @@ export default function AppLayout() {
               presentation: "card",
             }}
           />
+          {/* #412 — KB Orders « Imprimante cuisine » screen (PRD 20 §14 +
+           §10). Pushed from the home `<PrinterEntry />` pill. Champ
+           « Adresse imprimante » + boutons « Enregistrer » / « Tester
+           l'impression » / « Retirer l'imprimante » wirés à
+           `api.lib.printing.printing.*`. Le full Settings (#418) montera
+           le même composant depuis sa propre route plus tard. */}
+          <Stack.Screen
+            name="printer"
+            options={{
+              headerShown: true,
+              headerTitle: "Imprimante cuisine",
+              presentation: "card",
+            }}
+          />
         </Stack>
       </View>
     </TenantStatusCriticalGate>

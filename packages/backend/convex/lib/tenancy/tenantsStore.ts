@@ -170,6 +170,62 @@ export async function updateTenantSettings(
 }
 
 /**
+ * #412 — the Star Micronics WebPRNT config (or `null`) on the calling tenant.
+ *
+ * Reads a SUB-OBJECT (`tenants.printerConfig`) — the schema added it as
+ * optional + with an optional `starWebPrntUrl` inside, so a fresh tenant (no
+ * config row written yet) AND a row written with no URL both yield `null`
+ * here. The native gate (`<PrinterEntry />` / `PrinterSettingsScreen`) and the
+ * order auto-print share this read — see `printOrder` in
+ * `apps/native/src/lib/printing`.
+ *
+ * Same exempt-path discipline as the rest of this seam: the upstream
+ * `tenantQuery` wrapper has already asserted operational role + tenant
+ * ownership, so `ctx.db.get(tenantId)` here is not a tenancy bypass.
+ */
+export async function getTenantPrinterConfig(
+  ctx: QueryCtx | MutationCtx,
+  tenantId: Id<"tenants">,
+): Promise<{ starWebPrntUrl: string } | null> {
+  const tenant = await ctx.db.get(tenantId);
+  const url = tenant?.printerConfig?.starWebPrntUrl;
+  if (typeof url !== "string" || url === "") return null;
+  return { starWebPrntUrl: url };
+}
+
+/**
+ * #412 — set the Star Micronics WebPRNT URL on the calling tenant (manager).
+ *
+ * The upstream mutation owns validation (non-empty, http/https URL) and
+ * audit; this seam stays dumb. Empty string is REJECTED upstream (the gérant
+ * uses `clearTenantPrinterConfig` to remove the config), so the value
+ * persisted here is always non-empty. The patch shallow-merges the
+ * `printerConfig` sub-object since V1 only carries one key — a future
+ * paper-width / drawer-kick field would extend the patch surface.
+ */
+export async function setTenantPrinterConfig(
+  ctx: MutationCtx,
+  tenantId: Id<"tenants">,
+  starWebPrntUrl: string,
+): Promise<void> {
+  await ctx.db.patch(tenantId, { printerConfig: { starWebPrntUrl } });
+}
+
+/**
+ * #412 — clear the Star Micronics WebPRNT URL on the calling tenant.
+ *
+ * Patches the sub-object to `undefined` so `getTenantPrinterConfig` returns
+ * `null` afterwards — equivalent to « pas de printer configurée », which the
+ * native auto-print interprets as a clean no-op (PRD 20 §14).
+ */
+export async function clearTenantPrinterConfig(
+  ctx: MutationCtx,
+  tenantId: Id<"tenants">,
+): Promise<void> {
+  await ctx.db.patch(tenantId, { printerConfig: undefined });
+}
+
+/**
  * B-TENANT-LIFECYCLE [1/4] — flip the tenant lifecycle to `"active"`.
  *
  * NO transition check here: the upstream mutation `tenant.activate` (D6, PRD

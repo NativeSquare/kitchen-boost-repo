@@ -3,6 +3,7 @@ import { ClosureControl } from "@/lib/closure";
 import { ItemAvailabilityEntry } from "@/lib/item-availability";
 import { OrderCard } from "@/lib/orders";
 import { PauseControl } from "@/lib/pause";
+import { PrinterEntry } from "@/lib/printing";
 import { QuickStats } from "@/lib/quick-stats";
 import { ServiceHoursEntry } from "@/lib/service-hours";
 import { useActiveTenantId } from "@/lib/tenant-switcher";
@@ -140,6 +141,17 @@ export default function Home() {
        * client (même discipline que pause / fermeture exceptionnelle).
        */}
       <ServiceHoursEntry />
+
+      {/*
+       * #412 — Imprimante cuisine Star WebPRNT (PRD 20 §14 + §10).
+       * Entry pill that navigates to `/printer`. The screen exposes the
+       * Star WebPRNT URL field + « Tester l'impression » + « Retirer
+       * l'imprimante » buttons wired to `api.lib.printing.printing.*`.
+       * Same state Convex partagé that KB Admin (#416) will write to
+       * (PRD 20 §14), so a change on the web admin flips the kitchen
+       * tablet live through the Convex sub.
+       */}
+      <PrinterEntry />
 
       {/*
        * #410 — Stats rapides V1 (PRD 20 §9).
