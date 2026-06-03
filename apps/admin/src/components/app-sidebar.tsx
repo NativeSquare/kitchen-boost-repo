@@ -37,6 +37,7 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 import {
   IconChartBar,
+  IconClockPause,
   IconGauge,
   IconInnerShadowTop,
   IconLayoutDashboard,
@@ -95,6 +96,7 @@ export type SidebarIconName =
   | "dashboard"
   | "menu"
   | "commandes"
+  | "disponibilite"
   | "mes-clients"
   | "stats"
   | "campagnes"
@@ -152,6 +154,17 @@ function buildOperationalItems(tenantId: Id<"tenants">): SidebarNavItem[] {
     { label: "Tableau de bord", href: base, iconName: "dashboard" },
     { label: "Menu", href: `${base}/menu`, iconName: "menu" },
     { label: "Commandes", href: `${base}/commandes`, iconName: "commandes" },
+    // #397 — Disponibilité commerciale (PRD 20 §7 / ADR 0018) : surface
+    // mirror de l'app native (#406–#409). Placée juste après Commandes —
+    // c'est une action « ici et maintenant » du quotidien opérationnel
+    // (pause cuisine, fermeture exceptionnelle, rupture item, ajustement
+    // horaires), pas un onglet de configuration. Reste discriminée de
+    // l'édition catalogue (qui vit dans `/menu`) par la frontière ADR 0018.
+    {
+      label: "Disponibilité",
+      href: `${base}/disponibilite`,
+      iconName: "disponibilite",
+    },
     {
       label: "Mes clients",
       href: `${base}/mes-clients`,
@@ -258,6 +271,7 @@ const ICONS: Record<
   dashboard: IconLayoutDashboard,
   menu: IconToolsKitchen2,
   commandes: IconShoppingCart,
+  disponibilite: IconClockPause,
   "mes-clients": IconUsersGroup,
   stats: IconChartBar,
   campagnes: IconSpeakerphone,

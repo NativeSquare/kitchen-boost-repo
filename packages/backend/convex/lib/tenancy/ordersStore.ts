@@ -679,3 +679,46 @@ export async function clearTenantOperationalPause(
 ): Promise<void> {
   await ctx.db.patch(tenantId, { operationalPause: undefined });
 }
+
+// ---------------------------------------------------------------------------
+// tenants — exceptionalClosure (#397 — durable 1+ jour, PRD 20 §7b / ADR 0018)
+// ---------------------------------------------------------------------------
+
+/**
+ * Read the calling tenant's exceptional closure (or `null`). Same access
+ * discipline as `getTenantOperationalPause`: the `tenants` row is reached via
+ * raw `ctx.db` here, but the CALLER (a tenant wrapper handler) has already
+ * gated access to `tenantId`. Closure is a DURABLE absence (vacances, panne
+ * frigo, intempéries) with a `from`/`until` window — distinct from the
+ * transient `operationalPause` (15-60 min) and from the lifecycle `status`.
+ */
+export async function getTenantExceptionalClosure(
+  ctx: QueryCtx | MutationCtx,
+  tenantId: Id<"tenants">,
+): Promise<{ from: number; until: number } | null> {
+  const tenant = await ctx.db.get(tenantId);
+  return tenant?.exceptionalClosure ?? null;
+}
+
+/**
+ * Set the tenant's exceptional closure (PRD 20 §7b). `from`/`until` are epoch
+ * ms; the validator that lives in `lib/orders/orders.ts` already enforces
+ * `from < until` before reaching this seam (so the persisted row is always
+ * meaningful — no zero-length or inverted window stored).
+ */
+export async function setTenantExceptionalClosure(
+  ctx: MutationCtx,
+  tenantId: Id<"tenants">,
+  from: number,
+  until: number,
+): Promise<void> {
+  await ctx.db.patch(tenantId, { exceptionalClosure: { from, until } });
+}
+
+/** Clear the tenant's exceptional closure (auto-reprise / manual reopen). */
+export async function clearTenantExceptionalClosure(
+  ctx: MutationCtx,
+  tenantId: Id<"tenants">,
+): Promise<void> {
+  await ctx.db.patch(tenantId, { exceptionalClosure: undefined });
+}

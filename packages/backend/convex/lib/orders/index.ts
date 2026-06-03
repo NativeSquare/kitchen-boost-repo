@@ -72,8 +72,10 @@ export {
   refusalReason,
 } from "../../table/orders";
 export {
+  type ExceptionalClosure,
   type OperationalPause,
   acceptsOrders,
+  isClosureActive,
   isPauseActive,
   tenantAcceptsOrderNow,
 } from "./status";

@@ -169,6 +169,15 @@ function dataSlots(n: SerializedNode): string[] {
 const TENANT_ID = "tenants:xyz";
 const noopAsync = async () => {};
 
+// Fixtures use LOCAL-time constructors (`new Date(...).getTime()`) instead
+// of `Date.UTC(...)` so the Intl.DateTimeFormat output the view produces
+// matches the wall-clock the test expects regardless of the CI timezone.
+const NOW = new Date(2026, 5, 3, 18, 0).getTime();
+const NOW_PLUS_30MIN = new Date(2026, 5, 3, 18, 30).getTime();
+const NOW_MINUS_1H = new Date(2026, 5, 3, 17, 0).getTime();
+const CLOSURE_FROM = new Date(2026, 5, 3, 0, 0).getTime();
+const CLOSURE_UNTIL = new Date(2026, 5, 5, 0, 0).getTime();
+
 const LOADING: DisponibiliteViewProps = {
   tenantId: TENANT_ID,
   pause: undefined,
@@ -179,7 +188,7 @@ const LOADING: DisponibiliteViewProps = {
   onClearClosure: noopAsync,
   // Injected clock — every time-sensitive copy is a function of `nowMs` so
   // tests are deterministic (no real wall-clock).
-  nowMs: Date.UTC(2026, 5, 3, 18, 0),
+  nowMs: NOW,
 };
 
 const NO_PAUSE_NO_CLOSURE: DisponibiliteViewProps = {
@@ -190,19 +199,19 @@ const NO_PAUSE_NO_CLOSURE: DisponibiliteViewProps = {
 
 const PAUSE_ACTIVE_30MIN: DisponibiliteViewProps = {
   ...NO_PAUSE_NO_CLOSURE,
-  pause: { until: Date.UTC(2026, 5, 3, 18, 30) }, // 30 min from nowMs
+  pause: { until: NOW_PLUS_30MIN },
 };
 
 const PAUSE_EXPIRED: DisponibiliteViewProps = {
   ...NO_PAUSE_NO_CLOSURE,
-  pause: { until: Date.UTC(2026, 5, 3, 17, 0) }, // 1h in the past
+  pause: { until: NOW_MINUS_1H },
 };
 
 const CLOSURE_ACTIVE: DisponibiliteViewProps = {
   ...NO_PAUSE_NO_CLOSURE,
   closure: {
-    from: Date.UTC(2026, 5, 3, 0, 0),
-    until: Date.UTC(2026, 5, 5, 0, 0),
+    from: CLOSURE_FROM,
+    until: CLOSURE_UNTIL,
   },
 };
 
