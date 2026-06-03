@@ -3114,15 +3114,17 @@ export const getWizardManagerInviteToken = internalQuery({
       .withIndex("by_email", (q) => q.eq("email", "wizard-e2e@kb-e2e.test"))
       .collect();
     if (invites.length === 0) return null;
-    // Most recent first (highest createdAt).
+    // Most recent first. `adminInvites` has no app-level `createdAt` column —
+    // we use Convex's system `_creationTime` (table/adminInvites.ts), surfaced
+    // to the caller as `createdAt` in the returns shape.
     const latest = invites.reduce((a, b) =>
-      a.createdAt > b.createdAt ? a : b,
+      a._creationTime > b._creationTime ? a : b,
     );
     return {
       token: latest.token,
       acceptedAt: latest.acceptedAt,
       expiresAt: latest.expiresAt,
-      createdAt: latest.createdAt,
+      createdAt: latest._creationTime,
     };
   },
 });
