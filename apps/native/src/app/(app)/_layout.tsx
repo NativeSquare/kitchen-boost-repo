@@ -31,6 +31,16 @@ export default function AppLayout() {
         }}
       >
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        {/* #401 — KB Orders detail screen pushed from the home card (PRD 20 §4
+           « détail cmd »). Modal-like sheet animation keeps the home queue
+           one tap away during the cuisinier's workflow. */}
+        <Stack.Screen
+          name="orders/[orderId]"
+          options={{
+            headerShown: false,
+            presentation: "card",
+          }}
+        />
       </Stack>
     </View>
   );

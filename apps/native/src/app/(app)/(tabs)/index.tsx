@@ -1,27 +1,120 @@
 import { Text } from "@/components/ui/text";
-import { ScrollView, View } from "react-native";
+import { OrderCard } from "@/lib/orders";
+import { useActiveTenantId } from "@/lib/tenant-switcher";
+import { api } from "@packages/backend/convex/_generated/api";
+import { useQuery } from "convex/react";
+import { useState } from "react";
+import {
+  ActivityIndicator,
+  RefreshControl,
+  ScrollView,
+  View,
+} from "react-native";
 
+/**
+ * #401 — KB Orders home (PRD 20 §2 « Écran d'accueil cmds en cours »).
+ *
+ * Live queue of the active tenant's in-flight orders, newest first. The
+ * backend `tenantOrders` query (chantier 2.3-D) excludes `en attente de
+ * paiement` (invisible until paid) and every terminal state (those live in
+ * the history) — the home only shows orders the kitchen is actively working.
+ *
+ * Transport (PRD 20 §13) — the Convex subscription IS the source of truth.
+ * The push APNs/FCM wakeup (not implemented here, lives in the notifications
+ * chantier) only reactivates the app; the cmd itself arrives via this
+ * `useQuery` sub in < 5s p95 (PRD 20 AC9 transverse).
+ *
+ * Pull-to-refresh (PRD 20 §2) — kept as a « geste rassurant même si Convex
+ * sub temps réel ». The Convex client doesn't expose a manual `refetch` for
+ * a subscribed query (it always serves the latest server state), so the
+ * pull-to-refresh is mostly a UX affordance; we toggle a short spinner to
+ * acknowledge the gesture.
+ *
+ * Tenant scoping (#399 + ADR 0010) — `useActiveTenantId` resolves the active
+ * tenant from the device row + the session attachment list (kiosque pin
+ * wins, else lastSelected, else first attached). `null` while loading or
+ * when no tenant is resolvable; in that case we show a discreet empty
+ * state instead of running the query.
+ *
+ * The `useQuery` itself is auto-scoped backend-side: `tenantQuery` keys on
+ * `ctx.tenantId` resolved from the args, so a foreign tenantId would throw
+ * Forbidden — but the Convex client wouldn't crash; we keep the input gated
+ * on `useActiveTenantId !== null` for the cleaner "no tenant attached"
+ * empty state.
+ */
 export default function Home() {
-  return (
-    <ScrollView
-      keyboardShouldPersistTaps="handled"
-      className="bg-background flex-1"
-      contentContainerClassName="sm:flex-1 items-center justify-center p-4 py-8 sm:py-4 sm:p-6"
-      keyboardDismissMode="interactive"
-      contentInsetAdjustmentBehavior="automatic"
-    >
-      <View className="items-center gap-4 max-w-sm">
-        <View className="w-16 h-16 rounded-2xl bg-muted items-center justify-center">
-          <Text className="text-3xl">🏠</Text>
-        </View>
-        <Text className="text-xl font-semibold text-foreground text-center">
-          Your Home Screen
-        </Text>
-        <Text className="text-muted-foreground text-center leading-relaxed">
-          This is a template project. Replace this placeholder with your app{"'"}s
-          main content — dashboards, feeds, or whatever fits your needs.
+  const activeTenantId = useActiveTenantId();
+  const orders = useQuery(
+    api.lib.orders.workflow.tenantOrders,
+    activeTenantId !== null ? { tenantId: activeTenantId } : "skip",
+  );
+
+  // Pull-to-refresh — purely cosmetic since the Convex sub already serves
+  // live state; we flip a short window so the spinner appears responsive.
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = () => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 400);
+  };
+
+  // No tenant resolved yet (loading session/device OR kb_admin OR no
+  // attachment) — show a discreet placeholder rather than a stale "0 cmds".
+  if (activeTenantId === null) {
+    return (
+      <View className="bg-background flex-1 items-center justify-center p-6">
+        <ActivityIndicator />
+        <Text className="text-muted-foreground mt-4 text-center">
+          Chargement du restaurant…
         </Text>
       </View>
+    );
+  }
+
+  // Convex query still in flight (first render of this tenant).
+  if (orders === undefined) {
+    return (
+      <View className="bg-background flex-1 items-center justify-center p-6">
+        <ActivityIndicator />
+        <Text className="text-muted-foreground mt-4 text-center">
+          Réception des commandes…
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <ScrollView
+      className="bg-background flex-1"
+      contentContainerClassName="p-4 sm:p-6"
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+      }
+    >
+      <View className="mb-4 flex-row items-center justify-between">
+        <Text className="text-foreground text-xl font-semibold">
+          Commandes en cours
+        </Text>
+        <Text className="text-muted-foreground text-sm">
+          {orders.length} en cours
+        </Text>
+      </View>
+
+      {orders.length === 0 ? (
+        <View className="items-center gap-2 py-12">
+          <View className="bg-muted h-16 w-16 items-center justify-center rounded-2xl">
+            <Text className="text-3xl">🍳</Text>
+          </View>
+          <Text className="text-foreground text-base font-semibold">
+            Aucune commande en cours
+          </Text>
+          <Text className="text-muted-foreground max-w-sm text-center text-sm">
+            Les nouvelles commandes apparaissent ici dès qu&apos;elles sont
+            payées.
+          </Text>
+        </View>
+      ) : (
+        orders.map((order) => <OrderCard key={order._id} order={order} />)
+      )}
     </ScrollView>
   );
 }
