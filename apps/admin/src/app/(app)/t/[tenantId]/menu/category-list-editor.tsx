@@ -141,20 +141,25 @@ export type CategoryListEditorProps = {
   /**
    * Refonte tabs Menu (Alex, 2026-06-03) — Controls whether each category row
    * also surfaces the per-category items list + the « + Item » CTA in the same
-   * vertical flow.
+   * vertical flow, AND whether the category header itself is editable.
    *   - `"list-only"` (default) → row = name input + delete + drag handle ONLY.
    *     Used by the « Catégories » tab where the gérant manages the structural
    *     spine without item noise.
-   *   - `"with-items"`          → row + items section (per-category items list
-   *     with the rupture toggle + intra-cat drag&drop) + « + Item » CTA below
-   *     each row. Used by the « Plats » tab — the items management surface.
+   *   - `"items-only"` (Alex, fix M-B 2026-06-03) → header rendered as a
+   *     READ-ONLY UPPERCASE section title (no Input, no delete button, no drag
+   *     handle on the category itself) + items section + « + Item » CTA below
+   *     each header. Used by the « Plats » tab — items management surface only,
+   *     category edition stays exclusive to the « Catégories » tab. The footer
+   *     « + Catégorie » button is ALSO hidden (categories are bootstrapped from
+   *     the « Catégories » tab — single source of truth for the structural
+   *     spine).
    * The items-section props (`itemsByCategory`, `onToggleItemAvailability`,
-   * `onCreateItem`, `onItemClick`, `onReorderItems`) are only consumed when
-   * `displayMode === "with-items"`. They are silently ignored otherwise — the
+   * `onCreateItem`, `onItemClick`, `onReorderItems`) are only consumed in
+   * `"items-only"` mode. They are silently ignored in `"list-only"` mode — the
    * « Catégories » tab never displays items even if a caller passes them by
    * accident.
    */
-  displayMode?: "list-only" | "with-items";
+  displayMode?: "list-only" | "items-only";
   /**
    * Items bucketed by their `categoryId` (page-owned, via
    * `bucketItemsByCategory` over the live `items.list` query).
@@ -162,13 +167,13 @@ export type CategoryListEditorProps = {
    *     items section renders skeletons.
    *   - present but a category key MISSING → that category has zero items;
    *     the items section renders its empty branch.
-   * Only consumed when `displayMode === "with-items"`.
+   * Only consumed when `displayMode === "items-only"`.
    */
   itemsByCategory?: Record<string, Doc<"menuItems">[]> | undefined;
   /**
    * Fired when the gérant flips the rupture toggle on a card. The page wires
    * this to `useTenantMutation(api.lib.menu.availability.setItemAvailability)`.
-   * Only consumed when `displayMode === "with-items"`.
+   * Only consumed when `displayMode === "items-only"`.
    */
   onToggleItemAvailability?: (
     itemId: Id<"menuItems">,
@@ -177,19 +182,19 @@ export type CategoryListEditorProps = {
   /**
    * Fired when the gérant clicks the « + Item » CTA in a category section.
    * The page opens the `ItemModal` in CREATE mode with the originating
-   * category pre-selected. Only consumed when `displayMode === "with-items"`.
+   * category pre-selected. Only consumed when `displayMode === "items-only"`.
    */
   onCreateItem?: (categoryId: Id<"menuCategories">) => void;
   /**
    * Fired when the gérant clicks an item card. The page opens the `ItemModal`
    * in EDIT mode pre-filled on the clicked item. Only consumed when
-   * `displayMode === "with-items"`.
+   * `displayMode === "items-only"`.
    */
   onItemClick?: (itemId: Id<"menuItems">) => void;
   /**
    * Persist a new full ordered ids list for ONE category after a drag&drop.
    * Backend `items.reorder` rejects partial payloads. Only consumed when
-   * `displayMode === "with-items"`.
+   * `displayMode === "items-only"`.
    */
   onReorderItems?: (
     categoryId: Id<"menuCategories">,
@@ -211,11 +216,18 @@ export function CategoryListEditor({
   onReorderItems,
 }: CategoryListEditorProps) {
   // Refonte tabs Menu (2026-06-03) — only render the per-category items
-  // section + « + Item » CTA when (a) the caller asks for `with-items` mode
+  // section + « + Item » CTA when (a) the caller asks for `items-only` mode
   // AND (b) the items-section wiring is complete. The boolean is forwarded to
   // every row so each one decides whether to surface the items block.
   const withItems =
-    displayMode === "with-items" && onToggleItemAvailability !== undefined;
+    displayMode === "items-only" && onToggleItemAvailability !== undefined;
+  // Alex fix M-B (2026-06-03) — in `items-only` mode, the category headers
+  // are READ-ONLY (no Input, no delete, no drag handle on the category itself).
+  // The « Plats » tab shouldn't let the gérant edit categories; the edition
+  // surface for the structural spine is the « Catégories » tab — single source
+  // of truth. Drag handles + the footer « + Catégorie » CTA are gated on the
+  // same flag (no category-mutation affordances in items-only mode).
+  const categoryHeaderReadOnly = displayMode === "items-only";
   // Defensive resort by `order` — mirror of the read-only `CategoryList`.
   const sorted = useMemo(
     () => [...categories].sort((a, b) => a.order - b.order),
@@ -233,7 +245,11 @@ export function CategoryListEditor({
   //   - Rollback: the mutation rejected, `sorted` is still the OLD order
   //     → `displayedIds` snaps back, and the page-level handler surfaces
   //     `toast.error`.
-  const sortable = onReorder !== undefined;
+  // Alex fix M-B (2026-06-03) — sortable on categories is gated by both the
+  // callback presence AND the read-only header flag. In items-only mode the
+  // categories spine is non-mutable from this surface (no drag handle, no
+  // delete, no rename) — reorder lives exclusively on the « Catégories » tab.
+  const sortable = onReorder !== undefined && !categoryHeaderReadOnly;
   const [displayedIds, setDisplayedIds] = useState<Id<"menuCategories">[]>(() =>
     sorted.map((c) => c._id),
   );
@@ -328,6 +344,7 @@ export function CategoryListEditor({
         onDelete={onDelete}
         autoFocus={autoFocus}
         withItems={withItems}
+        headerReadOnly={categoryHeaderReadOnly}
         items={itemsForCategory}
         onToggleItemAvailability={onToggleItemAvailability}
         onCreateItem={onCreateItem}
@@ -343,6 +360,7 @@ export function CategoryListEditor({
         sortable={false}
         autoFocus={autoFocus}
         withItems={withItems}
+        headerReadOnly={categoryHeaderReadOnly}
         items={itemsForCategory}
         onToggleItemAvailability={onToggleItemAvailability}
         onCreateItem={onCreateItem}
@@ -372,17 +390,19 @@ export function CategoryListEditor({
   return (
     <div className="flex flex-col gap-3" data-slot="menu-category-list-editor">
       {body}
-      <div className="flex">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={onCreate}
-          data-slot="menu-category-add"
-        >
-          <IconPlus className="mr-2 size-4" aria-hidden="true" />
-          Ajouter une catégorie
-        </Button>
-      </div>
+      {categoryHeaderReadOnly ? null : (
+        <div className="flex">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onCreate}
+            data-slot="menu-category-add"
+          >
+            <IconPlus className="mr-2 size-4" aria-hidden="true" />
+            Ajouter une catégorie
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -421,6 +441,15 @@ export type CategoryRowProps = {
    * `false` so the row stays the structural-spine only.
    */
   withItems?: boolean;
+  /**
+   * Alex fix M-B (2026-06-03) — `true` when the category header is rendered
+   * as a READ-ONLY UPPERCASE section title (no Input, no delete button, no
+   * drag handle). The « Plats » tab passes `true` so the gérant can only
+   * manage items here; rename/reorder/delete of categories themselves stays
+   * exclusive to the « Catégories » tab. Default `false` preserves the
+   * editable-header behaviour of the « Catégories » tab.
+   */
+  headerReadOnly?: boolean;
   /** Items for THIS category. See `CategoryListEditorProps.itemsByCategory`. */
   items?: Doc<"menuItems">[] | undefined;
   /** Forwarded to the per-category items list when `withItems` is true. */
@@ -448,6 +477,7 @@ export function CategoryRow({
   setNodeRef,
   autoFocus = false,
   withItems = false,
+  headerReadOnly = false,
   items,
   onToggleItemAvailability,
   onCreateItem,
@@ -565,84 +595,103 @@ export function CategoryRow({
   // dnd-kit's `setNodeRef` + `style` (transform/transition) must wrap
   // EVERYTHING that needs to follow the drag — including the items section
   // below the editable card — so the row + its items move as a single block
-  // during reorder. The Card keeps the `menu-category-row` slot for selector
-  // continuity (E2E + existing tests).
+  // during reorder. The Card / read-only header keeps the `menu-category-row`
+  // slot for selector continuity (E2E + existing tests).
+  //
+  // Alex fix M-B (2026-06-03) — `headerReadOnly` mode renders an UPPERCASE
+  // `<h3>` section title in place of the editable Card. No Input, no delete
+  // button, no confirmation dialog — the row carries only the structural
+  // heading + its items block. Used by the « Plats » tab where category
+  // edition is intentionally moved to the « Catégories » tab. We DON'T
+  // render `useRef` / `useEffect` paths conditionally (rule-of-hooks), but
+  // their effects are benign in the read-only branch (the input ref is
+  // never attached, the debounce flush has no input to drive).
+  const header = headerReadOnly ? (
+    <h3
+      data-slot="menu-category-row"
+      data-category-id={category._id as unknown as string}
+      className="text-muted-foreground border-b pb-1 text-sm font-bold tracking-wide uppercase"
+    >
+      {category.name}
+    </h3>
+  ) : (
+    <Card data-slot="menu-category-row">
+      <CardContent className="flex items-center gap-3 py-3">
+        {dragHandle}
+        <Input
+          ref={inputRef}
+          value={draft}
+          onChange={(e) => {
+            const next = e.target.value;
+            setDraft(next);
+            debouncedRename(next);
+          }}
+          onKeyDown={(e) => {
+            // Enter = commit. Fires the pending rename synchronously (no need
+            // to wait 600 ms), then blurs so the user gets a visual signal
+            // « ma saisie a bien été enregistrée ». Reported E2E manuel par
+            // Alex : « Enter ne fais aucune action, PAS moyen de valider la
+            // saisie d'une catégorie simplement ».
+            if (e.key === "Enter") {
+              e.preventDefault();
+              debouncedRename.flush();
+              e.currentTarget.blur();
+            }
+          }}
+          onBlur={() => {
+            debouncedRename.flush();
+          }}
+          data-slot="menu-category-name-input"
+          data-category-id={category._id as unknown as string}
+          data-autofocus-pending={autoFocus ? "true" : undefined}
+          aria-label={`Nom de la catégorie ${category.name}`}
+          className="flex-1"
+        />
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={() => setConfirmOpen(true)}
+          data-slot="menu-category-delete"
+          aria-label={`Supprimer la catégorie ${category.name}`}
+        >
+          <IconTrash className="size-4" aria-hidden="true" />
+        </Button>
+      </CardContent>
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer « {category.name} » ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Cette action est irréversible. Tous les items rattachés à cette
+              catégorie seront également supprimés.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                onDelete(category._id);
+                setConfirmOpen(false);
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-slot="menu-category-delete-confirm"
+            >
+              Confirmer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </Card>
+  );
+
   return (
     <div
       ref={setNodeRef as ((node: HTMLDivElement | null) => void) | undefined}
       style={style}
       className="flex flex-col gap-2"
     >
-      <Card data-slot="menu-category-row">
-        <CardContent className="flex items-center gap-3 py-3">
-          {dragHandle}
-          <Input
-            ref={inputRef}
-            value={draft}
-            onChange={(e) => {
-              const next = e.target.value;
-              setDraft(next);
-              debouncedRename(next);
-            }}
-            onKeyDown={(e) => {
-              // Enter = commit. Fires the pending rename synchronously (no need
-              // to wait 600 ms), then blurs so the user gets a visual signal
-              // « ma saisie a bien été enregistrée ». Reported E2E manuel par
-              // Alex : « Enter ne fais aucune action, PAS moyen de valider la
-              // saisie d'une catégorie simplement ».
-              if (e.key === "Enter") {
-                e.preventDefault();
-                debouncedRename.flush();
-                e.currentTarget.blur();
-              }
-            }}
-            onBlur={() => {
-              debouncedRename.flush();
-            }}
-            data-slot="menu-category-name-input"
-            data-category-id={category._id as unknown as string}
-            data-autofocus-pending={autoFocus ? "true" : undefined}
-            aria-label={`Nom de la catégorie ${category.name}`}
-            className="flex-1"
-          />
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            onClick={() => setConfirmOpen(true)}
-            data-slot="menu-category-delete"
-            aria-label={`Supprimer la catégorie ${category.name}`}
-          >
-            <IconTrash className="size-4" aria-hidden="true" />
-          </Button>
-        </CardContent>
-        <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>
-                Supprimer « {category.name} » ?
-              </AlertDialogTitle>
-              <AlertDialogDescription>
-                Cette action est irréversible. Tous les items rattachés à cette
-                catégorie seront également supprimés.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Annuler</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={() => {
-                  onDelete(category._id);
-                  setConfirmOpen(false);
-                }}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                data-slot="menu-category-delete-confirm"
-              >
-                Confirmer
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      </Card>
+      {header}
       {itemsBlock}
     </div>
   );
@@ -669,6 +718,7 @@ type SortableCategoryRowProps = Pick<
   | "onDelete"
   | "autoFocus"
   | "withItems"
+  | "headerReadOnly"
   | "items"
   | "onToggleItemAvailability"
   | "onCreateItem"
@@ -682,6 +732,7 @@ function SortableCategoryRow({
   onDelete,
   autoFocus,
   withItems,
+  headerReadOnly,
   items,
   onToggleItemAvailability,
   onCreateItem,
@@ -724,6 +775,7 @@ function SortableCategoryRow({
       setNodeRef={setNodeRef}
       autoFocus={autoFocus}
       withItems={withItems}
+      headerReadOnly={headerReadOnly}
       items={items}
       onToggleItemAvailability={onToggleItemAvailability}
       onCreateItem={onCreateItem}

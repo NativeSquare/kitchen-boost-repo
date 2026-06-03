@@ -625,6 +625,115 @@ describe("CategoryListEditor — F-MENU-02 (#200)", () => {
     expect(input.props["data-autofocus-pending"]).toBeUndefined();
   });
 
+  // -------------------------------------------------------------------------
+  // Alex fix M-B (2026-06-03) — `displayMode="items-only"` contract
+  // -------------------------------------------------------------------------
+  // The « Plats » tab uses `CategoryListEditor` in `items-only` mode: the
+  // category headers are READ-ONLY (uppercase <h3>, no Input, no delete,
+  // no drag handle on the category itself), the items section + « + Item »
+  // CTA stay rendered, and the footer « + Catégorie » is hidden (the
+  // category creation surface lives in the Catégories tab only).
+  //
+  // Contract pinned per row (CategoryRow with headerReadOnly=true) AND at
+  // the editor level (no footer « + Catégorie », no drag handles even if
+  // onReorder is wired by the page).
+
+  it("M-B — CategoryRow(headerReadOnly=true) renders NO input, NO delete button (read-only header)", () => {
+    const tree = serialize(
+      CategoryRow({
+        category: makeCategory({ name: "Entrées", order: 0 }),
+        onRename: vi.fn(),
+        onDelete: vi.fn(),
+        sortable: false,
+        headerReadOnly: true,
+      }),
+    );
+    const inputs = findBySlot(tree, "menu-category-name-input");
+    expect(inputs).toHaveLength(0);
+    const deleteButtons = findBySlot(tree, "menu-category-delete");
+    expect(deleteButtons).toHaveLength(0);
+  });
+
+  it("M-B — CategoryRow(headerReadOnly=true) renders the category name as UPPERCASE text in the menu-category-row slot", () => {
+    const tree = serialize(
+      CategoryRow({
+        category: makeCategory({ name: "Entrées", order: 0 }),
+        onRename: vi.fn(),
+        onDelete: vi.fn(),
+        sortable: false,
+        headerReadOnly: true,
+      }),
+    );
+    const rows = findBySlot(tree, "menu-category-row");
+    expect(rows).toHaveLength(1);
+    expect(allText(rows[0])).toContain("Entrées");
+    // The `uppercase` Tailwind utility is the visible affordance — pin its
+    // class so a refactor can't silently regress the casing.
+    const classes = (rows[0].props["className"] as string | undefined) ?? "";
+    expect(classes).toMatch(/\buppercase\b/);
+  });
+
+  it("M-B — CategoryListEditor(displayMode=items-only) renders NO footer « + Catégorie » CTA", () => {
+    const tree = serialize(
+      CategoryListEditor({
+        categories: CATEGORIES,
+        onCreate: vi.fn(),
+        onRename: vi.fn(),
+        onDelete: vi.fn(),
+        displayMode: "items-only",
+        onToggleItemAvailability: vi.fn(),
+        itemsByCategory: {},
+      }),
+    );
+    const addButtons = findBySlot(tree, "menu-category-add");
+    expect(addButtons).toHaveLength(0);
+  });
+
+  it("M-B — CategoryListEditor(displayMode=items-only) renders NO drag handle on category headers, even when onReorder is wired", () => {
+    // The page-side wiring always provides `onReorder` (single source of
+    // truth for the categories reorder mutation). Items-only mode must
+    // SUPPRESS the drag handle anyway — reorder lives exclusively in the
+    // Catégories tab.
+    const tree = serialize(
+      CategoryListEditor({
+        categories: CATEGORIES,
+        onCreate: vi.fn(),
+        onRename: vi.fn(),
+        onDelete: vi.fn(),
+        onReorder: vi.fn(),
+        displayMode: "items-only",
+        onToggleItemAvailability: vi.fn(),
+        itemsByCategory: {},
+      }),
+    );
+    const handles = findBySlot(tree, "menu-category-drag-handle");
+    expect(handles).toHaveLength(0);
+  });
+
+  it("M-B — CategoryListEditor(displayMode=items-only) STILL renders one read-only header per category, in sorted order", () => {
+    // The items management surface needs the spine for visual structure — each
+    // category appears once as an UPPERCASE header. The slot stays
+    // `menu-category-row` for E2E selector continuity with the editable branch.
+    const tree = serialize(
+      CategoryListEditor({
+        categories: CATEGORIES,
+        onCreate: vi.fn(),
+        onRename: vi.fn(),
+        onDelete: vi.fn(),
+        displayMode: "items-only",
+        onToggleItemAvailability: vi.fn(),
+        itemsByCategory: {},
+      }),
+    );
+    const rows = findBySlot(tree, "menu-category-row");
+    expect(rows).toHaveLength(CATEGORIES.length);
+    // Defensive-sort order: Entrées (0), Plats (1), Desserts (2).
+    const orderedNames = rows.map((r) => allText(r));
+    expect(orderedNames[0]).toContain("Entrées");
+    expect(orderedNames[1]).toContain("Plats");
+    expect(orderedNames[2]).toContain("Desserts");
+  });
+
   // Mark `Id` import as used so the type-only fixture compiles in node env.
   void ({} as Id<"menuCategories">);
 });

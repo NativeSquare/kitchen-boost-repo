@@ -454,12 +454,17 @@ describe("MenuView — F-MENU-01 (#187)", () => {
   });
 
   it("F-MENU-02 — with CRUD callbacks, surfaces the « + Catégorie » affordance (data-slot=menu-category-add)", () => {
+    // The « + Catégorie » CTA lives in the « Catégories » tab (the structural
+    // spine surface — single source of truth for category creation; the « Plats »
+    // tab is items-only since Alex fix M-B 2026-06-03).
     const tree = serialize(
       MenuView({
         categories: UNORDERED_CATEGORIES,
         onCreateCategory: () => {},
         onRenameCategory: () => {},
         onDeleteCategory: () => {},
+        currentTab: "categories",
+        onTabChange: () => {},
       }),
     );
     const addButtons = flatten(tree).filter((n) => {
@@ -511,6 +516,10 @@ describe("MenuView — F-MENU-01 (#187)", () => {
   });
 
   it("F-MENU-03 — with onReorderCategories, surfaces a drag handle on each category row", () => {
+    // Drag handles on categories live in the « Catégories » tab (since Alex
+    // fix M-B 2026-06-03: the « Plats » tab is items-only and the category
+    // header is read-only with no drag handle — reorder happens from the
+    // « Catégories » tab, single source of truth for the spine).
     const tree = serialize(
       MenuView({
         categories: UNORDERED_CATEGORIES,
@@ -518,6 +527,8 @@ describe("MenuView — F-MENU-01 (#187)", () => {
         onRenameCategory: () => {},
         onDeleteCategory: () => {},
         onReorderCategories: () => {},
+        currentTab: "categories",
+        onTabChange: () => {},
       }),
     );
     const handles = flatten(tree).filter((n) => {
@@ -1161,7 +1172,7 @@ describe("MenuView — F-MENU-01 (#187)", () => {
       expect(itemAdders).toHaveLength(0);
     });
 
-    it("Tab « Plats » (with-items) renders item rows + « + Item » per category", () => {
+    it("Tab « Plats » (items-only) renders item rows + « + Item » per category", () => {
       type Item = Doc<"menuItems">;
       const cat0 = UNORDERED_CATEGORIES[0]._id as string;
       const cat1 = UNORDERED_CATEGORIES[1]._id as string;
@@ -1208,6 +1219,220 @@ describe("MenuView — F-MENU-01 (#187)", () => {
         return n.props["data-slot"] === "menu-item-add";
       });
       expect(itemAdders).toHaveLength(UNORDERED_CATEGORIES.length);
+    });
+
+    // -------------------------------------------------------------------------
+    // Alex fix M-B (2026-06-03) — Tab « Plats » headers must be READ-ONLY
+    // -------------------------------------------------------------------------
+    // « dans le menu, je dois pas pouvoir éditer les catégories si je suis dans
+    // la catégorie « Plat ». Les catégories doivent juste apparaître en toutes
+    // lettres MAJUSCULES, mais pas être éditables. Si on veut éditer les
+    // catégories, ça se fait depuis la table « Catégorie ». »
+    //
+    // Implementation: `CategoryListEditor` got a third `displayMode="items-only"`
+    // value that renders the row's header as an uppercase <h3> (no Input, no
+    // delete button, no drag handle on the category itself) while keeping the
+    // items section + « + Item » CTA below each header.
+
+    it("Alex fix M-B — Tab « Plats » category headers are READ-ONLY (no input, no delete, no drag handle, no « + Catégorie »)", () => {
+      type Item = Doc<"menuItems">;
+      const cat0 = UNORDERED_CATEGORIES[0]._id as string;
+      const itemsByCategory: Record<string, Item[]> = {
+        [cat0]: [
+          {
+            _id: "item_x" as Item["_id"],
+            _creationTime: 0,
+            tenantId: "tenant_test" as Item["tenantId"],
+            categoryId: cat0 as Item["categoryId"],
+            name: "Tiramisu",
+            description: "",
+            basePrice: 0,
+            allergens: [],
+            available: true,
+            order: 0,
+            createdAt: 0,
+          } as Item,
+        ],
+      };
+      const tree = serialize(
+        MenuView({
+          categories: UNORDERED_CATEGORIES,
+          onCreateCategory: () => {},
+          onRenameCategory: () => {},
+          onDeleteCategory: () => {},
+          // Page-side wiring stays untouched: it always passes the reorder
+          // callback. The items-only mode must IGNORE it for the category spine
+          // (drag handle on category MUST NOT surface in the Plats tab).
+          onReorderCategories: () => {},
+          itemsByCategory,
+          onToggleItemAvailability: () => {},
+          onCreateItem: () => {},
+          onItemClick: () => {},
+          onReorderItems: () => {},
+          currentTab: "items",
+          onTabChange: () => {},
+        }),
+      );
+      // No category rename input → editing the spine from Plats is impossible.
+      const nameInputs = flatten(tree).filter((n) => {
+        if (n === null || "text" in n) return false;
+        return n.props["data-slot"] === "menu-category-name-input";
+      });
+      expect(nameInputs).toHaveLength(0);
+      // No delete button on the category header.
+      const deleteButtons = flatten(tree).filter((n) => {
+        if (n === null || "text" in n) return false;
+        return n.props["data-slot"] === "menu-category-delete";
+      });
+      expect(deleteButtons).toHaveLength(0);
+      // No drag handle on the category header (reorder lives in the Catégories
+      // tab exclusively).
+      const categoryDragHandles = flatten(tree).filter((n) => {
+        if (n === null || "text" in n) return false;
+        return n.props["data-slot"] === "menu-category-drag-handle";
+      });
+      expect(categoryDragHandles).toHaveLength(0);
+      // No « + Catégorie » footer button (categories are bootstrapped from the
+      // Catégories tab — single source of truth).
+      const addCategoryButtons = flatten(tree).filter((n) => {
+        if (n === null || "text" in n) return false;
+        return n.props["data-slot"] === "menu-category-add";
+      });
+      expect(addCategoryButtons).toHaveLength(0);
+    });
+
+    it("Alex fix M-B — Tab « Plats » still surfaces each category NAME as an UPPERCASE header (visible structure)", () => {
+      // The gérant needs to know WHICH category each items block belongs to —
+      // the header text is the visible structural anchor. We pin via the
+      // canonical `menu-category-row` slot (data-slot kept stable across the
+      // editable Card branch + the read-only <h3> branch — selector continuity
+      // for the E2E tests).
+      type Item = Doc<"menuItems">;
+      const cat0 = UNORDERED_CATEGORIES[0]._id as string;
+      const itemsByCategory: Record<string, Item[]> = { [cat0]: [] };
+      const tree = serialize(
+        MenuView({
+          categories: UNORDERED_CATEGORIES,
+          onCreateCategory: () => {},
+          onRenameCategory: () => {},
+          onDeleteCategory: () => {},
+          itemsByCategory,
+          onToggleItemAvailability: () => {},
+          onCreateItem: () => {},
+          onItemClick: () => {},
+          currentTab: "items",
+          onTabChange: () => {},
+        }),
+      );
+      const rows = flatten(tree).filter((n) => {
+        if (n === null || "text" in n) return false;
+        return n.props["data-slot"] === "menu-category-row";
+      });
+      expect(rows).toHaveLength(UNORDERED_CATEGORIES.length);
+      // Uppercase rendering via CSS `text-transform: uppercase` (Tailwind's
+      // `uppercase` utility). We pin the class on every header so a future
+      // refactor can't silently regress the rendering. Use allClasses on the
+      // row subtree to absorb children class noise.
+      for (const row of rows) {
+        expect(allClasses(row)).toMatch(/\buppercase\b/);
+      }
+      // The category names themselves are still rendered as text inside the row.
+      const rowsText = rows.map((r) => allText(r)).join(" ");
+      for (const c of UNORDERED_CATEGORIES) {
+        expect(rowsText).toContain(c.name);
+      }
+    });
+
+    it("Alex fix M-B — Tab « Catégories » still surfaces EDITABLE headers (rename + delete + drag handle preserved)", () => {
+      // Inverse pin of the previous test: the « Catégories » tab is the
+      // canonical editing surface for the spine. The list-only mode preserves
+      // every existing affordance (input, delete, drag handle, « + Catégorie »).
+      const tree = serialize(
+        MenuView({
+          categories: UNORDERED_CATEGORIES,
+          onCreateCategory: () => {},
+          onRenameCategory: () => {},
+          onDeleteCategory: () => {},
+          onReorderCategories: () => {},
+          currentTab: "categories",
+          onTabChange: () => {},
+        }),
+      );
+      const nameInputs = flatten(tree).filter((n) => {
+        if (n === null || "text" in n) return false;
+        return n.props["data-slot"] === "menu-category-name-input";
+      });
+      expect(nameInputs).toHaveLength(UNORDERED_CATEGORIES.length);
+      const deleteButtons = flatten(tree).filter((n) => {
+        if (n === null || "text" in n) return false;
+        return n.props["data-slot"] === "menu-category-delete";
+      });
+      expect(deleteButtons).toHaveLength(UNORDERED_CATEGORIES.length);
+      const dragHandles = flatten(tree).filter((n) => {
+        if (n === null || "text" in n) return false;
+        return n.props["data-slot"] === "menu-category-drag-handle";
+      });
+      expect(dragHandles).toHaveLength(UNORDERED_CATEGORIES.length);
+      const addCategoryButtons = flatten(tree).filter((n) => {
+        if (n === null || "text" in n) return false;
+        return n.props["data-slot"] === "menu-category-add";
+      });
+      expect(addCategoryButtons).toHaveLength(1);
+    });
+
+    // -------------------------------------------------------------------------
+    // Alex fix M-B (2026-06-03) — « Aperçu » header button — visible & linked
+    // -------------------------------------------------------------------------
+    // Bug Alex E2E manuel : « pour M9, il faut que tu remettes les liens
+    // fonctionnels et que tu mettes un raccourci depuis le menu [...] il faut
+    // bien ajouter à la fois le bouton pour accéder à la preview dans le menu,
+    // et il faut également que la preview fonctionne ».
+    //
+    // The button + the link were both wired in db8e295 (F-MENU-10 / #254). We
+    // lock the contract here so the split-tabs refactor (or a future tab
+    // refactor) can never accidentally drop the wiring again.
+
+    it("Alex fix M-B — « Aperçu » header button is ENABLED with an href ending in `/menu/preview` (peu importe tab actif)", () => {
+      const previewHref = "/t/tenant_test/menu/preview";
+      for (const tab of ["categories", "items", "modifiers"] as const) {
+        const tree = serialize(
+          MenuView({
+            categories: UNORDERED_CATEGORIES,
+            onCreateCategory: () => {},
+            onRenameCategory: () => {},
+            onDeleteCategory: () => {},
+            previewHref,
+            currentTab: tab,
+            onTabChange: () => {},
+            modifiersSection: <div>placeholder</div>,
+          }),
+        );
+        const matches = flatten(tree).filter((n) => {
+          if (n === null || "text" in n) return false;
+          return n.props["data-slot"] === "menu-preview-button";
+        }) as Array<{
+          type: string;
+          props: Record<string, unknown>;
+          children: SerializedNode[];
+        }>;
+        expect(matches, `tab=${tab}`).toHaveLength(1);
+        const node = matches[0];
+        // Enabled (a disabled link wouldn't navigate) — the wired branch
+        // renders an <a>-wrapping Button (asChild), never the disabled
+        // placeholder Button.
+        expect(node.props["disabled"], `tab=${tab}`).toBeFalsy();
+        // The href is the page-built `/t/<tenantId>/menu/preview` URL — pin
+        // the suffix so a future refactor that swaps it for the eater PWA
+        // host (which would surface the published snapshot, NOT the draft —
+        // breaking the load-bearing « Aperçu = brouillon » invariant of
+        // ADR 0015) fails loudly.
+        const anchorWithHref = flatten(node).find((n) => {
+          if (n === null || "text" in n) return false;
+          const href = n.props["href"];
+          return typeof href === "string" && href.endsWith("/menu/preview");
+        });
+        expect(anchorWithHref, `tab=${tab}`).toBeDefined();
+      }
     });
 
     it("Tab « Personnalisations » renders the modifiersSection passed by the page", () => {

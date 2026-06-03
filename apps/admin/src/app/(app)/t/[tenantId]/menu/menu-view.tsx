@@ -274,7 +274,7 @@ export function MenuView({
           </TabsContent>
           <TabsContent value="items" data-slot="menu-tab-content-items">
             <MenuBody
-              displayMode="with-items"
+              displayMode="items-only"
               categories={categories}
               hasCrud={hasCrud}
               onCreateCategory={onCreateCategory}
@@ -377,12 +377,16 @@ function MenuHeader({
 type MenuBodyProps = Omit<MenuViewProps, "currentTab" | "onTabChange"> & {
   hasCrud: boolean;
   /**
-   * Refonte tabs Menu (2026-06-03) — body display mode, mirror of
-   * `CategoryListEditor.displayMode`. Rendered once per tab content.
-   *   - `"list-only"` (Tab « Catégories »): structural spine only.
-   *   - `"with-items"` (Tab « Plats »): rows + per-category items + « + Item ».
+   * Refonte tabs Menu (2026-06-03) + Alex fix M-B — body display mode, mirror
+   * of `CategoryListEditor.displayMode`. Rendered once per tab content.
+   *   - `"list-only"` (Tab « Catégories »): structural spine only, headers
+   *     EDITABLE (Input + delete + drag handle on category).
+   *   - `"items-only"` (Tab « Plats »): READ-ONLY uppercase category headers
+   *     + per-category items list + « + Item » CTA. Category mutation
+   *     surfaces (rename / delete / reorder) stay exclusive to the
+   *     « Catégories » tab — single source of truth for the spine.
    */
-  displayMode: "list-only" | "with-items";
+  displayMode: "list-only" | "items-only";
 };
 
 function MenuBody({
@@ -424,15 +428,15 @@ function MenuBody({
         onReorder={onReorderCategories}
         displayMode={displayMode}
         itemsByCategory={
-          displayMode === "with-items" ? itemsByCategory : undefined
+          displayMode === "items-only" ? itemsByCategory : undefined
         }
         onToggleItemAvailability={
-          displayMode === "with-items" ? onToggleItemAvailability : undefined
+          displayMode === "items-only" ? onToggleItemAvailability : undefined
         }
-        onCreateItem={displayMode === "with-items" ? onCreateItem : undefined}
-        onItemClick={displayMode === "with-items" ? onItemClick : undefined}
+        onCreateItem={displayMode === "items-only" ? onCreateItem : undefined}
+        onItemClick={displayMode === "items-only" ? onItemClick : undefined}
         onReorderItems={
-          displayMode === "with-items" ? onReorderItems : undefined
+          displayMode === "items-only" ? onReorderItems : undefined
         }
       />
     );
