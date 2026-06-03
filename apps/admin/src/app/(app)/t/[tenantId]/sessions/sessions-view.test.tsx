@@ -82,6 +82,27 @@ function typeName(t: unknown): string {
   return String(t);
 }
 
+/**
+ * Serialize props + children into a structural node — used both as the
+ * default branch and the "fallback when a function/forwardRef component
+ * throws" branch (so radix components that need DOM context still expose
+ * their JSX children to the test).
+ */
+function structural(node: ReactElement): SerializedNode {
+  const props = { ...(node.props as Record<string, unknown>) };
+  const rawChildren = props.children as ReactNode | undefined;
+  delete props.children;
+  const children: SerializedNode[] = [];
+  if (rawChildren !== undefined) {
+    const list = Array.isArray(rawChildren) ? rawChildren : [rawChildren];
+    for (const c of list) {
+      const s = serialize(c);
+      if (s !== null) children.push(s);
+    }
+  }
+  return { type: typeName(node.type), props, children };
+}
+
 function serialize(node: ReactNode): SerializedNode {
   if (node === null || node === undefined || node === false || node === true) {
     return null;
@@ -104,7 +125,11 @@ function serialize(node: ReactNode): SerializedNode {
       try {
         return serialize(fn(node.props));
       } catch {
-        return { type: typeName(node.type), props: {}, children: [] };
+        // Radix components (Dialog, AlertDialog…) rely on DOM context we
+        // can't supply under environment: "node". Fall back to a structural
+        // serialization so the JSX children (e.g. our « Révoquer » button)
+        // remain visible to assertions on text / data-slot.
+        return structural(node);
       }
     }
     // ForwardRef / memo wrappers: unwrap one level for shadcn primitives.
@@ -116,22 +141,11 @@ function serialize(node: ReactNode): SerializedNode {
         try {
           return serialize(obj.render(node.props, null));
         } catch {
-          return { type: typeName(node.type), props: {}, children: [] };
+          return structural(node);
         }
       }
     }
-    const props = { ...(node.props as Record<string, unknown>) };
-    const rawChildren = props.children as ReactNode | undefined;
-    delete props.children;
-    const children: SerializedNode[] = [];
-    if (rawChildren !== undefined) {
-      const list = Array.isArray(rawChildren) ? rawChildren : [rawChildren];
-      for (const c of list) {
-        const s = serialize(c);
-        if (s !== null) children.push(s);
-      }
-    }
-    return { type: typeName(node.type), props, children };
+    return structural(node);
   }
   return null;
 }
