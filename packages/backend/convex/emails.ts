@@ -17,6 +17,21 @@ export const resend = new Resend(components.resend, {
 const DEFAULT_FROM = `${APP_NAME} <no-reply@${APP_DOMAIN}>`;
 
 /**
+ * Base URL of the **admin** app (`apps/admin`, port 3000 in dev) — that's
+ * where `/accept-invite` lives for BOTH admin and manager invites. The PWA
+ * (`apps/web`, port 3001) does NOT host this page.
+ *
+ * Reads `SITE_URL` (the canonical project env var — see README §5d and
+ * `docs/contexts/_architecture/STACK.md`). Falls back to `http://localhost:3000`
+ * locally. **Never** fall back to `localhost:3001` here: a magic-link that
+ * lands on the PWA is a dead link and the invitee cannot complete onboarding
+ * (regression caught in E2E AC2 — Alex, 2026-06-03).
+ */
+export function getAdminBaseUrl(): string {
+  return process.env.SITE_URL || "http://localhost:3000";
+}
+
+/**
  * Generic email sending action that accepts pre-rendered HTML.
  * Use this as a base for specific email actions.
  */
@@ -53,7 +68,7 @@ export const sendAdminInviteEmail = internalAction({
   },
   returns: v.string(),
   handler: async (ctx, args) => {
-    const inviteUrl = `${process.env.ADMIN_URL || "http://localhost:3001"}/accept-invite?token=${args.token}`;
+    const inviteUrl = `${getAdminBaseUrl()}/accept-invite?token=${args.token}`;
 
     const isDev = process.env.IS_DEV === "true";
     if (isDev) {
@@ -147,7 +162,7 @@ export const sendManagerInviteEmail = internalAction({
   handler: async (ctx, args) => {
     // Same acceptance endpoint as admin invites — `acceptInvite` (B-AUTH-6)
     // discriminates the two flows by reading the invite's `targetRole`.
-    const inviteUrl = `${process.env.ADMIN_URL || "http://localhost:3001"}/accept-invite?token=${args.token}`;
+    const inviteUrl = `${getAdminBaseUrl()}/accept-invite?token=${args.token}`;
 
     const isDev = process.env.IS_DEV === "true";
     if (isDev) {

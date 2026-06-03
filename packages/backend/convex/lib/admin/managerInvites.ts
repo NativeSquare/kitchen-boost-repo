@@ -65,7 +65,7 @@ import {
  * the `tenants` doc already loaded at step 1 (acceptance criterion: a later
  * tenant rename does NOT mutate emails already sent — the snapshot semantic is
  * intentional). The link in the email points at the same
- * `${ADMIN_URL}/accept-invite?token=…` endpoint as admin invites — the
+ * `${SITE_URL}/accept-invite?token=…` endpoint as admin invites — the
  * `acceptInvite` mutation extended in B-AUTH-6 discriminates the two flows by
  * reading the invite row's `targetRole`. Scheduling via `runAfter(0, …)` keeps
  * the mutation transactional: a thrown error AFTER the schedule call rolls
