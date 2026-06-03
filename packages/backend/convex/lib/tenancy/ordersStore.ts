@@ -1,4 +1,5 @@
 import { ConvexError } from "convex/values";
+import { internal } from "../../_generated/api";
 import type { Doc, Id } from "../../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../../_generated/server";
 import type {
@@ -11,6 +12,9 @@ import {
   recordCustomerOrderForTenant,
   revertCustomerOrderForTenant,
 } from "./customerOrdersStore";
+
+/** #404 — Auto-expired timeout d'acceptation (PRD 20 §6b + ADR 0016). */
+const AUTO_EXPIRED_TIMEOUT_MS = 5 * 60 * 1000;
 
 /**
  * 2.3-A — the SANCTIONED tenant-scoped data-access seam for the `orders`,
@@ -209,6 +213,8 @@ function transitionStampFor(
       return { completedAt: now };
     case "refusée":
       return { refusedAt: now };
+    case "auto_expired":
+      return { autoExpiredAt: now };
     default:
       return undefined;
   }
@@ -350,24 +356,30 @@ export async function recordTenantOrderStatus(
  *  - `nouvelle → en préparation`          : acknowledge (PRD 20 §5 "Accepter").
  *  - `nouvelle → refusée`                 : refuse (PRD 20 §6, slice E — listed legal
  *                                           so the refusal mutation reuses this guard).
+ *  - `nouvelle → auto_expired`            : auto-expired timeout 5 min (#404, PRD 20
+ *                                           §6b + ADR 0016, system-side via the
+ *                                           Convex scheduler; the seam-side helper
+ *                                           `autoExpireTenantOrder` no-ops if the
+ *                                           order is no longer `nouvelle`).
  *  - `en préparation → prête`             : markPrepared (PRD 20 §5 "Prête").
  *  - `prête → remise`                     : markHandedOff (PRD 20 §5 "Remise").
  *  - `remise → livrée`                    : delivery, driven by Uber Direct events (2.6).
  *  - `remise → collectée`                 : click & collect, immediate at handoff.
  *
- * Terminal states (`livrée` / `collectée` / `refusée`) have NO outgoing edge — they
- * are non-re-transitionable.
+ * Terminal states (`livrée` / `collectée` / `refusée` / `auto_expired`) have NO
+ * outgoing edge — they are non-re-transitionable.
  */
 const LEGAL_TRANSITIONS: Readonly<Record<OrderStatus, readonly OrderStatus[]>> =
   {
     "en attente de paiement": ["nouvelle", "refusée"],
-    nouvelle: ["en préparation", "refusée"],
+    nouvelle: ["en préparation", "refusée", "auto_expired"],
     "en préparation": ["prête"],
     prête: ["remise"],
     remise: ["livrée", "collectée"],
     livrée: [],
     collectée: [],
     refusée: [],
+    auto_expired: [],
   };
 
 /**
@@ -424,6 +436,7 @@ export const TERMINAL_ORDER_STATUSES: readonly OrderStatus[] = [
   "livrée",
   "collectée",
   "refusée",
+  "auto_expired",
 ];
 
 /**
@@ -547,6 +560,22 @@ export async function confirmTenantOrderPayment(
     totalCents: pricingSnapshot.total,
     orderAt: now,
   });
+
+  // #404 — Arm the 5-min "timeout d'acceptation" failsafe (PRD 20 §6b + ADR
+  // 0016). The order has just become `nouvelle`, the kitchen has 5 minutes to
+  // acknowledge it. At the tick, `expireIfNotAcknowledged` re-reads the current
+  // status and no-ops if the cuisinier already accepted / refused — THAT
+  // idempotence is the entire point of the single-tick design (the scheduler
+  // may fire after a human ack, double-refund must never happen). Symmetric
+  // for both fulfilment paths: PICKUP confirms here directly from 2.5-B; the
+  // gated DELIVERY confirms here too once the Uber course is created (2.6-C).
+  // Scheduling inside the same Convex mutation commits or rolls back with the
+  // transition — no orphan tick on a rolled-back confirmation.
+  await ctx.scheduler.runAfter(
+    AUTO_EXPIRED_TIMEOUT_MS,
+    internal.lib.orders.workflow.expireIfNotAcknowledged,
+    { tenantId, orderId },
+  );
 }
 
 /**
@@ -644,6 +673,60 @@ export async function abortTenantOrder(
     at: now,
   });
   return { aborted: true };
+}
+
+/**
+ * #404 — Auto-expired timeout 5 min (PRD 20 §6b + ADR 0016 + kb-orders CONTEXT
+ * "Cmd manquée"). The SYSTEM-SIDE tick of the Convex scheduler armed at
+ * `confirmTenantOrderPayment` (when the order becomes `nouvelle`):
+ *  - if the order is still `nouvelle` ⇒ transition `nouvelle → auto_expired`
+ *    (TERMINAL — distinct from `refusée`, ADR 0016 signaux orthogonaux): patch
+ *    the status + `autoExpiredAt`, append the timestamped `auto_expired`
+ *    `orderEvents` row (no `actorUserId` — the trigger is the scheduler, not a
+ *    cuisinier). Returns `{ expired: true }`.
+ *  - if the order has ALREADY transitioned (acceptée, refusée humain, ou même
+ *    déjà `auto_expired` sur un re-tick) ⇒ CLEAN NO-OP. No transition, no
+ *    event, no Stripe refund: the caller (`expireIfNotAcknowledged`) gates its
+ *    refund + notif on `{ expired: true }`. This idempotence IS the whole
+ *    reason ADR 0016 chose a single scheduled tick checking current state at
+ *    fire time — the scheduler may fire after the cuisinier already accepted
+ *    or refused the order, and a double refund would be a regression.
+ *  - if `orderId` belongs to ANOTHER tenant ⇒ NOT_FOUND from
+ *    `requireTenantOrder` ⇒ caught here as a no-op (a system-scheduled tick
+ *    armed on a tenant must never write to another tenant, ADR 0010).
+ * Returns `{ expired: boolean }` — the caller branches on it to queue the
+ * client `refund_issued` notification + schedule the Stripe refund (#403's
+ * `refundOnRefusal` action, REUSED — no new Stripe path invented).
+ */
+export async function autoExpireTenantOrder(
+  ctx: MutationCtx,
+  tenantId: Id<"tenants">,
+  orderId: Id<"orders">,
+): Promise<{ expired: boolean }> {
+  // Tenant-ownership re-check via the same seam every order helper uses. A
+  // foreign or missing id resolves to `null` ⇒ no-op (a system-scheduled tick
+  // never writes cross-tenant; the order is simply unreachable from here).
+  const order = await getTenantOrder(ctx, tenantId, orderId);
+  if (order === null) return { expired: false };
+  // THE idempotence guard: only `nouvelle` ⇒ `auto_expired` (every other state,
+  // including already-`auto_expired` on a re-tick, is a clean no-op).
+  if (order.status !== "nouvelle") return { expired: false };
+
+  const now = Date.now();
+  await ctx.db.patch(orderId, {
+    status: "auto_expired",
+    autoExpiredAt: now,
+  });
+  // System-side write: no `actorUserId` (the trigger is the scheduler, not a
+  // human) — same shape as the `auto_expired` orderEvents the historique reads
+  // for the « Manquées » tab (PRD 20 §8 + #415).
+  await ctx.db.insert("orderEvents", {
+    tenantId,
+    orderId,
+    status: "auto_expired",
+    at: now,
+  });
+  return { expired: true };
 }
 
 // ---------------------------------------------------------------------------

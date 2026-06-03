@@ -273,6 +273,7 @@ export {
   TERMINAL_ORDER_STATUSES,
   abortTenantOrder,
   assertLegalTransition,
+  autoExpireTenantOrder,
   clearTenantExceptionalClosure,
   clearTenantOperationalPause,
   confirmTenantOrderPayment,

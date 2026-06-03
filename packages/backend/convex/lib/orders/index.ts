@@ -40,6 +40,15 @@
  *    order — no Stripe call, no `payments` table touched here; the refund EXECUTION
  *    is 2.5/#49) + EMIT the client `refund_issued` notification (queued; the send is
  *    2.7). `reason` ∈ {rupture, fermeture, surcharge, autre} (`refusalReason`).
+ *  - workflow (#404): `expireIfNotAcknowledged` — SYSTEM-SIDE timeout d'acceptation 5
+ *    min (PRD 20 §6b + ADR 0016). The Convex scheduler armed at
+ *    `confirmTenantOrderPayment` fires this internal mutation; if the order is still
+ *    `nouvelle` it transitions to TERMINAL `auto_expired` (distinct from `refusée` —
+ *    signaux orthogonaux, ADR 0016) + queues a `refund_issued` notif (template
+ *    neutre côté 2.7) + schedules the EXISTING #403 `refundOnRefusal` Stripe action
+ *    (no new path). Idempotent: a tick on an order no longer `nouvelle` (accepted,
+ *    refused, already auto_expired) is a clean no-op — no double refund, no double
+ *    push. THIS idempotence is the entire point of ADR 0016's single-tick design.
  *  - status (2.3-F): `acceptsOrderNow` (api.lib.orders.status.acceptsOrderNow) — the
  *    PUBLIC gate the PWA checkout obeys: `true` iff the resto is WITHIN a service
  *    window (2.2-E `isWithinServiceHours`, REUSED) AND not currently paused (2.3-A
