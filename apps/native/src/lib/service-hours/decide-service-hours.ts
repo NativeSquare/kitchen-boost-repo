@@ -331,7 +331,7 @@ export function timeStringToMinutes(value: string): number {
  * Mirror of the admin `WEEK_DAYS` array (`service-hours-editor.tsx`) —
  * exposed as a constant so the test suite can assert the order.
  */
-export const WEEK_DAYS: ReadonlyArray<{ dayOfWeek: number; label: string }> = [
+export const WEEK_DAYS: readonly { dayOfWeek: number; label: string }[] = [
   { dayOfWeek: 1, label: "Lundi" },
   { dayOfWeek: 2, label: "Mardi" },
   { dayOfWeek: 3, label: "Mercredi" },
