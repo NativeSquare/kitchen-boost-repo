@@ -1,6 +1,7 @@
 import { authTables } from "@convex-dev/auth/server";
 import { defineSchema } from "convex/server";
 import { adminInvites } from "./table/adminInvites";
+import { appConfig } from "./table/appConfig";
 import { auditLog } from "./table/auditLog";
 import { cgvVersions } from "./table/cgvVersions";
 import { contracts } from "./table/contracts";
@@ -184,4 +185,16 @@ export default defineSchema({
   // `lib/devices/setMyDeviceMode` resolves access via `getCurrentActor` and
   // throws Forbidden otherwise; the cross-tenant fuzz pins that.
   devices,
+  // #394 (KB Orders, PRD 20 §13 + ADR 0017) — `appConfig`. Singleton row holding
+  // the GLOBAL native-app force-update guardrails. V1 carries
+  // `minSupportedBuildVersion`: KB ops bumps it via `kbAdminMutation` to neutralise
+  // every too-old binary at once after a native CVE (« couche native » du gate
+  // au boot, PRD 20 §13). KB-ADMIN-GLOBAL, NO `tenantId` scoping key (one fleet
+  // for all restos, ADR 0010 documented exemption like `customers` /
+  // `prospects`). Reads are PUBLIC (the gate runs BEFORE auth on the native
+  // side) and writes go through `kbAdminMutation`. The sanctioned `ctx.db` seam
+  // is `lib/tenancy/appConfigStore.ts`; business reads in `lib/app/app.ts`
+  // never touch raw `ctx.db`. Missing row ⇒ safe default `1` (every shipped
+  // binary boots).
+  appConfig,
 });

@@ -100,8 +100,34 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   owner: "nativesquare-expo",
   extra: {
     router: {},
+    /**
+     * #394 — `criticalIndex` of the « couche OTA » of the boot force-update
+     * gate (PRD 20 §13 + [ADR 0017](../../docs/adr/0017-force-update-expo-pattern-deux-couches.md)).
+     *
+     * Strict monotonic counter (integer ≥ 0) BUMPED BY HAND in the same commit
+     * that publishes a critical OTA hotfix. At boot the native gate compares
+     * the incoming bundle's `criticalIndex` (from
+     * `Updates.checkForUpdateAsync().manifest.extra.expoClient.extra.criticalIndex`)
+     * to the running one (this constant via `Constants.expoConfig.extra.criticalIndex`):
+     * if incoming > running, the app fetches + reloads ON SPLASH, the user
+     * never sees the old code.
+     *
+     * NEVER decrement, NEVER skip — every bump is a fleet-wide forced reload.
+     * Non-critical updates keep this value unchanged (the regular EAS Update
+     * flow then applies on next manual reload, not at boot).
+     */
+    criticalIndex: 0,
   },
-  runtimeVersion: {
-    policy: "appVersion",
-  },
+  /**
+   * #394 — `runtimeVersion: "fingerprint"` (Expo SDK 52+) is the ADR 0017
+   * prerequisite that lets EAS Update exclude bundles incompatible with the
+   * binary actually installed on the device. With the previous `appVersion`
+   * policy, two binaries with the same `version` would share a bundle channel
+   * even if their native modules diverged — a critical OTA push could ship JS
+   * relying on a native API the older binary doesn't have, hard-crash on boot,
+   * and we have no escape hatch (the user is stuck before the gate can render).
+   * `fingerprint` keys the bundle channel on the actual native fingerprint, so
+   * an incompatible binary never even SEES the incoming critical bundle.
+   */
+  runtimeVersion: "fingerprint",
 });
