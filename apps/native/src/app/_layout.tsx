@@ -1,6 +1,7 @@
 import "@/lib/nativewind-interop";
 import { ThemeStatusBar } from "@/lib/theme-status-bar";
 import { useDeviceId } from "@/hooks/use-device-id";
+import { ConnectionLostGate } from "@/lib/connection-lost";
 import { ForceUpdateGate } from "@/lib/force-update";
 import {
   markIntentionalSignOut,
@@ -59,24 +60,40 @@ export default function RootLayout() {
          */}
         <ForceUpdateGate>
           {/*
-           * #400 — « Session révoquée » gate (PRD 20 §13 + AC8).
-           * Mounted INSIDE ConvexAuthProvider (uses `useConvexAuth` +
-           * `useAuthActions`) and ABOVE every screen so the full-screen
-           * overlay surfaces no matter where in `(app)` or `(auth)` the
-           * user is when the remote revocation lands. Delegates the
-           * verdict to the pure `decideSessionRevoked` (#400 test suite).
+           * #405 — « Mode déconnecté » gate (PRD 20 §13 + CONTEXT
+           * kb-orders « Mode déconnecté »). Mounted INSIDE
+           * ConvexAuthProvider (uses `useConvexConnectionState`) but
+           * ABOVE `SessionRevokedGate` on purpose: when the WS is down,
+           * Convex Auth may transiently flip `isAuthenticated` to false
+           * and the revoked gate would otherwise mis-fire. With the
+           * connection-lost screen replacing the tree first, no other
+           * full-screen state can flash through during the outage. The
+           * overlay disappears the moment the WS reconnects — pure
+           * transport-layer transient, no CTA, no navigation. Delegates
+           * the verdict to the pure `decideConnectionLost` (#405 test
+           * suite).
            */}
-          <SessionRevokedGate>
-            <GestureHandlerRootView>
-              <BottomSheetModalProvider>
-                <SafeAreaProvider>
-                  <ThemeStatusBar />
-                  <RootStack />
-                  <PortalHost />
-                </SafeAreaProvider>
-              </BottomSheetModalProvider>
-            </GestureHandlerRootView>
-          </SessionRevokedGate>
+          <ConnectionLostGate>
+            {/*
+             * #400 — « Session révoquée » gate (PRD 20 §13 + AC8).
+             * Mounted INSIDE ConvexAuthProvider (uses `useConvexAuth` +
+             * `useAuthActions`) and ABOVE every screen so the full-screen
+             * overlay surfaces no matter where in `(app)` or `(auth)` the
+             * user is when the remote revocation lands. Delegates the
+             * verdict to the pure `decideSessionRevoked` (#400 test suite).
+             */}
+            <SessionRevokedGate>
+              <GestureHandlerRootView>
+                <BottomSheetModalProvider>
+                  <SafeAreaProvider>
+                    <ThemeStatusBar />
+                    <RootStack />
+                    <PortalHost />
+                  </SafeAreaProvider>
+                </BottomSheetModalProvider>
+              </GestureHandlerRootView>
+            </SessionRevokedGate>
+          </ConnectionLostGate>
         </ForceUpdateGate>
       </ConvexAuthProvider>
     </KeyboardProvider>
