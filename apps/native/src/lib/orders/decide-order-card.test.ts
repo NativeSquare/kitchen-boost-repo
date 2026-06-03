@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   decideModeTag,
   decideOrderBadgeNew,
+  decidePickupHandoffNote,
   decideStatusLabel,
   decideWorkflowButton,
 } from "./decide-order-card";
@@ -143,5 +144,33 @@ describe("#401 decideOrderBadgeNew — PRD 20 §2 « Badge nouvelle non lue »",
     expect(decideOrderBadgeNew("collectée")).toBe(false);
     expect(decideOrderBadgeNew("refusée")).toBe(false);
     expect(decideOrderBadgeNew("en attente de paiement")).toBe(false);
+  });
+});
+
+/**
+ * #402 — click & collect: the detail screen mirrors the delivery's
+ * « Adresse livraison » card with a « À emporter » placeholder card whose
+ * presence is decided by mode alone. PRD 20 §4 says explicitly: "adresse
+ * livraison (si livraison) ou note 'à emporter' (si click & collect)".
+ *
+ * The decision is intentionally narrow — only the mode drives it. No customer
+ * name and no pickup time: the MOAT (ADR 0010 §"Customer rules") forbids
+ * surfacing a raw customer object to `kb_manager`, and the `orders` row carries
+ * neither a customer-facing name nor a `pickupAt` field today (PRD 20 §4 does
+ * not require either; it asks for the « note "à emporter" »). Inventing them
+ * would either leak past the MOAT or invent product spec — both rejected
+ * (KitchenBoost guardrail "no invented specs").
+ */
+describe("#402 decidePickupHandoffNote — PRD 20 §4 « note à emporter »", () => {
+  it("pickup → shows the « À emporter » handoff card", () => {
+    expect(decidePickupHandoffNote("pickup")).toEqual({
+      kind: "show",
+      heading: "À emporter",
+      body: "Le client passera récupérer la commande.",
+    });
+  });
+
+  it("delivery → hides it (the delivery address card is shown instead)", () => {
+    expect(decidePickupHandoffNote("delivery")).toEqual({ kind: "hide" });
   });
 });

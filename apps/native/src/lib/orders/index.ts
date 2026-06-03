@@ -27,9 +27,11 @@ export { OrderCard } from "./order-card";
 export {
   decideModeTag,
   decideOrderBadgeNew,
+  decidePickupHandoffNote,
   decideStatusLabel,
   decideWorkflowButton,
   type ModeTag,
+  type PickupHandoffNoteDecision,
   type WorkflowAction,
   type WorkflowButtonDecision,
 } from "./decide-order-card";
