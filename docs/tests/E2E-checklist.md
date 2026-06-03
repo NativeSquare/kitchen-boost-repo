@@ -3,7 +3,7 @@
 Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / M / CMD / PR / SUP / W). Chaque parcours est à exécuter à la main contre `apps/admin` en dev (Convex live + seeds e2e).
 
 - **Date** : 2026-06-03
-- **Statut global** : 41 stories mergées (#317→#358), 0 bloquée. Wizard complet à 10/10. **Groupes validés** : A (7/7), MC (26/27), QR, MO, T-A/B/C/D/E, W (10/10). **Restants** : M, CMD, PR, SUP, AC.
+- **Statut global** : 41 stories mergées (#317→#358), 0 bloquée. Wizard complet à 10/10. **Groupes validés** : A (7/7), MC (26/27), QR, MO, T-A/B/C/D/E, W (10/10), M-A (4/4). **En cours** : M-B (11 parcours). **Restants** : CMD, PR, SUP, AC.
 - **Pré-requis transverses** : seeds `e2e` chargées (≥ 2 tenants distincts, un KB Admin root, ≥ 1 KB Manager mono-tenant, ≥ 1 KB Manager multi-tenant, un staff). Stripe en mode test avec un `stripeAccountId` rattaché à au moins un tenant. Resend en mode test pour les magic-links et OTP.
 - **Convention** : les parcours référencent ces pré-requis par leur étiquette (« seeds e2e ») sans les reproduire. Format strict : **Acteur / Pré-requis / Étapes / Attendu / Couvre**.
 
@@ -1126,6 +1126,8 @@ _Pas de feature correspondante en V1 — parcours retiré._ Le backend `acceptIn
 ---
 
 ## M — Menu
+
+> **Statut M-A** : ✅ **4/4 validés le 2026-06-03** (M1 / M6 / M7 / M9bis sur `test-t1` mode blank). Seeds : `seedE2EMenuT1 {mode:"blank"|"full"}`. **6 fixes critiques UX shippés pendant cette vague** (Alex testait, signalait, sub-agent fixait, push) : **1ed33a4** (M1 catégorie : `<Input>` n'avait pas de `onKeyDown` Enter handler + la row fraîchement créée n'autofocusait pas → Enter flush + autofocus + select-all on new row) + **07af356** (modale item Dialog centré → `Sheet` right-drawer `sm:max-w-xl`, parité visuelle drawer moderne) + **c5dd031** (le `Sheet` n'avait pas de padding interne, contenu touchait les bords → wrapper padding) + **4170f13** (`ModifiersSection` était gated sur `mode === "edit"` → Alex ne pouvait PAS attacher de personnalisations en mode create ; en plus le picker était texte + boutons séparés alors qu'Alex voulait un multiselect tag-style ; refonte : chips inline + popover dropdown filtrable + DnD réorder via dnd-kit + visible en mode create avec `pendingAttachedGroupIds` chained-attach après création + backend nouvelle mutation `modifiers.reorderItemGroups`) + **9dfc03b** (le champ prix des options de personnalisation affichait un integer brut centimes sans format euros → réutilise le helper price euros/cents déjà en place pour `basePrice` items, format `0,00 €` + validation inline négative/format/2 décimales + mode create + edit) + **db8e295** (page menu single-screen scrollable inutilisable avec beaucoup d'articles → split en 3 tabs **Catégories / Plats / Personnalisations**, default = Plats, URL state `?tab=...` bookmark-safe, header [badge unpublished + Aperçu + Publier] reste visible peu importe le tab, modale item partagée à travers les tabs).
 
 ### M1 — Catégories CRUD
 
