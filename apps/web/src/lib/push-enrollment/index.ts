@@ -1,5 +1,5 @@
 /**
- * PWA-S6a (#455) / S6b (#456) — `push-enrollment` module API.
+ * PWA-S6a (#455) / S6b (#456) / S6c (#457) — `push-enrollment` module API.
  *
  * Pure decisions consumed by the `<PushEnrollmentModal>` family
  * (decisions-log Q5 + Q8):
@@ -23,12 +23,17 @@
  *    registering → registered, with denied/error branches that increment a
  *    failureCount (read by the S6c #457 fallback link).
  *
+ *  - `decideFallbackStep` — pure state machine for the 3-level frictional
+ *    « Continuer sans notifs » fallback chain (S6c #457, Q8 (5)). Surfaces
+ *    a 12px muted link after 2 documented failures, then walks the user
+ *    through 2 confirm screens before flipping the terminal `flagged` state
+ *    that triggers the `markNoChannelPossible` mutation.
+ *
  *  - `urlBase64ToUint8Array` — VAPID public key (`NEXT_PUBLIC_VAPID_PUBLIC_KEY`)
  *    string-to-bytes converter for `PushManager.subscribe`.
  *
  * Splitting the decisions from the React IO keeps every branch vitest-pinnable
- * in node env, same pattern as `checkout-gate`. S6c extends `ModalStep`
- * and `ModalEvent` with the 3-level fallback chain.
+ * in node env, same pattern as `checkout-gate`.
  */
 export {
   type DecideDeviceTargetInput,
@@ -52,4 +57,10 @@ export {
   type WebPushBranchStateKind,
   decideWebPushBranch,
 } from "./decide-web-push-branch";
+export {
+  type FallbackEvent,
+  type FallbackStep,
+  FALLBACK_FAILURE_THRESHOLD,
+  decideFallbackStep,
+} from "./decide-fallback-step";
 export { urlBase64ToUint8Array } from "./encode-vapid-key";

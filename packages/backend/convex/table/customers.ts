@@ -101,6 +101,15 @@ export const customers = defineTable({
       walletStatus: v.optional(pushChannelStatus),
       webPushStatus: v.optional(pushChannelStatus),
       a2hsStatus: v.optional(pushChannelStatus),
+      // PWA-S6c (#457) — fallback escape hatch (decisions-log Q8 (5),
+      // CONTEXT customer-data « Push enrollment »). Flipped to `true` by the
+      // self-scoped `customer.pushEnrollment.markNoChannelPossible` mutation
+      // after the user exhausts the 3-level frictional « Continuer sans
+      // notifs » fallback (2 documented channel failures + 3 confirm screens
+      // re-refused). Reachability falls back to SMS via Cascade Notifications
+      // (~5% cas). Lives INSIDE this same object so anonymisation (slice F,
+      // patches `pushEnrollment: undefined`) wipes it in one geste.
+      noChannelPossible: v.optional(v.boolean()),
     }),
   ),
 

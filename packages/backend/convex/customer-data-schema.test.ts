@@ -75,6 +75,37 @@ describe("2.1-A schema — customers (GLOBAL), cgvVersions, customerOrdersPerTen
     });
   });
 
+  it("round-trips pushEnrollment.noChannelPossible = true (PWA-S6c #457 fallback flag)", async () => {
+    // S6c (#457) flag posed by `customer.pushEnrollment.markNoChannelPossible`
+    // after the 3-level frictional fallback is fully exhausted by the user
+    // (Wallet refused + Web Push denied + 3 confirm screens re-refused). The
+    // flag lives INSIDE the `pushEnrollment` object so anonymisation (slice F,
+    // patches `pushEnrollment: undefined`) wipes it in one geste alongside the
+    // channel statuses (decisions-log Q8 (5) + CONTEXT customer-data
+    // « Push enrollment »).
+    const t = convexTest(schema, modules);
+    await t.run(async (ctx) => {
+      const userId = await ctx.db.insert("users", {
+        role: "customer",
+        isAnonymous: true,
+      });
+      const customerId = await ctx.db.insert("customers", {
+        userId,
+        createdAt: Date.now(),
+        pushEnrollment: {
+          walletStatus: "not_enrolled",
+          webPushStatus: "not_enrolled",
+          a2hsStatus: "not_enrolled",
+          noChannelPossible: true,
+        },
+      });
+      const fiche = await ctx.db.get(customerId);
+      expect(fiche?.pushEnrollment?.noChannelPossible).toBe(true);
+      // The other statuses are NOT clobbered by the flag (one fiche, two facets).
+      expect(fiche?.pushEnrollment?.walletStatus).toBe("not_enrolled");
+    });
+  });
+
   it("accepts a MINIMAL customer (only userId + createdAt — everything else optional)", async () => {
     const t = convexTest(schema, modules);
     await t.run(async (ctx) => {
