@@ -5,14 +5,14 @@
  * §10 PWA Client + decisions-log Q3/Q8).
  *
  * Owns the React IO around the pure decisions of `lib/checkout-gate`:
- *  - `useQuery(getCurrentCustomer)` → reactive Convex sub on
+ *  - `usePreloadedQuery(preloadedCustomer)` → reactive Convex sub on
  *    `customers.pushEnrollment` so a Wallet install / Web Push subscribe
  *    happening in another tab / from the address-first soft prompt 5 min
  *    earlier unlocks the "Payer X €" button without ANY reload (acceptance
  *    criterion #454 « install Wallet pendant client sur page → bouton se
  *    débloque sans reload »). The RSC parent (`app/checkout/page.tsx`)
- *    pre-hydrates this sub via `preloadQuery` so the gate is evaluated on
- *    the SSR pass too (no FOUC, no "active → disabled" flash on mount).
+ *    seeds this sub via `preloadQuery` so the gate is evaluated on the SSR
+ *    pass too (no FOUC, no "active → disabled" flash on mount).
  *  - `useCart()` → reads the localStorage-backed cart (S5). Empty cart
  *    on /checkout has no business case → redirect to /panier where the
  *    « Ton panier est vide » empty state lives (decided by
@@ -78,10 +78,6 @@ export function CheckoutForm({
   // in realtime when the user installs the Wallet pass / subscribes Web Push
   // from another tab / from an earlier modal.
   const customer = usePreloadedQuery(preloadedCustomer);
-  // Live re-sub for defensive freshness (e.g. if `preloadedQuery` is stale
-  // beyond the RSC boundary). `useQuery` returns the SAME value as
-  // `usePreloadedQuery` once hydrated; we keep one source of truth via the
-  // preloaded one and drop the duplicate. (Intentionally NOT re-subbed.)
 
   const { state: cartState, totals } = useCart();
   const { verdict, mode } = useDeliveryMode();
