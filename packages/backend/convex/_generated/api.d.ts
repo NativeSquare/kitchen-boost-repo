@@ -54,6 +54,8 @@ import type * as lib_delivery_quote from "../lib/delivery/quote.js";
 import type * as lib_delivery_webhooks from "../lib/delivery/webhooks.js";
 import type * as lib_devices_devices from "../lib/devices/devices.js";
 import type * as lib_devices_index from "../lib/devices/index.js";
+import type * as lib_menuRevalidate_index from "../lib/menuRevalidate/index.js";
+import type * as lib_menuRevalidate_revalidateMenuTag from "../lib/menuRevalidate/revalidateMenuTag.js";
 import type * as lib_menu_availability from "../lib/menu/availability.js";
 import type * as lib_menu_catalog from "../lib/menu/catalog.js";
 import type * as lib_menu_categories from "../lib/menu/categories.js";
@@ -254,6 +256,8 @@ declare const fullApi: ApiFromModules<{
   "lib/delivery/webhooks": typeof lib_delivery_webhooks;
   "lib/devices/devices": typeof lib_devices_devices;
   "lib/devices/index": typeof lib_devices_index;
+  "lib/menuRevalidate/index": typeof lib_menuRevalidate_index;
+  "lib/menuRevalidate/revalidateMenuTag": typeof lib_menuRevalidate_revalidateMenuTag;
   "lib/menu/availability": typeof lib_menu_availability;
   "lib/menu/catalog": typeof lib_menu_catalog;
   "lib/menu/categories": typeof lib_menu_categories;

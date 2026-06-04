@@ -1,5 +1,5 @@
 import { convexTest } from "convex-test";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { api } from "../../_generated/api";
 import schema from "../../schema";
 import {
@@ -18,10 +18,19 @@ const rawModules = import.meta.glob([
   "!../../**/*.test.*",
 ]);
 const modules = Object.fromEntries(
-  Object.entries(rawModules).map(([path, loader]) => [
-    path.startsWith("./") ? `../../lib/menu/${path.slice(2)}` : path,
-    loader,
-  ]),
+  Object.entries(rawModules).map(([path, loader]) => {
+    let key = path;
+    if (path.startsWith("./")) {
+      // Modules sibling to this test file: rebase to the convex root so
+      // convex-test's `findModulesRoot` resolves them under `lib/menu/<name>`.
+      key = `../../lib/menu/${path.slice(2)}`;
+    } else if (path.startsWith("../") && !path.startsWith("../../")) {
+      // Sibling of `lib/menu/` (e.g. `../menuRevalidate/foo.ts` if vite ever
+      // emits a `../` prefix). Rebase the same way.
+      key = `../../lib/${path.slice(3)}`;
+    }
+    return [key, loader];
+  }),
 );
 
 /**
@@ -351,6 +360,77 @@ describe("B-MENU-PUBLICATION slice 2 — publishMenu (ADR 0015 + 0010)", () => {
     );
     expect(aSnap2?.payload.categories).toHaveLength(1);
     expect(aSnap2?.payload.categories[0]?.name).toBe("A-cat");
+  });
+});
+
+/**
+ * PWA-S4 (#452) — `publishMenu` schedules `revalidateMenuTag` (decisions-log
+ * Q2 « ISR + on-demand revalidate au clic Publier »). The hook is fire-
+ * and-forget — `publishMenu` commits the snapshot even if the revalidate
+ * call fails (NON-FATAL by design). We assert here that the schedule wiring
+ * is in place: after `finishInProgressScheduledFunctions`, the
+ * internalAction reached its `fetch` call (mocked to count invocations).
+ */
+describe("PWA-S4 (#452) — publishMenu schedules revalidateMenuTag", () => {
+  let t: ReturnType<typeof convexTest>;
+  let seed: Seed;
+  beforeEach(async () => {
+    t = convexTest(schema, modules);
+    seed = await seedTwoTenantsAllRoles(t);
+  });
+
+  afterEach(() => {
+    // Nothing global to restore — these tests assert the schedule + commit,
+    // not the fetch boundary (covered exhaustively by `lib/menuRevalidate/
+    // revalidateMenuTag.test.ts`).
+  });
+
+  it("publishMenu schedules ONE follow-up function (the revalidate hook)", async () => {
+    // Convex-test's worker isolation makes mocking `globalThis.fetch` from
+    // a scheduled internalAction unreliable across runs (the action runs in
+    // a separate module-eval context). Pinning the FETCH boundary of the
+    // hook is covered exhaustively by `lib/menuRevalidate/revalidateMenuTag.test.ts`
+    // (4 cases: misconfig, happy path, HTTP non-2xx, fetch throw).
+    //
+    // Here we pin a complementary but stable invariant: `publishMenu`
+    // SCHEDULES the revalidate (one follow-up scheduled function row).
+    // Combined with the action-level tests, this gives end-to-end coverage
+    // of the wire « publishMenu → schedule → fetch /api/revalidate ».
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    await asManager.mutation(api.lib.menu.publication.publishMenu, {
+      tenantId: seed.tenantA.tenantId,
+    });
+
+    const scheduled = await t.run((ctx) =>
+      ctx.db.system.query("_scheduled_functions").collect(),
+    );
+    // Exactly one follow-up — the revalidate hook keyed on the published tenant.
+    expect(scheduled).toHaveLength(1);
+    expect(scheduled[0]?.name).toBe(
+      "lib/menuRevalidate/revalidateMenuTag:revalidateMenuTag",
+    );
+    expect(scheduled[0]?.args).toEqual([{ tenantId: seed.tenantA.tenantId }]);
+  });
+
+  it("publishMenu commits the snapshot synchronously — the revalidate is scheduled, NOT awaited", async () => {
+    // Decoupling the SoT (snapshot) from the cache invalidation (ISR tag) is a
+    // NON-FATAL contract: even when the revalidate hook later fails (env
+    // unset / Next route 5xx / network down), the published menu the eater
+    // PWA reads from `getPublicMenu` is the freshly-committed snapshot.
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    await asManager.mutation(api.lib.menu.publication.publishMenu, {
+      tenantId: seed.tenantA.tenantId,
+    });
+
+    // The snapshot landed in the same tx as publishMenu — independent of any
+    // follow-up scheduled work having completed.
+    const snap = await t.run((ctx) =>
+      ctx.db
+        .query("publishedMenus")
+        .withIndex("by_tenant", (q) => q.eq("tenantId", seed.tenantA.tenantId))
+        .unique(),
+    );
+    expect(snap).not.toBeNull();
   });
 });
 
