@@ -112,6 +112,7 @@ describe("decideModalStep — exhaustive event surface", () => {
   it("exposes a discriminated union on `kind` so callers can switch exhaustively", () => {
     const events: ModalEvent[] = [
       { kind: "ClickWalletPrimary" },
+      { kind: "ClickWebPushPrimary" },
       { kind: "ClickChangeOfMind" },
     ];
     // Just a typing-surface assertion: every event flows through the
@@ -122,6 +123,43 @@ describe("decideModalStep — exhaustive event surface", () => {
       expect(() =>
         decideModalStep({ kind: "wallet-loading" }, ev),
       ).not.toThrow();
+      expect(() =>
+        decideModalStep({ kind: "web-push-loading" }, ev),
+      ).not.toThrow();
     }
+  });
+});
+
+describe("decideModalStep — Web Push branch (S6b #456)", () => {
+  it("transitions from `choice` to `web-push-loading` on ClickWebPushPrimary", () => {
+    const current: ModalStep = { kind: "choice" };
+    const next = decideModalStep(current, { kind: "ClickWebPushPrimary" });
+    expect(next.kind).toBe("web-push-loading");
+  });
+
+  it("transitions back from `web-push-loading` to `choice` on ClickChangeOfMind", () => {
+    // « J'ai changé d'avis » applies symmetrically — the user can back out of
+    // the Web Push branch the same way they can back out of the Wallet branch.
+    const current: ModalStep = { kind: "web-push-loading" };
+    const next = decideModalStep(current, { kind: "ClickChangeOfMind" });
+    expect(next.kind).toBe("choice");
+  });
+
+  it("ignores ClickWebPushPrimary while already in `wallet-loading` (cross-branch swallowed)", () => {
+    const current: ModalStep = { kind: "wallet-loading" };
+    const next = decideModalStep(current, { kind: "ClickWebPushPrimary" });
+    expect(next).toEqual(current);
+  });
+
+  it("ignores ClickWalletPrimary while already in `web-push-loading` (cross-branch swallowed)", () => {
+    const current: ModalStep = { kind: "web-push-loading" };
+    const next = decideModalStep(current, { kind: "ClickWalletPrimary" });
+    expect(next).toEqual(current);
+  });
+
+  it("ignores re-ClickWebPushPrimary while already in `web-push-loading` (idempotent against double-click)", () => {
+    const current: ModalStep = { kind: "web-push-loading" };
+    const next = decideModalStep(current, { kind: "ClickWebPushPrimary" });
+    expect(next).toEqual(current);
   });
 });

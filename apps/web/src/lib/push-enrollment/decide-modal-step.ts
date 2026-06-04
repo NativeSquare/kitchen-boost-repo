@@ -33,23 +33,40 @@
  *   wallet-loading -- ClickChangeOfMind   --> choice
  */
 
-/** The visible step of the modal. Open union (S6b/S6c will extend). */
-export type ModalStep = { kind: "choice" } | { kind: "wallet-loading" };
+/** The visible step of the modal. Open union (S6c will extend with fallback). */
+export type ModalStep =
+  | { kind: "choice" }
+  | { kind: "wallet-loading" }
+  | { kind: "web-push-loading" };
 
 /**
- * The events the modal reducer accepts. `ClickWalletPrimary` fires the
- * device-specific install dispatch; `ClickChangeOfMind` is the "back" link
- * during loading (US 34). Open union, same shape as `ModalStep`.
+ * The events the modal reducer accepts:
+ *  - `ClickWalletPrimary`  : user clicked « Ajouter à mon Wallet » in the
+ *                            choice screen → fires the device-specific install
+ *                            dispatch + flips to `wallet-loading`.
+ *  - `ClickWebPushPrimary` : user clicked « Autoriser les notifs » in the
+ *                            choice screen (S6b #456) → fires
+ *                            `Notification.requestPermission()` +
+ *                            `PushManager.subscribe()` + the register mutation,
+ *                            and flips to `web-push-loading`.
+ *  - `ClickChangeOfMind`   : the « J'ai changé d'avis » back link, valid from
+ *                            EITHER loading branch (US 34, symmetric).
+ *
+ * Open union — S6c (#457) will add `ClickFallbackContinue` + new steps for
+ * the 3-level fallback chain. The `kind` discriminant keeps existing callers
+ * exhaustive.
  */
 export type ModalEvent =
   | { kind: "ClickWalletPrimary" }
+  | { kind: "ClickWebPushPrimary" }
   | { kind: "ClickChangeOfMind" };
 
 /**
  * Compute the next step for a given (current step, event) pair. Pure: no IO,
  * no hidden state, never mutates `current`. Unknown / disallowed transitions
  * return the SAME state (a silent no-op — a state machine that swallows
- * stray events is robust to UI double-clicks + re-renders).
+ * stray events is robust to UI double-clicks + re-renders + cross-branch
+ * clicks while a loading branch is already active).
  */
 export function decideModalStep(
   current: ModalStep,
@@ -60,9 +77,18 @@ export function decideModalStep(
       if (event.kind === "ClickWalletPrimary") {
         return { kind: "wallet-loading" };
       }
+      if (event.kind === "ClickWebPushPrimary") {
+        return { kind: "web-push-loading" };
+      }
       return current;
     }
     case "wallet-loading": {
+      if (event.kind === "ClickChangeOfMind") {
+        return { kind: "choice" };
+      }
+      return current;
+    }
+    case "web-push-loading": {
       if (event.kind === "ClickChangeOfMind") {
         return { kind: "choice" };
       }
