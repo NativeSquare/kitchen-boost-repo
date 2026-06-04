@@ -39,6 +39,11 @@ import {
   decideTenantResolution,
   type ResolvedTenant,
 } from "@/lib/tenant-resolver";
+import {
+  WALLET_BRIDGE_COOKIE_MAX_AGE_S,
+  WALLET_BRIDGE_PENDING_COOKIE,
+  decideWalletBridgeInterception,
+} from "@/lib/wallet-bridge";
 
 const TENANT_COOKIE = "__Host-kb_tenant";
 const ROOT_DOMAIN = "kitchen-boost.fr";
@@ -82,7 +87,29 @@ export default async function proxy(
   const host = request.headers.get("host") ?? "";
   const cookieTenantId = request.cookies.get(TENANT_COOKIE)?.value ?? null;
 
-  const verdict = await decideTenantResolution({
+  // PWA-S9b (#461) — handle the Wallet pass back-of-pass `?wallet=<serial>`
+  // deep-link FIRST (decisions-log Q5, US 39 / 40 / 41 / 42). We must do
+  // this BEFORE returning a tenant-rewrite, because cleaning the URL
+  // (`?wallet` stripped from the address bar — US 42) requires a 307
+  // redirect, not a Next rewrite (rewrite keeps the URL the browser sees
+  // — the param would stay).
+  //
+  // Ordering rationale:
+  //  1. The TENANT cookie must still be set on this hop, so the redirect
+  //     target's first paint can read it (and so RSC layout / pages can
+  //     resolve the tenant). We compute the tenant verdict first and only
+  //     short-circuit on a `rewrite` verdict — an `error` verdict bypasses
+  //     the bridge (wrong host → not a real tap, never bridge).
+  //  2. The BRIDGE cookie is set on the same response carrying the tenant
+  //     cookie + the 307. The client `<WalletBridgeRunner>` then reads
+  //     `__Host-kb_wallet_bridge_pending` from RSC, runs `signIn` and
+  //     calls `/api/wallet-bridge/clear` to wipe it.
+  //  3. For `kind: "strip-only"` (malformed serial, US 42 « graceful »),
+  //     we still 307 to the clean URL but do NOT set the bridge cookie.
+  //     The user sees a clean address bar and a normal anonymous flow —
+  //     no crash, no probing surface.
+
+  const tenantVerdict = await decideTenantResolution({
     host,
     cookieTenantId,
     rootDomain: ROOT_DOMAIN,
@@ -97,16 +124,57 @@ export default async function proxy(
     revalidateCookie: false,
   });
 
-  if (verdict.kind === "rewrite") {
+  if (tenantVerdict.kind === "rewrite") {
+    const bridgeVerdict = decideWalletBridgeInterception({
+      url: request.nextUrl.toString(),
+    });
+    if (bridgeVerdict.kind !== "passthrough") {
+      // 307 to the clean URL (preserves the verb, same as rewrite does for
+      // its target). We carry BOTH cookies on the same response so the
+      // browser stamps the tenant cookie + the bridge-pending cookie in
+      // ONE round-trip — the next hit already has both.
+      const response = NextResponse.redirect(bridgeVerdict.cleanUrl, 307);
+      if (tenantVerdict.setCookie) {
+        response.cookies.set({
+          name: TENANT_COOKIE,
+          value: tenantVerdict.tenantId,
+          httpOnly: true,
+          secure: true,
+          sameSite: "lax",
+          path: "/",
+          maxAge: COOKIE_MAX_AGE_S,
+        });
+      }
+      if (bridgeVerdict.kind === "intercept") {
+        // Short-lived (5 min) — the client runs the `signIn` chain on
+        // first mount of the redirect target. If something stalls
+        // (background tab, JS disabled), the cookie expires rather than
+        // hanging a stale serial indefinitely. `__Host-` pins the cookie
+        // to the resolved host (no `Domain`), so a bridge cookie minted
+        // on resto A can never leak to resto B — same isolation rule as
+        // `__Host-kb_tenant` (ADR 0008 amendment 2026-05-25).
+        response.cookies.set({
+          name: WALLET_BRIDGE_PENDING_COOKIE,
+          value: bridgeVerdict.serial,
+          httpOnly: false, // the client-side `<WalletBridgeRunner>` reads it
+          secure: true,
+          sameSite: "lax",
+          path: "/",
+          maxAge: WALLET_BRIDGE_COOKIE_MAX_AGE_S,
+        });
+      }
+      return response;
+    }
+
     // Pass through unchanged. NEVER redirect — a redirect would lose the
     // cookie (it would be set on the destination URL, not the request
     // origin). Rewrite preserves the URL the browser sees while letting
     // Next render whatever is at the URL path.
     const response = NextResponse.next();
-    if (verdict.setCookie) {
+    if (tenantVerdict.setCookie) {
       response.cookies.set({
         name: TENANT_COOKIE,
-        value: verdict.tenantId,
+        value: tenantVerdict.tenantId,
         httpOnly: true,
         secure: true,
         sameSite: "lax",
@@ -118,12 +186,12 @@ export default async function proxy(
     return response;
   }
 
-  // verdict.kind === "error"
+  // tenantVerdict.kind === "error"
   const errorUrl = request.nextUrl.clone();
   errorUrl.pathname = "/erreur";
-  errorUrl.searchParams.set("reason", verdict.reason);
+  errorUrl.searchParams.set("reason", tenantVerdict.reason);
   const response = NextResponse.rewrite(errorUrl);
-  if (verdict.clearCookie) {
+  if (tenantVerdict.clearCookie) {
     response.cookies.delete(TENANT_COOKIE);
   }
   return response;

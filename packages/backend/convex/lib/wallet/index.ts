@@ -131,3 +131,16 @@ export { deliverIncentive } from "./incentive";
  * (`api.lib.wallet.checkInstallStatus.checkInstallStatus`), same convention as
  * the rest of the slice.
  */
+
+/**
+ * PWA-S9b (#461) — `resolveSerialForBridge`, the system-side resolver of the
+ * CROSS-DEVICE / CROSS-RESTO identity BRIDGE at the tap-deep-link surface
+ * (decisions-log Q5, US 39 / 40 / 41 / 42). `internalQuery` (NEVER
+ * client-callable) — the only legit caller is the `WalletBridge`
+ * `ConvexCredentials` provider in `auth.ts`, whose `authorize` runs INSIDE
+ * the Convex Auth `signIn` action and returns `{ userId }` to the framework.
+ * The PUBLIC surface stays `signIn("wallet-bridge", { serial })`. The Convex
+ * FUNCTION is NOT re-exported — Convex addresses it by its module path
+ * (`internal.lib.wallet.bridgeSerialToSession.resolveSerialForBridge`), same
+ * convention as the rest of the slice.
+ */
