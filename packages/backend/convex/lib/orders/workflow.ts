@@ -186,20 +186,29 @@ export const markHandedOff = tenantMutation(OPERATIONAL_ALLOW)({
 });
 
 /**
- * 2.3-E — `refuse`: the resto refuses a `nouvelle` order and the refund is emitted
+ * 2.3-E — `refuse`: the resto refuses a live order and the refund is emitted
  * IMMEDIATELY (PRD 20 §6 + 20-Q9 acté "remboursement IMMÉDIAT"; PRD 30 §5;
  * kb-orders CONTEXT "Refusal"; payment CONTEXT "Refund": "Orders est le trigger,
  * Payment fournit la mécanique"). Operational action — `kb_manager` + `staff`.
+ *
+ * Refundable from THREE source states: `nouvelle` (#403, 2-step UI confirm), and
+ * the two in-flight states `en préparation` + `prête` (#413, 3-step anti-fat-
+ * finger UI confirm — the cost of error is fort: travail cuisine perdu). The
+ * backend side-effects are IDENTICAL across all three sources — the UI cost-of-
+ * error gate (step count + typed "REFUSER" word) is the only difference. Post-
+ * handoff states (`remise` / `livrée` / `collectée`) are non-refusable (the
+ * order has left the door — delivery is on Uber Direct, click & collect is gone).
  *
  * ── One atomic transaction (all-or-nothing) ──────────────────────────────────
  * A Convex mutation is a single transaction, so the three effects below commit or
  * roll back together — there is never a refusal without the refund order emitted,
  * nor a refund order emitted without the client notification queued:
- *  1. transition `nouvelle → refusée` (TERMINAL) THROUGH the state machine guard
- *     (`assertLegalTransition`): only `nouvelle → refusée` is legal, so refusing an
- *     order in any other state — or re-refusing an already-terminal one — throws and
- *     writes nothing (no double refund). The transition stamps `refusedAt` and
- *     appends the `refusée` `orderEvents` row carrying the closed-set `reason`.
+ *  1. transition `<live> → refusée` (TERMINAL) THROUGH the state machine guard
+ *     (`assertLegalTransition`): only `nouvelle / en préparation / prête → refusée`
+ *     are legal, so refusing an order in any other state — or re-refusing an
+ *     already-terminal one — throws and writes nothing (no double refund). The
+ *     transition stamps `refusedAt` and appends the `refusée` `orderEvents` row
+ *     carrying the closed-set `reason`.
  *  2. TRIGGER the 2.5 payment-domain refund MECHANISM (#49). The `refusée`
  *     `orderEvents` row written in step 1 IS the refund order (tenant + order +
  *     reason + time); Orders is the trigger, Payment runs the Stripe refund. The

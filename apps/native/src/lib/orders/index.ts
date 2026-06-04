@@ -37,8 +37,11 @@ export {
 } from "./decide-order-card";
 export {
   REFUSAL_REASONS,
+  REFUSE_TYPED_WORD,
   decideRefusalReasonLabel,
   decideRefuseButton,
+  decideRefuseStepCount,
+  decideTypedConfirmation,
   refuseFlowReducer,
   type RefuseButtonDecision,
   type RefuseFlowAction,

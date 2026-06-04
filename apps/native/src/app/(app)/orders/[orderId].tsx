@@ -9,6 +9,7 @@ import {
   decideModeTag,
   decidePickupHandoffNote,
   decideRefuseButton,
+  decideRefuseStepCount,
   decideStatusLabel,
   decideWorkflowButton,
   type RefusalReason,
@@ -146,6 +147,10 @@ export default function OrderDetailScreen() {
   const statusLabel = decideStatusLabel(order.status);
   const buttonDecision = decideWorkflowButton(order.status, order.mode);
   const refuseButton = decideRefuseButton(order.status);
+  // #413 — 2-step from `nouvelle`, 3-step from `en préparation` / `prête`
+  // (anti-fat-finger: warning + typed "REFUSER"). The dialog itself owns
+  // the step rendering; we just pass the count.
+  const refuseStepCount = decideRefuseStepCount(order.status);
   const pickupNote = decidePickupHandoffNote(order.mode);
   const totalEuros =
     order.pricingSnapshot !== undefined
@@ -457,12 +462,13 @@ export default function OrderDetailScreen() {
         </View>
       ) : null}
 
-      {/* Workflow buttons — primary (Accepter / Prête / Remise) + the #403
-          secondary "Refuser" button when applicable (PRD 20 §6a: only from
-          `nouvelle`). Both buttons live side by side on `nouvelle` so the
-          cuisinier reads the binary choice (accept vs refuse) at a glance;
-          on later states the Refuser button is hidden and only the primary
-          workflow button is rendered. */}
+      {/* Workflow buttons — primary (Accepter / Prête / Remise) + the
+          secondary "Refuser" button on every live state (PRD 20 §6a, #403 +
+          #413). On `nouvelle` the cuisinier reads the binary choice
+          (accept vs refuse) at a glance; on `en préparation` / `prête` the
+          Refuser button is still surfaced (the cost-of-error gate lives in
+          the dialog's 3-step flow, not in button hiding). On terminal
+          states no button is rendered at all. */}
       {buttonDecision.kind === "show" ? (
         <View className="flex-row items-center gap-2">
           {refuseButton.kind === "show" ? (
@@ -501,11 +507,14 @@ export default function OrderDetailScreen() {
         </View>
       )}
 
-      {/* #403 — 2-step Refusal dialog (PRD 20 §6a). The dialog's internal
-          2-step state machine lives in `refuse-dialog.tsx`; this screen owns
-          the mutation + the busy state + the navigation after success. */}
+      {/* #403 + #413 — Refusal dialog (PRD 20 §6a). The dialog's state
+          machine + the 2-step / 3-step branching live in `refuse-dialog.tsx`;
+          this screen owns the mutation + the busy state + the navigation
+          after success. The step count (#413) is decided from the source
+          status — 2 from `nouvelle`, 3 from `en préparation` / `prête`. */}
       <RefuseDialog
         open={refuseDialogOpen}
+        stepCount={refuseStepCount}
         busy={refusing}
         onClose={() => setRefuseDialogOpen(false)}
         onConfirm={onRefuseConfirm}

@@ -119,10 +119,9 @@ export type WorkflowButtonDecision =
  * side — terminal states + `en attente de paiement` + `refusée` show no
  * button.
  *
- * Refuse (#403), auto_expired (#404), and the 3-step confirm from
- * `en préparation` / `prête` (#413) are explicitly out of scope of #401 (the
- * happy path foundation story). They will layer additional decisions on top
- * of this module in their respective slices.
+ * Refuse (#403, #413) is decided independently by `decideRefuseButton` +
+ * `decideRefuseStepCount` (in `decide-refuse-flow.ts`); auto_expired (#404)
+ * lands on the read side via `decideStatusLabel`.
  */
 export function decideWorkflowButton(
   status: OrderStatus,

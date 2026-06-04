@@ -275,6 +275,31 @@ describe("#108 state machine — the aborted-before-transmission edge", () => {
   });
 });
 
+describe("#413 state machine — refuse from `en préparation` / `prête` is legal (3-step variant)", () => {
+  // PRD 20 §6a — the cuisinier can still refuse an order in flight (rupture
+  // découverte au milieu de la cuisson, incident hygiène). The anti-fat-
+  // finger discipline lives in the UI (3-step dialog #413), NOT in the
+  // state machine: the backend just adds the two edges and reuses the same
+  // refund / notif pipeline as `nouvelle → refusée`.
+  it("`en préparation → refusée` is legal (kitchen had started but must abort)", () => {
+    expect(isLegalTransition("en préparation", "refusée")).toBe(true);
+  });
+
+  it("`prête → refusée` is legal (cooked but cannot be handed off — must abort + refund)", () => {
+    expect(isLegalTransition("prête", "refusée")).toBe(true);
+  });
+
+  it("post-handoff states stay non-refusable (no refund door after handoff)", () => {
+    // Once the order has been handed off to a courier / client, it is no
+    // longer commercially refundable from the resto side (delivery is
+    // Uber Direct's responsibility from there, and a `collectée` order
+    // has already left the door).
+    expect(isLegalTransition("remise", "refusée")).toBe(false);
+    expect(isLegalTransition("livrée", "refusée")).toBe(false);
+    expect(isLegalTransition("collectée", "refusée")).toBe(false);
+  });
+});
+
 describe("2.3-D state machine guard — illegal transitions throw", () => {
   let t: ReturnType<typeof convexTest>;
   let seed: Seed;
