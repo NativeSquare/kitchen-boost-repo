@@ -47,6 +47,14 @@
  * Both reach the GLOBAL `customers` table ONLY through the sanctioned tenancy seam;
  * cross-tenant fuzzed (ADR 0010).
  *
+ * PWA-S3 (#451) — `updateAddress`: stamps the Google-Places-normalised address
+ * (+ lat/lng) on the caller's OWN fiche, as the second link of the address-first
+ * chain (decisions-log Q7, customer-data CONTEXT « Anonymous account » +
+ * « Position géo (lat/lng) »). Self-scoped (`customerMutation`); reaches the
+ * GLOBAL `customers` table ONLY through the sanctioned tenancy seam
+ * (`patchCustomerAddress`), never raw `ctx.db` (ADR 0010). Provisions the fiche
+ * on the fly if absent (idempotent — same robustness as `recordConsentAtCheckout`).
+ *
  * 2.1-G — Web Push subscription STORAGE (PRD 90, notifications CONTEXT « Push
  * subscription », ADR 0012). `register` (self-scoped `customerMutation`) persists
  * the RFC 8291 subscription (endpoint + client keys p256dh/auth) the send layer
@@ -59,13 +67,15 @@
  * 0010). The web-push SEND + the PWA subscribe UI are out of scope (#54 / frontend).
  *
  * Convex registers functions by their module PATH, so callers invoke them as
- * `api.lib.customer.identity.*` / `api.lib.customer.consent.*` /
- * `api.lib.customer.cgv.*` / `api.lib.customer.segments.*` /
- * `api.lib.customer.reachability.*` / `api.lib.customer.kpi.*` /
- * `api.lib.customer.rgpd.*` / `api.lib.customer.webPush.*`; re-exporting here does
- * not change that path, it just states the module's contract in one place.
+ * `api.lib.customer.identity.*` / `api.lib.customer.address.*` /
+ * `api.lib.customer.consent.*` / `api.lib.customer.cgv.*` /
+ * `api.lib.customer.segments.*` / `api.lib.customer.reachability.*` /
+ * `api.lib.customer.kpi.*` / `api.lib.customer.rgpd.*` /
+ * `api.lib.customer.webPush.*`; re-exporting here does not change that path,
+ * it just states the module's contract in one place.
  */
 export { getCurrentCustomer, getOrCreateCurrentCustomer } from "./identity";
+export { updateAddress } from "./address";
 export {
   marketingEligible,
   type MarketingEligibilityInput,

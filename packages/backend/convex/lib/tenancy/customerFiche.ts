@@ -88,6 +88,37 @@ export async function patchCustomerConsent(
   await ctx.db.patch(customerId, patch);
 }
 
+/** The address-first fields the PWA captures via Google Places (PWA-S3 #451). */
+export type CustomerAddressPatch = {
+  address: string;
+  lat: number;
+  lng: number;
+};
+
+/**
+ * PWA-S3 (#451) — stamp the Google-Places-normalised address (+ lat/lng) on a
+ * fiche the caller already resolved as its OWN (the `customerId` MUST come from
+ * `getOrCreateCustomerFiche` / a self-scoped read keyed on `ctx.actor.userId`).
+ *
+ * Re-submitting from the edit-after-validation UX (decisions-log Q7) OVERWRITES
+ * the previous address; the fields are non-optional in the patch shape because
+ * the form forbids free typing (Google Places suggestion required) so a
+ * caller cannot smuggle a partial undefined / null patch through this seam.
+ *
+ * The single sanctioned `ctx.db.patch` site for these fields on the GLOBAL
+ * `customers` table; the business module `lib/customer/address` (NOT exempt)
+ * calls THIS instead of raw `ctx.db` (ADR 0010). The narrow patch type keeps it
+ * confined to the address surface — it cannot overwrite identity (`userId`),
+ * consent fields, the saved-card link, or `pushEnrollment`.
+ */
+export async function patchCustomerAddress(
+  ctx: MutationCtx,
+  customerId: Id<"customers">,
+  patch: CustomerAddressPatch,
+): Promise<void> {
+  await ctx.db.patch(customerId, patch);
+}
+
 /**
  * 2.5-D — stamp the saved-card link (the platform Stripe `Customer` + the
  * PaymentMethod saved on it) onto a fiche the caller already resolved as its OWN

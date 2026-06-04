@@ -37,6 +37,7 @@ import type * as lib_cart_index from "../lib/cart/index.js";
 import type * as lib_crypto_credentials from "../lib/crypto/credentials.js";
 import type * as lib_crypto_envelope from "../lib/crypto/envelope.js";
 import type * as lib_crypto_index from "../lib/crypto/index.js";
+import type * as lib_customer_address from "../lib/customer/address.js";
 import type * as lib_customer_cgv from "../lib/customer/cgv.js";
 import type * as lib_customer_consent from "../lib/customer/consent.js";
 import type * as lib_customer_identity from "../lib/customer/identity.js";
@@ -236,6 +237,7 @@ declare const fullApi: ApiFromModules<{
   "lib/crypto/credentials": typeof lib_crypto_credentials;
   "lib/crypto/envelope": typeof lib_crypto_envelope;
   "lib/crypto/index": typeof lib_crypto_index;
+  "lib/customer/address": typeof lib_customer_address;
   "lib/customer/cgv": typeof lib_customer_cgv;
   "lib/customer/consent": typeof lib_customer_consent;
   "lib/customer/identity": typeof lib_customer_identity;

@@ -8,7 +8,7 @@ import {
   runCrossTenantFuzz,
   seedTwoTenantsAllRoles,
 } from "../tenancy/fuzz";
-import { anonymousProfile } from "../../auth";
+import { PWA_SESSION_CONFIG, anonymousProfile } from "../../auth";
 
 // convex-test needs the function modules; array-negation glob form is required —
 // extglob `!(*.test)` returns ZERO modules (project memory). This file lives in
@@ -54,6 +54,18 @@ async function seedAnonymousCustomer(
     ctx.db.insert("users", { role: "customer", isAnonymous: true }),
   );
 }
+
+describe("PWA-S3 (#451) PWA_SESSION_CONFIG — 365j sliding session override", () => {
+  it("sets BOTH totalDurationMs and inactiveDurationMs to 365 days (Convex Auth default 30j → 365j)", () => {
+    // customer-data CONTEXT « Anonymous account » + decisions-log Q3:
+    // sliding 365j so a returning Sophie is silently recognised intra-resto
+    // for a year. Asserting BOTH fields pins « sliding » (not a one-shot 30j
+    // inactivity cap) — change either default → loud test failure.
+    const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
+    expect(PWA_SESSION_CONFIG.totalDurationMs).toBe(ONE_YEAR_MS);
+    expect(PWA_SESSION_CONFIG.inactiveDurationMs).toBe(ONE_YEAR_MS);
+  });
+});
 
 describe("2.1-B Anonymous provider profile — role customer + isAnonymous", () => {
   it("stamps every anonymous sign-in as role=customer, isAnonymous=true", () => {
