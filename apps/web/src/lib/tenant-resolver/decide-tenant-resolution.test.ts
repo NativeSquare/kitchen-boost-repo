@@ -63,6 +63,7 @@ function baseInput(
     fetchBySlug: overrides.fetchBySlug ?? vi.fn(async () => null),
     fetchByCustomDomain:
       overrides.fetchByCustomDomain ?? vi.fn(async () => null),
+    revalidateCookie: overrides.revalidateCookie,
   };
 }
 

@@ -157,6 +157,7 @@ export {
   activateTenant,
   clearTenantPrinterConfig,
   getTenantById,
+  getTenantByCustomDomain,
   getTenantBySlug,
   getTenantPrinterConfig,
   insertTenant,

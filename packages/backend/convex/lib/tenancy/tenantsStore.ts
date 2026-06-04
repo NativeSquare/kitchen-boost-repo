@@ -66,6 +66,35 @@ export async function getTenantBySlug(
 }
 
 /**
+ * PWA-S1 (#449) — the tenant whose `customDomain` equals `customDomain` (or
+ * `null`). Keyed on `by_custom_domain`. Consumed by the PWA edge middleware
+ * (`apps/web/src/proxy.ts`) when the request `host` doesn't match the
+ * bootstrap `<slug>.kitchen-boost.fr` pattern (PRD §10 PWA Client, ADR 0008).
+ *
+ * Same exempt-path discipline as the rest of this seam (`getTenantBySlug` /
+ * `getTenantById`): the CALLER is a PUBLIC resolution query exposed to the
+ * edge middleware (pre-auth) — there is no `tenantId` yet to gate on (that's
+ * the whole point of resolution). The MINIMAL projection the exposing query
+ * returns (`tenantId` / `slug` / `name` / `status`) is what keeps Stripe ids
+ * / SIRET from leaking to a future client logger.
+ *
+ * A tenant whose `customDomain` is undefined CANNOT match here — the Convex
+ * `by_custom_domain` index keys on the field's value and `eq(undefined)` is
+ * never a match. So a freshly-provisioned tenant (no custom domain yet)
+ * stays invisible to this lookup until the gérant configures it via
+ * `updateTenantSettings`.
+ */
+export async function getTenantByCustomDomain(
+  ctx: QueryCtx | MutationCtx,
+  customDomain: string,
+): Promise<Doc<"tenants"> | null> {
+  return ctx.db
+    .query("tenants")
+    .withIndex("by_custom_domain", (q) => q.eq("customDomain", customDomain))
+    .unique();
+}
+
+/**
  * Read one tenant by id (or `null`). The sanctioned `ctx.db.get` for the
  * `tenants` core table — the CALLER (a `kbAdminQuery` / `kbAdminMutation`
  * handler, root-gated) has already proven access, so this is not a tenancy
