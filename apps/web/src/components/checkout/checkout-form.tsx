@@ -29,13 +29,14 @@
  * lisible (≥ 12px) »). The button text IS the consent action — no
  * checkbox, no separate « J'accepte » step.
  */
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePreloadedQuery, type Preloaded } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
 import { useCart } from "@/components/cart/cart-context";
 import { useDeliveryMode } from "@/components/delivery-mode/delivery-mode-context";
+import { PushEnrollmentModal } from "@/components/checkout/push-enrollment-modal";
 import { decideCartTotals } from "@/lib/delivery-mode";
 import {
   decideCheckoutPrefill,
@@ -99,6 +100,22 @@ export function CheckoutForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [redirect.kind, router]);
 
+  const gate = decidePaymentGate(customer?.pushEnrollment);
+
+  // PWA-S6a (#455) — the push enrollment modal opens when the user clicks
+  // "Payer" with the gate disabled. The modal is *controlled* — we close it
+  // automatically the moment the gate flips to `active` (Convex sub on
+  // `customers.pushEnrollment` re-runs `decidePaymentGate`). Decisions-log
+  // Q8 « modal close auto via Convex sub ». These hooks live BEFORE the
+  // redirect early-return so the hook order stays stable across renders
+  // (react-hooks/rules-of-hooks).
+  const [modalRequested, setModalRequested] = useState(false);
+  useEffect(() => {
+    if (gate.kind === "active" && modalRequested) {
+      setModalRequested(false);
+    }
+  }, [gate.kind, modalRequested]);
+
   if (redirect.kind === "redirect") {
     // Render nothing while the navigation is en route — avoids a flash of
     // the empty checkout form before the redirect lands.
@@ -106,14 +123,23 @@ export function CheckoutForm({
   }
 
   const prefill = decideCheckoutPrefill(customer);
-  const gate = decidePaymentGate(customer?.pushEnrollment);
   const totalsRow = decideCartTotals({
     subtotalCentimes: totals.subtotalCentimes,
     mode,
     verdict,
   });
 
+  const modalOpen = modalRequested && gate.kind !== "active";
+
   const onPayClick = (): void => {
+    if (gate.kind !== "active") {
+      // Gate closed → open the enrollment modal (S6a). The CTA `disabled`
+      // attribute keeps a keyboard user from reaching here on a `disabled`
+      // gate, but we double-check defensively so a future ref-driven click
+      // still routes correctly.
+      setModalRequested(true);
+      return;
+    }
     // S6 stub — the actual Stripe payment lands in S7 (#458). Logging here
     // makes it easy to confirm in the E2E plan that the gate enabled the
     // click (vs the button being disabled — onClick wouldn't fire then).
@@ -121,8 +147,7 @@ export function CheckoutForm({
       tenantId,
       subtotalCentimes: totals.subtotalCentimes,
       totalCentimes: totalsRow.totalCentimes,
-      enrolledChannels:
-        gate.kind === "active" ? gate.enrolledChannels : undefined,
+      enrolledChannels: gate.enrolledChannels,
     });
   };
 
@@ -193,16 +218,11 @@ export function CheckoutForm({
         onPayClick={onPayClick}
       />
 
-      {/* Placeholder for the next slice (S6a) — visible to Alex on the
-          terrain so he knows the modal is the next chunk, not a regression. */}
-      {gate.kind === "disabled" && (
-        <p
-          role="note"
-          className="rounded-lg border border-dashed border-zinc-300 bg-zinc-50 px-3 py-2 text-xs text-zinc-600"
-        >
-          Coming next : modal push enrollment (S6a — #455).
-        </p>
-      )}
+      <PushEnrollmentModal
+        open={modalOpen}
+        tenantId={tenantId}
+        restoName={restoName}
+      />
     </form>
   );
 }
@@ -212,6 +232,12 @@ export function CheckoutForm({
  * per render, in one place, and so a future test can mount the button in
  * isolation if needed (no jsdom in apps/web V1 → not done here, but the
  * boundary is clean).
+ *
+ * S6a (#455) — the button is ALWAYS clickable now: a gate-disabled click opens
+ * the `<PushEnrollmentModal>` (per the parent's `onPayClick`), a gate-active
+ * click triggers the Stripe payment (S7). The visual styling still
+ * differentiates the two states so the user sees the gate, but `disabled` is
+ * deliberately dropped to keep the modal opening on click.
  */
 function PayButton({
   gate,
@@ -227,13 +253,9 @@ function PayButton({
     <button
       type="button"
       onClick={onPayClick}
-      disabled={!isActive}
       aria-disabled={!isActive}
-      className={
-        isActive
-          ? "rounded-lg bg-emerald-700 px-4 py-3 text-base font-semibold text-white hover:bg-emerald-800"
-          : "cursor-not-allowed rounded-lg bg-zinc-300 px-4 py-3 text-base font-semibold text-zinc-500"
-      }
+      data-gate={isActive ? "active" : "disabled"}
+      className="rounded-lg bg-emerald-700 px-4 py-3 text-base font-semibold text-white hover:bg-emerald-800"
     >
       Payer {formatEur(totalCentimes)}
     </button>

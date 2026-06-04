@@ -118,3 +118,16 @@ export {
  * `generatePass` / `registrations` / `linkSerial` / `triggerUpdate`.
  */
 export { deliverIncentive } from "./incentive";
+
+/**
+ * PWA-S6a (#455) — `checkInstallStatus`, the "Tester sans attendre" poll surface
+ * of the Wallet install loader (decisions-log Q8 « Flow async install Wallet :
+ * loader 30s + Tester sans attendre », US 33). Self-scoped (customer wrapper),
+ * returns `{ installed: boolean }` derived from `walletPasses.status === "installed"`
+ * — the technical state flipped by 2.8-C `handlePassInstalled` once the
+ * Apple PassKit / Google Wallet webhook lands. No-existence-leak (unknown /
+ * foreign serial answers `installed:false`, never throws). The Convex FUNCTION
+ * is NOT re-exported — Convex addresses it by its module path
+ * (`api.lib.wallet.checkInstallStatus.checkInstallStatus`), same convention as
+ * the rest of the slice.
+ */
