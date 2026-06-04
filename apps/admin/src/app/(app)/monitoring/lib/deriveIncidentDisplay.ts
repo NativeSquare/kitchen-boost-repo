@@ -54,5 +54,17 @@ export function deriveIncidentDisplay(incident: Incident): IncidentDisplay {
             ? undefined
             : `/t/${incident.tenantId}/commandes`,
       };
+    case "auto_expired_burst":
+      // #415 — PRD 20 §6b + ADR 0016. Operational signal (resto silently
+      // dropping cmds) — same severity discipline as `kyc_pending` (warning,
+      // not critical: no live outage, just a 24 h trend ops nudges). The
+      // drill-down jumps straight to the resto's history filtered on the
+      // « Manquées » tab via the `?tab=missed` query param — the page reads
+      // it on mount so ops audits the exact cmds that were auto-expired.
+      return {
+        severity: "warning",
+        label: "Cmds manquées (burst)",
+        href: `/t/${incident.tenantId}/commandes?tab=missed`,
+      };
   }
 }

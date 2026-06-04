@@ -213,13 +213,19 @@ describe("page.tsx — F-COMMANDES-LIVE-TABLE (#227) wiring contract", () => {
     expect(code).toMatch(/\bfilterOrders\b/);
   });
 
-  it("AC #238 — does NOT add URL query params (V1 decision: no router/searchParams plumbing)", () => {
-    // EPIC #141 explicitly defers URL-shareable filters to V2. We pin that
-    // the page does NOT pull `useSearchParams` / `useRouter` to thread the
-    // filter into the URL — any such call would mean a slice drifted from
-    // the decision.
+  it("AC #238 — does NOT push filter state into the URL (V1 decision: no `useRouter`-driven sync)", () => {
+    // EPIC #141 explicitly defers URL-shareable filters to V2. The page
+    // does NOT call `useRouter()` to thread the date/status filter into
+    // the URL — any such call would mean a slice drifted from the decision.
+    //
+    // #415 EXCEPTION: the page reads `useSearchParams().get("tab")` ONCE
+    // (lazy `useState` initializer) so the monitoring drill-down link
+    // (`/t/<id>/commandes?tab=missed`, deriveIncidentDisplay) lands ops
+    // on the right tab. This is one-way URL → initial state, NOT a
+    // bidirectional sync (no `useRouter().replace` per click). The
+    // `useRouter` ban stays in force; `useSearchParams` is permitted
+    // for the documented read-once initializer.
     const code = stripNonCode(PAGE_SOURCE);
-    expect(code).not.toMatch(/\buseSearchParams\b/);
     expect(code).not.toMatch(/\buseRouter\b/);
   });
 
@@ -353,6 +359,30 @@ describe("page.tsx — F-COMMANDES-LIVE-TABLE (#227) wiring contract", () => {
     // but we pin the slug literal surfaces somewhere in the executable
     // code path — proof the filename isn't built on the raw tenantId.
     expect(code).toMatch(/\bslug\b/);
+  });
+
+  // -------------------------------------------------------------------------
+  // #415 — Manquées tab + order id search.
+  // -------------------------------------------------------------------------
+  it("AC #415 — composes `applyTabFilter` + `searchOrdersById` on top of `filterOrders`", () => {
+    const code = stripNonCode(PAGE_SOURCE);
+    expect(code).toMatch(/\bapplyTabFilter\b/);
+    expect(code).toMatch(/\bsearchOrdersById\b/);
+  });
+
+  it("AC #415 — reads the initial tab from `?tab=` so the monitoring drill-down lands on « Manquées »", () => {
+    // The monitoring drill-down for an `auto_expired_burst` builds
+    // `/t/<id>/commandes?tab=missed` via `deriveIncidentDisplay`. The page
+    // reads the param ONCE (lazy `useState` initializer) so a click in
+    // the monitoring table lands ops on the right tab without an extra
+    // step. We pin `useSearchParams` is used (one-way URL → state) and
+    // the « missed » literal surfaces in the resolver.
+    const code = stripNonCode(PAGE_SOURCE);
+    expect(code).toMatch(/\buseSearchParams\b/);
+    // The resolver references the tab keys — at the very least the page
+    // restricts to `ORDER_TABS` keys to avoid trapping the user on an
+    // unknown value.
+    expect(code).toMatch(/\bORDER_TABS\b|"all"|'all'/);
   });
 
   it("AC scope — never imports from `apps/web`, `apps/native`, or the backend `functions` tree", () => {

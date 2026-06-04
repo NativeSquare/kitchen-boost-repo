@@ -9,9 +9,11 @@ import {
 import {
   kbAdminQuery,
   listAllTenantIds,
+  listAllTenants,
   listProspects,
   listTenantDeliveries,
   listTenantOrders,
+  listTenantOrdersByStatus,
 } from "../tenancy";
 
 /**
@@ -59,6 +61,23 @@ export const WEBHOOK_LATENCY_THRESHOLD_MS = 30_000;
 /** KYC `pending_kyc` dwell over which an incident fires (PRD 70 §3.8: > 48 h). */
 export const KYC_PENDING_THRESHOLD_MS = 48 * 60 * 60 * 1000;
 
+/**
+ * #415 — `auto_expired` daily burst threshold per tenant (PRD 20 §8: « alerte
+ * ops si auto_expired/jour > seuil ~3-5 par défaut »). Low end of the
+ * documented range so the alert fires earlier (ops decides to relax it later
+ * — a bumped constant is a one-line change, no schema migration). The
+ * constant is exported so the front (drill-down detail panel) can render
+ * « seuil 3 » alongside the count.
+ */
+export const AUTO_EXPIRED_24H_THRESHOLD = 3;
+
+/**
+ * #415 — Rolling 24 h window over which auto_expired bursts are counted
+ * (PRD 20 §8 « par jour »). A constant rather than `Date.now() - 1 jour` so
+ * a test can re-pin it explicitly.
+ */
+export const AUTO_EXPIRED_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 // ---------------------------------------------------------------------------
 // Incident model.
 // ---------------------------------------------------------------------------
@@ -73,7 +92,7 @@ export type WebhookLatencySample = {
   latencyMs: number;
 };
 
-/** A detected ops incident — one of the three PRD 70 §3.8 kinds. */
+/** A detected ops incident — one of the four PRD 70 §3.8 / PRD 20 §8 kinds. */
 export type Incident =
   | {
       kind: "webhook_latency";
@@ -88,7 +107,22 @@ export type Incident =
       prospectName?: string;
       pendingSinceMs: number;
     }
-  | { kind: "paid_no_course"; orderId: string; tenantId?: string };
+  | { kind: "paid_no_course"; orderId: string; tenantId?: string }
+  | {
+      /**
+       * #415 — A tenant whose `auto_expired` count over the trailing
+       * `windowMs` exceeds `thresholdCount` (PRD 20 §8 / ADR 0016
+       * « signaux orthogonaux »). Operational alert: the resto is
+       * silently dropping cmds (tablette HS / Khan AFK / push OS-bloqué)
+       * — ops nudges the gérant before the burst becomes a churn risk.
+       */
+      kind: "auto_expired_burst";
+      tenantId: string;
+      tenantName?: string;
+      count: number;
+      windowMs: number;
+      thresholdCount: number;
+    };
 
 // ---------------------------------------------------------------------------
 // PURE detectors (no DB, no ctx — the "testable in isolation" core).
@@ -222,6 +256,74 @@ export function detectPaidOrdersWithoutCourse(
 }
 
 // ---------------------------------------------------------------------------
+// #415 — auto_expired daily burst per tenant (PRD 20 §8 + ADR 0016).
+// ---------------------------------------------------------------------------
+
+/** The minimal `auto_expired` order shape the burst detector needs (pure-testable). */
+export type AutoExpiredScanOrder = {
+  _id: string;
+  tenantId: string;
+  autoExpiredAt: number;
+};
+
+/** Per-detector input — `now` + the orders to scan + the tenant display names. */
+export type AutoExpiredBurstScanInput = {
+  /** Orders whose status is `auto_expired` (caller filters; we don't re-check). */
+  orders: AutoExpiredScanOrder[];
+  /** Optional `tenantId → display name` lookup for the Slack alert + UI. */
+  tenantNames: Record<string, string>;
+  /** Reference instant (epoch ms) — orders older than `now - windowMs` are ignored. */
+  now: number;
+  /** Rolling window (typically `AUTO_EXPIRED_WINDOW_MS` = 24 h). */
+  windowMs: number;
+  /** Threshold (typically `AUTO_EXPIRED_24H_THRESHOLD` = 3). Strictly greater fires. */
+  thresholdCount: number;
+};
+
+/**
+ * Tenants whose `auto_expired` order count over the trailing `windowMs` is
+ * STRICTLY greater than `thresholdCount`. One `Incident` per tenant — counts
+ * are aggregated per tenant, not per order, so a `kb_admin` looking at the
+ * list reads « tenant X = 5 cmds manquées 24 h » in one row.
+ *
+ * Pure: no DB, no ctx, no `Date.now()`. The caller (`readIncidents`) reads
+ * the live orders through the sanctioned tenancy seam and hands them here.
+ * The « at-threshold » case is healthy (strict > matches the other
+ * detectors' « > 30 s » / « > 48 h » semantics).
+ */
+export function detectAutoExpiredBursts(
+  input: AutoExpiredBurstScanInput,
+): Incident[] {
+  const cutoff = input.now - input.windowMs;
+  // Aggregate counts per tenant in one pass over the orders.
+  const counts = new Map<string, number>();
+  for (const order of input.orders) {
+    if (order.autoExpiredAt < cutoff) continue;
+    counts.set(order.tenantId, (counts.get(order.tenantId) ?? 0) + 1);
+  }
+  // Emit an incident per tenant whose count strictly exceeds the threshold.
+  // Iteration order = first-seen tenant order in `input.orders` (Map preserves
+  // insertion order in JS — handy for the Slack alert to read tenants in the
+  // same order they appeared on the wire).
+  const incidents: Incident[] = [];
+  for (const [tenantId, count] of counts) {
+    if (count <= input.thresholdCount) continue;
+    const tenantName = input.tenantNames[tenantId];
+    incidents.push({
+      kind: "auto_expired_burst",
+      tenantId,
+      // Drop the field entirely when absent so the row presenter falls back
+      // to `tenantId` (same convention as `kyc_pending.prospectName`).
+      ...(tenantName !== undefined ? { tenantName } : {}),
+      count,
+      windowMs: input.windowMs,
+      thresholdCount: input.thresholdCount,
+    });
+  }
+  return incidents;
+}
+
+// ---------------------------------------------------------------------------
 // Combinator + Slack text (pure).
 // ---------------------------------------------------------------------------
 
@@ -233,9 +335,13 @@ export type ScanInput = {
   orders: PaidScanOrder[];
   deliveries: CourseScanDelivery[];
   paidNoCourseGraceMs: number;
+  /** #415 — `auto_expired` orders to scan for the daily burst detector. */
+  autoExpiredOrders: AutoExpiredScanOrder[];
+  /** #415 — `tenantId → display name` lookup for the burst alert + UI. */
+  tenantNames: Record<string, string>;
 };
 
-/** Run the three detectors over the given data and return their union. Pure. */
+/** Run all detectors over the given data and return their union. Pure. */
 export function scanIncidents(input: ScanInput): Incident[] {
   return [
     ...detectWebhookLatencyIncidents(
@@ -253,6 +359,13 @@ export function scanIncidents(input: ScanInput): Incident[] {
       input.now,
       input.paidNoCourseGraceMs,
     ),
+    ...detectAutoExpiredBursts({
+      orders: input.autoExpiredOrders,
+      tenantNames: input.tenantNames,
+      now: input.now,
+      windowMs: AUTO_EXPIRED_WINDOW_MS,
+      thresholdCount: AUTO_EXPIRED_24H_THRESHOLD,
+    }),
   ];
 }
 
@@ -276,6 +389,11 @@ export function formatIncidentSlackText(incident: Incident): string {
       return `:package: Commande payée sans course Uber créée — order \`${incident.orderId}\`${
         incident.tenantId ? ` (tenant \`${incident.tenantId}\`)` : ""
       }`;
+    case "auto_expired_burst": {
+      const who = incident.tenantName ?? incident.tenantId;
+      const windowHours = Math.round(incident.windowMs / 3_600_000);
+      return `:warning: *${who}* a auto_expired ${incident.count} cmd(s) en ${windowHours} h — > seuil ${incident.thresholdCount}`;
+    }
   }
 }
 
@@ -337,6 +455,35 @@ async function readIncidents(ctx: QueryCtx, now: number): Promise<Incident[]> {
   // wire it behind `MONITORING_WEBHOOK_LATENCY_ENABLED`).
   const webhookSamples: WebhookLatencySample[] = [];
 
+  // #415 — `auto_expired` orders within the trailing 24 h, grouped per tenant
+  // downstream by `detectAutoExpiredBursts`. We read tenant-by-tenant via the
+  // sanctioned `listTenantOrdersByStatus` seam (`by_tenant_status` index), so
+  // an off-burst tenant pulls a small list, and we union them — the burst
+  // detector is a pure aggregator. Tenant names are denormalised once for the
+  // Slack/UI label.
+  const tenants = await listAllTenants(ctx);
+  const tenantNames: Record<string, string> = {};
+  const autoExpiredOrders: AutoExpiredScanOrder[] = [];
+  for (const tenant of tenants) {
+    tenantNames[tenant._id] = tenant.name;
+    const rows = await listTenantOrdersByStatus(
+      ctx,
+      tenant._id,
+      "auto_expired",
+    );
+    for (const row of rows) {
+      // The detector trims the window itself; we only forward rows that have
+      // the timestamp set (auto_expired with a missing `autoExpiredAt` is a
+      // backend invariant violation — drop defensively, not silently).
+      if (row.autoExpiredAt === undefined) continue;
+      autoExpiredOrders.push({
+        _id: row._id,
+        tenantId: row.tenantId,
+        autoExpiredAt: row.autoExpiredAt,
+      });
+    }
+  }
+
   return scanIncidents({
     now,
     webhookSamples,
@@ -344,6 +491,8 @@ async function readIncidents(ctx: QueryCtx, now: number): Promise<Incident[]> {
     orders,
     deliveries,
     paidNoCourseGraceMs,
+    autoExpiredOrders,
+    tenantNames,
   });
 }
 

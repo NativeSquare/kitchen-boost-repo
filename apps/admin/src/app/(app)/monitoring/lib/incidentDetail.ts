@@ -90,5 +90,28 @@ export function toIncidentDetail(incident: Incident): IncidentDetail {
         fields,
       };
     }
+    case "auto_expired_burst": {
+      // #415 — Same field-by-field exposure pattern as the other kinds:
+      // every raw field of the discriminated union surfaces as a row, optional
+      // fields are dropped when absent (so the panel never lies about
+      // data that doesn't exist — same discipline as `kyc_pending.prospectName`).
+      const fields: IncidentDetailField[] = [
+        { label: "tenantId", value: incident.tenantId },
+      ];
+      if (incident.tenantName !== undefined) {
+        fields.push({ label: "tenantName", value: incident.tenantName });
+      }
+      fields.push(
+        { label: "count", value: String(incident.count) },
+        { label: "thresholdCount", value: String(incident.thresholdCount) },
+        { label: "windowMs", value: String(incident.windowMs) },
+      );
+      return {
+        kind: incident.kind,
+        typeLabel: display.label,
+        href: display.href,
+        fields,
+      };
+    }
   }
 }

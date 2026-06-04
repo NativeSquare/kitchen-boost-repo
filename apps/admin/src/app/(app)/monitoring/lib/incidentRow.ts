@@ -88,5 +88,25 @@ export function toIncidentRow(incident: Incident, now: number): IncidentRow {
         href: display.href,
       };
     }
+    case "auto_expired_burst": {
+      // #415 — One row per tenant in burst. Target = the resto's display
+      // name when known (« Khan's Resto ») so ops scans the burst list
+      // without juggling tenant ids; falls back to the tenantId when the
+      // name is absent (mirror of `kyc_pending`'s prospectName ?? id).
+      const target = incident.tenantName ?? incident.tenantId;
+      const windowHours = Math.round(incident.windowMs / 3_600_000);
+      return {
+        key: `auto_expired_burst:${incident.tenantId}`,
+        kind: incident.kind,
+        severity: display.severity,
+        typeLabel: display.label,
+        targetLabel: target,
+        // Inline details: count + window + threshold so ops reads the
+        // « 5 / 24h (seuil 3) » signal at a glance, same shape as
+        // `webhook_latency`'s « provider · externalId · 45 s ».
+        details: `${incident.count} cmd(s) · ${windowHours}h · seuil ${incident.thresholdCount}`,
+        href: display.href,
+      };
+    }
   }
 }

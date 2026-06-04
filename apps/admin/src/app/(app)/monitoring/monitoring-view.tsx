@@ -261,6 +261,9 @@ function FiltersBar({
             <SelectItem value="webhook_latency">webhook_latency</SelectItem>
             <SelectItem value="kyc_pending">kyc_pending</SelectItem>
             <SelectItem value="paid_no_course">paid_no_course</SelectItem>
+            <SelectItem value="auto_expired_burst">
+              auto_expired_burst
+            </SelectItem>
           </SelectContent>
         </Select>
       </div>

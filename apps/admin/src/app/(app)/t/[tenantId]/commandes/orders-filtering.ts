@@ -79,6 +79,13 @@ export const ALL_ORDER_STATUSES = [
   "livrée",
   "collectée",
   "refusée",
+  // #415 — PRD 20 §6b + ADR 0016 + kb-orders CONTEXT « Cmd manquée ». The
+  // 9th status: a `nouvelle` order that the system auto-expired at T+5min
+  // because the resto didn't ack in time. The `orders-tabs.ts` « Manquées »
+  // tab maps to it; the multi-select picks it up automatically (kb_admin
+  // ops can drill in via the status filter even on tabs other than
+  // « Manquées »).
+  "auto_expired",
 ] as const;
 
 /** A status value — extracted from the const tuple so callers stay typed. */
