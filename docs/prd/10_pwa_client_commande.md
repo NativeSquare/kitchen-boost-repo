@@ -1,8 +1,10 @@
 # 10 — PWA Client Commande
 
-**Statut** : 🟡 Squelette · **Version** : 0.3 · **Dernière mise à jour** : 2026-05-24
+**Statut** : 🟡 Squelette · **Version** : 0.4 · **Dernière mise à jour** : 2026-06-04
 **Lié au master** : [00_master.md § 5 bloc 1](00_master.md#5-surface-fonctionnelle-macro-vue-doiseau)
+**Sub-PRD canonique** : [sub/10-pwa-client/00-master.md](sub/10-pwa-client/00-master.md) + [decisions-log](sub/10-pwa-client/00-decisions-log.md) + [issues-breakdown](sub/10-pwa-client/00-issues-breakdown.md)
 
+> **v0.4** : Grilling architectural PWA acté 2026-06-04 (Q1→Q8). §2 address-first auto-validate au sélection. §5 overlay LIVE `available` Convex sub par-dessus HTML ISR. §9 push enrollment refondu en 3 paliers (soft prompt + bandeau permanent en amont du modal bloquant au paiement) + détection canal actif Convex sub côté `/checkout` + fallback 3 niveaux frictionnels détaillé. §11 tracking realtime Convex sub sans polling + cas incident. Sub-PRD complet versé dans `docs/prd/sub/10-pwa-client/` (master + decisions-log Q1→Q8 + 19 vertical slices breakdown publié comme issues GitHub #445-#464).
 > **v0.3** : Grilling DDD acté 2026-05-24 — address-first flow + toggle livraison/C&C header permanent + PWA standalone (pas widget embed) + dual stack Wallet pass commun sous marque neutre + A2HS PWA + push enrollment BLOQUANT à la validation paiement + branding asymétrique (PWA resto / Wallet commun) + page tracking unifiée avec récap collapsible + 14 allergènes UE paramétrables + modifiers min/max comme Uber Manager + lignes panier séparées par config + pas de search V1 + pas de marketplace V1 + pas de codes promo manuels V1 + pas de banner cookie V1 (first-party only) + reviews = V2 → Google jamais Uber Eats. ADRs 0002/0003/0004 créés.
 > **v0.2** : Scope V1 étendu suite révision master v2.0. Apple Pay/Google Pay, position géo, carte sauvegardée cross-resto, click & collect, push marketing — désormais V1.
 
@@ -45,10 +47,12 @@
 ### 2. Address-first flow (BLOQUANT avant menu)
 
 - À l'arrivée : écran "Indique ton adresse" via Google Places autocomplete obligatoire (saisie libre interdite)
-- Dès saisie : call `POST /delivery_quotes` Uber Direct + check plage horaire (KB source de vérité)
+- **Auto-validate au sélection** suggestion Google (pas de bouton "Valider" indépendant — 1 tap de moins, acté grilling PWA Q7 2026-06-04). Chain au sélection : `signIn("anonymous")` → `getOrCreateCurrentCustomer` → `updateAddress({address, lat, lng})` → action `delivery.quote.requestDeliveryQuote`
+- Pendant quote (~500-800ms) : spinner inline "On vérifie la livraison…"
 - Si quote OK : toggle Livraison/C&C visible + accès au menu
 - Si quote refusé (hors zone / hors horaire / surge bloquant) : mode livraison verrouillé, seul C&C accessible avec message contextualisé
 - Position géo lat/lng captée → alimente customer record + déclenche Quote
+- Édit adresse après validation → re-fire quote automatique (debounce 300ms)
 
 ### 3. Toggle Livraison / Click & Collect (header permanent)
 
@@ -70,6 +74,8 @@
 - Items avec photo, nom, prix, description courte
 - Badges allergènes (14 UE 1169/2011) + filtres rapides "Sans gluten / Vegan / Végé"
 - Items grisés "Indisponible ce soir" si out of stock (toggle KDS)
+- **Rendering = ISR + on-demand revalidate** (acté grilling PWA Q2 2026-06-04) : `publishedMenus` change uniquement au clic "Publier" admin → mutation Convex `publishMenu` déclenche `revalidateTag('menu:<tenantId>')` côté Vercel → CDN invalidé → prochain visiteur déclenche re-render. LCP cible <1.5s sur 4G grâce au HTML pré-rendu CDN.
+- **Overlay LIVE `available` via Convex subscription** (acté grilling PWA Q2) : le champ `available` (cf. [[Item out of stock]]) n'est PAS dans l'[[Instantané publié]] ISR, c'est un overlay temps réel par-dessus le HTML cached — toggle KDS depuis [[KB Orders]] → re-render PWA <500ms sans full reload, sans invalidation CDN, sans republication menu. Pareil si item passe out-of-stock entre cart add et checkout (sub réactive sur `/panier`).
 
 ### 6. Item détail
 
@@ -92,15 +98,24 @@
 - Si client déjà connu (Anonymous account = **cookie device** ; cross-device **uniquement via carte Wallet**, pas de match email/tel — [ADR 0008](../adr/0008-identite-customer-cookie-device-only-v1.md)) → pré-remplissage
 - RGPD : **consentement par clic « Payer »** ([ADR 0007](../adr/0007-consentement-clic-payer-v1.md), supersede l'ancienne checkbox [ADR 0001](../adr/0001-consent-marketing-bloquant-checkout-v1.md)) — phrase lisible sous le bouton, enregistre `cgvAcceptedAt` + `cgvVersionHash` (cf. [90_donnees_clients_crm.md](90_donnees_clients_crm.md))
 
-### 9. Push enrollment BLOQUANT (avant Stripe Elements)
+### 9. Push enrollment — 3 paliers Wallet + BLOQUANT au paiement
 
-- Avant de pouvoir cliquer "Payer" : check qu'au moins UN canal push enrollment est actif :
-  - Pass Wallet installé (event `pass_installed` reçu)
-  - Permission web push accordée + subscription valide
-  - A2HS PWA détectée (`display-mode: standalone`)
-- Si rien : modal incontournable "Pour finaliser ta cmd, choisis comment recevoir ta confirmation + offres : 🥇 Carte fidélité Wallet (2 taps recommandé) / 🥈 Notifs navigateur (1 tap)"
-- Incentive Wallet paramétrée par le resto affichée comme hook ("🎁 Reçois -10% sur ta prochaine cmd")
-- Fallback "Continuer sans notifs" ultra-frictionnel (3 niveaux modal, lien microscopique, disclaimer fort) — disponible uniquement après 2 tentatives d'install échouées
+**3 paliers de prompt Wallet progressifs en amont du bloquant** (acté grilling PWA Q5/Q8 2026-06-04, capture aussi les visiteurs low-intent qui auraient skip un push enrollment uniquement-au-paiement) :
+
+1. **Palier 1 — Soft prompt** : juste après submit address-first, card pleine page "🎁 -10% sur ta prochaine cmd → Ajoute la carte" + bouton primary + "Plus tard" link skippable. NON bloquant.
+2. **Palier 2 — Bandeau permanent** : bandeau top fin permanent sur menu/panier "🎁 -10% offerts → ajoute la carte", dismissable session-scoped (sessionStorage). NON bloquant.
+3. **Palier 3 — Modal BLOQUANT au clic "Payer"** : check qu'au moins UN canal push enrollment est actif :
+   - Pass Wallet installé (event `pass_installed` reçu)
+   - Permission web push accordée + subscription valide
+   - A2HS PWA détectée (`display-mode: standalone`)
+   - Si rien : modal **non-skippable** (Esc / click outside ignorés) single-screen "Pour finaliser ta cmd, choisis comment recevoir ta confirmation + offres : 🥇 Carte fidélité Wallet (2 taps recommandé) / 🥈 Notifs navigateur (1 tap)"
+   - Option Web Push **masquée si iOS <16.4** (détecté via `'PushManager' in window === false`)
+   - Incentive Wallet paramétrée par le resto affichée comme hook ("🎁 Reçois -10% sur ta prochaine cmd")
+   - Flow async install Wallet : loader 30s "En attente confirmation Wallet…" + bouton "Tester sans attendre" (poll `wallet.checkInstallStatus`) + lien "J'ai changé d'avis" (retour modal initial). Convex sub sur `customers.pushEnrollment.walletStatus` flip `"enrolled"` au webhook `pass_installed` → modal close auto
+
+**Détection canal actif côté front** (acté Q8) : RSC `/checkout` `preloadQuery(getCurrentCustomer)` check `pushEnrollment.{walletStatus, webPushStatus, a2hsStatus}`. Si au moins UN = `"enrolled"` → modal NE s'affiche PAS, bouton "Payer" actif direct. **Convex subscription client-side** réactive le bouton sans reload si install effectif pendant que le client est sur `/checkout` (ex: au palier 1 5 min plus tôt).
+
+**Fallback "Continuer sans notifs" — 3 niveaux frictionnels** (apparaît uniquement après 2 échecs documentés, ex: Wallet refusé + Web Push denied) : lien microscopique 12px muted → modal confirm "Sans notifs : AUCUNE confirmation, AUCUN suivi, AUCUNE offre. Sûr ?" → modal final "On a vraiment besoin d'au moins un canal…" → re-display modal initial une dernière fois. Re-refus final → flag `customer.pushEnrollment.noChannelPossible = true` + close modal + proceed paiement (SMS fallback transactionnel via [[Cascade Notifications]], coût ~0.5-1€/mois/resto pour <5% des cas).
 
 ### 10. Checkout Stripe
 
@@ -111,12 +126,14 @@
 
 ### 11. Page Tracking (= page de confirmation, état T+0)
 
-- Redirect immédiat post-paiement validé vers cette page
+- Redirect immédiat post-paiement validé vers cette page (URL = `/c/[orderId]`, `orderId` = Convex Id brut non-devinable, URL non-protégée par auth — partageable SMS/push)
 - **Animations Lottie SVG par étape + ETA texte live**, pas de map, white-label total
 - 6 étapes mode livraison : `Cmd reçue` → `En préparation` → `Courier assigné` (prénom + ETA pickup) → `Courier en route vers le resto` (ETA pickup live) → `Courier en route vers toi` (ETA dropoff live) → `Livrée` (push "Bon appétit ! 🍽️")
 - 3 étapes mode C&C : `Cmd reçue` → `En préparation` (ETA prête dans X min) → `Prête à récupérer` (push "ta cmd t'attend chez [resto]")
-- **Récap items collapsible** : bouton "Voir le détail de ma cmd" déplie items + modifiers + total + adresse
+- **Realtime via Convex subscription, SANS polling** (acté grilling PWA Q7 2026-06-04) : `useQuery(api.orders.getOrderTracking, {orderId})` côté client → webhook Uber Direct (ou KDS pour C&C) écrit `deliveries.status` / `orders.status` → Convex push toutes UIs subscribers → re-render <500ms (pas de `setInterval`, pas de re-fetch manuel). ETA dérivé webhook Uber `pickup_eta` / `dropoff_eta` (~30s refresh côté Uber).
+- **Récap items collapsible** : bouton "Voir le détail de ma cmd" déplie items + modifiers + total + adresse (élément `<details><summary>` natif HTML, pas de lib)
 - Email transactionnel envoyé en parallèle avec récap complet (backup permanent)
+- Cas incident : si `delivery.status ∈ {'incident_after_pickup', 'refused_post_payment'}` → card "Incident livraison, tu as été remboursé" + Lottie incident (cf. [[Cmd avortée]] dans [[Delivery]])
 
 ### 12. Post-livraison (V1)
 
@@ -211,8 +228,9 @@
 
 ## Changelog
 
-| Date       | Version | Auteur            | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| ---------- | ------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-05-23 | 0.1     | Alex (via Claude) | Création squelette.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| 2026-05-23 | 0.2     | Alex (via Claude) | Extension scope V1 : Apple Pay/Google Pay, carte cross-resto, position géo, click & collect, push marketing, reviews gating.                                                                                                                                                                                                                                                                                                                                                                                               |
-| 2026-05-24 | 0.3     | Alex (via Claude) | Grilling DDD acté : address-first flow + toggle livraison/C&C header permanent + PWA standalone (ADR 0004) + dual stack Wallet pass commun marque neutre (ADR 0002+0003) + A2HS PWA + push enrollment BLOQUANT à la validation paiement + branding asymétrique + page tracking unifiée récap collapsible + 14 allergènes UE paramétrables + modifiers min/max + lignes panier séparées + pas de search/codes promo/banner cookie/marketplace V1 + reviews V2 → Google jamais Uber Eats. Q10-Q1 à Q10-Q12 actés ou ouverts. |
+| Date       | Version | Auteur            | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ---------- | ------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-05-23 | 0.1     | Alex (via Claude) | Création squelette.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| 2026-05-23 | 0.2     | Alex (via Claude) | Extension scope V1 : Apple Pay/Google Pay, carte cross-resto, position géo, click & collect, push marketing, reviews gating.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| 2026-05-24 | 0.3     | Alex (via Claude) | Grilling DDD acté : address-first flow + toggle livraison/C&C header permanent + PWA standalone (ADR 0004) + dual stack Wallet pass commun marque neutre (ADR 0002+0003) + A2HS PWA + push enrollment BLOQUANT à la validation paiement + branding asymétrique + page tracking unifiée récap collapsible + 14 allergènes UE paramétrables + modifiers min/max + lignes panier séparées + pas de search/codes promo/banner cookie/marketplace V1 + reviews V2 → Google jamais Uber Eats. Q10-Q1 à Q10-Q12 actés ou ouverts.                                                                                                                                                                                                                                                                                                                     |
+| 2026-06-04 | 0.4     | Alex (via Claude) | Grilling architectural PWA acté (Q1→Q8) : tenant resolution middleware Edge + cookie HttpOnly + route map ISR/RSC + sign-in anonymous timing au submit address (option C) + session 365j sliding + reconnaissance retour bandeau "Bonjour {firstName}" + manifest dynamic per host + SW minimal + 3 paliers Wallet install (soft prompt + bandeau permanent + modal bloquant) + bridge identité serial deep-link + Stripe Elements lazy `/checkout` + Apple Pay domain verification manual V1 + Google Places auto-validate + toggle livraison/C&C sans re-quote + latching `recaptureQuoteAtPayment` + modal push enrollment single-screen non-skippable + fallback 3 niveaux frictionnels + flag `noChannelPossible` + SMS fallback. Sub-PRD versé `docs/prd/sub/10-pwa-client/`. 20 issues GitHub publiées (parent #445 + 3 HITL + 16 AFK). |
