@@ -52,6 +52,7 @@ import {
   type DeliveryQuoteReason,
   decideAddressFirstAction,
 } from "@/lib/address-first";
+import { encodeVerdict, VERDICT_STORAGE_KEY } from "@/lib/delivery-mode";
 
 /**
  * Narrowed shape of `AddressFirstAction` when the verdict is non-deliverable.
@@ -149,12 +150,28 @@ export function AddressFirstForm({
         tenantId,
         address: selection.address,
       });
+      // PWA-S5 (#453) : cache the verdict in localStorage so
+      // `<DeliveryModeProvider>` on /menu and /panier can derive the
+      // initial toggle state + switch modes without re-quoting Uber
+      // (decisions-log Q7 « verdict cache 2 modes »). Swallow quota /
+      // privacy-mode errors — the cart already handles « no verdict »
+      // as the C&C-default branch.
+      try {
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(
+            VERDICT_STORAGE_KEY,
+            encodeVerdict(verdict),
+          );
+        }
+      } catch {
+        // Quota / privacy mode — non-fatal; the cart degrades gracefully.
+      }
       const action = decideAddressFirstAction(verdict);
       setState({ kind: "result", action });
       if (action.kind === "redirect") {
         // Redirect verdict — navigate immediately. The fee/eta/quoteId carried
-        // by the action will land in /menu via a future server-side surface
-        // (PWA-S4 / PWA-S5); for V1 we navigate plain and /menu re-fetches.
+        // by the action will land in /menu via the cached verdict above
+        // (PWA-S5 #453 wiring); the toggle reads it on mount.
         router.push(action.path);
       }
     } catch (err) {
