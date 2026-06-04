@@ -49,3 +49,21 @@ export {
   type RefusalReason,
 } from "./decide-refuse-flow";
 export { RefuseDialog, type RefuseDialogProps } from "./refuse-dialog";
+export {
+  DATE_RANGE_PRESETS,
+  HISTORY_TERMINAL_STATUSES,
+  ORDER_HISTORY_TABS,
+  STATUSES_FOR_HISTORY_TAB,
+  applyHistoryTabFilter,
+  decideAutoExpiredDetailNote,
+  filterOrdersByDateRange,
+  isHistoryTerminal,
+  searchOrdersById,
+  type AutoExpiredDetailNoteDecision,
+  type DateRangeFilterOpts,
+  type DateRangeKey,
+  type OrderHistoryTab,
+  type OrderHistoryTabKey,
+} from "./decide-history";
+export { OrderHistoryEntry } from "./order-history-entry";
+export { OrderHistoryScreen } from "./order-history-screen";

@@ -1,7 +1,7 @@
 import { Text } from "@/components/ui/text";
 import { ClosureControl } from "@/lib/closure";
 import { ItemAvailabilityEntry } from "@/lib/item-availability";
-import { OrderCard } from "@/lib/orders";
+import { OrderCard, OrderHistoryEntry } from "@/lib/orders";
 import { PauseControl } from "@/lib/pause";
 import { PrinterEntry } from "@/lib/printing";
 import { QuickStats } from "@/lib/quick-stats";
@@ -164,6 +164,16 @@ export default function Home() {
        * (PRD 20 §9 « c'est du CA réalisé »).
        */}
       <QuickStats />
+
+      {/*
+       * #417 — Historique des commandes (PRD 20 §8).
+       * Entry pill that navigates to `/orders/history`. Le screen affiche
+       * les cmds terminales du tenant courant (livrée / collectée / refusée /
+       * auto_expired) avec 4 onglets, filtre période et recherche par ID.
+       * Lecture seule — le detail screen existant gère la lecture seule
+       * pour les états terminaux via `decideWorkflowButton`.
+       */}
+      <OrderHistoryEntry />
 
       <View className="mb-4 flex-row items-center justify-between">
         <Text className="text-foreground text-xl font-semibold">
