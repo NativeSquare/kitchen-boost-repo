@@ -117,4 +117,14 @@ export const tenants = defineTable({
   // 2.5-A — resolve the tenant from a Stripe `account.updated` webhook payload
   // (which only carries the connected `acct_xxx`). `stripeAccountId` is unique per
   // tenant (one Stripe account per resto), enforced applicatively on stamp.
-  .index("by_stripe_account", ["stripeAccountId"]);
+  .index("by_stripe_account", ["stripeAccountId"])
+  // PWA-S1 (#449) — resolve the tenant from the public host header on the PWA
+  // edge middleware. Two possible hosts per tenant: the bootstrap sub-domain
+  // (`<slug>.kitchen-boost.fr`, resolved via `by_slug`) AND an optional
+  // CUSTOM domain (`artisan.fr`, resolved via this index). `customDomain` is
+  // unique per tenant — applicatively enforced on stamp (same discipline as
+  // `slug` / `stripeAccountId`). PWA middleware reads `host` → strips port →
+  // looks up by sub-domain prefix first (slug) OR by full host (customDomain),
+  // then sets the `__Host-kb_tenant=<id>` cookie so subsequent hits skip the
+  // round-trip (PRD §10 PWA Client, ADR 0008 « cookie host-only »).
+  .index("by_custom_domain", ["customDomain"]);
