@@ -311,12 +311,8 @@ describe("CommandesView — F-COMMANDES-FILTERS (#238)", () => {
   it("threads the controlled `filter` value into the filters component (active state visible)", () => {
     const tree = serialize(
       CommandesView({
-        orders: [],
+        ...defaults([]),
         filter: { dateRange: "7d", statuses: ["nouvelle"] },
-        onDateRangeChange: NOOP,
-        onStatusesChange: NOOP,
-        onOrderClick: NOOP,
-        onExportCsv: NOOP,
       }),
     );
     // We assert that the 7d date button surfaces data-active="true" — proof
@@ -374,12 +370,8 @@ describe("CommandesView — F-COMMANDES-DETAIL-MODAL (#239)", () => {
     const calls: string[] = [];
     const tree = serialize(
       CommandesView({
-        orders: populated,
-        filter: { dateRange: "tout", statuses: [] },
-        onDateRangeChange: NOOP,
-        onStatusesChange: NOOP,
+        ...defaults(populated),
         onOrderClick: (id) => calls.push(String(id)),
-        onExportCsv: NOOP,
       }),
     );
     const row = flatten(tree).find(
@@ -482,11 +474,7 @@ describe("CommandesView — F-COMMANDES-CSV-EXPORT (#244)", () => {
     const calls: number[] = [];
     const tree = serialize(
       CommandesView({
-        orders: populated,
-        filter: { dateRange: "tout", statuses: [] },
-        onDateRangeChange: NOOP,
-        onStatusesChange: NOOP,
-        onOrderClick: NOOP,
+        ...defaults(populated),
         onExportCsv: () => calls.push(1),
       }),
     );

@@ -165,7 +165,7 @@ describe("OrdersTabsView — tab pills", () => {
     );
     for (const t of ORDER_TABS) {
       const [pill] = findBySlot(tree, `orders-tab-${t.key}`);
-      if (pill === undefined || "text" in pill) {
+      if (pill === undefined || pill === null || "text" in pill) {
         throw new Error(`tab ${t.key} missing`);
       }
       expect(pill.props["data-active"]).toBe(
@@ -186,7 +186,7 @@ describe("OrdersTabsView — tab pills", () => {
     );
     const tab: OrderTabKey = "missed";
     const [pill] = findBySlot(tree, `orders-tab-${tab}`);
-    if (pill === undefined || "text" in pill) {
+    if (pill === undefined || pill === null || "text" in pill) {
       throw new Error("Manquées tab missing");
     }
     (pill.props["onClick"] as () => void)();
@@ -205,7 +205,7 @@ describe("OrdersTabsView — order id search input", () => {
       }),
     );
     const [input] = findBySlot(tree, "orders-search-input");
-    if (input === undefined || "text" in input) {
+    if (input === undefined || input === null || "text" in input) {
       throw new Error("search input missing");
     }
     expect(input.props["value"]).toBe("orders_xyz");
@@ -226,7 +226,7 @@ describe("OrdersTabsView — order id search input", () => {
       }),
     );
     const [input] = findBySlot(tree, "orders-search-input");
-    if (input === undefined || "text" in input) {
+    if (input === undefined || input === null || "text" in input) {
       throw new Error("search input missing");
     }
     const onChange = input.props["onChange"] as (e: {
