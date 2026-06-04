@@ -132,7 +132,6 @@ export function SettingsScreen(): React.ReactElement {
     api.lib.orders.orders.getTenantHealth,
     activeTenantId !== null ? { tenantId: activeTenantId } : "skip",
   );
-  const deleteAccount = useMutation(api.table.users.deleteAccount);
   const setMode = useMutation(api.lib.devices.devices.setMyDeviceMode);
 
   // Pure visibility verdict — drives which sections render this frame.
