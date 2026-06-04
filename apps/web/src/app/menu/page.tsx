@@ -34,6 +34,7 @@ import type { Id } from "@packages/backend/convex/_generated/dataModel";
 import type { PublicMenu } from "@packages/backend/convex/lib/menu/catalog";
 import { MenuView } from "@/components/menu/menu-view";
 import { CartProvider } from "@/components/cart/cart-context";
+import { DeliveryModeProvider } from "@/components/delivery-mode/delivery-mode-context";
 
 const TENANT_COOKIE = "__Host-kb_tenant";
 
@@ -98,12 +99,14 @@ export default async function MenuPage({
   return (
     <main className="min-h-screen bg-white">
       <CartProvider>
-        <MenuView
-          tenantId={tenantId}
-          tenantName={tenant?.name ?? "Menu"}
-          initialMenu={initialMenu}
-          searchParams={params}
-        />
+        <DeliveryModeProvider>
+          <MenuView
+            tenantId={tenantId}
+            tenantName={tenant?.name ?? "Menu"}
+            initialMenu={initialMenu}
+            searchParams={params}
+          />
+        </DeliveryModeProvider>
       </CartProvider>
     </main>
   );

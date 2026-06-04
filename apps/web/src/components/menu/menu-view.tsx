@@ -43,6 +43,7 @@ import type {
 } from "@packages/backend/convex/lib/menu/catalog";
 import { decideVisibleItems, type DietaryFilter } from "@/lib/menu-filters";
 import { decideMenuDeepLink } from "@/lib/menu-deep-link";
+import { DeliveryModeToggle } from "@/components/delivery-mode/delivery-mode-toggle";
 import { ItemModal } from "./item-modal";
 
 export type MenuViewProps = {
@@ -180,11 +181,13 @@ export function MenuView({
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6 px-4 pb-32 pt-8 md:px-8">
-      <header className="flex flex-col gap-2">
+      <header className="flex flex-col gap-3">
         <h1 className="text-3xl font-bold text-black">{tenantName}</h1>
         <p className="text-sm text-zinc-600">
           Choisis tes plats — la livraison part dès que tu valides.
         </p>
+        {/* Permanent delivery mode toggle (PWA-S5 #453, US 24). */}
+        <DeliveryModeToggle />
         <Link
           href="/panier"
           className="self-start text-sm font-medium text-emerald-700 underline-offset-2 hover:underline"
