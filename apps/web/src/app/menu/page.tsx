@@ -35,6 +35,7 @@ import type { PublicMenu } from "@packages/backend/convex/lib/menu/catalog";
 import { MenuView } from "@/components/menu/menu-view";
 import { CartProvider } from "@/components/cart/cart-context";
 import { DeliveryModeProvider } from "@/components/delivery-mode/delivery-mode-context";
+import { AndroidInstallButton } from "@/components/a2hs-install";
 
 const TENANT_COOKIE = "__Host-kb_tenant";
 
@@ -105,6 +106,17 @@ export default async function MenuPage({
             tenantName={tenant?.name ?? "Menu"}
             initialMenu={initialMenu}
             searchParams={params}
+          />
+          {/* PWA-S10 (#462) — A2HS Android post-cart floating button. Lives
+              INSIDE CartProvider (uses `useCart()` for the cart count gate)
+              + relies on `<PWAInstallProvider>` in the root layout for the
+              captured `beforeinstallprompt` event. Decision-driven (4-gate
+              `decideA2hsButtonVisibility`) — renders nothing on iOS Safari,
+              desktop, empty cart, already-installed standalone, or
+              already-enrolled fiche. */}
+          <AndroidInstallButton
+            tenantId={tenantId}
+            tenantName={tenant?.name ?? "ce resto"}
           />
         </DeliveryModeProvider>
       </CartProvider>

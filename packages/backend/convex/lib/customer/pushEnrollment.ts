@@ -57,3 +57,59 @@ export const markNoChannelPossible = customerMutation({
     });
   },
 });
+
+/**
+ * PWA-S10 (#462) — `customer.pushEnrollment.recordA2hsAccepted`.
+ *
+ * A2HS (Add to Home Screen) Android moat signal (PRD 10 PWA Client §10 Q4 +
+ * US 56-57-59 + CONTEXT customer-data « Push enrollment » `a2hsStatus`).
+ * Fired by the PWA front from `<AndroidInstallButton>` when EITHER:
+ *  - The user accepted the native Android install prompt
+ *    (`prompt.userChoice === "accepted"` from the captured
+ *    `beforeinstallprompt` event), OR
+ *  - The `appinstalled` window event fires (covers the path where the user
+ *    installs from the browser menu / 3-dot menu without going through our
+ *    button — same end-state, same backend signal).
+ *
+ * SELF-SCOPED via `customerMutation` (same contract as `markNoChannelPossible`
+ * and `webPush.register`): the handler only ever sees `ctx.actor.userId`
+ * (resolved by `getCurrentActor`, ADR 0011) and the explicit wrapper
+ * `tenantId`. It reaches the GLOBAL `customers` fiche ONLY through the
+ * sanctioned `lib/tenancy/customerOrdersStore` seam
+ * (`patchCustomerPushEnrollment`), never raw `ctx.db` (ADR 0010). The seam
+ * MERGES so the sibling per-channel statuses (Wallet, Web Push) AND the
+ * `noChannelPossible` flag are NOT clobbered (US #16 invariant).
+ *
+ * Audited EXPLICITLY (one row tagged
+ * `customer.pushEnrollment.recordA2hsAccepted`, customer id as `targetId`) —
+ * `customerMutation` does not auto-log. The insert commits in the same
+ * transaction as the status flip, so a refused call leaves NO row.
+ *
+ * Idempotent: re-calling on a fiche that is already `a2hsStatus = "enrolled"`
+ * re-writes the same value + writes a second audit row. The front fires this
+ * once per accepted prompt; the historical row trail is intentional (the
+ * customer may install / uninstall / reinstall — each transition is a
+ * legitimate audit signal).
+ *
+ * Takes ZERO business args — the customer is the self-scoped caller (same
+ * shape as `markNoChannelPossible`). The historical `{customerId}` mentioned
+ * in the issue body would have been a self-scope smell (a customer cannot
+ * record A2HS install on someone else's fiche).
+ */
+export const recordA2hsAccepted = customerMutation({
+  args: {},
+  handler: async (ctx): Promise<void> => {
+    const customerId = await getOrCreateCustomerFiche(ctx, ctx.actor.userId);
+    await patchCustomerPushEnrollment(ctx, customerId, {
+      a2hsStatus: "enrolled",
+    });
+    await logAudit(ctx, {
+      actorUserId: ctx.actor.userId,
+      actorRole: ctx.actor.role,
+      action: "customer.pushEnrollment.recordA2hsAccepted",
+      tenantId: ctx.tenantId,
+      targetType: "customer",
+      targetId: customerId,
+    });
+  },
+});

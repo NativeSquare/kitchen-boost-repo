@@ -20,13 +20,19 @@ import { CartView } from "@/components/cart/cart-view";
 import { DeliveryModeProvider } from "@/components/delivery-mode/delivery-mode-context";
 import { DeliveryModeToggle } from "@/components/delivery-mode/delivery-mode-toggle";
 import { WalletPromptBanner } from "@/components/wallet-prompt";
+import { AndroidInstallButton } from "@/components/a2hs-install";
 
 export type PanierBodyProps = {
   /** Resolved tenantId from `__Host-kb_tenant` — `undefined` in degraded state. */
   tenantId: Id<"tenants"> | undefined;
+  /** Resto display name — interpolated by the A2HS button « Installer X ». */
+  tenantName?: string;
 };
 
-export function PanierBody({ tenantId }: PanierBodyProps): React.JSX.Element {
+export function PanierBody({
+  tenantId,
+  tenantName,
+}: PanierBodyProps): React.JSX.Element {
   return (
     <CartProvider>
       <DeliveryModeProvider>
@@ -58,6 +64,18 @@ export function PanierBody({ tenantId }: PanierBodyProps): React.JSX.Element {
             </Link>
           </footer>
         </div>
+        {/* PWA-S10 (#462) — A2HS Android post-cart floating button. Same
+            decision-driven render gate as on /menu — hides on iOS Safari,
+            desktop, empty cart, already-standalone, already-enrolled. The
+            captured `beforeinstallprompt` event comes from
+            `<PWAInstallProvider>` in the root layout. Skipped when no
+            tenantId (degraded — no Convex sub possible without it). */}
+        {tenantId !== undefined && (
+          <AndroidInstallButton
+            tenantId={tenantId}
+            tenantName={tenantName ?? "ce resto"}
+          />
+        )}
       </DeliveryModeProvider>
     </CartProvider>
   );
