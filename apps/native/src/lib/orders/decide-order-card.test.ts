@@ -56,6 +56,13 @@ describe("#401 decideStatusLabel — PRD 20 §5", () => {
     expect(decideStatusLabel("collectée")).toBe("Collectée");
     expect(decideStatusLabel("refusée")).toBe("Refusée");
   });
+
+  // #417 — PRD 20 §6b + ADR 0016. The auto_expired terminal must read as
+  // « Manquée » on the detail screen so the gérant sees the same vocabulary
+  // as the « Manquées » history tab (same word, no confusion).
+  it("auto_expired → « Manquée » (same word as the « Manquées » tab)", () => {
+    expect(decideStatusLabel("auto_expired")).toBe("Manquée");
+  });
 });
 
 describe("#401 decideWorkflowButton — PRD 20 §5 happy path", () => {
@@ -103,7 +110,7 @@ describe("#401 decideWorkflowButton — PRD 20 §5 happy path", () => {
     });
   });
 
-  it("terminal states (remise, livrée, collectée, refusée) → no button (fade out + archive)", () => {
+  it("terminal states (remise, livrée, collectée, refusée, auto_expired) → no button (fade out + archive)", () => {
     expect(decideWorkflowButton("remise", "delivery")).toEqual({
       kind: "none",
     });
@@ -115,6 +122,15 @@ describe("#401 decideWorkflowButton — PRD 20 §5 happy path", () => {
       kind: "none",
     });
     expect(decideWorkflowButton("refusée", "delivery")).toEqual({
+      kind: "none",
+    });
+    // #417 — auto_expired is a TERMINAL system state (ADR 0016). The detail
+    // screen, reachable from the history « Manquées » tab, must surface no
+    // workflow buttons — the order is already refunded.
+    expect(decideWorkflowButton("auto_expired", "delivery")).toEqual({
+      kind: "none",
+    });
+    expect(decideWorkflowButton("auto_expired", "pickup")).toEqual({
       kind: "none",
     });
   });
