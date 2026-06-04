@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { cookies } from "next/headers";
 import { ConvexAuthNextjsServerProvider } from "@convex-dev/auth/nextjs/server";
 import { ConvexClientProvider } from "@/providers/convex-client-provider";
 import { ServiceWorkerRegistration } from "@/components/service-worker-registration";
+import { WalletBridgeRunner } from "@/components/wallet-bridge";
+import { WALLET_BRIDGE_PENDING_COOKIE } from "@/lib/wallet-bridge";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -54,11 +57,26 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // PWA-S9b (#461) — the PWA edge middleware sets this short-lived cookie
+  // when it intercepts `?wallet=<serial>` from the Wallet pass back-of-pass
+  // URL (decisions-log Q5, US 39 / 40 / 41 / 42). Mounting the
+  // `<WalletBridgeRunner>` in the ROOT layout (not on `/` specifically)
+  // means a deep-link landing on any path (`/menu`, `/c/<orderId>`,
+  // `/checkout`, …) still gets bridged — the middleware preserves the
+  // path when stripping the `wallet` param, so the runner activates on
+  // whatever page the tap deep-links into. The cookie value flows once
+  // through the RSC (server-side read, prop down) — the client never
+  // re-parses cookies. The runner POSTs `/api/wallet-bridge/clear` after
+  // running `signIn`, so a refresh / back button does NOT re-trigger.
+  const cookieStore = await cookies();
+  const pendingBridgeSerial =
+    cookieStore.get(WALLET_BRIDGE_PENDING_COOKIE)?.value ?? null;
+
   return (
     <ConvexAuthNextjsServerProvider>
       <html lang="fr">
@@ -70,7 +88,12 @@ export default function RootLayout({
               failure inside the providers/children cannot prevent the SW
               from coming up. */}
           <ServiceWorkerRegistration />
-          <ConvexClientProvider>{children}</ConvexClientProvider>
+          <ConvexClientProvider>
+            {pendingBridgeSerial !== null && (
+              <WalletBridgeRunner serial={pendingBridgeSerial} />
+            )}
+            {children}
+          </ConvexClientProvider>
         </body>
       </html>
     </ConvexAuthNextjsServerProvider>

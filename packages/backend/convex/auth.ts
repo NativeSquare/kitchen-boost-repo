@@ -2,10 +2,13 @@ import Apple from "@auth/core/providers/apple";
 import GitHub from "@auth/core/providers/github";
 import Google from "@auth/core/providers/google";
 import { Anonymous } from "@convex-dev/auth/providers/Anonymous";
+import { ConvexCredentials } from "@convex-dev/auth/providers/ConvexCredentials";
 import { Password } from "@convex-dev/auth/providers/Password";
 import { convexAuth } from "@convex-dev/auth/server";
 import { ConvexError } from "convex/values";
 import { APP_SLUG } from "@packages/shared";
+import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import { ResendOTP } from "./lib/auth/ResendOTP";
 import { ResendOTPPasswordReset } from "./lib/auth/ResendOTPPasswordReset";
 
@@ -56,12 +59,75 @@ export const PWA_SESSION_CONFIG = {
   inactiveDurationMs: ONE_YEAR_MS,
 };
 
+/**
+ * PWA-S9b (#461) — `wallet-bridge` provider id, the cross-device / cross-resto
+ * identity BRIDGE at the tap-deep-link surface (decisions-log Q5, US 39 / 40 /
+ * 41 / 42). Exported as a CONSTANT so the client `<WalletBridgeRunner>` and
+ * any future test share ONE source of truth for the provider id (matching
+ * `signIn("wallet-bridge", { serial })`).
+ */
+export const WALLET_BRIDGE_PROVIDER_ID = "wallet-bridge";
+
+/**
+ * Frontend-side serial format guard (mirror of `lib/wallet-bridge` in apps/web).
+ * Re-applied here so a probing serial that bypasses the front strip is still
+ * rejected closed-form by the backend — no FORBIDDEN throw, just `null` (no
+ * existence leak across customers).
+ */
+const WALLET_BRIDGE_SERIAL_PATTERN = /^[A-Za-z0-9_-]+$/;
+const WALLET_BRIDGE_SERIAL_MIN_LENGTH = 8;
+const WALLET_BRIDGE_SERIAL_MAX_LENGTH = 128;
+
+function isWellFormedBridgeSerial(serial: string): boolean {
+  if (serial.length < WALLET_BRIDGE_SERIAL_MIN_LENGTH) return false;
+  if (serial.length > WALLET_BRIDGE_SERIAL_MAX_LENGTH) return false;
+  return WALLET_BRIDGE_SERIAL_PATTERN.test(serial);
+}
+
 export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
   session: PWA_SESSION_CONFIG,
   providers: [
     // Customer device sign-in (ADR 0008): silent, no password, no UI. The native
     // Convex Auth session cookie IS the device cookie, intra-resto only.
     Anonymous({ profile: () => anonymousProfile() }),
+    // PWA-S9b (#461) — `wallet-bridge`: the cross-device / cross-resto identity
+    // BRIDGE at the tap-deep-link surface (decisions-log Q5, US 39 / 40 / 41 / 42).
+    // The PWA edge middleware intercepts `?wallet=<serial>`, the client calls
+    // `signIn("wallet-bridge", { serial })`, and THIS provider's `authorize`
+    // asks `resolveSerialForBridge` for `{ userId, customerId }` — returning
+    // `{ userId }` makes Convex Auth issue a session for THAT existing user
+    // (no `createAccount` — the user already exists). Fails CLOSED (returns
+    // `null`) for any unknown / inactive / malformed serial: the framework
+    // surfaces a generic InvalidCredentials error, so a probing client cannot
+    // distinguish « unknown » from « rejected » — no existence leak
+    // (same discipline as `checkInstallStatus`'s self-scope, ADR 0010/0012).
+    // The serial is opaque-but-USER-VISIBLE (back of pass), so the bridge
+    // grants LECTURE-ONLY identity (firstName / address / LTV — saved card
+    // PaymentMethod cross-tenant requires backend operations not exposed
+    // here). Acceptable V1 — decisions-log Q5 §Sécurité.
+    ConvexCredentials({
+      id: WALLET_BRIDGE_PROVIDER_ID,
+      authorize: async (
+        credentials,
+        ctx,
+      ): Promise<{ userId: Id<"users"> } | null> => {
+        const rawSerial = credentials.serial;
+        if (typeof rawSerial !== "string") return null;
+        const serial = rawSerial.trim();
+        if (!isWellFormedBridgeSerial(serial)) return null;
+        // The resolver is an `internalQuery` (system seam, never client-
+        // callable), so the only path to it is THIS provider's `authorize`
+        // — the public surface stays `signIn("wallet-bridge", { serial })`.
+        // Convex Auth gives us an action ctx; `runQuery(internal.*)` is the
+        // sanctioned way to call internal functions from an action.
+        const resolved = await ctx.runQuery(
+          internal.lib.wallet.bridgeSerialToSession.resolveSerialForBridge,
+          { serialNumber: serial },
+        );
+        if (resolved === null) return null;
+        return { userId: resolved.userId };
+      },
+    }),
     Password({
       verify: ResendOTP,
       reset: ResendOTPPasswordReset,
