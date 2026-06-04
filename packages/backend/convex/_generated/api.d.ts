@@ -155,6 +155,7 @@ import type * as lib_uberDirect_index from "../lib/uberDirect/index.js";
 import type * as lib_uberDirect_quote from "../lib/uberDirect/quote.js";
 import type * as lib_uberDirect_webhookEvents from "../lib/uberDirect/webhookEvents.js";
 import type * as lib_wallet__constants from "../lib/wallet/_constants.js";
+import type * as lib_wallet_checkInstallStatus from "../lib/wallet/checkInstallStatus.js";
 import type * as lib_wallet_generatePass from "../lib/wallet/generatePass.js";
 import type * as lib_wallet_incentive from "../lib/wallet/incentive.js";
 import type * as lib_wallet_index from "../lib/wallet/index.js";
@@ -357,6 +358,7 @@ declare const fullApi: ApiFromModules<{
   "lib/uberDirect/quote": typeof lib_uberDirect_quote;
   "lib/uberDirect/webhookEvents": typeof lib_uberDirect_webhookEvents;
   "lib/wallet/_constants": typeof lib_wallet__constants;
+  "lib/wallet/checkInstallStatus": typeof lib_wallet_checkInstallStatus;
   "lib/wallet/generatePass": typeof lib_wallet_generatePass;
   "lib/wallet/incentive": typeof lib_wallet_incentive;
   "lib/wallet/index": typeof lib_wallet_index;

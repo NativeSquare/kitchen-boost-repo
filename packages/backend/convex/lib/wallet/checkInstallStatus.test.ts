@@ -55,29 +55,26 @@ const modules = Object.fromEntries(
 
 type Seed = Awaited<ReturnType<typeof seedTwoTenantsAllRoles>>;
 
-/** Seed an anonymous customer (shape the Anonymous provider produces). */
-async function seedAnonymousCustomer(
-  t: ReturnType<typeof convexTest>,
-): Promise<Id<"users">> {
-  return t.run(async (ctx) =>
-    ctx.db.insert("users", { role: "customer", isAnonymous: true }),
-  );
-}
-
 /**
- * Provision a fiche for `userId` on `tenantId` and return its customers id —
- * same shape as the consent / identity / webPush suites.
+ * Seed an anonymous customer + its `customers` fiche directly via `ctx.db`
+ * (the same pattern 2.8-C `linkSerial.test.ts` uses, which keeps this suite
+ * free of cross-module function calls — convex-test's `findModulesRoot` only
+ * sees the `lib/wallet/**` keys once the same-dir `./` normalisation runs).
  */
-async function provision(
+async function seedCustomerWithFiche(
   t: ReturnType<typeof convexTest>,
-  userId: Id<"users">,
-  tenantId: Id<"tenants">,
-): Promise<Id<"customers">> {
-  return t
-    .withIdentity({ subject: userId })
-    .mutation(api.lib.customer.identity.getOrCreateCurrentCustomer, {
-      tenantId,
+): Promise<{ userId: Id<"users">; customerId: Id<"customers"> }> {
+  return t.run(async (ctx) => {
+    const userId = await ctx.db.insert("users", {
+      role: "customer",
+      isAnonymous: true,
     });
+    const customerId = await ctx.db.insert("customers", {
+      userId,
+      createdAt: Date.now(),
+    });
+    return { userId, customerId };
+  });
 }
 
 /** Seed a `walletPasses` row for `customerId` with explicit `status`. */
@@ -110,8 +107,7 @@ describe("PWA-S6a checkInstallStatus — installed boolean derived from walletPa
   it("returns { installed: false } when the pass is still `generated` (webhook not landed yet)", async () => {
     const t = convexTest(schema, modules);
     const seed: Seed = await seedTwoTenantsAllRoles(t);
-    const userId = await seedAnonymousCustomer(t);
-    const customerId = await provision(t, userId, seed.tenantA.tenantId);
+    const { userId, customerId } = await seedCustomerWithFiche(t);
     await seedPassRow(t, {
       customerId,
       serialNumber: "kb-pwa-s6a-generated",
@@ -130,8 +126,7 @@ describe("PWA-S6a checkInstallStatus — installed boolean derived from walletPa
   it("returns { installed: true } once the pass is flipped to `installed`", async () => {
     const t = convexTest(schema, modules);
     const seed: Seed = await seedTwoTenantsAllRoles(t);
-    const userId = await seedAnonymousCustomer(t);
-    const customerId = await provision(t, userId, seed.tenantA.tenantId);
+    const { userId, customerId } = await seedCustomerWithFiche(t);
     await seedPassRow(t, {
       customerId,
       serialNumber: "kb-pwa-s6a-installed",
@@ -154,8 +149,7 @@ describe("PWA-S6a checkInstallStatus — installed boolean derived from walletPa
     // until a fresh install lands.
     const t = convexTest(schema, modules);
     const seed: Seed = await seedTwoTenantsAllRoles(t);
-    const userId = await seedAnonymousCustomer(t);
-    const customerId = await provision(t, userId, seed.tenantA.tenantId);
+    const { userId, customerId } = await seedCustomerWithFiche(t);
     await seedPassRow(t, {
       customerId,
       serialNumber: "kb-pwa-s6a-inactive",
@@ -180,8 +174,7 @@ describe("PWA-S6a checkInstallStatus — unknown / foreign serial returns instal
   it("returns { installed: false } for a serial that does NOT exist (no NOT_FOUND throw)", async () => {
     const t = convexTest(schema, modules);
     const seed: Seed = await seedTwoTenantsAllRoles(t);
-    const userId = await seedAnonymousCustomer(t);
-    await provision(t, userId, seed.tenantA.tenantId);
+    const { userId } = await seedCustomerWithFiche(t);
 
     const result = await t
       .withIdentity({ subject: userId })
@@ -195,13 +188,11 @@ describe("PWA-S6a checkInstallStatus — unknown / foreign serial returns instal
   it("returns { installed: false } for a serial owned by ANOTHER customer (no cross-customer existence leak)", async () => {
     const t = convexTest(schema, modules);
     const seed: Seed = await seedTwoTenantsAllRoles(t);
-    const alice = await seedAnonymousCustomer(t);
-    const bob = await seedAnonymousCustomer(t);
-    const aliceCustomerId = await provision(t, alice, seed.tenantA.tenantId);
-    await provision(t, bob, seed.tenantA.tenantId);
+    const alice = await seedCustomerWithFiche(t);
+    const bob = await seedCustomerWithFiche(t);
     // Alice OWNS this installed pass.
     await seedPassRow(t, {
-      customerId: aliceCustomerId,
+      customerId: alice.customerId,
       serialNumber: "kb-alice-pass",
       status: "installed",
       installedAt: Date.now(),
@@ -210,7 +201,7 @@ describe("PWA-S6a checkInstallStatus — unknown / foreign serial returns instal
     // Bob polls Alice's serial → must NOT learn it is installed (or that it
     // even exists). Same wire shape as any unknown serial.
     const result = await t
-      .withIdentity({ subject: bob })
+      .withIdentity({ subject: bob.userId })
       .query(api.lib.wallet.checkInstallStatus.checkInstallStatus, {
         tenantId: seed.tenantA.tenantId,
         serialNumber: "kb-alice-pass",
@@ -255,25 +246,28 @@ describe("PWA-S6a checkInstallStatus — auth gate (customer-only)", () => {
 // ---------------------------------------------------------------------------
 
 describe("PWA-S6a checkInstallStatus — cross-tenant fuzz (ADR 0010)", () => {
-  it("rejects every PRO / anonymous actor on a tenant-scoped poll", async () => {
+  it("rejects unauthorized GLOBAL actors (kb_admin + anonymous) on the customer-self surface", async () => {
+    // The customer wrapper accepts ONLY a `customer` role; the cross-tenant
+    // fuzz harness pins that no GLOBAL non-customer actor leaks through.
+    // Tenant managers have GLOBAL role `customer` (they get their resto access
+    // via `userTenants`), so the wrapper admits them as customers — their
+    // isolation is the per-customer self-scope on the pass `customerId`
+    // (covered above by Bob-polls-Alice's-serial), NOT a wrapper refusal.
+    // Same shape as the consent / address / cgv suites (ADR 0010 / 0011).
     const t = convexTest(schema, modules);
     const seed: Seed = await seedTwoTenantsAllRoles(t);
-
-    const actors: FuzzActor[] = [
-      { label: "A-manager", subject: seed.tenantA.managerId },
-      { label: "B-manager", subject: seed.tenantB.managerId },
-      { label: "kb_admin", subject: seed.adminId },
-      { label: "anonymous", subject: null },
-    ];
 
     const { leaks, pairs } = await runCrossTenantFuzz(t, {
       functions: [api.lib.wallet.checkInstallStatus.checkInstallStatus],
       isQuery: () => true,
       tenantId: seed.tenantA.tenantId,
-      actors,
+      actors: [
+        { label: "kb_admin", subject: seed.adminId },
+        { label: "anonymous", subject: null },
+      ] satisfies FuzzActor[],
       extraArgs: { serialNumber: "kb-fuzz" },
     });
-    expect(pairs).toBe(4);
+    expect(pairs).toBe(2);
     expect(leaks).toEqual([]);
   });
 });

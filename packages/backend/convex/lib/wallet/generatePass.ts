@@ -184,6 +184,19 @@ export const generatePass = action({
     applePass: ApplePassJson;
     /** True iff the real Apple certs were present and the `.pkpass` was signed. */
     appleSigned: boolean;
+    /**
+     * PWA-S6a (#455) — base64 of the signed `.pkpass` bytes, OR `null` when the
+     * real Apple certs are absent (CI / dev). The frontend `<AddToWalletButton>`
+     * on iOS Safari decodes this into a `Blob` of MIME
+     * `application/vnd.apple.pkpass` → `URL.createObjectURL` → assigns
+     * `window.location` → Safari intercepts the MIME → native Wallet sheet
+     * (decisions-log Q5 « iOS Safari → Blob → URL.createObjectURL → assign
+     * window.location → Safari intercepte MIME »). The bytes ARE the
+     * authoritative install surface for the customer's OWN, freshly-generated
+     * pass — same scope as the rest of this action (self-scoped via
+     * `resolveOwnPassContext`); a 3ʳᵈ party never gets them.
+     */
+    pkpassBase64: string | null;
     googleSaveLink: string;
   }> => {
     // Scope self + resolve the OWN fiche + userId + validate the optional brand
@@ -219,6 +232,10 @@ export const generatePass = action({
       serialNumber,
       applePass,
       appleSigned: signedApple !== null,
+      pkpassBase64:
+        signedApple === null
+          ? null
+          : Buffer.from(signedApple).toString("base64"),
       googleSaveLink,
     };
   },
