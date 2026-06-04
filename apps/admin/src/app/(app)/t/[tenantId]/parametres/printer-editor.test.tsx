@@ -315,7 +315,9 @@ describe("PrinterEditor — renders the URL input + Save on every branch", () =>
 // ---------------------------------------------------------------------------
 describe("PrinterEditor — save flow", () => {
   it("forwards the trimmed URL to onSave when the form is submitted", async () => {
-    const onSave = vi.fn(async () => {});
+    const onSave = vi.fn<(args: { starWebPrntUrl: string }) => Promise<void>>(
+      async () => {},
+    );
     const props: PrinterEditorProps = { ...FRESH, onSave };
     PrinterEditor(props);
     formMock.values.starWebPrntUrl = `  ${VALID_URL}  `;

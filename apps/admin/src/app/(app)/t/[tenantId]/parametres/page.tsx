@@ -98,6 +98,29 @@ export default function ParametresPage() {
   // FULL windows list; the mutation is an UPSERT atomic replace, so we
   // forward the whole array (no patch shape).
   const setServiceHours = useTenantMutation(api.lib.menu.serviceHours.set);
+  // ── #416 — KB Admin Star WebPRNT printer config (PRD 20 §14, mirror of
+  // native #412 Settings) ───────────────────────────────────────────────
+  // REUSES the existing native mutation pair from `lib/printing/printing.ts`
+  // — no new admin-only surface invented. The `tenantMutation` wrapper's
+  // root override (ADR 0014 §3, `withTenant.ts requireTenantAccess`)
+  // admits `kb_admin` regardless of the `allow` list, so a single backend
+  // brick serves BOTH the gérant from the native app AND the root operator
+  // from this page. Same persistence (`tenants.printerConfig.starWebPrntUrl`)
+  // = state Convex partagé, a save here flips the kitchen tablet live
+  // through the Convex sub.
+  //
+  // The READ is the same operational query the kitchen tablet uses
+  // (`getPrinterConfig`, OPERATIONAL_ALLOW = ["kb_manager", "staff"]) —
+  // the wrapper's root override admits kb_admin here too.
+  const printerConfig = useTenantQuery(
+    api.lib.printing.printing.getPrinterConfig,
+  );
+  const setPrinterConfig = useTenantMutation(
+    api.lib.printing.printing.setPrinterConfig,
+  );
+  const clearPrinterConfig = useTenantMutation(
+    api.lib.printing.printing.clearPrinterConfig,
+  );
   // `useConvex()` exposes the live Convex client so we can call the storage
   // URL resolver imperatively from an event handler — `useQuery` is a hook
   // and can't run inside `handleUploadLogo` (rules of hooks). Same pattern
@@ -258,6 +281,41 @@ export default function ParametresPage() {
     }
   };
 
+  // #416 — Printer config save handler. Receives `{ starWebPrntUrl }` from
+  // the editor (already trimmed + validated client-side). The backend
+  // `assertValidStarWebPrntUrl` re-validates as the last line of defence
+  // (cf. `packages/backend/convex/lib/printing/printing.ts`). Same
+  // try/catch + toast + re-throw discipline as siblings.
+  const handleSavePrinterConfig = async (args: {
+    starWebPrntUrl: string;
+  }): Promise<void> => {
+    try {
+      await setPrinterConfig(args);
+      toast.success("Adresse de l'imprimante enregistrée.");
+    } catch (error) {
+      toast.error("Impossible d'enregistrer l'adresse de l'imprimante", {
+        description: getConvexErrorMessage(error),
+      });
+      throw error;
+    }
+  };
+
+  // #416 — Printer config clear handler. After this, auto-print on the
+  // native side becomes a clean no-op (PRD 20 §14 « si pas configurée →
+  // no-op silencieux »). The Convex sub flips `getPrinterConfig` to `null`
+  // for both surfaces in real time.
+  const handleClearPrinterConfig = async (): Promise<void> => {
+    try {
+      await clearPrinterConfig();
+      toast.success("Imprimante retirée.");
+    } catch (error) {
+      toast.error("Impossible de retirer l'imprimante", {
+        description: getConvexErrorMessage(error),
+      });
+      throw error;
+    }
+  };
+
   return (
     <ParametresView
       serviceHours={serviceHours}
@@ -269,6 +327,9 @@ export default function ParametresPage() {
       acceptedModes={acceptedModes}
       onSaveAcceptedModes={handleSaveAcceptedModes}
       onSaveServiceHours={handleSaveServiceHours}
+      printerConfig={printerConfig}
+      onSavePrinterConfig={handleSavePrinterConfig}
+      onClearPrinterConfig={handleClearPrinterConfig}
     />
   );
 }
