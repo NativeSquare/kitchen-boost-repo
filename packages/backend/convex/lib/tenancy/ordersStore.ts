@@ -362,19 +362,38 @@ export async function recordTenantOrderStatus(
  *                                           `autoExpireTenantOrder` no-ops if the
  *                                           order is no longer `nouvelle`).
  *  - `en préparation → prête`             : markPrepared (PRD 20 §5 "Prête").
+ *  - `en préparation → refusée`           : refuse mid-prep (#413, PRD 20 §6a 3-step
+ *                                           anti-fat-finger — kitchen had started but
+ *                                           must abort: rupture découverte au milieu
+ *                                           de la cuisson, incident hygiène). The
+ *                                           backend reuses the exact same refund + notif
+ *                                           pipeline as `nouvelle → refusée`; the
+ *                                           anti-fat-finger discipline (warning step +
+ *                                           typed "REFUSER") lives in the UI dialog.
  *  - `prête → remise`                     : markHandedOff (PRD 20 §5 "Remise").
+ *  - `prête → refusée`                    : refuse before handoff (#413, PRD 20 §6a
+ *                                           3-step variant — cooked but cannot be
+ *                                           handed off, e.g. incident découvert
+ *                                           juste avant remise au coursier). Same
+ *                                           reasoning as `en préparation → refusée`.
  *  - `remise → livrée`                    : delivery, driven by Uber Direct events (2.6).
  *  - `remise → collectée`                 : click & collect, immediate at handoff.
  *
  * Terminal states (`livrée` / `collectée` / `refusée` / `auto_expired`) have NO
- * outgoing edge — they are non-re-transitionable.
+ * outgoing edge — they are non-re-transitionable. Post-handoff (`remise`) is also
+ * non-refusable: the order has left the door (delivery is on Uber Direct from
+ * there, a collected order is gone).
  */
 const LEGAL_TRANSITIONS: Readonly<Record<OrderStatus, readonly OrderStatus[]>> =
   {
     "en attente de paiement": ["nouvelle", "refusée"],
     nouvelle: ["en préparation", "refusée", "auto_expired"],
-    "en préparation": ["prête"],
-    prête: ["remise"],
+    // #413 — `en préparation → refusée` and `prête → refusée` are legal so
+    // the cuisinier can abort mid-flight for genuine incidents (rupture
+    // découverte, hygiène, panne frigo). The cost-of-error discipline is
+    // the UI 3-step dialog (#413), NOT a backend block.
+    "en préparation": ["prête", "refusée"],
+    prête: ["remise", "refusée"],
     remise: ["livrée", "collectée"],
     livrée: [],
     collectée: [],
