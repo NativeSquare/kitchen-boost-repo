@@ -67,6 +67,20 @@ export default function AppLayout() {
               presentation: "card",
             }}
           />
+          {/* #417 — KB Orders Historique des commandes (PRD 20 §8). Pushed
+           depuis la home `<OrderHistoryEntry />` pill. Affiche les cmds
+           terminales (livrée / collectée / refusée / auto_expired) du
+           tenant courant avec 4 onglets + filtre période + recherche ID.
+           Card presentation = même back-nav UX que les autres routes
+           dédiées. */}
+          <Stack.Screen
+            name="orders/history"
+            options={{
+              headerShown: true,
+              headerTitle: "Historique des commandes",
+              presentation: "card",
+            }}
+          />
           {/* #408 — KB Orders « Disponibilité des items » screen (PRD 20 §7c +
            ADR 0018). Pushed from the home `<ItemAvailabilityEntry />` pill.
            Card presentation = same back-nav UX as the order detail screen. */}

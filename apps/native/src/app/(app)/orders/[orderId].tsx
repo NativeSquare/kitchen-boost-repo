@@ -6,8 +6,10 @@ import { cn } from "@/lib/utils";
 import { getConvexErrorMessage } from "@/utils/getConvexErrorMessage";
 import {
   RefuseDialog,
+  decideAutoExpiredDetailNote,
   decideModeTag,
   decidePickupHandoffNote,
+  decideRefusalReasonLabel,
   decideRefuseButton,
   decideRefuseStepCount,
   decideStatusLabel,
@@ -152,6 +154,19 @@ export default function OrderDetailScreen() {
   // the step rendering; we just pass the count.
   const refuseStepCount = decideRefuseStepCount(order.status);
   const pickupNote = decidePickupHandoffNote(order.mode);
+  // #417 — auto_expired terminal note (PRD 20 §8 « message neutre si
+  // auto_expired »). Surfaced only when the order's status is auto_expired ;
+  // sur tous les autres états le verdict est `hide` et le card n'est pas
+  // monté. Le wording est tested dans `decide-history.test.ts`.
+  const autoExpiredNote = decideAutoExpiredDetailNote(order.status);
+  // #417 — refusal motif pour les cmds `refusée` ouvertes depuis l'historique.
+  // Le backend stocke le motif sur le `orderEvents` row du transition
+  // `refusée` ; on remonte le plus récent et on le traduit en label FR.
+  // PRD 20 §8 « Détail cmd cliquable, affiche motif si refusée ».
+  const refusedReasonLabel =
+    order.status === "refusée"
+      ? deriveRefusalReasonLabelFromEvents(detail.events)
+      : null;
   const totalEuros =
     order.pricingSnapshot !== undefined
       ? (order.pricingSnapshot.total / 100).toFixed(2)
@@ -369,6 +384,47 @@ export default function OrderDetailScreen() {
         </CardContent>
       </Card>
 
+      {/* #417 — Note auto_expired (PRD 20 §8 « message neutre si auto_expired »).
+          Surfaced uniquement quand le terminal système a fired. Le wording
+          est neutre par design — le système a fait le refund auto, le
+          gérant n'a rien à faire et ne doit pas être blâmé. */}
+      {autoExpiredNote.kind === "show" ? (
+        <Card className="mb-3" testID="auto-expired-note">
+          <CardHeader>
+            <Text className="text-foreground text-base font-semibold">
+              {autoExpiredNote.heading}
+            </Text>
+          </CardHeader>
+          <CardContent>
+            <Text className="text-foreground text-sm">
+              {autoExpiredNote.body}
+            </Text>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {/* #417 — Motif de refus (PRD 20 §8 « affiche motif si refusée »).
+          Affiché uniquement pour les cmds `refusée` ouvertes depuis
+          l'historique. Le motif est extrait du `orderEvents` row qui
+          enregistre le `reason` à la transition vers `refusée` (chantier
+          2.3-E). Si aucun motif n'est trouvé (cas très rare d'event log
+          tronqué), on saute la card plutôt qu'afficher « Autre » par
+          défaut — pas de spec inventée. */}
+      {refusedReasonLabel !== null ? (
+        <Card className="mb-3" testID="refused-reason-card">
+          <CardHeader>
+            <Text className="text-foreground text-base font-semibold">
+              Motif du refus
+            </Text>
+          </CardHeader>
+          <CardContent>
+            <Text className="text-foreground text-sm">
+              {refusedReasonLabel}
+            </Text>
+          </CardContent>
+        </Card>
+      ) : null}
+
       {/* Note client (PRD 20 §4) */}
       {order.restaurantNote !== undefined && order.restaurantNote !== "" ? (
         <Card className="mb-3">
@@ -521,4 +577,40 @@ export default function OrderDetailScreen() {
       />
     </ScrollView>
   );
+}
+
+/**
+ * #417 — Extract the refusal motif from the order's event log and translate
+ * it to a French label. The backend records `{ status: "refusée", reason }`
+ * on the transition (chantier 2.3-E, `recordTenantOrderStatus`). The
+ * `reason` is one of the closed `RefusalReason` enum values
+ * (`rupture | fermeture | surcharge | autre`).
+ *
+ * We scan events in reverse so a re-recorded refusal (defensive — the
+ * legal-transitions guard makes it a no-op, but the audit log accepts
+ * subsequent rows) carries the latest motif. Returns `null` if no event
+ * carries a recognised reason — the detail screen then hides the « Motif
+ * du refus » card rather than inventing one.
+ *
+ * Defensively NARROWED to the closed set so a future schema add (a new
+ * `reason` value) does not silently fall back to "Autre" — the unknown
+ * value passes through this filter and the card stays hidden.
+ */
+function deriveRefusalReasonLabelFromEvents(
+  events: { status: string; reason?: string }[],
+): string | null {
+  for (let i = events.length - 1; i >= 0; i -= 1) {
+    const ev = events[i];
+    if (ev.status !== "refusée") continue;
+    const reason = ev.reason;
+    if (
+      reason === "rupture" ||
+      reason === "fermeture" ||
+      reason === "surcharge" ||
+      reason === "autre"
+    ) {
+      return decideRefusalReasonLabel(reason as RefusalReason);
+    }
+  }
+  return null;
 }

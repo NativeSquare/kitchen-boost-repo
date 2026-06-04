@@ -97,6 +97,11 @@ export function decideStatusLabel(status: OrderStatus): string {
       return "Collectée";
     case "refusée":
       return "Refusée";
+    case "auto_expired":
+      // #417 / ADR 0016 — terminal système. On affiche le même mot que
+      // l'onglet « Manquées » de l'historique (PRD 20 §8) pour que le gérant
+      // lise un vocabulaire cohérent entre le détail cmd et la liste.
+      return "Manquée";
     default:
       return "—";
   }
@@ -166,8 +171,11 @@ export function decideWorkflowButton(
     case "livrée":
     case "collectée":
     case "refusée":
+    case "auto_expired":
       // Terminal / pre-payment states — no button surfaced (PRD 20 §5 fade
       // out at terminal, and pre-payment is never shown to the resto).
+      // `auto_expired` is the #417 / ADR 0016 system-terminal — same
+      // discipline as `refusée`: read-only from the history.
       return { kind: "none" };
     default:
       return { kind: "none" };

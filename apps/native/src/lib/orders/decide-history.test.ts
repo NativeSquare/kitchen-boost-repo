@@ -207,9 +207,9 @@ describe("#417 applyHistoryTabFilter — orders ∩ tab status subset", () => {
 
 describe("#417 searchOrdersById — case-insensitive ID substring (MOAT: ID only)", () => {
   const sample: Doc<"orders">[] = [
-    orderOf({ _id: "orders_ABC123" }),
-    orderOf({ _id: "orders_def456" }),
-    orderOf({ _id: "orders_ABC999" }),
+    orderOf({ _id: "orders_ABC123", status: "livrée" }),
+    orderOf({ _id: "orders_def456", status: "livrée" }),
+    orderOf({ _id: "orders_ABC999", status: "livrée" }),
   ];
 
   it("empty / whitespace query → passthrough", () => {
