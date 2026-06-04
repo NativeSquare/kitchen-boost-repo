@@ -132,6 +132,58 @@ describe("decidePaymentGate — active branches", () => {
   });
 });
 
+describe("decidePaymentGate — noChannelPossible escape hatch (PWA-S6c #457)", () => {
+  it("returns active with channel `noChannelPossible` when the flag is true and no channel is enrolled (the SMS fallback path)", () => {
+    // S6c: after the 3-level frictional fallback is exhausted and the
+    // backend mutation `customer.pushEnrollment.markNoChannelPossible` flips
+    // the flag, the Convex sub re-renders the form and the Payer CTA MUST
+    // unlock — the user proceeds without any push channel, with SMS fallback
+    // transactionnel via Cascade Notifications (decisions-log Q8 (5),
+    // CONTEXT customer-data « Push enrollment » + « SMS fallback »).
+    const gate = decidePaymentGate({
+      walletStatus: "revoked",
+      webPushStatus: "revoked",
+      a2hsStatus: "not_enrolled",
+      noChannelPossible: true,
+    });
+    expect(gate.kind).toBe("active");
+    if (gate.kind !== "active") throw new Error("unreachable");
+    expect(gate.enrolledChannels).toEqual(["noChannelPossible"]);
+  });
+
+  it("keeps active branches intact when noChannelPossible is also true (a successfully-enrolled channel still wins the listing)", () => {
+    // Defensive: if for some reason both an enrolled channel AND the flag are
+    // present (e.g. user enrolled Wallet later from a Wallet card prompt),
+    // the gate stays active and the enrolled channel is listed FIRST — the
+    // SMS fallback is the LAST-resort label.
+    const gate = decidePaymentGate({
+      walletStatus: "enrolled",
+      webPushStatus: "not_enrolled",
+      a2hsStatus: "not_enrolled",
+      noChannelPossible: true,
+    });
+    expect(gate.kind).toBe("active");
+    if (gate.kind !== "active") throw new Error("unreachable");
+    expect(gate.enrolledChannels).toEqual(["wallet", "noChannelPossible"]);
+  });
+
+  it("noChannelPossible = false / undefined is NOT a substitute for an enrolled channel (false === disabled)", () => {
+    const gateFalse = decidePaymentGate({
+      walletStatus: "not_enrolled",
+      webPushStatus: "not_enrolled",
+      a2hsStatus: "not_enrolled",
+      noChannelPossible: false,
+    });
+    expect(gateFalse.kind).toBe("disabled");
+    const gateUndef = decidePaymentGate({
+      walletStatus: "not_enrolled",
+      webPushStatus: "not_enrolled",
+      a2hsStatus: "not_enrolled",
+    });
+    expect(gateUndef.kind).toBe("disabled");
+  });
+});
+
 describe("decidePaymentGate — pure / referential transparency", () => {
   it("returns the same shape twice for the same input (no hidden state)", () => {
     const snap: PushEnrollmentSnapshot = { walletStatus: "enrolled" };
