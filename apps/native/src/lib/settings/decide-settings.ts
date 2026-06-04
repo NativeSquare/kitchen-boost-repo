@@ -174,7 +174,7 @@ export function decideSettingsVisibility(
 export type RebasculeModeInputs = {
   currentMode: DeviceMode;
   /** Active tenants of the user (empty for kb_admin or unattached). */
-  attachedTenantIds: Array<Id<"tenants">>;
+  attachedTenantIds: Id<"tenants">[];
 };
 
 /**
@@ -199,7 +199,7 @@ export type RebasculeModeDecision =
   | { kind: "noop" }
   | { kind: "confirm-telephone" }
   | { kind: "confirm-kiosque-mono"; pinnedTenantId: Id<"tenants"> }
-  | { kind: "confirm-kiosque-pick"; choices: Array<Id<"tenants">> }
+  | { kind: "confirm-kiosque-pick"; choices: Id<"tenants">[] }
   | { kind: "unavailable-kiosque-no-tenant" };
 
 /**

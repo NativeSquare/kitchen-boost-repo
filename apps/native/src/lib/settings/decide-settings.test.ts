@@ -6,6 +6,7 @@ import {
   decideStripeBadge,
   decideUberBadge,
 } from "./decide-settings";
+import { isValidHHMM } from "./decide-notif-preferences";
 
 /**
  * #418 — `decideSettingsVisibility` + `decideRebasculeMode` + badges, pinned
@@ -258,5 +259,31 @@ describe("#418 decideUberBadge — integration health badge (mirror #411 livrais
         acceptedModes: { delivery: false, clickAndCollect: true },
       }),
     ).toBe("idle");
+  });
+});
+
+describe("#418 isValidHHMM — DNT time input guard (PRD 20 §10 notifs)", () => {
+  it("accepts canonical 24h shapes", () => {
+    expect(isValidHHMM("00:00")).toBe(true);
+    expect(isValidHHMM("08:30")).toBe(true);
+    expect(isValidHHMM("22:00")).toBe(true);
+    expect(isValidHHMM("23:59")).toBe(true);
+  });
+
+  it("refuses missing zero-padding (« 8:30 »)", () => {
+    expect(isValidHHMM("8:30")).toBe(false);
+  });
+
+  it("refuses out-of-range hours / minutes", () => {
+    expect(isValidHHMM("24:00")).toBe(false);
+    expect(isValidHHMM("12:60")).toBe(false);
+    expect(isValidHHMM("99:99")).toBe(false);
+  });
+
+  it("refuses non-digit shapes", () => {
+    expect(isValidHHMM("")).toBe(false);
+    expect(isValidHHMM("ab:cd")).toBe(false);
+    expect(isValidHHMM("12-30")).toBe(false);
+    expect(isValidHHMM("12:30:45")).toBe(false);
   });
 });
