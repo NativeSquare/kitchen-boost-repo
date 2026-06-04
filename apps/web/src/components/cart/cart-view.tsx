@@ -237,43 +237,18 @@ function DeliveryFeeRow({
       return (
         <Row label="Frais de livraison" value={formatEur(view.feeCentimes)} />
       );
+    // Both absorption shapes render identically (strike-through gross +
+    // client price + « Offert par {resto} » caption — CONTEXT pricing
+    // « Affichage prix livraison »). They only differ in whether the
+    // client fee is 0 ; the UI does NOT need separate copy.
     case "offered-by-resto":
-      return (
-        <div className="flex flex-col gap-0.5">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-sm text-zinc-700">Frais de livraison</span>
-            <span className="flex items-center gap-2 text-sm">
-              <span className="text-zinc-500 line-through">
-                {formatEur(view.grossFeeCentimes)}
-              </span>
-              <span className="font-medium text-black">
-                {formatEur(view.clientFeeCentimes)}
-              </span>
-            </span>
-          </div>
-          <span className="self-end text-xs text-emerald-700">
-            Offert par {view.restoName}
-          </span>
-        </div>
-      );
     case "partial-absorption":
       return (
-        <div className="flex flex-col gap-0.5">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-sm text-zinc-700">Frais de livraison</span>
-            <span className="flex items-center gap-2 text-sm">
-              <span className="text-zinc-500 line-through">
-                {formatEur(view.grossFeeCentimes)}
-              </span>
-              <span className="font-medium text-black">
-                {formatEur(view.clientFeeCentimes)}
-              </span>
-            </span>
-          </div>
-          <span className="self-end text-xs text-emerald-700">
-            Offert par {view.restoName}
-          </span>
-        </div>
+        <AbsorbedDeliveryFeeRow
+          grossFeeCentimes={view.grossFeeCentimes}
+          clientFeeCentimes={view.clientFeeCentimes}
+          restoName={view.restoName}
+        />
       );
     default: {
       const _exhaustive: never = view;
@@ -282,4 +257,33 @@ function DeliveryFeeRow({
       );
     }
   }
+}
+
+function AbsorbedDeliveryFeeRow({
+  grossFeeCentimes,
+  clientFeeCentimes,
+  restoName,
+}: {
+  grossFeeCentimes: number;
+  clientFeeCentimes: number;
+  restoName: string;
+}): React.JSX.Element {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm text-zinc-700">Frais de livraison</span>
+        <span className="flex items-center gap-2 text-sm">
+          <span className="text-zinc-500 line-through">
+            {formatEur(grossFeeCentimes)}
+          </span>
+          <span className="font-medium text-black">
+            {formatEur(clientFeeCentimes)}
+          </span>
+        </span>
+      </div>
+      <span className="self-end text-xs text-emerald-700">
+        Offert par {restoName}
+      </span>
+    </div>
+  );
 }
