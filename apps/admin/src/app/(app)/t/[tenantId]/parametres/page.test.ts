@@ -173,6 +173,41 @@ describe("page.tsx — F-PARAMETRES-01 (#193) wiring contract", () => {
     );
   });
 
+  // ── #416 — KB Admin printer config wiring (mirror of native #412) ──────
+  it("#416 — reads the persisted printer config via `useTenantQuery(api.lib.printing.printing.getPrinterConfig)` (state Convex partagé, ADR 0014 §4 — never a raw useQuery on a tenant-scoped query)", () => {
+    expect(PAGE_SOURCE).toMatch(/useTenantQuery/);
+    const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
+    expect(collapsed).toMatch(
+      /useTenantQuery\([^)]*api\.lib\.printing\.printing\.getPrinterConfig[^)]*\)/,
+    );
+  });
+
+  it("#416 — wires `onSavePrinterConfig` via `useTenantMutation(api.lib.printing.printing.setPrinterConfig)` (REUSES the existing native mutation — root override on tenantMutation makes it admin-callable, ADR 0014 §3, no `adminSetPrinterIp` invented)", () => {
+    expect(PAGE_SOURCE).toMatch(/onSavePrinterConfig/);
+    const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
+    expect(collapsed).toMatch(
+      /useTenantMutation\([^)]*api\.lib\.printing\.printing\.setPrinterConfig[^)]*\)/,
+    );
+  });
+
+  it("#416 — wires `onClearPrinterConfig` via `useTenantMutation(api.lib.printing.printing.clearPrinterConfig)` (paired with set — same module, same wrapper, kb_admin via root override)", () => {
+    expect(PAGE_SOURCE).toMatch(/onClearPrinterConfig/);
+    const collapsed = PAGE_SOURCE.replace(/\s+/g, " ");
+    expect(collapsed).toMatch(
+      /useTenantMutation\([^)]*api\.lib\.printing\.printing\.clearPrinterConfig[^)]*\)/,
+    );
+  });
+
+  it("#416 — does NOT invent a separate admin-only mutation (the existing tenantMutation auto-accepts kb_admin via root override, ADR 0014 §3 + withTenant.ts requireTenantAccess)", () => {
+    const code = stripNonCode(PAGE_SOURCE);
+    // No `adminSetPrinterIp` / `adminSetPrinterConfig` / `kbAdminMutation`
+    // surface for the printer config — REUSE the existing
+    // `setPrinterConfig` / `clearPrinterConfig` from native #412 (the
+    // tenantMutation wrapper's root override makes them admin-callable).
+    expect(code).not.toMatch(/adminSetPrinterIp/);
+    expect(code).not.toMatch(/adminSetPrinterConfig/);
+  });
+
   it("AC delegation — delegates rendering to `ParametresView` (keeps the page thin + the view testable in node env)", () => {
     expect(PAGE_SOURCE).toMatch(/ParametresView/);
   });

@@ -183,6 +183,8 @@ const noopUpload = async () => "https://cdn/x.png";
 const noopCoordonnees = async () => {};
 const noopModes = async () => {};
 const noopServiceHours = async () => {};
+const noopPrinterSave = async () => {};
+const noopPrinterClear = async () => {};
 const BASE_BRANDING_PROPS = {
   branding: undefined,
   onSaveBranding: noopBranding,
@@ -192,6 +194,14 @@ const BASE_BRANDING_PROPS = {
   acceptedModes: undefined,
   onSaveAcceptedModes: noopModes,
   onSaveServiceHours: noopServiceHours,
+  // #416 — Printer config props (5th section: « Imprimante cuisine »).
+  // The page resolves these from `useTenantQuery(api.lib.printing.printing
+  // .getPrinterConfig)` + the two `useTenantMutation` bindings (set + clear).
+  // `undefined` here is the Convex loading sentinel — the editor handles it
+  // the same way it handles `null` (no printer configured yet).
+  printerConfig: undefined,
+  onSavePrinterConfig: noopPrinterSave,
+  onClearPrinterConfig: noopPrinterClear,
 } as const;
 
 const LOADING: ParametresViewProps = {
@@ -211,6 +221,13 @@ const WITH_WINDOWS: ParametresViewProps = {
   },
   ...BASE_BRANDING_PROPS,
 };
+// #416 — printerConfig set: triggers the « Retirer l'imprimante » button branch.
+const WITH_PRINTER: ParametresViewProps = {
+  ...EMPTY,
+  printerConfig: {
+    starWebPrntUrl: "http://192.168.1.42/StarWebPRNT/SendMessage",
+  },
+};
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -223,17 +240,23 @@ describe("ParametresView — F-PARAMETRES-01 (#193)", () => {
     }
   });
 
-  it("AC2 — renders the 4 canonical section titles in order: Identité visuelle / Coordonnées / Modes acceptés / Horaires de service", () => {
+  it("AC2 — renders the canonical section titles in order: Identité visuelle / Coordonnées / Modes acceptés / Horaires de service / Imprimante cuisine (#416)", () => {
     const text = allText(serialize(ParametresView(EMPTY)));
     const identiteIdx = text.search(/Identit[ée] visuelle/);
     const coordIdx = text.search(/Coordonn[ée]es/);
     const modesIdx = text.search(/Modes accept[ée]s/);
     const horairesIdx = text.search(/Horaires de service/);
+    // #416 — « Imprimante cuisine » section, after Horaires (config plumbing,
+    // not a daily operational lever — same family as the existing 4 sections
+    // and explicitly distinct from the « Disponibilité » page which owns the
+    // « ici et maintenant » levers).
+    const imprimanteIdx = text.search(/Imprimante cuisine/);
 
     expect(identiteIdx).toBeGreaterThanOrEqual(0);
     expect(coordIdx).toBeGreaterThan(identiteIdx);
     expect(modesIdx).toBeGreaterThan(coordIdx);
     expect(horairesIdx).toBeGreaterThan(modesIdx);
+    expect(imprimanteIdx).toBeGreaterThan(horairesIdx);
   });
 
   it("F-PARAMETRES-05 (#236) — all 4 sections are now WIRED — no « À implémenter » placeholder remains on the Paramètres page", () => {
@@ -281,7 +304,12 @@ describe("ParametresView — F-PARAMETRES-01 (#193)", () => {
       })
       .filter((c): c is string => c !== null);
     const cardClassCount = classes.filter((c) => c.includes("bg-card")).length;
-    expect(cardClassCount).toBeGreaterThanOrEqual(4);
+    // #416 — the page now hosts 5 section cards + the Uber Direct read-only
+    // block (the « Imprimante cuisine » section landed alongside the
+    // pre-existing 4). The lower bound stays generous (≥ 5) so a refactor
+    // that inlines one Card without the primitive still passes for the
+    // others.
+    expect(cardClassCount).toBeGreaterThanOrEqual(5);
   });
 
   it("AC5 — uses the shadcn `Separator` primitive (radix `data-orientation` marker surfaces in the tree)", () => {
@@ -306,9 +334,11 @@ describe("ParametresView — F-PARAMETRES-01 (#193)", () => {
     expect(slots).toContain("parametres-section-coordonnees");
     expect(slots).toContain("parametres-section-modes");
     expect(slots).toContain("parametres-section-horaires");
+    // #416 — printer section, fifth in the canonical order.
+    expect(slots).toContain("parametres-section-imprimante");
   });
 
-  it("AC2 — loading branch (serviceHours === undefined) does NOT crash and still renders the 4 sections + Uber Direct block", () => {
+  it("AC2 — loading branch (serviceHours === undefined) does NOT crash and still renders all sections + Uber Direct block", () => {
     const tree = serialize(ParametresView(LOADING));
     expect(tree).not.toBeNull();
     const slots = dataSlots(tree);
@@ -316,6 +346,7 @@ describe("ParametresView — F-PARAMETRES-01 (#193)", () => {
     expect(slots).toContain("parametres-section-coordonnees");
     expect(slots).toContain("parametres-section-modes");
     expect(slots).toContain("parametres-section-horaires");
+    expect(slots).toContain("parametres-section-imprimante");
     expect(slots).toContain("parametres-uber-direct-readonly");
   });
 
@@ -373,5 +404,34 @@ describe("ParametresView — F-PARAMETRES-01 (#193)", () => {
     // next Convex reactivity tick.
     const tree = serialize(ParametresView(LOADING));
     expect(dataSlots(tree)).toContain("parametres-service-hours-form");
+  });
+
+  // ── #416 — Imprimante cuisine section (KB Admin mirror, PRD 20 §14) ─────
+  it("#416 — section Imprimante cuisine is WIRED (PrinterEditor) and surfaces the URL input + save button", () => {
+    const tree = serialize(ParametresView(EMPTY));
+    const slots = dataSlots(tree);
+    expect(slots).toContain("parametres-printer-url-input");
+    expect(slots).toContain("parametres-printer-save");
+    // The section card's data-slot is the stable handle the test pins.
+    expect(slots).toContain("parametres-section-imprimante");
+  });
+
+  it("#416 — when no printer is configured, the « Retirer » button is hidden (only Save surfaces)", () => {
+    // FRESH printer + EMPTY service hours → printerConfig === undefined,
+    // editor treats it as « no printer ».
+    const slots = dataSlots(serialize(ParametresView(EMPTY)));
+    expect(slots).not.toContain("parametres-printer-clear");
+  });
+
+  it("#416 — when a printer is configured, the « Retirer » button surfaces alongside Save (state Convex partagé with the native app)", () => {
+    const slots = dataSlots(serialize(ParametresView(WITH_PRINTER)));
+    expect(slots).toContain("parametres-printer-clear");
+    expect(slots).toContain("parametres-printer-save");
+  });
+
+  it("#416 — section Imprimante cuisine renders on the LOADING branch too (printerConfig === undefined seeds the editor with the « no printer » default)", () => {
+    const slots = dataSlots(serialize(ParametresView(LOADING)));
+    expect(slots).toContain("parametres-section-imprimante");
+    expect(slots).toContain("parametres-printer-url-input");
   });
 });

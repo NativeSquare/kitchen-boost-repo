@@ -60,6 +60,7 @@ import {
   type AcceptedModesPatch,
   type ModesValue,
 } from "./modes-editor";
+import { PrinterEditor, type PrinterConfigValue } from "./printer-editor";
 import { ServiceHoursEditor, type ServiceWindow } from "./service-hours-editor";
 
 export type ParametresViewProps = {
@@ -147,6 +148,31 @@ export type ParametresViewProps = {
    * legitimate state — « fermé toute la semaine » or a fresh tenant).
    */
   onSaveServiceHours: (windows: ServiceWindow[]) => Promise<void>;
+  /**
+   * #416 — Imprimante cuisine section (PRD 20 §14, mirror of native #412).
+   *
+   * `printerConfig`: the current persisted Star WebPRNT URL (or `null` /
+   *   `undefined`). `undefined` is the Convex loading sentinel; the editor
+   *   handles it identically to `null` (« no printer set yet »). On a
+   *   successful save by the native app (or the gérant from this page),
+   *   the Convex sub flips this prop live so the form re-syncs without
+   *   needing a refresh.
+   * `onSavePrinterConfig`: page-wired handler for the section's
+   *   « Enregistrer » button. Receives `{ starWebPrntUrl }` (trimmed,
+   *   validated). Page wires it to `useTenantMutation(api.lib.printing
+   *   .printing.setPrinterConfig)` — REUSES the same mutation the native
+   *   Settings screen calls (no `adminSetPrinterIp` invented; the
+   *   `tenantMutation` wrapper's root override admits `kb_admin`, ADR 0014
+   *   §3 + `withTenant.ts requireTenantAccess`).
+   * `onClearPrinterConfig`: page-wired handler for the section's
+   *   « Retirer l'imprimante » button. Page wires it to `useTenantMutation
+   *   (api.lib.printing.printing.clearPrinterConfig)`. After clearing,
+   *   auto-print on the native side becomes a clean no-op (PRD 20 §14
+   *   « si pas configurée → no-op silencieux »).
+   */
+  printerConfig: PrinterConfigValue;
+  onSavePrinterConfig: (args: { starWebPrntUrl: string }) => Promise<void>;
+  onClearPrinterConfig: () => Promise<void>;
 };
 
 export function ParametresView({
@@ -159,6 +185,9 @@ export function ParametresView({
   acceptedModes,
   onSaveAcceptedModes,
   onSaveServiceHours,
+  printerConfig,
+  onSavePrinterConfig,
+  onClearPrinterConfig,
 }: ParametresViewProps): React.ReactElement {
   return (
     <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
@@ -203,6 +232,12 @@ export function ParametresView({
           value={serviceHours?.windows ?? []}
           onSave={onSaveServiceHours}
         />
+        <SectionImprimanteCuisine
+          key={printerEditorKey(printerConfig)}
+          value={printerConfig}
+          onSave={onSavePrinterConfig}
+          onClear={onClearPrinterConfig}
+        />
         <Separator className="my-2" />
         <UberDirectReadOnlyBlock />
       </div>
@@ -243,6 +278,17 @@ function serviceHoursEditorKey(windows: ServiceWindow[]): string {
   // negligible. The empty array maps to a stable sentinel.
   if (windows.length === 0) return "service-hours|empty";
   return `service-hours|${JSON.stringify(windows)}`;
+}
+
+function printerEditorKey(value: PrinterConfigValue): string {
+  // `undefined` (loading) and `null` (no printer set) collapse to ONE seed
+  // ⇒ the editor mounts once with the empty form, then remounts once when
+  // the Convex query resolves to either the persisted URL or `null`. Same
+  // discipline as `brandingEditorKey` so the user can edit the input
+  // without each Convex sub tick wiping their typing.
+  if (value === undefined) return "printer|loading";
+  if (value === null) return "printer|empty";
+  return `printer|${value.starWebPrntUrl}`;
 }
 
 function ParametresHeader() {
@@ -411,6 +457,43 @@ function SectionHorairesService({
       </CardHeader>
       <CardContent>
         <ServiceHoursEditor value={value} onSave={onSave} />
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * #416 — wired Imprimante cuisine section (PRD 20 §14). Wraps the
+ * reusable `PrinterEditor` (signature `{ value, onSave, onClear }`)
+ * inside the canonical Section card so the visual rhythm with the
+ * sibling wired sections stays consistent.
+ *
+ * Same backend persistence as the native #412 Settings screen
+ * (`tenants.printerConfig.starWebPrntUrl`) — state Convex partagé,
+ * a change here flips the kitchen tablet live through the Convex sub
+ * (and vice versa).
+ */
+function SectionImprimanteCuisine({
+  value,
+  onSave,
+  onClear,
+}: {
+  value: PrinterConfigValue;
+  onSave: (args: { starWebPrntUrl: string }) => Promise<void>;
+  onClear: () => Promise<void>;
+}) {
+  return (
+    <Card data-slot="parametres-section-imprimante">
+      <CardHeader>
+        <CardTitle>Imprimante cuisine</CardTitle>
+        <CardDescription>
+          Configuration de l&apos;imprimante thermique Star WebPRNT du
+          restaurant. La configuration est synchronisée en direct avec
+          l&apos;app KB Orders (tablette cuisine).
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <PrinterEditor value={value} onSave={onSave} onClear={onClear} />
       </CardContent>
     </Card>
   );
