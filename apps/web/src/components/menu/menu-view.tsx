@@ -44,6 +44,7 @@ import type {
 import { decideVisibleItems, type DietaryFilter } from "@/lib/menu-filters";
 import { decideMenuDeepLink } from "@/lib/menu-deep-link";
 import { DeliveryModeToggle } from "@/components/delivery-mode/delivery-mode-toggle";
+import { WalletPromptBanner } from "@/components/wallet-prompt";
 import { ItemModal } from "./item-modal";
 
 export type MenuViewProps = {
@@ -181,6 +182,12 @@ export function MenuView({
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6 px-4 pb-32 pt-8 md:px-8">
+      {/* PWA-S9a (#460) — palier 2 of the 3-paliers Wallet install moat
+          (decisions-log Q5, US 28). Permanent top banner — auto-hides when
+          `walletStatus = "enrolled"` (Convex sub) OR when the user
+          dismissed it in this session (sessionStorage). Rendered at the
+          very top so it's the first thing Sophie sees on /menu. */}
+      <WalletPromptBanner tenantId={tenantId} />
       <header className="flex flex-col gap-3">
         <h1 className="text-3xl font-bold text-black">{tenantName}</h1>
         <p className="text-sm text-zinc-600">

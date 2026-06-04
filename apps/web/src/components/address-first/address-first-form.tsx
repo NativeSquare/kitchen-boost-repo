@@ -53,6 +53,7 @@ import {
   decideAddressFirstAction,
 } from "@/lib/address-first";
 import { encodeVerdict, VERDICT_STORAGE_KEY } from "@/lib/delivery-mode";
+import { WalletPromptCard } from "@/components/wallet-prompt";
 
 /**
  * Narrowed shape of `AddressFirstAction` when the verdict is non-deliverable.
@@ -168,12 +169,16 @@ export function AddressFirstForm({
       }
       const action = decideAddressFirstAction(verdict);
       setState({ kind: "result", action });
-      if (action.kind === "redirect") {
-        // Redirect verdict — navigate immediately. The fee/eta/quoteId carried
-        // by the action will land in /menu via the cached verdict above
-        // (PWA-S5 #453 wiring); the toggle reads it on mount.
-        router.push(action.path);
-      }
+      // PWA-S9a (#460) : `kind === "redirect"` no longer navigates immediately
+      // — the form renders `<WalletPromptCard>` (palier 1 of the 3-paliers
+      // Wallet install moat, decisions-log Q5 + US 27) and only navigates to
+      // `action.path` when the user clicks « Plus tard » OR the Convex sub
+      // flips `walletStatus = "enrolled"`. Both exits route through the
+      // card's `onSkip` handler, which calls `router.push(action.path)`.
+      // Returning Sophie with `walletStatus = "enrolled"` already gets a
+      // no-op card (decideWalletPromptVisibility → hidden, useEffect fires
+      // onSkip immediately) — preserves the « zero-friction redirect » UX
+      // of returning customers who already converted.
     } catch (err) {
       setState({
         kind: "error",
@@ -298,6 +303,24 @@ export function AddressFirstForm({
           onRetry={onRetry}
         />
       )}
+
+      {/* PWA-S9a (#460) — palier 1 Wallet install card, rendered AFTER a
+          deliverable verdict in place of the immediate `router.push`. The
+          card's `onSkip` (« Plus tard » OR Convex sub flip on enrollment)
+          navigates to the destination the verdict carried (`/menu`). The
+          path is captured once at render so the onSkip closure does not
+          have to re-narrow `state.action.kind` inside the callback. */}
+      {state.kind === "result" &&
+        state.action.kind === "redirect" &&
+        (() => {
+          const destination = state.action.path;
+          return (
+            <WalletPromptCard
+              tenantId={tenantId}
+              onSkip={() => router.push(destination)}
+            />
+          );
+        })()}
 
       {state.kind === "error" && (
         <p role="alert" className="text-sm text-red-700">
