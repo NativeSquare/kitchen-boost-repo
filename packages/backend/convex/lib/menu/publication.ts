@@ -1,3 +1,4 @@
+import { internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../../_generated/server";
 import type { PublishedMenuPayload } from "../../table/publishedMenus";
@@ -203,6 +204,21 @@ export const publishMenu = tenantMutation({ allow: ["kb_manager"] })({
   handler: async (ctx): Promise<void> => {
     const payload = await buildSnapshotPayload(ctx, ctx.tenantId);
     await writePublishedMenu(ctx, ctx.tenantId, payload, Date.now());
+    // PWA-S4 (#452) — schedule an on-demand ISR revalidate of the published
+    // tenant's `/menu` HTML on the Next.js side (decisions-log Q2 « ISR +
+    // on-demand revalidate au clic Publier »). Scheduled (NOT awaited) so:
+    //  - the mutation commits the snapshot immediately (the SoT of the menu),
+    //  - the external `fetch` to the Vercel app runs in a separate action
+    //    (default Convex runtime is V8 — `fetch` is fine, but the action
+    //    boundary avoids holding the mutation tx open across network IO),
+    //  - a failure to revalidate (env unset in dev / route 5xx) is NON-FATAL
+    //    (returns `{ ok: false, reason }` from the action; the PWA still
+    //    eventually sees fresh data at the next natural ISR eviction).
+    await ctx.scheduler.runAfter(
+      0,
+      internal.lib.menuRevalidate.revalidateMenuTag.revalidateMenuTag,
+      { tenantId: ctx.tenantId },
+    );
   },
 });
 
