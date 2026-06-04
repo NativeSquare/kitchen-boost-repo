@@ -142,6 +142,7 @@ import type * as lib_tenancy_walletIncentiveDeliveriesStore from "../lib/tenancy
 import type * as lib_tenancy_walletPassesStore from "../lib/tenancy/walletPassesStore.js";
 import type * as lib_tenancy_webPushSubscriptionsStore from "../lib/tenancy/webPushSubscriptionsStore.js";
 import type * as lib_tenancy_withTenant from "../lib/tenancy/withTenant.js";
+import type * as lib_tenants_branding from "../lib/tenants/branding.js";
 import type * as lib_tenants_index from "../lib/tenants/index.js";
 import type * as lib_tenants_resolution from "../lib/tenants/resolution.js";
 import type * as lib_uberDirect_createDelivery from "../lib/uberDirect/createDelivery.js";
@@ -340,6 +341,7 @@ declare const fullApi: ApiFromModules<{
   "lib/tenancy/walletPassesStore": typeof lib_tenancy_walletPassesStore;
   "lib/tenancy/webPushSubscriptionsStore": typeof lib_tenancy_webPushSubscriptionsStore;
   "lib/tenancy/withTenant": typeof lib_tenancy_withTenant;
+  "lib/tenants/branding": typeof lib_tenants_branding;
   "lib/tenants/index": typeof lib_tenants_index;
   "lib/tenants/resolution": typeof lib_tenants_resolution;
   "lib/uberDirect/createDelivery": typeof lib_uberDirect_createDelivery;

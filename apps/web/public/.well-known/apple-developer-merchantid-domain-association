@@ -1,0 +1,23 @@
+# PWA-S2 (#450) — Apple Pay domain verification file.
+#
+# Apple Pay on the Web requires this file to be served at
+# `https://<domain>/.well-known/apple-developer-merchantid-domain-association`
+# with HTTP 200 + a body that matches what Apple issued for the merchant ID.
+#
+# V1 strategy (PRD §10 PWA Client Q6, payment CONTEXT): Apple Pay domain
+# verification is registered MANUALLY via the Stripe Dashboard at each Phase C
+# onboarding (~2 min per tenant). Stripe acts as the merchant ID owner and
+# manages the file content — when a tenant adds a custom domain, the KB Admin
+# clicks « Add domain » in Stripe Dashboard and Stripe handles the per-domain
+# verification under the hood (shared platform merchant ID across direct
+# charges, payment CONTEXT « Apple Pay verification mutualisée »).
+#
+# This static file is the FALLBACK in case Stripe's automated route fails for
+# a given domain. It must be replaced with the EXACT bytes Apple/Stripe issued
+# for the specific merchant ID + domain pairing before the tenant goes live
+# with Apple Pay. V2 automation (PRD §10 Q6): Stripe API to register the
+# domain at provisioning time, no manual step.
+#
+# Lines starting with `#` are ignored by Apple's parser (the file is treated
+# as opaque bytes), so this header is safe to ship until a real merchant ID
+# is provisioned for a custom domain.

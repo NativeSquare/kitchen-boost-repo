@@ -18,3 +18,4 @@
  * the public PWA-facing read surface — and that's all.
  */
 export * as resolution from "./resolution";
+export * as branding from "./branding";
