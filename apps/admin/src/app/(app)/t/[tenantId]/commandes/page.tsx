@@ -123,6 +123,7 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "convex/react";
+import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import { api } from "@packages/backend/convex/_generated/api";
@@ -142,6 +143,12 @@ import {
   type OrderStatus,
   type OrdersFilter,
 } from "./orders-filtering";
+import {
+  ORDER_TABS,
+  applyTabFilter,
+  searchOrdersById,
+  type OrderTabKey,
+} from "./orders-tabs";
 
 /**
  * Initial filter state on first mount: « tout » date range + no status
@@ -154,9 +161,34 @@ const DEFAULT_FILTER: OrdersFilter = {
   statuses: [],
 };
 
+/**
+ * Resolve the initial tab from the `?tab=` URL param so the monitoring
+ * drill-down (`/monitoring` → /t/<id>/commandes?tab=missed`, #415) lands the
+ * gérant/ops on the « Manquées » bucket without an extra click. Unknown
+ * values fall back to the default `"all"` — the URL never traps the user on
+ * a tab that no longer exists.
+ */
+function resolveInitialTab(param: string | null): OrderTabKey {
+  const valid = new Set<OrderTabKey>(ORDER_TABS.map((t) => t.key));
+  if (param !== null && valid.has(param as OrderTabKey)) {
+    return param as OrderTabKey;
+  }
+  return "all";
+}
+
 export default function CommandesPage() {
   const orders = useTenantQuery(api.lib.orders.orders.listOrders, {});
   const [filter, setFilter] = useState<OrdersFilter>(DEFAULT_FILTER);
+  // #415 — Tab + search state, page-owned. `searchParams.get("tab")` is read
+  // ONCE via the lazy `useState` initializer — switching tab inside the page
+  // updates local state, NOT the URL (keeping the URL writable as a side
+  // effect would require `useRouter().replace` per click + a sync loop; V1
+  // is one-way: URL → initial tab, click → local state).
+  const searchParams = useSearchParams();
+  const [tab, setTab] = useState<OrderTabKey>(() =>
+    resolveInitialTab(searchParams.get("tab")),
+  );
+  const [search, setSearch] = useState("");
 
   // F-COMMANDES-DETAIL-MODAL (#239) — page-owned modal state. `null` =
   // closed, no `getOrder` subscription open. Otherwise the id of the order
@@ -261,11 +293,16 @@ export default function CommandesPage() {
   // Apply the pure predicate to the live payload — re-runs on every Convex
   // push because the `orders` reference changes when the wrapper re-fires
   // (AC8 « le filtre s'applique au resultat live »). Memoised on
-  // (orders, filter) to avoid re-filtering on unrelated re-renders.
-  const filtered = useMemo(
-    () => (orders === undefined ? undefined : filterOrders(orders, filter)),
-    [orders, filter],
-  );
+  // (orders, filter, tab, search) to avoid re-filtering on unrelated
+  // re-renders. #415 — the tab + search predicates compose commutatively
+  // with `filterOrders`; order is irrelevant (pure intersection).
+  const filtered = useMemo(() => {
+    if (orders === undefined) return undefined;
+    let out = filterOrders(orders, filter);
+    out = applyTabFilter(out, tab);
+    out = searchOrdersById(out, search);
+    return out;
+  }, [orders, filter, tab, search]);
 
   // F-COMMANDES-CSV-EXPORT (#244) — resolve the tenant slug for the export
   // filename. Mirror of the QR page pattern (#198): KB Manager reads it from
@@ -310,6 +347,10 @@ export default function CommandesPage() {
         onStatusesChange={handleStatusesChange}
         onOrderClick={handleOrderClick}
         onExportCsv={handleExportCsv}
+        tab={tab}
+        onTabChange={setTab}
+        search={search}
+        onSearchChange={setSearch}
       />
       <OrderDetailModal
         open={selectedOrderId !== null}

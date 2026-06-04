@@ -61,9 +61,18 @@ export function filterIncidents(
       if (severity !== filters.severity) return false;
     }
     if (filters.tenantId !== ALL_FILTER) {
-      // Only tenant-scoped incidents (paid_no_course w/ tenantId) can match.
-      if (incident.kind !== "paid_no_course") return false;
-      if (incident.tenantId !== filters.tenantId) return false;
+      // Only tenant-scoped incidents can match. The discriminated union
+      // carries `tenantId` on `paid_no_course` (optionally) and on the
+      // new #415 `auto_expired_burst` (always — burst is aggregated PER
+      // tenant by definition).
+      const ownTenantId =
+        incident.kind === "paid_no_course"
+          ? incident.tenantId
+          : incident.kind === "auto_expired_burst"
+            ? incident.tenantId
+            : undefined;
+      if (ownTenantId === undefined) return false;
+      if (ownTenantId !== filters.tenantId) return false;
     }
     return true;
   });
@@ -82,12 +91,18 @@ export function collectTenantOptions(incidents: Incident[]): string[] {
   const seen = new Set<string>();
   const ordered: string[] = [];
   for (const incident of incidents) {
-    if (incident.kind === "paid_no_course" && incident.tenantId !== undefined) {
-      if (!seen.has(incident.tenantId)) {
-        seen.add(incident.tenantId);
-        ordered.push(incident.tenantId);
-      }
-    }
+    const ownTenantId =
+      incident.kind === "paid_no_course"
+        ? incident.tenantId
+        : incident.kind === "auto_expired_burst"
+          ? // #415 — burst is tenant-scoped on the wire (tenantId is required,
+            // unlike paid_no_course where it's optional).
+            incident.tenantId
+          : undefined;
+    if (ownTenantId === undefined) continue;
+    if (seen.has(ownTenantId)) continue;
+    seen.add(ownTenantId);
+    ordered.push(ownTenantId);
   }
   return ordered;
 }

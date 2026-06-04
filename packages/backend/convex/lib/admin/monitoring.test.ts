@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  AUTO_EXPIRED_24H_THRESHOLD,
+  AUTO_EXPIRED_WINDOW_MS,
   KYC_PENDING_THRESHOLD_MS,
   type Incident,
   WEBHOOK_LATENCY_THRESHOLD_MS,
+  detectAutoExpiredBursts,
   detectKycPendingIncidents,
   detectPaidOrdersWithoutCourse,
   detectWebhookLatencyIncidents,
@@ -30,6 +33,20 @@ describe("2.9-F thresholds (PRD 70 §3.8 — not invented)", () => {
   });
   it("KYC pending threshold is 48 h", () => {
     expect(KYC_PENDING_THRESHOLD_MS).toBe(48 * HOUR);
+  });
+});
+
+describe("#415 auto_expired_burst threshold (PRD 20 §8 / kb-orders CONTEXT)", () => {
+  // PRD 20 §8 (KB Admin onglet Manquées): « alerte ops si auto_expired/jour
+  // dépasse un seuil (~3-5 par défaut) ». We pin the low end of that
+  // documented range (3) so a future bump can be argued explicitly. NOT
+  // invented — the V1 value lives as a constant so it's tunable without
+  // a schema change (issue body, #415).
+  it("auto_expired daily burst threshold is 3 (PRD 20 §8 — low end of 3-5)", () => {
+    expect(AUTO_EXPIRED_24H_THRESHOLD).toBe(3);
+  });
+  it("rolling window for the burst detection is 24 h (the « par jour » in PRD 20 §8)", () => {
+    expect(AUTO_EXPIRED_WINDOW_MS).toBe(24 * HOUR);
   });
 });
 
@@ -241,6 +258,14 @@ describe("2.9-F formatIncidentSlackText — one human line per incident", () => 
         pendingSinceMs: NOW - 72 * HOUR,
       },
       { kind: "paid_no_course", orderId: "o_1", tenantId: "t_1" },
+      {
+        kind: "auto_expired_burst",
+        tenantId: "t_4",
+        tenantName: "Thai Street",
+        count: 5,
+        windowMs: AUTO_EXPIRED_WINDOW_MS,
+        thresholdCount: AUTO_EXPIRED_24H_THRESHOLD,
+      },
     ];
     for (const incident of cases) {
       const text = formatIncidentSlackText(incident);
@@ -250,11 +275,169 @@ describe("2.9-F formatIncidentSlackText — one human line per incident", () => 
     expect(formatIncidentSlackText(cases[0])).toContain("stripe");
     expect(formatIncidentSlackText(cases[1])).toContain("Le Resto");
     expect(formatIncidentSlackText(cases[2])).toContain("o_1");
+    // #415 — the auto_expired_burst Slack line surfaces the tenant + the count
+    // so the ops dispatcher knows WHICH resto is silently dropping cmds and
+    // HOW MANY in the trailing 24 h window. We accept either the tenant name
+    // or the tenantId when the name is absent (mirrors the KYC formatter's
+    // « name ?? id » fallback).
+    expect(formatIncidentSlackText(cases[3])).toContain("Thai Street");
+    expect(formatIncidentSlackText(cases[3])).toContain("5");
   });
 });
 
-describe("2.9-F scanIncidents — combine the three detectors over given data", () => {
-  it("returns the union of all detected incidents", () => {
+describe("#415 detectAutoExpiredBursts — auto_expired/24 h > seuil par tenant", () => {
+  // PRD 20 §8 + kb-orders CONTEXT « Cmd manquée » : un resto qui auto_expire
+  // chroniquement des cmds = signal opérationnel (tablette HS, Khan AFK).
+  // Le détecteur agrège par tenant les cmds passées en `auto_expired` dans
+  // la fenêtre glissante de 24 h et émet UNE incidence par tenant qui DÉPASSE
+  // le seuil (strictement, pas ≥ — cohérent avec les autres détecteurs).
+  // Pur : pas de DB, pas de ctx ; on lui passe la liste des cmds expirées.
+
+  type AutoExpiredOrder = {
+    _id: string;
+    tenantId: string;
+    autoExpiredAt: number;
+  };
+
+  it("flags a tenant with strictly more than the threshold in the window", () => {
+    const tenantId = "t_overflow";
+    const recent = NOW - HOUR; // well inside the 24 h window
+    const orders: AutoExpiredOrder[] = [
+      { _id: "o1", tenantId, autoExpiredAt: recent },
+      { _id: "o2", tenantId, autoExpiredAt: recent - HOUR },
+      { _id: "o3", tenantId, autoExpiredAt: recent - 2 * HOUR },
+      { _id: "o4", tenantId, autoExpiredAt: recent - 3 * HOUR }, // 4 > 3 = burst
+    ];
+    const incidents = detectAutoExpiredBursts({
+      orders,
+      tenantNames: { [tenantId]: "Overflow Resto" },
+      now: NOW,
+      windowMs: AUTO_EXPIRED_WINDOW_MS,
+      thresholdCount: AUTO_EXPIRED_24H_THRESHOLD,
+    });
+    expect(incidents).toHaveLength(1);
+    expect(incidents[0]).toMatchObject({
+      kind: "auto_expired_burst",
+      tenantId,
+      tenantName: "Overflow Resto",
+      count: 4,
+      thresholdCount: AUTO_EXPIRED_24H_THRESHOLD,
+      windowMs: AUTO_EXPIRED_WINDOW_MS,
+    });
+  });
+
+  it("does NOT flag a tenant at exactly the threshold (strict >)", () => {
+    const tenantId = "t_at_threshold";
+    const recent = NOW - HOUR;
+    const orders: AutoExpiredOrder[] = [
+      { _id: "o1", tenantId, autoExpiredAt: recent },
+      { _id: "o2", tenantId, autoExpiredAt: recent - HOUR },
+      { _id: "o3", tenantId, autoExpiredAt: recent - 2 * HOUR }, // exactly 3
+    ];
+    expect(
+      detectAutoExpiredBursts({
+        orders,
+        tenantNames: {},
+        now: NOW,
+        windowMs: AUTO_EXPIRED_WINDOW_MS,
+        thresholdCount: AUTO_EXPIRED_24H_THRESHOLD,
+      }),
+    ).toEqual([]);
+  });
+
+  it("ignores expirations older than the window (older than 24 h)", () => {
+    const tenantId = "t_olderhalf";
+    const recent = NOW - HOUR;
+    const stale = NOW - 25 * HOUR; // before the rolling window
+    const orders: AutoExpiredOrder[] = [
+      { _id: "o1", tenantId, autoExpiredAt: recent },
+      { _id: "o2", tenantId, autoExpiredAt: stale },
+      { _id: "o3", tenantId, autoExpiredAt: stale - HOUR },
+      { _id: "o4", tenantId, autoExpiredAt: stale - 2 * HOUR },
+    ];
+    expect(
+      detectAutoExpiredBursts({
+        orders,
+        tenantNames: {},
+        now: NOW,
+        windowMs: AUTO_EXPIRED_WINDOW_MS,
+        thresholdCount: AUTO_EXPIRED_24H_THRESHOLD,
+      }),
+    ).toEqual([]);
+  });
+
+  it("aggregates PER TENANT — one tenant in burst doesn't drag another below threshold", () => {
+    const recent = NOW - HOUR;
+    const orders: AutoExpiredOrder[] = [
+      // tenant A: 4 expirations → burst
+      { _id: "a1", tenantId: "t_A", autoExpiredAt: recent },
+      { _id: "a2", tenantId: "t_A", autoExpiredAt: recent - HOUR },
+      { _id: "a3", tenantId: "t_A", autoExpiredAt: recent - 2 * HOUR },
+      { _id: "a4", tenantId: "t_A", autoExpiredAt: recent - 3 * HOUR },
+      // tenant B: 2 expirations → healthy
+      { _id: "b1", tenantId: "t_B", autoExpiredAt: recent },
+      { _id: "b2", tenantId: "t_B", autoExpiredAt: recent - HOUR },
+    ];
+    const incidents = detectAutoExpiredBursts({
+      orders,
+      tenantNames: { t_A: "Resto A", t_B: "Resto B" },
+      now: NOW,
+      windowMs: AUTO_EXPIRED_WINDOW_MS,
+      thresholdCount: AUTO_EXPIRED_24H_THRESHOLD,
+    });
+    expect(incidents).toHaveLength(1);
+    expect(incidents[0]).toMatchObject({
+      kind: "auto_expired_burst",
+      tenantId: "t_A",
+      count: 4,
+    });
+  });
+
+  it("returns [] for an empty input (no tenant exceeds threshold by definition)", () => {
+    expect(
+      detectAutoExpiredBursts({
+        orders: [],
+        tenantNames: {},
+        now: NOW,
+        windowMs: AUTO_EXPIRED_WINDOW_MS,
+        thresholdCount: AUTO_EXPIRED_24H_THRESHOLD,
+      }),
+    ).toEqual([]);
+  });
+
+  it("falls back to tenantId when the tenant name is absent in the map", () => {
+    const tenantId = "t_noname";
+    const recent = NOW - HOUR;
+    const orders: AutoExpiredOrder[] = [
+      { _id: "o1", tenantId, autoExpiredAt: recent },
+      { _id: "o2", tenantId, autoExpiredAt: recent - HOUR },
+      { _id: "o3", tenantId, autoExpiredAt: recent - 2 * HOUR },
+      { _id: "o4", tenantId, autoExpiredAt: recent - 3 * HOUR },
+    ];
+    const incidents = detectAutoExpiredBursts({
+      orders,
+      tenantNames: {},
+      now: NOW,
+      windowMs: AUTO_EXPIRED_WINDOW_MS,
+      thresholdCount: AUTO_EXPIRED_24H_THRESHOLD,
+    });
+    expect(incidents).toHaveLength(1);
+    // Name absent → field is undefined so the row presenter falls back to
+    // the tenantId; we pin both shapes so a future refactor that swaps to
+    // a magic « —Anonymous— » string surfaces here loudly.
+    expect(incidents[0]).toMatchObject({
+      kind: "auto_expired_burst",
+      tenantId,
+    });
+    expect(
+      (incidents[0] as { tenantName?: string }).tenantName,
+    ).toBeUndefined();
+  });
+});
+
+describe("2.9-F scanIncidents — combine the detectors over given data", () => {
+  it("returns the union of all detected incidents (#415 adds auto_expired_burst)", () => {
+    const recent = NOW - HOUR;
     const incidents = scanIncidents({
       now: NOW,
       webhookSamples: [
@@ -275,9 +458,21 @@ describe("2.9-F scanIncidents — combine the three detectors over given data", 
       orders: [{ _id: "o_orphan", mode: "delivery", paidAt: NOW - HOUR }],
       deliveries: [],
       paidNoCourseGraceMs: 5 * 60 * 1000,
+      autoExpiredOrders: [
+        { _id: "x1", tenantId: "t_burst", autoExpiredAt: recent },
+        { _id: "x2", tenantId: "t_burst", autoExpiredAt: recent - HOUR },
+        { _id: "x3", tenantId: "t_burst", autoExpiredAt: recent - 2 * HOUR },
+        { _id: "x4", tenantId: "t_burst", autoExpiredAt: recent - 3 * HOUR },
+      ],
+      tenantNames: { t_burst: "Burst Resto" },
     });
     const kinds = incidents.map((i) => i.kind).sort();
-    expect(kinds).toEqual(["kyc_pending", "paid_no_course", "webhook_latency"]);
+    expect(kinds).toEqual([
+      "auto_expired_burst",
+      "kyc_pending",
+      "paid_no_course",
+      "webhook_latency",
+    ]);
   });
 
   it("is empty when nothing breaches (and the latency source is absent)", () => {
@@ -289,6 +484,8 @@ describe("2.9-F scanIncidents — combine the three detectors over given data", 
         orders: [],
         deliveries: [],
         paidNoCourseGraceMs: 5 * 60 * 1000,
+        autoExpiredOrders: [],
+        tenantNames: {},
       }),
     ).toEqual([]);
   });

@@ -180,6 +180,12 @@ function defaults(orders: Doc<"orders">[] | undefined) {
     // CSV » button in the header. Test branches that don't exercise the
     // export reuse a no-op here.
     onExportCsv: NOOP,
+    // #415 — the view now mounts the 4 tabs + the order id search input.
+    // Test branches that don't exercise them reuse no-ops + the default tab.
+    tab: "all" as const,
+    onTabChange: NOOP,
+    search: "",
+    onSearchChange: NOOP,
   };
 }
 
@@ -298,18 +304,15 @@ describe("CommandesView — F-COMMANDES-FILTERS (#238)", () => {
     expect(slots).toContain("orders-filters-date-tout");
     const statusItems = slots.filter((s) => s === "orders-filters-status-item");
     expect(statusItems.length).toBe(ALL_ORDER_STATUSES.length);
-    expect(statusItems.length).toBe(8);
+    // #415 — 9 statuses now (auto_expired added for the « Manquées » tab).
+    expect(statusItems.length).toBe(9);
   });
 
   it("threads the controlled `filter` value into the filters component (active state visible)", () => {
     const tree = serialize(
       CommandesView({
-        orders: [],
+        ...defaults([]),
         filter: { dateRange: "7d", statuses: ["nouvelle"] },
-        onDateRangeChange: NOOP,
-        onStatusesChange: NOOP,
-        onOrderClick: NOOP,
-        onExportCsv: NOOP,
       }),
     );
     // We assert that the 7d date button surfaces data-active="true" — proof
@@ -367,12 +370,8 @@ describe("CommandesView — F-COMMANDES-DETAIL-MODAL (#239)", () => {
     const calls: string[] = [];
     const tree = serialize(
       CommandesView({
-        orders: populated,
-        filter: { dateRange: "tout", statuses: [] },
-        onDateRangeChange: NOOP,
-        onStatusesChange: NOOP,
+        ...defaults(populated),
         onOrderClick: (id) => calls.push(String(id)),
-        onExportCsv: NOOP,
       }),
     );
     const row = flatten(tree).find(
@@ -475,11 +474,7 @@ describe("CommandesView — F-COMMANDES-CSV-EXPORT (#244)", () => {
     const calls: number[] = [];
     const tree = serialize(
       CommandesView({
-        orders: populated,
-        filter: { dateRange: "tout", statuses: [] },
-        onDateRangeChange: NOOP,
-        onStatusesChange: NOOP,
-        onOrderClick: NOOP,
+        ...defaults(populated),
         onExportCsv: () => calls.push(1),
       }),
     );

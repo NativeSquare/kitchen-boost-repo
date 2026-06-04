@@ -121,12 +121,14 @@ function parisInstant(
 // Tests
 // ---------------------------------------------------------------------------
 describe("ALL_ORDER_STATUSES — imported from the `orderStatus` validator", () => {
-  it("matches the 8 documented states of PRD 20 §5 + §6 / PRD 10 §10-§11", () => {
+  it("matches the 9 documented states of PRD 20 §5 + §6 / PRD 10 §10-§11 (incl. #415 auto_expired)", () => {
     // The issue body « Les 8 statuts du multi-select sont importes du validator
     // `orderStatus` (eviter le hard-code) ». We pin the full set so a future
     // status addition (e.g. V2 « ordonnée », « livraison en cours ») fires
     // here loudly — the front then needs an explicit choice to surface the
-    // new status in the filter.
+    // new status in the filter. #415 adds the 9th: `auto_expired` (PRD 20 §6b
+    // + ADR 0016 + kb-orders CONTEXT « Cmd manquée ») — the new « Manquées »
+    // tab maps to it.
     expect(ALL_ORDER_STATUSES).toEqual([
       "en attente de paiement",
       "nouvelle",
@@ -136,6 +138,7 @@ describe("ALL_ORDER_STATUSES — imported from the `orderStatus` validator", () 
       "livrée",
       "collectée",
       "refusée",
+      "auto_expired",
     ]);
   });
 });

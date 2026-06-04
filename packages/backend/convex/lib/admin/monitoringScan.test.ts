@@ -79,6 +79,42 @@ describe("2.9-F previewIncidents — root reads live incidents", () => {
     );
     expect(incidents).toEqual([]);
   });
+
+  it("#415 surfaces a tenant exceeding the auto_expired/24h threshold", async () => {
+    // Seed 4 auto_expired orders on tenant A within the last 24 h — > 3
+    // = ops burst. tenantB stays at 0 so the report cleanly isolates A.
+    const tenantA = seed.tenantA.tenantId;
+    const recent = Date.now() - 60 * 60 * 1000; // 1 h ago
+    await t.run(async (ctx) => {
+      const customerId = await ctx.db.insert("customers", {
+        userId: seed.customerId,
+        createdAt: recent,
+      });
+      for (let i = 0; i < 4; i += 1) {
+        await ctx.db.insert("orders", {
+          tenantId: tenantA,
+          customerId,
+          status: "auto_expired",
+          mode: "delivery",
+          source: "direct",
+          createdAt: recent - i * 5 * 60 * 1000,
+          autoExpiredAt: recent - i * 5 * 60 * 1000,
+        });
+      }
+    });
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    const incidents = await asAdmin.query(
+      api.lib.admin.monitoring.previewIncidents,
+      {},
+    );
+    const bursts = incidents.filter((i) => i.kind === "auto_expired_burst");
+    expect(bursts).toHaveLength(1);
+    expect(bursts[0]).toMatchObject({
+      kind: "auto_expired_burst",
+      tenantId: tenantA,
+      count: 4,
+    });
+  });
 });
 
 describe("2.9-F previewIncidents root-only fuzz — kb_admin gated", () => {

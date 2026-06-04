@@ -224,7 +224,7 @@ describe("OrdersFilters — F-COMMANDES-FILTERS (#238)", () => {
   });
 
   describe("status multi-select", () => {
-    it("renders one item per documented status (8 total)", () => {
+    it("renders one item per documented status (9 total — #415 adds auto_expired)", () => {
       const tree = serialize(
         OrdersFilters({
           value: { dateRange: "tout", statuses: [] },
@@ -234,7 +234,7 @@ describe("OrdersFilters — F-COMMANDES-FILTERS (#238)", () => {
       );
       const items = findBySlot(tree, "orders-filters-status-item");
       expect(items.length).toBe(ALL_ORDER_STATUSES.length);
-      expect(items.length).toBe(8);
+      expect(items.length).toBe(9);
     });
 
     it("surfaces the literal status text for every status (PRD 20 vocabulary)", () => {

@@ -112,4 +112,41 @@ describe("toIncidentDetail — F-MONITORING (#207)", () => {
     expect(labels).toContain("orderId");
     expect(labels).not.toContain("tenantId");
   });
+
+  it("#415 maps an `auto_expired_burst` incident: every raw field + href to /t/<tenant>/commandes?tab=missed", () => {
+    const incident: Incident = {
+      kind: "auto_expired_burst",
+      tenantId: "tenant_khan",
+      tenantName: "Khan's Resto",
+      count: 5,
+      windowMs: 24 * 60 * 60 * 1000,
+      thresholdCount: 3,
+    };
+    const detail = toIncidentDetail(incident);
+    expect(detail.kind).toBe("auto_expired_burst");
+    expect(detail.typeLabel).toBe("Cmds manquées (burst)");
+    expect(detail.href).toBe("/t/tenant_khan/commandes?tab=missed");
+
+    const byLabel = new Map(detail.fields.map((f) => [f.label, f.value]));
+    expect(byLabel.get("tenantId")).toBe("tenant_khan");
+    expect(byLabel.get("tenantName")).toBe("Khan's Resto");
+    expect(byLabel.get("count")).toBe("5");
+    expect(byLabel.get("thresholdCount")).toBe("3");
+    expect(byLabel.get("windowMs")).toBe(String(24 * 60 * 60 * 1000));
+  });
+
+  it("#415 omits the `tenantName` field row entirely when undefined (auto_expired_burst)", () => {
+    const incident: Incident = {
+      kind: "auto_expired_burst",
+      tenantId: "tenant_anon",
+      count: 4,
+      windowMs: 24 * 60 * 60 * 1000,
+      thresholdCount: 3,
+    };
+    const detail = toIncidentDetail(incident);
+    const labels = detail.fields.map((f) => f.label);
+    expect(labels).not.toContain("tenantName");
+    expect(labels).toContain("tenantId");
+    expect(labels).toContain("count");
+  });
 });

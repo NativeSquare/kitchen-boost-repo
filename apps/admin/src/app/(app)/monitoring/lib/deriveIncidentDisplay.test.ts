@@ -79,4 +79,27 @@ describe("deriveIncidentDisplay", () => {
     expect(display.label).toBe("Cmd payée sans course");
     expect(display.href).toBeUndefined();
   });
+
+  it("#415 maps `auto_expired_burst` to a warning pointing at that tenant's commandes view (Manquées tab)", () => {
+    // PRD 20 §6b + ADR 0016: an auto_expired burst is an OPERATIONAL
+    // signal — tablette HS / Khan AFK / push OS-bloqué — distinct from
+    // the critical Stripe/Uber Direct outages. Same severity discipline
+    // as `kyc_pending`: a tenant losing customers passively over 24 h
+    // warrants a warning (not a critical red), and the drill-down link
+    // jumps STRAIGHT to the resto's history filtered on « Manquées » so
+    // ops can audit which cmds were lost.
+    const incident: Incident = {
+      kind: "auto_expired_burst",
+      tenantId: "tenant_khan",
+      tenantName: "Khan's Resto",
+      count: 5,
+      windowMs: 24 * 60 * 60 * 1000,
+      thresholdCount: 3,
+    };
+    expect(deriveIncidentDisplay(incident)).toEqual({
+      severity: "warning",
+      label: "Cmds manquées (burst)",
+      href: "/t/tenant_khan/commandes?tab=missed",
+    });
+  });
 });

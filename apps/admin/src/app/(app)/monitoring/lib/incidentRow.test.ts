@@ -120,4 +120,39 @@ describe("toIncidentRow — F-MONITORING (#184)", () => {
     expect(row.targetLabel).toContain("order_42");
     expect(row.details).toContain("order_42");
   });
+
+  it("#415 maps an `auto_expired_burst` incident with tenant + count + window inline", () => {
+    const incident: Incident = {
+      kind: "auto_expired_burst",
+      tenantId: "tenant_khan",
+      tenantName: "Khan's Resto",
+      count: 5,
+      windowMs: 24 * HOUR,
+      thresholdCount: 3,
+    };
+    const row = toIncidentRow(incident, NOW);
+    // Same severity discipline as `kyc_pending`: a chronic auto_expired
+    // tenant is a warning (ops nudge) not a critical (no live outage).
+    expect(row.severity).toBe("warning");
+    expect(row.typeLabel).toBe("Cmds manquées (burst)");
+    // Target = the tenant display name when known; falls back to the id.
+    expect(row.targetLabel).toContain("Khan's Resto");
+    // Inline details: count + window (24 h) + threshold so ops sees the
+    // « 5 / 24h (seuil 3) » signal at a glance.
+    expect(row.details).toContain("5");
+    expect(row.details).toMatch(/24\s?h/);
+    expect(row.href).toBe("/t/tenant_khan/commandes?tab=missed");
+  });
+
+  it("#415 falls back to tenantId in the target column when tenantName is absent", () => {
+    const incident: Incident = {
+      kind: "auto_expired_burst",
+      tenantId: "tenant_anon",
+      count: 4,
+      windowMs: 24 * HOUR,
+      thresholdCount: 3,
+    };
+    const row = toIncidentRow(incident, NOW);
+    expect(row.targetLabel).toContain("tenant_anon");
+  });
 });

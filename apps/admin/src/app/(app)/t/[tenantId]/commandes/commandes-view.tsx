@@ -38,13 +38,32 @@ import type { Doc, Id } from "@packages/backend/convex/_generated/dataModel";
 import { ExportCsvButton } from "./export-csv-button";
 import { OrdersFilters } from "./orders-filters";
 import { OrdersTable } from "./orders-table";
+import { OrdersTabsView } from "./orders-tabs-view";
 import type {
   DateRangeKey,
   OrderStatus,
   OrdersFilter,
 } from "./orders-filtering";
+import type { OrderTabKey } from "./orders-tabs";
 
-export type CommandesViewProps = {
+/**
+ * #415 — props for the 4 history tabs + the order id search input mounted
+ * above the date/status filter bar. The view is fully controlled: the page
+ * owns the tab key + search query and re-runs the predicates on every
+ * Convex push (same discipline as `filter` for `filterOrders`).
+ */
+export type CommandesTabsAndSearchProps = {
+  /** Active tab key — drives the « Manquées » (#415) etc. selection. */
+  tab: OrderTabKey;
+  /** Called when the user clicks a tab pill. */
+  onTabChange: (next: OrderTabKey) => void;
+  /** Current order-id search query. */
+  search: string;
+  /** Called on every keystroke; the page re-filters on the live payload. */
+  onSearchChange: (next: string) => void;
+};
+
+export type CommandesViewProps = CommandesTabsAndSearchProps & {
   /**
    * Orders payload from `useTenantQuery(api.lib.orders.orders.listOrders)`,
    * ALREADY filtered by the page via `filterOrders(...)` (the view never
@@ -88,6 +107,10 @@ export function CommandesView({
   onStatusesChange,
   onOrderClick,
   onExportCsv,
+  tab,
+  onTabChange,
+  search,
+  onSearchChange,
 }: CommandesViewProps) {
   // The « Exporter CSV » button is disabled when there's nothing to export:
   //   - `orders === undefined`  → query in flight, payload not ready.
@@ -98,6 +121,13 @@ export function CommandesView({
     <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
       <CommandesHeader onExportCsv={onExportCsv} canExport={canExport} />
       <div className="flex flex-col gap-4 px-4 md:gap-6 lg:px-6">
+        {/* #415 — 4 tabs + id search above the date/status filter row. */}
+        <OrdersTabsView
+          tab={tab}
+          onTabChange={onTabChange}
+          search={search}
+          onSearchChange={onSearchChange}
+        />
         <OrdersFilters
           value={filter}
           onDateRangeChange={onDateRangeChange}
