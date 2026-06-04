@@ -24,6 +24,8 @@
  *    a tenantId is resolvable from the cookie (degraded state if not).
  */
 import { cookies } from "next/headers";
+import { fetchQuery } from "convex/nextjs";
+import { api } from "@packages/backend/convex/_generated/api";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
 import { PanierBody } from "@/components/cart/panier-body";
 
@@ -35,9 +37,21 @@ export default async function PanierPage(): Promise<React.JSX.Element> {
     | Id<"tenants">
     | undefined;
 
+  // PWA-S10 (#462) — the `<AndroidInstallButton>` mounted inside `<PanierBody>`
+  // labels itself « Installer {nom_resto} » (US 56). Fetch the tenant name at
+  // the RSC layer (one extra query, cookie-resolved tenant — already paid for
+  // by the rest of the PWA shells) rather than adding a Convex `useQuery`
+  // inside the button (would couple the button to the tenant table). When the
+  // cookie is missing (degraded), the lookup is skipped and the button still
+  // renders nothing (no tenantId → no button mounted by `<PanierBody>`).
+  const tenant =
+    tenantId !== undefined
+      ? await fetchQuery(api.lib.tenants.resolution.byId, { tenantId })
+      : null;
+
   return (
     <main className="min-h-screen bg-zinc-50">
-      <PanierBody tenantId={tenantId} />
+      <PanierBody tenantId={tenantId} tenantName={tenant?.name ?? "ce resto"} />
     </main>
   );
 }

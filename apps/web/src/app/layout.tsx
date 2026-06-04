@@ -6,6 +6,7 @@ import { ConvexAuthNextjsServerProvider } from "@convex-dev/auth/nextjs/server";
 import { ConvexClientProvider } from "@/providers/convex-client-provider";
 import { ServiceWorkerRegistration } from "@/components/service-worker-registration";
 import { WalletBridgeRunner } from "@/components/wallet-bridge";
+import { PWAInstallProvider } from "@/components/a2hs-install";
 import { WALLET_BRIDGE_PENDING_COOKIE } from "@/lib/wallet-bridge";
 
 const geistSans = Geist({
@@ -92,7 +93,15 @@ export default async function RootLayout({
             {pendingBridgeSerial !== null && (
               <WalletBridgeRunner serial={pendingBridgeSerial} />
             )}
-            {children}
+            {/* PWA-S10 (#462) — captures the Android Chrome
+                `beforeinstallprompt` event at the ROOT layout (the event
+                fires once per page-load, early — must be listening before
+                the post-cart `<AndroidInstallButton>` mounts). Also
+                listens for `appinstalled` (Chrome 3-dot menu path).
+                Wrapped INSIDE the Convex provider so the button (which
+                consumes the captured prompt) has access to Convex hooks
+                in its subtree (mutation + getCurrentCustomer query). */}
+            <PWAInstallProvider>{children}</PWAInstallProvider>
           </ConvexClientProvider>
         </body>
       </html>

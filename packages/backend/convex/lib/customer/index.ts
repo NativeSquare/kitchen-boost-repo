@@ -65,6 +65,15 @@
  * tagged `customer.pushEnrollment.markNoChannelPossible`). Reaches the
  * GLOBAL fiche ONLY through the sanctioned tenancy seam (ADR 0010).
  *
+ * PWA-S10 (#462) — `customer.pushEnrollment.recordA2hsAccepted` self-scoped
+ * mutation (decisions-log Q4 + US 56-57-59). Fired by the PWA front when
+ * (a) the user accepts the captured `beforeinstallprompt` Android install
+ * sheet OR (b) the `appinstalled` window event fires (browser-menu install
+ * path). Flips `pushEnrollment.a2hsStatus = "enrolled"` on the OWN fiche
+ * (MERGES, preserving siblings + `noChannelPossible` — US #16). Audited
+ * explicitly (one row tagged `customer.pushEnrollment.recordA2hsAccepted`).
+ * Reaches the GLOBAL fiche ONLY through the sanctioned tenancy seam (ADR 0010).
+ *
  * 2.1-G — Web Push subscription STORAGE (PRD 90, notifications CONTEXT « Push
  * subscription », ADR 0012). `register` (self-scoped `customerMutation`) persists
  * the RFC 8291 subscription (endpoint + client keys p256dh/auth) the send layer
@@ -117,4 +126,4 @@ export {
 } from "./kpi";
 export { anonymizeCustomer, getCustomerForSupport } from "./rgpd";
 export { register } from "./webPush";
-export { markNoChannelPossible } from "./pushEnrollment";
+export { markNoChannelPossible, recordA2hsAccepted } from "./pushEnrollment";
