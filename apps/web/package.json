@@ -18,6 +18,7 @@
     "@dnd-kit/modifiers": "^9.0.0",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
+    "@googlemaps/js-api-loader": "^2.1.0",
     "@hookform/resolvers": "^5.2.2",
     "@packages/backend": "workspace:*",
     "@tabler/icons-react": "^3.36.1",

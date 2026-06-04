@@ -30,7 +30,34 @@ export function anonymousProfile(_params?: Record<string, unknown>): {
   return { isAnonymous: true, role: "customer" };
 }
 
+/**
+ * PWA-S3 (#451) — Convex Auth session lifetime override for the PWA Client
+ * (customer-data CONTEXT « Anonymous account », decisions-log Q3).
+ *
+ * Convex Auth defaults BOTH `totalDurationMs` and `inactiveDurationMs` to 30
+ * days. The PWA Client needs 365 days (PRD §10 PWA Client) so a returning
+ * Sophie (cookie-device intra-resto) is recognised silently for a year — the
+ * « pré-remplissage 2ᵉ visite » UX is the whole point of the Anonymous flow.
+ *
+ * Sliding window: every authenticated hit refreshes `inactiveDurationMs`; a
+ * fully-idle session still caps at `totalDurationMs = 365j` (re-submit address
+ * after a year is the accepted trade-off — ADR 0008 « doublon assumé »).
+ *
+ * Exported as a CONSTANT so it is unit-testable + so the lifetime is documented
+ * in one place rather than buried in the `convexAuth({…})` call. The PRO shell
+ * (KB Admin) shares the SAME `convexAuth` instance — a 365j session there is
+ * fine: the Admin is access-gated by `userTenants` rows the manager can revoke
+ * via `auth.sessions.revokeSession` (#396), so an expired-by-time-only PRO
+ * session is not the security control here.
+ */
+const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
+export const PWA_SESSION_CONFIG = {
+  totalDurationMs: ONE_YEAR_MS,
+  inactiveDurationMs: ONE_YEAR_MS,
+};
+
 export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
+  session: PWA_SESSION_CONFIG,
   providers: [
     // Customer device sign-in (ADR 0008): silent, no password, no UI. The native
     // Convex Auth session cookie IS the device cookie, intra-resto only.

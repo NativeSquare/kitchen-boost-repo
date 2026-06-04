@@ -45,10 +45,12 @@ export {
 } from "./withTenant";
 export { customerMutation, customerQuery, publicTenantQuery } from "./customer";
 export {
+  type CustomerAddressPatch,
   type CustomerConsentPatch,
   anonymizeCustomerFiche,
   getOrCreateCustomerFiche,
   insertCustomerFiche,
+  patchCustomerAddress,
   patchCustomerConsent,
   readCustomerFicheById,
   readCustomerFicheByUser,
