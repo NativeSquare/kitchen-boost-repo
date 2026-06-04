@@ -1,13 +1,16 @@
 "use client";
 
 /**
- * PWA-S6a (#455) / S6b (#456) — `<PushEnrollmentModal>` — the blocking push-
- * enrollment modal (decisions-log Q8 « Modal single-screen non-skippable »).
+ * PWA-S6a (#455) / S6b (#456) / S6c (#457) — `<PushEnrollmentModal>` — the
+ * blocking push-enrollment modal (decisions-log Q8 « Modal single-screen
+ * non-skippable »).
  *
- * Three visible steps (state machine pinned in `decideModalStep`):
+ * Three visible modal steps (state machine pinned in `decideModalStep`):
  *  - `choice`             — header + incentive hook + Wallet primary + Web Push
  *                           secondary. Web Push is MASKED on iOS <16.4 via
- *                           `decideWebPushCapability` (US 35).
+ *                           `decideWebPushCapability` (US 35). The S6c fallback
+ *                           link is rendered HERE at the bottom (12px muted)
+ *                           once 2 channel failures have been recorded.
  *  - `wallet-loading`     — async install loader (US 33 / US 34) with
  *                           « Tester sans attendre » + « J'ai changé d'avis ».
  *  - `web-push-loading`   — Web Push permission flow (S6b #456): the
@@ -18,12 +21,13 @@
  *  - `onEscapeKeyDown` / `onPointerDownOutside` preventDefault — Radix dialog
  *    primitive contract.
  *  - `showCloseButton={false}` — no × button.
- *  - The only exits are (a) a successful Wallet install / Web Push subscribe
- *    → Convex sub on `pushEnrollment.{walletStatus|webPushStatus}` flip →
- *    parent `<CheckoutForm>` re-runs `decidePaymentGate` → gate flips to
- *    active → `open={!gateActive}` (parent-controlled), and (b) the user
- *    clicks « J'ai changé d'avis » DURING either loader → back to choice
- *    (US 34 — but they still can't escape the modal until they enroll).
+ *  - Exits: (a) successful Wallet install / Web Push subscribe → Convex sub
+ *    on `pushEnrollment.{walletStatus|webPushStatus}` flip → parent
+ *    `<CheckoutForm>` re-runs `decidePaymentGate` → gate flips to active →
+ *    `open={!gateActive}` (parent-controlled); (b) « J'ai changé d'avis » in
+ *    either loader → back to choice (US 34); (c) S6c #457 — user exhausted
+ *    the 3-level fallback → `markNoChannelPossible` flips the Convex sub on
+ *    `pushEnrollment.noChannelPossible` → gate flips to active → modal closes.
  *
  * iOS <16.4 masking (US 35 + decisions-log Q8): the modal reads the runtime
  * capabilities at mount (`'PushManager' in window`, `'serviceWorker' in
@@ -32,28 +36,38 @@
  * REMOVED from the choice screen — only the Wallet option is rendered. The
  * user never sees something that won't work.
  *
- * Failure counter (Q8 (5)): the `<WebPushSubscribeButton>`'s reducer
- * increments `failureCount` on every denied / subscribe-failed / register-
- * failed event. The modal observes it via `onFailureCountChange` for the S6c
- * #457 fallback chain — S6b just records it.
+ * Failure counter (Q8 (5) + S6c #457): the modal SUMS two independent
+ * failure sources, both counted as « documented refusal » per the issue
+ * acceptance « 2 échecs Wallet + Web Push → lien fallback apparaît » :
+ *  - Web Push refusals — bubbled up from `<WebPushSubscribeButton>` via its
+ *    `onFailureCountChange` (the `decideWebPushBranch` reducer counts
+ *    `denied / SubscribeFailed / RegisterFailed`).
+ *  - Wallet refusals — each « J'ai changé d'avis » click during the
+ *    wallet-loading screen (Q8 « Wallet refusé/timeout » counts as a
+ *    documented failure). One click = one failure.
+ * The sum is fed into `decideFallbackStep` via the `FailureCountReached`
+ * event; the link surfaces at `>= FALLBACK_FAILURE_THRESHOLD` (= 2).
  *
- * S6c will inject the fallback chain (3-level frictional « Continuer sans
- * notifs »). The whole component lives in `apps/web/src/components/checkout/
- * push-enrollment-modal/` and is the single mount point — the parent
- * `<CheckoutForm>` opens it via `<PushEnrollmentModal open=… tenantId=…
- * restoName=… />`.
+ * S6c chain (the 3-level frictional fallback) is driven by `decideFallbackStep`
+ * (pure) + rendered by `<NoNotifsFallback>` (the link + the 2 stacked confirm
+ * dialogs + the terminal mutation). The modal owns the reducer state so the
+ * parent's Convex sub can flip the gate without the fallback losing its
+ * step on re-render.
  */
 import { useState, useSyncExternalStore } from "react";
 import { Dialog as DialogPrimitive } from "radix-ui";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
 import {
+  type FallbackStep,
   type ModalStep,
   type WebPushCapability,
+  decideFallbackStep,
   decideModalStep,
   decideWebPushCapability,
 } from "@/lib/push-enrollment";
 import { cn } from "@/lib/utils";
 import { AddToWalletButton } from "./add-to-wallet-button";
+import { NoNotifsFallback } from "./no-notifs-fallback";
 import { WalletInstallLoader } from "./wallet-install-loader";
 import { WebPushSubscribeButton } from "./web-push-subscribe-button";
 
@@ -116,9 +130,41 @@ export function PushEnrollmentModal({
   const [step, setStep] = useState<ModalStep>({ kind: "choice" });
   const [pendingSerial, setPendingSerial] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  // S6c (#457) consumer — we already wire the counter here so the next slice
-  // only has to add UI; S6b doesn't render anything from it.
-  const [, setWebPushFailureCount] = useState(0);
+  // S6c (#457) — independent counters per channel; the modal SUMS them and
+  // feeds the total to `decideFallbackStep` so the fallback link surfaces
+  // after `FALLBACK_FAILURE_THRESHOLD` (= 2) documented refusals across BOTH
+  // channels (issue acceptance « 2 échecs Wallet + Web Push → lien apparaît »).
+  const [webPushFailureCount, setWebPushFailureCount] = useState(0);
+  const [walletFailureCount, setWalletFailureCount] = useState(0);
+  const [fallbackStep, setFallbackStep] = useState<FallbackStep>({
+    kind: "hidden",
+  });
+  // Single dispatch seam — bumps a failure counter AND drives the fallback
+  // reducer in one geste. Dispatching at the same call-site as the failure
+  // (vs. a derived useEffect) avoids cascading setState-in-effect renders
+  // (react-hooks/set-state-in-effect) and keeps the FailureCountReached
+  // event in lockstep with the actual counter bump.
+  const bumpWebPushFailureCount = (next: number): void => {
+    setWebPushFailureCount(next);
+    setFallbackStep((prev) =>
+      decideFallbackStep(prev, {
+        kind: "FailureCountReached",
+        count: next + walletFailureCount,
+      }),
+    );
+  };
+  const bumpWalletFailureCount = (): void => {
+    setWalletFailureCount((wc) => {
+      const next = wc + 1;
+      setFallbackStep((prev) =>
+        decideFallbackStep(prev, {
+          kind: "FailureCountReached",
+          count: webPushFailureCount + next,
+        }),
+      );
+      return next;
+    });
+  };
 
   // `useSyncExternalStore` is the canonical way to read a non-reactive
   // browser capability into a React tree without violating
@@ -144,6 +190,20 @@ export function PushEnrollmentModal({
   const onChangeOfMind = (): void => {
     setPendingSerial(null);
     setStep((s) => decideModalStep(s, { kind: "ClickChangeOfMind" }));
+    // S6c (#457) — « J'ai changé d'avis » during the Wallet loader is the
+    // documented Wallet refusal/timeout (Q8 « Wallet refusé/timeout +
+    // Web Push refusé »). Each click counts as ONE failure and feeds the
+    // fallback reducer in the same call-site (no useEffect cascade).
+    bumpWalletFailureCount();
+  };
+
+  // S6c (#457) — single dispatch seam for the fallback reducer. Wrapped in a
+  // setter callback so concurrent events (Esc on the l2 modal + a click)
+  // serialize through the same state machine.
+  const onFallbackEvent = (
+    event: Parameters<typeof decideFallbackStep>[1],
+  ): void => {
+    setFallbackStep((prev) => decideFallbackStep(prev, event));
   };
 
   // Conservative masking: the server snapshot pins « unsupported » so we
@@ -201,7 +261,7 @@ export function PushEnrollmentModal({
                   </p>
                   <WebPushSubscribeButton
                     tenantId={tenantId}
-                    onFailureCountChange={setWebPushFailureCount}
+                    onFailureCountChange={bumpWebPushFailureCount}
                   />
                   <p className="text-xs text-zinc-500">
                     1 tap · pas de lock-screen iOS.
@@ -217,6 +277,16 @@ export function PushEnrollmentModal({
                   {errorMessage}
                 </p>
               )}
+
+              {/* S6c (#457) — fallback link surfaces only at the bottom of
+                  the CHOICE screen, once 2 documented failures have been
+                  recorded. The 2 confirm dialogs render OVER the modal via
+                  Radix portal (separate z-index stack). */}
+              <NoNotifsFallback
+                tenantId={tenantId}
+                step={fallbackStep}
+                onFallbackEvent={onFallbackEvent}
+              />
             </div>
           )}
 

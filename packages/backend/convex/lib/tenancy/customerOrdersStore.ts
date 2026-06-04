@@ -164,6 +164,12 @@ export type PushEnrollmentPatch = {
   walletStatus?: "enrolled" | "not_enrolled" | "revoked";
   webPushStatus?: "enrolled" | "not_enrolled" | "revoked";
   a2hsStatus?: "enrolled" | "not_enrolled" | "revoked";
+  // PWA-S6c (#457) — fallback escape hatch (decisions-log Q8 (5)). Set ONLY by
+  // `customer.pushEnrollment.markNoChannelPossible` after the 3-level
+  // frictional fallback is exhausted; merged like any other push field (a
+  // later channel enrollment does NOT clear it, intentional — the historical
+  // signal stays auditable).
+  noChannelPossible?: boolean;
 };
 
 /**

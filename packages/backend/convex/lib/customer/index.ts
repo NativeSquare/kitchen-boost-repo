@@ -55,6 +55,16 @@
  * (`patchCustomerAddress`), never raw `ctx.db` (ADR 0010). Provisions the fiche
  * on the fly if absent (idempotent — same robustness as `recordConsentAtCheckout`).
  *
+ * PWA-S6c (#457) — `customer.pushEnrollment.markNoChannelPossible` self-scoped
+ * mutation (decisions-log Q8 (5) + CONTEXT customer-data « Push enrollment »
+ * fallback). Flips `pushEnrollment.noChannelPossible = true` on the OWN fiche
+ * after the user exhausts the 3-level frictional « Continuer sans notifs »
+ * fallback (2 channel failures + 3 confirm screens re-refused), unlocks the
+ * `/checkout` Payer gate, and routes the customer to SMS fallback
+ * transactionnel via Cascade Notifications. Audited explicitly (one row
+ * tagged `customer.pushEnrollment.markNoChannelPossible`). Reaches the
+ * GLOBAL fiche ONLY through the sanctioned tenancy seam (ADR 0010).
+ *
  * 2.1-G — Web Push subscription STORAGE (PRD 90, notifications CONTEXT « Push
  * subscription », ADR 0012). `register` (self-scoped `customerMutation`) persists
  * the RFC 8291 subscription (endpoint + client keys p256dh/auth) the send layer
@@ -107,3 +117,4 @@ export {
 } from "./kpi";
 export { anonymizeCustomer, getCustomerForSupport } from "./rgpd";
 export { register } from "./webPush";
+export { markNoChannelPossible } from "./pushEnrollment";

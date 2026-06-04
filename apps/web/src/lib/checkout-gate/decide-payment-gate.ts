@@ -27,10 +27,23 @@ export type PushEnrollmentSnapshot = {
   walletStatus?: PushChannelStatus;
   webPushStatus?: PushChannelStatus;
   a2hsStatus?: PushChannelStatus;
+  /**
+   * PWA-S6c (#457) — escape hatch flipped by
+   * `customer.pushEnrollment.markNoChannelPossible` after the 3-level
+   * frictional fallback is exhausted (decisions-log Q8 (5), CONTEXT
+   * customer-data « Push enrollment »). When `true` the Payer gate UNLOCKS
+   * even with no enrolled push channel — the customer falls back to SMS
+   * transactionnel via Cascade Notifications.
+   */
+  noChannelPossible?: boolean;
 };
 
 /** Channel identifier surfaced when the gate is active. */
-export type EnrolledChannel = "wallet" | "webPush" | "a2hs";
+export type EnrolledChannel =
+  | "wallet"
+  | "webPush"
+  | "a2hs"
+  | "noChannelPossible";
 
 /** Reason the gate is disabled (only one shape V1 — kept open for future reasons). */
 export type PaymentGateDisabledReason = "no-channel-enrolled";
@@ -79,6 +92,13 @@ export function decidePaymentGate(
     }
     if (pushEnrollment.a2hsStatus === "enrolled") {
       enrolledChannels.push("a2hs");
+    }
+    // S6c (#457) — the no-channel fallback is APPENDED so a successfully-
+    // enrolled push channel still leads the list (the SMS fallback is the
+    // LAST-resort label). The flag alone is sufficient to unlock the gate
+    // when nothing else is enrolled (~5% cases per Q8 (5)).
+    if (pushEnrollment.noChannelPossible === true) {
+      enrolledChannels.push("noChannelPossible");
     }
   }
   if (enrolledChannels.length === 0) {
