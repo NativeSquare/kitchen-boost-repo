@@ -6,7 +6,14 @@ import { api } from "@packages/backend/convex/_generated/api";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
 import { useMutation, useQuery } from "convex/react";
 import React from "react";
-import { ActivityIndicator, Alert, ScrollView, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  Text as RNText,
+  View,
+} from "react-native";
 
 /**
  * #393 — Mode kiosque toggle au premier login (PRD 20 §1a step 3, §12).
@@ -196,29 +203,50 @@ export default function DeviceSetupScreen() {
         <View className="flex-1" />
 
         <View className="gap-3">
-          <Button
+          <Pressable
             onPress={onPressKiosque}
             disabled={submitting !== null}
-            className="h-auto py-6"
+            style={{
+              backgroundColor: "#0a0a0a",
+              paddingVertical: 20,
+              paddingHorizontal: 16,
+              borderRadius: 8,
+              alignItems: "center",
+              justifyContent: "center",
+              opacity: submitting !== null ? 0.5 : 1,
+            }}
           >
-            <Text>
+            <RNText
+              style={{ color: "#fafafa", fontSize: 18, fontWeight: "600" }}
+            >
               {submitting === "kiosque"
                 ? "Enregistrement…"
                 : "Oui — mode cuisine"}
-            </Text>
-          </Button>
-          <Button
-            variant="outline"
+            </RNText>
+          </Pressable>
+          <Pressable
             onPress={handleTelephone}
             disabled={submitting !== null}
-            className="h-auto py-6"
+            style={{
+              backgroundColor: "#ffffff",
+              paddingVertical: 20,
+              paddingHorizontal: 16,
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: "#e5e5e5",
+              alignItems: "center",
+              justifyContent: "center",
+              opacity: submitting !== null ? 0.5 : 1,
+            }}
           >
-            <Text>
+            <RNText
+              style={{ color: "#0a0a0a", fontSize: 18, fontWeight: "600" }}
+            >
               {submitting === "telephone"
                 ? "Enregistrement…"
                 : "Non — mode téléphone"}
-            </Text>
-          </Button>
+            </RNText>
+          </Pressable>
         </View>
       </View>
     </ScrollView>
