@@ -36,8 +36,10 @@ export {
   type WorkflowButtonDecision,
 } from "./decide-order-card";
 export {
+  CUSTOM_REASON_MAX_LENGTH,
   REFUSAL_REASONS,
   REFUSE_TYPED_WORD,
+  decideCanSubmitCustomReason,
   decideRefusalReasonLabel,
   decideRefuseButton,
   decideRefuseStepCount,

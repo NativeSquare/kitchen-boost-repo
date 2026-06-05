@@ -85,6 +85,30 @@ export const REFUSAL_REASONS = Object.freeze([
 export type RefusalReason = (typeof REFUSAL_REASONS)[number];
 
 /**
+ * ADR 0019 — max length du texte libre saisi quand le motif est `autre`
+ * (Twitter-like, force la concision). Le backend ré-applique la même borne
+ * (`validateCustomReason` dans `workflow.ts`) ; ici c'est la borne UI qui
+ * désactive le bouton « Continuer » au-delà.
+ */
+export const CUSTOM_REASON_MAX_LENGTH = 280;
+
+/**
+ * ADR 0019 — peut-on valider la saisie du motif libre ?
+ *  - trim non-vide (espaces seuls ⇒ rejet, comme le backend)
+ *  - longueur après trim ≤ 280 chars
+ *
+ * Pur : aucune lecture React/Convex, utilisé pour disable le bouton « Continuer »
+ * de l'étape `customReasonInput`. Le backend ré-applique la même règle, ceci est
+ * une UI gate symétrique (rien de plus laxiste, rien de plus strict).
+ */
+export function decideCanSubmitCustomReason(typed: string): boolean {
+  const trimmed = typed.trim();
+  if (trimmed.length === 0) return false;
+  if (trimmed.length > CUSTOM_REASON_MAX_LENGTH) return false;
+  return true;
+}
+
+/**
  * #413 — the canonical typed word at step 3 of the 3-step flow. Displayed
  * to the cuisinier as a placeholder hint ("Tape REFUSER pour valider"); the
  * comparator `decideTypedConfirmation` is case-insensitive + trims trailing
@@ -203,15 +227,47 @@ export function decideRefuseStepCount(status: OrderStatus): 2 | 3 {
 export type RefuseFlowState =
   | { step: "idle" }
   | { step: "pickReason"; stepCount: 2 | 3 }
-  | { step: "warnInflight"; reason: RefusalReason }
-  | { step: "typeWord"; reason: RefusalReason; typed: string }
-  | { step: "confirm"; reason: RefusalReason };
+  /**
+   * ADR 0019 — étape supplémentaire quand `reason === "autre"` : le restaurateur
+   * saisit un texte libre 1-280 chars qui sera propagé tel quel dans le push
+   * client. `stepCount` est porté pour brancher vers `confirm` (2-step) ou
+   * `warnInflight` (3-step) à `submitCustomReason`.
+   */
+  | {
+      step: "customReasonInput";
+      stepCount: 2 | 3;
+      reason: RefusalReason;
+      typed: string;
+    }
+  | {
+      step: "warnInflight";
+      reason: RefusalReason;
+      /** Set iff `reason === "autre"` — porté depuis `customReasonInput`. */
+      customReason?: string;
+    }
+  | {
+      step: "typeWord";
+      reason: RefusalReason;
+      typed: string;
+      /** Set iff `reason === "autre"` — porté depuis `customReasonInput`. */
+      customReason?: string;
+    }
+  | {
+      step: "confirm";
+      reason: RefusalReason;
+      /** Set iff `reason === "autre"` — porté depuis `customReasonInput`. */
+      customReason?: string;
+    };
 
 export type RefuseFlowAction =
   | { type: "open"; stepCount: 2 | 3 }
   | { type: "selectReason"; reason: RefusalReason }
   | { type: "acknowledgeWarning" }
   | { type: "setTypedWord"; value: string }
+  /** ADR 0019 — met à jour le buffer de saisie de l'étape customReasonInput. */
+  | { type: "setCustomReason"; value: string }
+  /** ADR 0019 — valide la saisie et transit vers warnInflight (3-step) ou confirm (2-step). */
+  | { type: "submitCustomReason" }
   | { type: "confirm" }
   | { type: "cancel" };
 
@@ -229,10 +285,21 @@ export function refuseFlowReducer(
       }
       return state;
     case "selectReason":
-      // Step 1 → Step 2. Branch on the `stepCount` carried in pickReason:
-      //  - 2-step: jump straight to the final confirm (PRD 20 §6a, #403).
-      //  - 3-step: go through the kitchen-started warning first (#413).
+      // Step 1 → Step 2. Branch sur deux axes :
+      //  - `reason === "autre"` (ADR 0019) ⇒ étape additionnelle
+      //    `customReasonInput` AVANT confirm (2-step) / warnInflight (3-step) :
+      //    le restaurateur saisit le texte libre qui sera propagé au push.
+      //  - autres motifs ⇒ comportement original : confirm direct (2-step) ou
+      //    warnInflight (3-step). Pas de régression.
       if (state.step === "pickReason") {
+        if (action.reason === "autre") {
+          return {
+            step: "customReasonInput",
+            stepCount: state.stepCount,
+            reason: action.reason,
+            typed: "",
+          };
+        }
         if (state.stepCount === 3) {
           return { step: "warnInflight", reason: action.reason };
         }
@@ -242,12 +309,43 @@ export function refuseFlowReducer(
       // the current state. From `confirm` / `typeWord` the reason is
       // already locked in.
       return state;
+    case "setCustomReason":
+      // ADR 0019 — met à jour le buffer typed de l'étape customReasonInput.
+      // La UI lit `decideCanSubmitCustomReason(typed)` pour gate le bouton
+      // Continuer. Stale dispatch hors customReasonInput ⇒ no-op (rien à
+      // updater, et on n'introduit pas un buffer factice).
+      if (state.step === "customReasonInput") {
+        return { ...state, typed: action.value };
+      }
+      return state;
+    case "submitCustomReason": {
+      // ADR 0019 — valide la saisie et transit :
+      //  - 2-step ⇒ `confirm` portant reason + customReason (trimmé)
+      //  - 3-step ⇒ `warnInflight` portant reason + customReason (trimmé)
+      // La UI gate déjà via `decideCanSubmitCustomReason`, mais on trim ici
+      // aussi (idempotent ; aligne avec le backend qui re-trim).
+      if (state.step !== "customReasonInput") return state;
+      const customReason = state.typed.trim();
+      if (state.stepCount === 3) {
+        return { step: "warnInflight", reason: state.reason, customReason };
+      }
+      return { step: "confirm", reason: state.reason, customReason };
+    }
     case "acknowledgeWarning":
       // Step 2 (3-step) → Step 3. Only legal from `warnInflight` — a stale
       // dispatch from any other step is a no-op (the typed buffer would
       // otherwise be reset unexpectedly from `typeWord`).
+      // ADR 0019 — `customReason` (autre, 3-step) est porté jusqu'à typeWord
+      // pour pouvoir être passé à la mutation au confirm final.
       if (state.step === "warnInflight") {
-        return { step: "typeWord", reason: state.reason, typed: "" };
+        return {
+          step: "typeWord",
+          reason: state.reason,
+          typed: "",
+          ...(state.customReason !== undefined
+            ? { customReason: state.customReason }
+            : {}),
+        };
       }
       return state;
     case "setTypedWord":
@@ -256,7 +354,7 @@ export function refuseFlowReducer(
       // reducer just stores the value. From any non-typeWord step it's a
       // stale dispatch (no buffer to update).
       if (state.step === "typeWord") {
-        return { step: "typeWord", reason: state.reason, typed: action.value };
+        return { ...state, typed: action.value };
       }
       return state;
     case "confirm":

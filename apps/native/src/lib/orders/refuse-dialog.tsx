@@ -12,8 +12,10 @@ import { Text } from "@/components/ui/text";
 import { useReducer } from "react";
 import { ActivityIndicator, Pressable, View } from "react-native";
 import {
+  CUSTOM_REASON_MAX_LENGTH,
   REFUSAL_REASONS,
   REFUSE_TYPED_WORD,
+  decideCanSubmitCustomReason,
   decideRefusalReasonLabel,
   decideTypedConfirmation,
   refuseFlowReducer,
@@ -72,8 +74,14 @@ export type RefuseDialogProps = {
   busy: boolean;
   /** Parent closes the dialog (cancel from anywhere, or confirm completed). */
   onClose: () => void;
-  /** Parent fires `useMutation(api.lib.orders.workflow.refuse)` with the picked reason. */
-  onConfirm: (reason: RefusalReason) => void;
+  /**
+   * Parent fires `useMutation(api.lib.orders.workflow.refuse)` with the picked
+   * reason. ADR 0019 — quand `reason === "autre"`, `customReason` (texte libre
+   * 1-280 chars, trimmé) est obligatoire ; sinon il est `undefined`. La dialog
+   * elle-même garantit l'invariant via le step `customReasonInput` (l'autre
+   * branche de `selectReason` ne saute jamais à `confirm` avec `autre`).
+   */
+  onConfirm: (reason: RefusalReason, customReason?: string) => void;
 };
 
 export function RefuseDialog({
@@ -108,9 +116,12 @@ export function RefuseDialog({
             <DialogHeader>
               <DialogTitle>Confirmer le refus + remboursement</DialogTitle>
               <DialogDescription>
-                Motif : {decideRefusalReasonLabel(state.reason)}. Le client sera
-                remboursé immédiatement et notifié du refus. Cette action est
-                irréversible.
+                Motif : {decideRefusalReasonLabel(state.reason)}
+                {state.customReason !== undefined
+                  ? ` — ${state.customReason}`
+                  : ""}
+                . Le client sera remboursé immédiatement et notifié du refus.
+                Cette action est irréversible.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
@@ -130,7 +141,7 @@ export function RefuseDialog({
                 onPress={() => {
                   // Fire the mutation FIRST (parent owns it), then close the
                   // dialog so a double-tap can't queue a second refund.
-                  onConfirm(state.reason);
+                  onConfirm(state.reason, state.customReason);
                   dispatch({ type: "confirm" });
                   onClose();
                 }}
@@ -147,6 +158,65 @@ export function RefuseDialog({
               </Button>
             </DialogFooter>
           </>
+        ) : state.step === "customReasonInput" ? (
+          // ADR 0019 — étape additionnelle quand `reason === "autre"` : le
+          // restaurateur saisit un texte libre 1-280 chars qui sera propagé tel
+          // quel dans le push client ("Motif : ${customReason}"). Le bouton
+          // « Continuer » est disabled tant que `decideCanSubmitCustomReason`
+          // retourne false (trim vide ou > 280).
+          <>
+            <DialogHeader>
+              <DialogTitle>Précisez le motif</DialogTitle>
+              <DialogDescription>
+                Ce message sera visible par le client dans sa notification.
+              </DialogDescription>
+            </DialogHeader>
+            <View className="gap-2">
+              <Input
+                value={state.typed}
+                onChangeText={(value) =>
+                  dispatch({ type: "setCustomReason", value })
+                }
+                placeholder="Ex : ratatouille brûlée, panne frigo, etc."
+                multiline
+                numberOfLines={3}
+                maxLength={CUSTOM_REASON_MAX_LENGTH}
+                editable={!busy}
+                accessibilityLabel="Motif libre"
+                accessibilityHint={`Saisis le motif. ${CUSTOM_REASON_MAX_LENGTH} caractères max.`}
+                testID="refuse-custom-reason-input"
+                className="h-24"
+              />
+              <Text className="text-muted-foreground text-right text-xs">
+                {state.typed.length}/{CUSTOM_REASON_MAX_LENGTH}
+              </Text>
+            </View>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onPress={() => {
+                  dispatch({ type: "cancel" });
+                  onClose();
+                }}
+                disabled={busy}
+                accessibilityLabel="Retour"
+              >
+                <Text>Retour</Text>
+              </Button>
+              <Button
+                onPress={() => dispatch({ type: "submitCustomReason" })}
+                disabled={busy || !decideCanSubmitCustomReason(state.typed)}
+                accessibilityLabel="Continuer vers la confirmation"
+                accessibilityState={{
+                  disabled: busy || !decideCanSubmitCustomReason(state.typed),
+                }}
+              >
+                <Text className="text-primary-foreground font-semibold">
+                  Continuer
+                </Text>
+              </Button>
+            </DialogFooter>
+          </>
         ) : state.step === "warnInflight" ? (
           // #413 — Step 2 of the 3-step flow: cuisine déjà commencée. The
           // copy is distinct from the 2-step confirm (rappel coût erreur, no
@@ -157,11 +227,14 @@ export function RefuseDialog({
             <DialogHeader>
               <DialogTitle>Attention — la cuisine a déjà commencé</DialogTitle>
               <DialogDescription>
-                Motif : {decideRefusalReasonLabel(state.reason)}. Cette commande
-                est déjà en préparation ou prête. Refuser maintenant signifie
-                perdre le travail cuisine déjà réalisé, et le client recevra un
-                remboursement total. Il pourra perdre confiance. Es-tu sûr de
-                vouloir continuer ?
+                Motif : {decideRefusalReasonLabel(state.reason)}
+                {state.customReason !== undefined
+                  ? ` — ${state.customReason}`
+                  : ""}
+                . Cette commande est déjà en préparation ou prête. Refuser
+                maintenant signifie perdre le travail cuisine déjà réalisé, et
+                le client recevra un remboursement total. Il pourra perdre
+                confiance. Es-tu sûr de vouloir continuer ?
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
@@ -194,8 +267,11 @@ export function RefuseDialog({
             <DialogHeader>
               <DialogTitle>Confirmation finale</DialogTitle>
               <DialogDescription>
-                Motif : {decideRefusalReasonLabel(state.reason)}. Pour confirmer
-                le refus et le remboursement total, tape{" "}
+                Motif : {decideRefusalReasonLabel(state.reason)}
+                {state.customReason !== undefined
+                  ? ` — ${state.customReason}`
+                  : ""}
+                . Pour confirmer le refus et le remboursement total, tape{" "}
                 <Text className="font-semibold">{REFUSE_TYPED_WORD}</Text>{" "}
                 ci-dessous.
               </DialogDescription>
@@ -230,7 +306,7 @@ export function RefuseDialog({
               <Button
                 variant="destructive"
                 onPress={() => {
-                  onConfirm(state.reason);
+                  onConfirm(state.reason, state.customReason);
                   dispatch({ type: "confirm" });
                   onClose();
                 }}

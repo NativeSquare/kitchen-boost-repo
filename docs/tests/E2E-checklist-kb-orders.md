@@ -174,9 +174,39 @@ _(parcours ajoutés au fil des merges)_
 
 ## KBO-RJ — Refus + auto-expired
 
-> **Statut** : 🟡 0/? validés — issues couvertes #403 (TB-7 refus depuis nouvelle 2-step), #413 (TB-8 refus en prep/prête 3-step), #404 (TB-9 auto-expired timeout 5 min).
+> **Statut** : 🟡 0/? validés — issues couvertes #403 (TB-7 refus depuis nouvelle 2-step), #413 (TB-8 refus en prep/prête 3-step), #404 (TB-9 auto-expired timeout 5 min), ADR 0019 (refus `autre` + texte libre propagé au push).
 
-_(parcours ajoutés au fil des merges)_
+### KBO-RJ1 — Refus `autre` + custom reason → event row + push body (ADR 0019)
+
+- **Acteur** : KB Manager (`manager@kb.test`) en mode kiosque sur `test-t1`
+- **Pré-requis** : KBO-A4 PASS, home native vide. Seed : `npx convex run e2e:seedE2EKBOrdersNouvelleCmd '{"mode":"delivery"}'` depuis `packages/backend` — insère 1 cmd `nouvelle`.
+- **Étapes** :
+  1. Tap card → detail screen
+  2. Tap **"Refuser"** (secondary outline) → dialog s'ouvre sur étape `pickReason`
+  3. Tap le motif **"Autre"** → la dialog transit vers une étape **"Précisez le motif"** avec un text area + compteur `0/280` (PAS vers `confirm` direct)
+  4. Saisir `"ratatouille brûlée"` dans le text area
+  5. Vérifier que le bouton **"Continuer"** est devenu enabled (vert primary)
+  6. Tap **"Continuer"** → étape `confirm` portant `"Motif : Autre — ratatouille brûlée"` dans la description
+  7. Tap **"Confirmer le refus + refund"**
+- **Attendu** :
+  - L'order passe `nouvelle → refusée` (fade out de la home)
+  - L'order detail historique affiche `"Motif du refus : Autre"` (le label enum côté UI, le texte libre est dans l'audit + push, pas dans l'écran resto)
+  - Côté Convex dashboard (ou via `npx convex data orderEvents`) : la ligne `refusée` carrie `reason: "autre"` ET `customReason: "ratatouille brûlée"`
+  - Côté client (PWA test ou notif visible si push wallet/web-push effectif) : le push reçu contient `"Désolé, votre commande a été refusée. Motif : ratatouille brûlée"` (le label "Autre" disparaît, seul le texte libre apparaît — ADR 0019 décision A)
+- **Couvre** : ADR 0019 cross-layer (UI saisie → mutation → event row stocké → push template body), gating bouton Continuer, format wording push
+
+### KBO-RJ2 — Refus motif enum (rupture/fermeture/surcharge) → flow inchangé (régression)
+
+- **Acteur** : KB Manager (`manager@kb.test`) en mode kiosque sur `test-t1`
+- **Pré-requis** : KBO-A4 PASS, home native vide. Seed : `npx convex run e2e:seedE2EKBOrdersNouvelleCmd '{"mode":"delivery"}'`.
+- **Étapes** :
+  1. Tap card → detail screen → **"Refuser"**
+  2. Tap motif **"Rupture de stock"** (ou n'importe quel motif non-`autre`)
+- **Attendu** :
+  - La dialog passe **directement** à l'étape `confirm` (pas de step `customReasonInput` qui s'insère — régression ADR 0019)
+  - Description : `"Motif : Rupture de stock. Le client sera remboursé immédiatement…"` (label seul, sans tiret + texte libre)
+  - Tap "Confirmer" → mutation `refuse` réussit sans `customReason` ; event row `reason: "rupture"`, `customReason: undefined`
+- **Couvre** : ADR 0019 — pin que les 3 motifs enum n'ont PAS de régression UX (asymétrie volontaire `autre`-only)
 
 ---
 

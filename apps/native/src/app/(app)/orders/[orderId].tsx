@@ -262,7 +262,10 @@ export default function OrderDetailScreen() {
   // the order falls out of the live `tenantOrders` query and the home archives
   // it immediately. On error we surface the Convex message; the order stays
   // `nouvelle` so the cuisinier can retry.
-  const onRefuseConfirm = async (reason: RefusalReason) => {
+  const onRefuseConfirm = async (
+    reason: RefusalReason,
+    customReason?: string,
+  ) => {
     if (refusing) return;
     setRefusing(true);
     try {
@@ -270,6 +273,10 @@ export default function OrderDetailScreen() {
         tenantId: activeTenantId,
         orderId: order._id,
         reason,
+        // ADR 0019 — set iff reason === "autre"; the dialog en garantit
+        // l'invariant (la branche customReasonInput route uniquement quand
+        // l'utilisateur a saisi un texte). Le backend re-trim + re-valide.
+        ...(customReason !== undefined ? { customReason } : {}),
       });
       // The order is now `refusée` — pop the screen so the kiosque returns to
       // the home (the refused order is filtered out of the live queue and

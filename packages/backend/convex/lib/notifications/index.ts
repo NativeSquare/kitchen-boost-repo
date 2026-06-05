@@ -63,6 +63,14 @@ export {
   findTemplateBoundViolation,
   renderTemplate,
 } from "./templateBounds";
+// ADR 0019 — pure body builder pour le push `refund_issued`. Le dispatcher
+// web-push V1 hardcode `{title: "KitchenBoost"}` (chantier 2.7 — templating
+// V2) ; cette fonction est la source de vérité du wording côté domain et sera
+// branchée par le futur dispatcher dès qu'il consommera le motif.
+export {
+  type RefundIssuedPushBodyInput,
+  decideRefundIssuedPushBody,
+} from "./refundIssuedTemplate";
 
 /**
  * 2.7-D — the MARKETING branch of the moteur (PRD 80 §2/§4/§6/§7, PRD 90 §5, ADRs

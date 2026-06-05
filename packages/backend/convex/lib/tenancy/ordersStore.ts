@@ -318,13 +318,22 @@ export async function insertTenantPendingOrder(
  * Move an order owned by `tenantId` to `status`: patch the `orders` row (status +
  * the matching transition timestamp) and append an `orderEvents` row. Throws
  * NOT_FOUND for a missing OR foreign `orderId` (ownership re-check).
+ *
+ * `customReason` (ADR 0019) — texte libre propagé sur l'event row, set par le
+ * caller seulement quand `reason === "autre"`. La validation (trim + 1-280
+ * chars + "autre" requis) vit dans la mutation `refuse` (caller-side guard) ;
+ * ici on stocke tel quel ce qui est passé.
  */
 export async function recordTenantOrderStatus(
   ctx: MutationCtx,
   tenantId: Id<"tenants">,
   orderId: Id<"orders">,
   status: OrderStatus,
-  opts: { reason?: string; actorUserId?: Id<"users"> } = {},
+  opts: {
+    reason?: string;
+    customReason?: string;
+    actorUserId?: Id<"users">;
+  } = {},
 ): Promise<void> {
   await requireTenantOrder(ctx, tenantId, orderId);
   const now = Date.now();
@@ -335,6 +344,7 @@ export async function recordTenantOrderStatus(
     status,
     actorUserId: opts.actorUserId,
     reason: opts.reason,
+    customReason: opts.customReason,
     at: now,
   });
 }
@@ -439,7 +449,11 @@ export async function transitionTenantOrder(
   tenantId: Id<"tenants">,
   orderId: Id<"orders">,
   to: OrderStatus,
-  opts: { reason?: string; actorUserId?: Id<"users"> } = {},
+  opts: {
+    reason?: string;
+    customReason?: string;
+    actorUserId?: Id<"users">;
+  } = {},
 ): Promise<OrderStatus> {
   const order = await requireTenantOrder(ctx, tenantId, orderId);
   assertLegalTransition(order.status, to);

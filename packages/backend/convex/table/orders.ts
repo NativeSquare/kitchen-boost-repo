@@ -176,6 +176,12 @@ export const orderItems = defineTable({
  * Append-only order events — the time-ordered audit of every status reached (PRD
  * 20 §4 historique statuts horodaté). Carries `tenantId` (ADR 0010); keyed
  * `by_order` and `by_tenant`. `reason` is set for `refusée` (PRD 20 §6).
+ *
+ * `customReason` (ADR 0019) — un texte libre saisi par le restaurateur quand
+ * `reason === "autre"` (catch-all). Trimé + ≤ 280 chars, propagé tel quel dans
+ * le push template `refund_issued` ("Motif : ${customReason}"). Les 3 autres
+ * motifs (rupture / fermeture / surcharge) ignorent silencieusement ce champ —
+ * leur libellé enum porte déjà l'information côté push.
  */
 export const orderEvents = defineTable({
   tenantId: v.id("tenants"),
@@ -183,6 +189,7 @@ export const orderEvents = defineTable({
   status: orderStatus, // the state reached
   actorUserId: v.optional(v.id("users")), // who triggered it (system writes leave it absent)
   reason: v.optional(v.string()), // refusal reason (PRD 20 §6)
+  customReason: v.optional(v.string()), // ADR 0019 — set iff reason === "autre"
   at: v.number(),
 })
   .index("by_order", ["tenantId", "orderId"])

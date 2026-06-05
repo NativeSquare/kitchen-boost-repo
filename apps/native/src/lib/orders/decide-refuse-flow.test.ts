@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  CUSTOM_REASON_MAX_LENGTH,
   REFUSAL_REASONS,
   REFUSE_TYPED_WORD,
+  decideCanSubmitCustomReason,
   decideRefuseButton,
   decideRefuseStepCount,
   decideRefusalReasonLabel,
@@ -357,5 +359,225 @@ describe("#413 refuseFlowReducer — 3-step variant (cuisine déjà commencée, 
       { type: "confirm" },
     );
     expect(next).toEqual({ step: "warnInflight", reason: "rupture" });
+  });
+});
+
+describe("ADR 0019 decideCanSubmitCustomReason — gate du bouton Continuer (autre)", () => {
+  it("exposes the max length as 280 (Twitter-like — force la concision)", () => {
+    expect(CUSTOM_REASON_MAX_LENGTH).toBe(280);
+  });
+
+  it("rejects an empty string (rien à propager au push)", () => {
+    expect(decideCanSubmitCustomReason("")).toBe(false);
+  });
+
+  it("rejects a whitespace-only string (vide après trim)", () => {
+    // L'utilisateur peut taper des espaces dans le multiline input ; on les
+    // ignore tels que le backend les ignore (trim avant validation).
+    expect(decideCanSubmitCustomReason("   ")).toBe(false);
+    expect(decideCanSubmitCustomReason("\t\n  ")).toBe(false);
+  });
+
+  it("rejects a string > 280 chars (max enforced ici comme côté backend)", () => {
+    expect(decideCanSubmitCustomReason("a".repeat(281))).toBe(false);
+    expect(decideCanSubmitCustomReason("a".repeat(500))).toBe(false);
+  });
+
+  it("accepts a non-empty trimmed string ≤ 280 chars", () => {
+    expect(decideCanSubmitCustomReason("ratatouille brûlée")).toBe(true);
+    expect(decideCanSubmitCustomReason("a")).toBe(true);
+    expect(decideCanSubmitCustomReason("a".repeat(280))).toBe(true);
+  });
+
+  it("accepts a string with leading/trailing whitespace whose trimmed length is in range", () => {
+    // L'input rend `  ratatouille  ` (~14 chars) gating-OK car trim → 12.
+    expect(decideCanSubmitCustomReason("  ratatouille brûlée  ")).toBe(true);
+  });
+});
+
+describe("ADR 0019 refuseFlowReducer — `autre` ouvre l'étape customReasonInput", () => {
+  // Quand le restaurateur choisit `autre`, on insère une étape supplémentaire
+  // `customReasonInput` AVANT le step de confirmation finale (confirm en 2-step,
+  // warnInflight en 3-step). Le reducer porte la valeur typed pour gating UI
+  // via decideCanSubmitCustomReason.
+
+  it("`selectReason('autre')` from pickReason (2-step) → `customReasonInput` (stepCount=2, typed='')", () => {
+    const next = refuseFlowReducer(
+      { step: "pickReason", stepCount: 2 },
+      { type: "selectReason", reason: "autre" },
+    );
+    expect(next).toEqual({
+      step: "customReasonInput",
+      stepCount: 2,
+      reason: "autre",
+      typed: "",
+    });
+  });
+
+  it("`selectReason('autre')` from pickReason (3-step) → `customReasonInput` (stepCount=3, typed='')", () => {
+    // En 3-step l'étape customReasonInput vient AVANT warnInflight : le motif
+    // libre est nécessaire pour formuler le push, donc on le saisit d'abord ;
+    // ensuite le warning kitchen-started et le typed REFUSER finalisent.
+    const next = refuseFlowReducer(
+      { step: "pickReason", stepCount: 3 },
+      { type: "selectReason", reason: "autre" },
+    );
+    expect(next).toEqual({
+      step: "customReasonInput",
+      stepCount: 3,
+      reason: "autre",
+      typed: "",
+    });
+  });
+
+  it("`selectReason('rupture')` (and other enums) → comportement inchangé (pas de customReasonInput)", () => {
+    // Les 3 motifs enum sautent l'étape customReasonInput : leur label suffit
+    // au push template. Le test pin que la régression est zéro pour eux.
+    expect(
+      refuseFlowReducer(
+        { step: "pickReason", stepCount: 2 },
+        { type: "selectReason", reason: "rupture" },
+      ),
+    ).toEqual({ step: "confirm", reason: "rupture" });
+    expect(
+      refuseFlowReducer(
+        { step: "pickReason", stepCount: 3 },
+        { type: "selectReason", reason: "fermeture" },
+      ),
+    ).toEqual({ step: "warnInflight", reason: "fermeture" });
+  });
+
+  it("`setCustomReason` from customReasonInput → met à jour `typed` (drive le gate UI)", () => {
+    const next = refuseFlowReducer(
+      { step: "customReasonInput", stepCount: 2, reason: "autre", typed: "" },
+      { type: "setCustomReason", value: "ratatouille" },
+    );
+    expect(next).toEqual({
+      step: "customReasonInput",
+      stepCount: 2,
+      reason: "autre",
+      typed: "ratatouille",
+    });
+  });
+
+  it("`submitCustomReason` (2-step) → `confirm` portant reason + customReason", () => {
+    const next = refuseFlowReducer(
+      {
+        step: "customReasonInput",
+        stepCount: 2,
+        reason: "autre",
+        typed: "ratatouille brûlée",
+      },
+      { type: "submitCustomReason" },
+    );
+    expect(next).toEqual({
+      step: "confirm",
+      reason: "autre",
+      customReason: "ratatouille brûlée",
+    });
+  });
+
+  it("`submitCustomReason` (3-step) → `warnInflight` portant reason + customReason", () => {
+    const next = refuseFlowReducer(
+      {
+        step: "customReasonInput",
+        stepCount: 3,
+        reason: "autre",
+        typed: "ratatouille brûlée",
+      },
+      { type: "submitCustomReason" },
+    );
+    expect(next).toEqual({
+      step: "warnInflight",
+      reason: "autre",
+      customReason: "ratatouille brûlée",
+    });
+  });
+
+  it("`cancel` from customReasonInput → `idle` (anti-fat-finger backout)", () => {
+    const next = refuseFlowReducer(
+      {
+        step: "customReasonInput",
+        stepCount: 2,
+        reason: "autre",
+        typed: "ratatouille",
+      },
+      { type: "cancel" },
+    );
+    expect(next).toEqual({ step: "idle" });
+  });
+
+  it("`setCustomReason` outside customReasonInput is a no-op (defensive)", () => {
+    expect(
+      refuseFlowReducer(
+        { step: "idle" },
+        { type: "setCustomReason", value: "x" },
+      ),
+    ).toEqual({ step: "idle" });
+    expect(
+      refuseFlowReducer(
+        { step: "pickReason", stepCount: 2 },
+        { type: "setCustomReason", value: "x" },
+      ),
+    ).toEqual({ step: "pickReason", stepCount: 2 });
+    expect(
+      refuseFlowReducer(
+        { step: "confirm", reason: "autre" },
+        { type: "setCustomReason", value: "x" },
+      ),
+    ).toEqual({ step: "confirm", reason: "autre" });
+  });
+
+  it("`submitCustomReason` outside customReasonInput is a no-op (defensive)", () => {
+    // Un dispatch parasite depuis n'importe quel autre step est ignoré : le
+    // reducer ne fabrique pas de transition vers confirm/warnInflight sans
+    // être dans la bonne étape (dette par défaut : no-op).
+    expect(
+      refuseFlowReducer({ step: "idle" }, { type: "submitCustomReason" }),
+    ).toEqual({ step: "idle" });
+    expect(
+      refuseFlowReducer(
+        { step: "pickReason", stepCount: 2 },
+        { type: "submitCustomReason" },
+      ),
+    ).toEqual({ step: "pickReason", stepCount: 2 });
+  });
+
+  it("`confirm` from confirm (2-step) with reason=autre + customReason → idle (mutation dispatched par la UI)", () => {
+    // Le reducer ferme la dialog ; la mutation a déjà été appelée par la UI.
+    const next = refuseFlowReducer(
+      { step: "confirm", reason: "autre", customReason: "ratatouille brûlée" },
+      { type: "confirm" },
+    );
+    expect(next).toEqual({ step: "idle" });
+  });
+
+  it("3-step `autre` : customReasonInput → warnInflight → typeWord — typeWord porte customReason aussi", () => {
+    // Vérifie le rouage complet 3-step pour `autre` : le customReason est
+    // posé une fois et il survit aux deux transitions suivantes
+    // (warnInflight → typeWord → confirm).
+    const afterSubmit = refuseFlowReducer(
+      {
+        step: "customReasonInput",
+        stepCount: 3,
+        reason: "autre",
+        typed: "ratatouille brûlée",
+      },
+      { type: "submitCustomReason" },
+    );
+    expect(afterSubmit).toEqual({
+      step: "warnInflight",
+      reason: "autre",
+      customReason: "ratatouille brûlée",
+    });
+    const afterAck = refuseFlowReducer(afterSubmit, {
+      type: "acknowledgeWarning",
+    });
+    expect(afterAck).toEqual({
+      step: "typeWord",
+      reason: "autre",
+      customReason: "ratatouille brûlée",
+      typed: "",
+    });
   });
 });

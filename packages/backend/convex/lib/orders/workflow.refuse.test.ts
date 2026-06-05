@@ -195,6 +195,9 @@ describe("2.3-E refuse — nouvelle → refusée + refund order emitted (atomic)
   });
 
   it("accepts each of the closed reasons (rupture / fermeture / surcharge / autre)", async () => {
+    // ADR 0019 — `autre` requiert un customReason ; les autres motifs en
+    // ignorent un éventuel. On en fournit un seulement pour `autre` afin de
+    // garder ce test focalisé sur "le validator accepte les 4 enums".
     const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
     for (const reason of ["rupture", "fermeture", "surcharge", "autre"]) {
       const oid = await seedOrder(
@@ -208,6 +211,7 @@ describe("2.3-E refuse — nouvelle → refusée + refund order emitted (atomic)
         orderId: oid,
         // biome-ignore lint/suspicious/noExplicitAny: exercising the closed validator set
         reason: reason as any,
+        customReason: reason === "autre" ? "incident divers" : undefined,
       });
       const { order, events } = await readOrder(t, oid);
       expect(order?.status).toBe("refusée");
@@ -459,6 +463,121 @@ describe("#413 refuse from `en préparation` / `prête` — 3-step anti-fat-fing
     const { order, events } = await readOrder(t, orderId);
     expect(order?.status).toBe("prête"); // unchanged
     expect(events).toHaveLength(0);
+  });
+});
+
+describe("refuse — reason 'autre' requires a customReason (free text, 1-280 chars)", () => {
+  // ADR 0019 — quand le motif est `autre` (catch-all), le restaurateur doit
+  // saisir un texte libre qui sera propagé tel quel dans le push client. Les
+  // 3 autres motifs (rupture / fermeture / surcharge) ignorent silencieusement
+  // un customReason éventuellement fourni — seul `autre` le stocke.
+  let t: ReturnType<typeof convexTest>;
+  let seed: Seed;
+  let customerA: Id<"customers">;
+  let orderId: Id<"orders">;
+  beforeEach(async () => {
+    t = convexTest(schema, modules);
+    seed = await seedTwoTenantsAllRoles(t);
+    customerA = await seedReachableCustomer(t, "eater-customreason@x.fr");
+    orderId = await seedOrder(t, seed.tenantA.tenantId, customerA, "nouvelle");
+  });
+
+  it("refuse(autre) without customReason → throws (rien n'est appliqué)", async () => {
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    await expect(
+      asManager.mutation(api.lib.orders.workflow.refuse, {
+        tenantId: seed.tenantA.tenantId,
+        orderId,
+        reason: "autre",
+      }),
+    ).rejects.toThrow();
+
+    const { order, events } = await readOrder(t, orderId);
+    expect(order?.status).toBe("nouvelle"); // unchanged
+    expect(events).toHaveLength(0);
+  });
+
+  it("refuse(autre, customReason: '') → throws (vide après trim)", async () => {
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    await expect(
+      asManager.mutation(api.lib.orders.workflow.refuse, {
+        tenantId: seed.tenantA.tenantId,
+        orderId,
+        reason: "autre",
+        customReason: "   ", // whitespace-only ⇒ vide après trim
+      }),
+    ).rejects.toThrow();
+
+    const { order, events } = await readOrder(t, orderId);
+    expect(order?.status).toBe("nouvelle");
+    expect(events).toHaveLength(0);
+  });
+
+  it("refuse(autre, customReason: 'ratatouille brûlée') → success, event carries customReason", async () => {
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    await asManager.mutation(api.lib.orders.workflow.refuse, {
+      tenantId: seed.tenantA.tenantId,
+      orderId,
+      reason: "autre",
+      customReason: "ratatouille brûlée",
+    });
+
+    const { order, events } = await readOrder(t, orderId);
+    expect(order?.status).toBe("refusée");
+    expect(events).toHaveLength(1);
+    expect(events[0].reason).toBe("autre");
+    expect(events[0].customReason).toBe("ratatouille brûlée");
+  });
+
+  it("refuse(rupture, customReason: 'ignored') → success, customReason NOT stored", async () => {
+    // Les 3 autres motifs ignorent silencieusement un customReason fourni —
+    // seul `autre` le stocke (catch-all par design).
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    await asManager.mutation(api.lib.orders.workflow.refuse, {
+      tenantId: seed.tenantA.tenantId,
+      orderId,
+      reason: "rupture",
+      customReason: "ignored",
+    });
+
+    const { order, events } = await readOrder(t, orderId);
+    expect(order?.status).toBe("refusée");
+    expect(events).toHaveLength(1);
+    expect(events[0].reason).toBe("rupture");
+    expect(events[0].customReason).toBeUndefined();
+  });
+
+  it("refuse(autre, customReason: 281 chars) → throws (max 280)", async () => {
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    await expect(
+      asManager.mutation(api.lib.orders.workflow.refuse, {
+        tenantId: seed.tenantA.tenantId,
+        orderId,
+        reason: "autre",
+        customReason: "a".repeat(281),
+      }),
+    ).rejects.toThrow();
+
+    const { order, events } = await readOrder(t, orderId);
+    expect(order?.status).toBe("nouvelle");
+    expect(events).toHaveLength(0);
+  });
+
+  it("refuse(autre, customReason: '  ratatouille brûlée  ') → success, trimmed value stored", async () => {
+    // Whitespace exterior est trimé avant validation ET stockage : le push
+    // template lit le texte tel qu'enregistré, et on n'expose pas les
+    // espaces accidentels du clavier.
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    await asManager.mutation(api.lib.orders.workflow.refuse, {
+      tenantId: seed.tenantA.tenantId,
+      orderId,
+      reason: "autre",
+      customReason: "  ratatouille brûlée  ",
+    });
+
+    const { events } = await readOrder(t, orderId);
+    expect(events).toHaveLength(1);
+    expect(events[0].customReason).toBe("ratatouille brûlée");
   });
 });
 

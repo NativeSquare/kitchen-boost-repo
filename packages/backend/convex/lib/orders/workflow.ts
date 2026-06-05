@@ -1,8 +1,12 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { internal } from "../../_generated/api";
 import type { Doc } from "../../_generated/dataModel";
 import { internalMutation } from "../../_generated/server";
-import { pricingSnapshot, refusalReason } from "../../table/orders";
+import {
+  pricingSnapshot,
+  type RefusalReason,
+  refusalReason,
+} from "../../table/orders";
 import {
   channelAvailabilityFrom,
   planTransactionalSends,
@@ -231,20 +235,71 @@ export const markHandedOff = tenantMutation(OPERATIONAL_ALLOW)({
  * the sanctioned `lib/tenancy` seam. Identity only via `getCurrentActor` (ADR 0011).
  * Audited (a sensitive write — refund-triggering). Ships a cross-tenant fuzz suite.
  */
+/**
+ * ADR 0019 — when `reason === "autre"` (catch-all), the restaurateur MUST supply
+ * a free-text customReason: trimmed, 1-280 chars. The text is propagated VERBATIM
+ * to the `refund_issued` push template ("Motif : ${customReason}", Lot 4). The
+ * three other enum motifs (`rupture` / `fermeture` / `surcharge`) ignore any
+ * customReason silently — their enum label already carries the customer-facing
+ * meaning (template wording in `decideRefundIssuedPushBody`).
+ *
+ * Returns the value to STORE on the event row (the trimmed string for `autre`,
+ * `undefined` for every other motif so the field stays absent on the row).
+ * Throws `INVALID_CUSTOM_REASON` on a missing / empty-after-trim / too-long
+ * input — caught BEFORE any transition so a bad input never leaves the order
+ * partially refused.
+ */
+const REFUSE_CUSTOM_REASON_MAX_LENGTH = 280;
+function validateCustomReason(
+  reason: RefusalReason,
+  raw: string | undefined,
+): string | undefined {
+  if (reason !== "autre") {
+    // Defensive ignore: a customReason fourni avec un motif enum est silencieusement
+    // dropped — pas d'erreur, juste pas stocké (compat ascendante + UI simple).
+    return undefined;
+  }
+  const trimmed = (raw ?? "").trim();
+  if (trimmed.length === 0) {
+    throw new ConvexError({
+      code: "INVALID_CUSTOM_REASON",
+      message:
+        "`autre` requiert un motif libre non vide (1-280 chars après trim).",
+    });
+  }
+  if (trimmed.length > REFUSE_CUSTOM_REASON_MAX_LENGTH) {
+    throw new ConvexError({
+      code: "INVALID_CUSTOM_REASON",
+      message: `Motif libre trop long (${trimmed.length} > ${REFUSE_CUSTOM_REASON_MAX_LENGTH} chars).`,
+    });
+  }
+  return trimmed;
+}
+
 export const refuse = tenantMutation(OPERATIONAL_ALLOW)({
   args: {
     orderId: v.id("orders"),
     // Closed set (PRD 20 §6) — the validator rejects an invented reason.
     reason: refusalReason,
+    // ADR 0019 — REQUIRED quand reason === "autre" (trimmed 1-280); ignored
+    // silencieusement pour les 3 autres motifs.
+    customReason: v.optional(v.string()),
   },
   audit: true,
   action: "order.refuse",
   handler: async (ctx, args): Promise<void> => {
+    // ADR 0019 — guard runtime AVANT toute mutation : si reason === "autre" alors
+    // customReason est obligatoire (1-280 chars après trim). Faute commune
+    // explicitement gardée ici plutôt qu'au boundary validator parce que la règle
+    // est conditionnelle (croise reason + customReason).
+    const customReason = validateCustomReason(args.reason, args.customReason);
+
     // 1 + 2 — transition `nouvelle → refusée` (state machine guard) AND emit the
     // refund order: the refusée orderEvent carrying the reason IS that refund order
     // toward 2.5 (Orders is the trigger; the Stripe refund is chantier 2.5 / #42).
     await transitionTenantOrder(ctx, ctx.tenantId, args.orderId, "refusée", {
       reason: args.reason,
+      customReason,
       actorUserId: ctx.actor.userId,
     });
 
