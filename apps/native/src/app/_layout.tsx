@@ -13,7 +13,9 @@ import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { PortalHost } from "@rn-primitives/portal";
 import { ConvexReactClient, useConvexAuth, useQuery } from "convex/react";
 import { Stack } from "expo-router";
+import * as Device from "expo-device";
 import * as KeepAwake from "expo-keep-awake";
+import * as ScreenOrientation from "expo-screen-orientation";
 import * as SecureStore from "expo-secure-store";
 import { useColorScheme } from "nativewind";
 import { useEffect } from "react";
@@ -38,6 +40,17 @@ const secureStorage = {
 };
 
 export default function RootLayout() {
+  useEffect(() => {
+    (async () => {
+      const type = await Device.getDeviceTypeAsync();
+      const lock =
+        type === Device.DeviceType.TABLET
+          ? ScreenOrientation.OrientationLock.LANDSCAPE
+          : ScreenOrientation.OrientationLock.PORTRAIT;
+      await ScreenOrientation.lockAsync(lock);
+    })();
+  }, []);
+
   return (
     <KeyboardProvider>
       <ConvexAuthProvider

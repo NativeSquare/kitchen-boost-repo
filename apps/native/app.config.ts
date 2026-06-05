@@ -46,7 +46,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   name: getAppName(),
   slug: APP_SLUG,
   version: "1.0.0",
-  orientation: "portrait",
+  orientation: "default",
   icon: "./assets/images/icon.png",
   scheme: APP_SLUG,
   userInterfaceStyle: "automatic",

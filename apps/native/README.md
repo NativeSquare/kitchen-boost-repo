@@ -6,8 +6,8 @@
 # 1. Lancer l'émulateur Lenovo Tab M8 (Uber Eats) sans ouvrir Android Studio
 & "$env:LOCALAPPDATA\Android\Sdk\emulator\emulator.exe" -avd Lenovo_Tab_M8_Uber_Eats
 
-# 2. Dans apps/native, démarrer Metro
-npx expo start
+# 2. Dans apps/native, démarrer Metro (script canonique = APP_VARIANT=development + METRO_MAX_WORKERS=1)
+pnpm dev
 
 # 3. Dans le terminal Metro, presser `a` → l'app dev build s'ouvre sur l'émulateur
 #    (auto-connect via http://10.0.2.2:8081)
@@ -15,13 +15,15 @@ npx expo start
 # 4. Code TS/JSX → save → Metro reload auto (Fast Refresh)
 ```
 
+⚠️ **Ne pas utiliser `pnpx expo start` ou `npx expo start` directement** — `pnpx` peut grab un `expo` hors workspace qui foire la résolution ESM de `expo/config`. Toujours `pnpm dev` (ou `pnpm --filter native dev` depuis la racine).
+
 Raccourcis Metro utiles : `r` reload, `j` ouvrir debugger, `m` toggle menu dev sur l'app, `shift+m` plus de tools.
 
 ## Cycle on-device (vraie tablette / smartphone)
 
 ```powershell
 # Même flow, mais à l'étape 3 → scanner le QR avec le dev build installé sur le device
-npx expo start
+pnpm dev
 ```
 
 Le device et la machine de dev doivent être sur le même réseau Wi-Fi. Si ça ne se connecte pas, utiliser `npx expo start --tunnel` (plus lent mais marche cross-network).
