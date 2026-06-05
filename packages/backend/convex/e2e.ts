@@ -3071,6 +3071,135 @@ export const seedE2EOrdersT2 = internalMutation({
 });
 
 /**
+ * Insert UNE order `nouvelle` directement payée sur test-t1 pour exercer le
+ * happy path KB Orders (#401 direct livraison / #402 click & collect).
+ * Sentinellé `[E2E KBO-CMD]` pour wipe ciblé.
+ *
+ * Idempotent par compteur — recrée si déjà supprimée par wipe.
+ */
+export const seedE2EKBOrdersNouvelleCmd = internalMutation({
+  args: {
+    mode: v.union(v.literal("delivery"), v.literal("pickup")),
+    tenantSlug: v.optional(v.string()),
+  },
+  returns: v.object({
+    orderId: v.id("orders"),
+    customerName: v.string(),
+  }),
+  handler: async (ctx, args) => {
+    const slug = args.tenantSlug ?? "test-t1";
+    const tenant = await ctx.db
+      .query("tenants")
+      .withIndex("by_slug", (q) => q.eq("slug", slug))
+      .unique();
+    if (tenant === null) {
+      throw new ConvexError({ message: `Tenant "${slug}" not found.` });
+    }
+    const links = await ctx.db
+      .query("customerOrdersPerTenant")
+      .withIndex("by_tenant_customer", (q) => q.eq("tenantId", tenant._id))
+      .first();
+    if (links === null) {
+      throw new ConvexError({
+        message: `No customer linked to "${slug}" — run seedE2ECustomerKPIs first.`,
+      });
+    }
+    const customer = await ctx.db.get(links.customerId);
+    if (customer === null) {
+      throw new ConvexError({ message: "Customer missing." });
+    }
+
+    const now = Date.now();
+    const note = `[E2E KBO-CMD] ${args.mode} ${now}`;
+    const orderId = await ctx.db.insert("orders", {
+      tenantId: tenant._id,
+      customerId: customer._id,
+      status: "nouvelle",
+      mode: args.mode,
+      source: "direct",
+      address:
+        args.mode === "delivery" ? "12 rue de la Paix, 75002 Paris" : undefined,
+      lat: args.mode === "delivery" ? 48.8694 : undefined,
+      lng: args.mode === "delivery" ? 2.3318 : undefined,
+      restaurantNote: note,
+      pricingSnapshot: {
+        subtotal: 2400, // 24,00 €
+        deliveryFee: args.mode === "delivery" ? 350 : 0,
+        total: args.mode === "delivery" ? 2750 : 2400,
+      },
+      paymentRef: `pi_e2e_kbocmd_${now}`,
+      createdAt: now,
+      paidAt: now,
+    });
+    await ctx.db.insert("orderItems", {
+      tenantId: tenant._id,
+      orderId,
+      itemName: "Burger maison",
+      unitPrice: 1200,
+      quantity: 1,
+      modifiers: [
+        { groupName: "Cuisson", optionName: "À point", priceDelta: 0 },
+      ],
+      allergens: ["gluten", "œufs", "lait"],
+    });
+    await ctx.db.insert("orderItems", {
+      tenantId: tenant._id,
+      orderId,
+      itemName: "Frites",
+      unitPrice: 600,
+      quantity: 2,
+      modifiers: [],
+      allergens: [],
+    });
+    await ctx.db.insert("orderEvents", {
+      tenantId: tenant._id,
+      orderId,
+      status: "nouvelle",
+      at: now,
+    });
+
+    return {
+      orderId,
+      customerName: customer.firstName ?? "Client E2E",
+    };
+  },
+});
+
+/**
+ * Wipe toutes les orders sentinellées `[E2E KBO-CMD] *` (toutes les cmds
+ * créées par `seedE2EKBOrdersNouvelleCmd`).
+ */
+export const wipeE2EKBOrdersNouvelleCmd = internalMutation({
+  args: {},
+  returns: v.object({ ordersDeleted: v.number() }),
+  handler: async (ctx) => {
+    let deleted = 0;
+    const all = await ctx.db.query("orders").collect();
+    for (const row of all) {
+      if (row.restaurantNote?.startsWith("[E2E KBO-CMD] ")) {
+        const items = await ctx.db
+          .query("orderItems")
+          .withIndex("by_order", (q) =>
+            q.eq("tenantId", row.tenantId).eq("orderId", row._id),
+          )
+          .collect();
+        for (const it of items) await ctx.db.delete(it._id);
+        const events = await ctx.db
+          .query("orderEvents")
+          .withIndex("by_order", (q) =>
+            q.eq("tenantId", row.tenantId).eq("orderId", row._id),
+          )
+          .collect();
+        for (const ev of events) await ctx.db.delete(ev._id);
+        await ctx.db.delete(row._id);
+        deleted += 1;
+      }
+    }
+    return { ordersDeleted: deleted };
+  },
+});
+
+/**
  * Wipe les orders sentinellés `[E2E MC-F] *` du tenant arg (default test-t1
  * ET test-t2). Filtre par `restaurantNote.startsWith("[E2E MC-F] ")` — ne
  * touche pas des vrais orders.
