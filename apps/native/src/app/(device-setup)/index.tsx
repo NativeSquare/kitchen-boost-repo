@@ -201,7 +201,7 @@ export default function DeviceSetupScreen() {
             disabled={submitting !== null}
             className="py-6"
           >
-            <Text>
+            <Text style={{ color: "white", fontSize: 18, fontWeight: "600" }}>
               {submitting === "kiosque"
                 ? "Enregistrement…"
                 : "Oui — mode cuisine"}
@@ -213,7 +213,7 @@ export default function DeviceSetupScreen() {
             disabled={submitting !== null}
             className="py-6"
           >
-            <Text>
+            <Text style={{ color: "black", fontSize: 18, fontWeight: "600" }}>
               {submitting === "telephone"
                 ? "Enregistrement…"
                 : "Non — mode téléphone"}
