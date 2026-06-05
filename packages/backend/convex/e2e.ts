@@ -3121,6 +3121,7 @@ export const seedE2EKBOrdersNouvelleCmd = internalMutation({
         args.mode === "delivery" ? "12 rue de la Paix, 75002 Paris" : undefined,
       lat: args.mode === "delivery" ? 48.8694 : undefined,
       lng: args.mode === "delivery" ? 2.3318 : undefined,
+      customerPhone: customer.phone ?? "0612345678",
       restaurantNote: note,
       pricingSnapshot: {
         subtotal: 2400, // 24,00 €
