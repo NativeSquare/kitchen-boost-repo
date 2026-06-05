@@ -10,7 +10,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Text } from "@/components/ui/text";
 import { Ionicons } from "@expo/vector-icons";
-import { useReducer } from "react";
+import { useEffect, useReducer } from "react";
 import { ActivityIndicator, Pressable, View } from "react-native";
 import {
   CUSTOM_REASON_MAX_LENGTH,
@@ -94,18 +94,40 @@ export function RefuseDialog({
 }: RefuseDialogProps) {
   const [state, dispatch] = useReducer(refuseFlowReducer, { step: "idle" });
 
+  // Sync the parent-owned `open` prop with the dialog's local reducer.
+  //
+  // Why a useEffect: `@rn-primitives/dialog` uses `useControllableState` —
+  // in controlled mode (we pass `open`), its internal `onChange` is ONLY
+  // fired when the primitive itself calls `setValue` (e.g. backdrop / hw
+  // back / X close). It is NEVER fired when the parent flips `open` via
+  // `setRefuseDialogOpen(true)`. Without this effect, the reducer stays
+  // at `idle` even when the dialog is visually open, and every motif tap
+  // dispatches `selectReason` from `idle` → defensive no-op (cf. test
+  // "ignores `selectReason` from idle"). All 4 motifs would silently do
+  // nothing. The `open` action is idempotent (re-fire from a non-idle
+  // step keeps the current step intact), so this is safe across renders.
+  useEffect(() => {
+    if (open) {
+      dispatch({ type: "open", stepCount });
+    } else {
+      // Parent closed the dialog (via setRefuseDialogOpen(false) — happens
+      // after a confirm or an external close). Reset the reducer so the
+      // next open starts at `pickReason` instead of resuming mid-flow.
+      dispatch({ type: "cancel" });
+    }
+  }, [open, stepCount]);
+
   // The closed-set tuple is mapped over directly — no invented motif can
   // surface (the array is frozen + 1:1 with the backend validator).
   return (
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        if (next) {
-          // The parent's `stepCount` decides which flow we enter — the
-          // reducer carries it from `pickReason` to `selectReason` so the
-          // 2-step / 3-step branching can't drift.
-          dispatch({ type: "open", stepCount });
-        } else {
+        // Primitive-driven changes (backdrop tap, hardware back, X close
+        // button). The parent-driven `open` flip is handled by the
+        // `useEffect` above; here we only relay primitive close events to
+        // the parent so its `refuseDialogOpen` state stays in sync.
+        if (!next) {
           dispatch({ type: "cancel" });
           onClose();
         }
@@ -348,9 +370,12 @@ export function RefuseDialog({
             </DialogFooter>
           </>
         ) : (
-          // `pickReason` or `idle` (idle should not actually render because
-          // the parent's `open` prop is false in that case — the dialog
-          // unmounts).
+          // `pickReason` (default landing step once the open-sync effect has
+          // fired). `idle` can momentarily fall through here on the first
+          // render while the `useEffect` hasn't dispatched `open` yet — the
+          // copy is identical so the user never sees a flash, and the
+          // motif Pressables become wired the moment the reducer flips to
+          // `pickReason`.
           <>
             <DialogHeader>
               <DialogTitle>Refuser cette commande</DialogTitle>
