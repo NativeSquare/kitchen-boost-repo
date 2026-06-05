@@ -129,6 +129,17 @@ export const orders = defineTable({
   address: v.optional(v.string()),
   lat: v.optional(v.number()),
   lng: v.optional(v.number()),
+  // Customer phone — DENORMALISED snapshot from `customers.phone` at order time
+  // (pattern extended from `address`, ADR 0010 MOAT preserved). The GLOBAL
+  // `customers` table is KB-owned and a `kb_manager` cannot query it directly;
+  // copying the phone here lets the cuisinier reach the client for THIS order
+  // (livraison ratée, allergène urgent) WITHOUT exposing the cross-tenant
+  // customers base. The copy is taken once at `placeOrder` /
+  // `createOrderFromCart`; a later customer phone update does NOT propagate to
+  // already-placed orders (the kitchen contacts the number that was current at
+  // checkout — by design, mirrors `address`). Optional because a customer may
+  // have no phone yet at checkout time, and to keep V1 backfill free.
+  customerPhone: v.optional(v.string()),
   // Free-text kitchen note, ≤ 200 chars, NOT forwarded to the Uber manifest
   // (client-ordering CONTEXT "Note resto").
   restaurantNote: v.optional(v.string()),

@@ -56,6 +56,10 @@ export type NewOrder = {
   address?: string;
   lat?: number;
   lng?: number;
+  // Denormalised snapshot of `customers.phone` at order time (pattern extended
+  // from `address`, ADR 0010 MOAT preserved). The caller resolves it from the
+  // GLOBAL `customers` fiche via the sanctioned seam and passes it in here.
+  customerPhone?: string;
   restaurantNote?: string;
   pricingSnapshot?: PricingSnapshot;
   items: NewOrderItem[];
@@ -73,6 +77,9 @@ export type NewPendingOrder = {
   address?: string;
   lat?: number;
   lng?: number;
+  // Denormalised snapshot of `customers.phone` at order time (same rationale as
+  // `NewOrder.customerPhone` — pattern extended from `address`, ADR 0010 MOAT).
+  customerPhone?: string;
   restaurantNote?: string;
   items: NewOrderItem[];
 };
@@ -241,6 +248,7 @@ export async function insertTenantOrder(
     address: data.address,
     lat: data.lat,
     lng: data.lng,
+    customerPhone: data.customerPhone,
     restaurantNote: data.restaurantNote,
     pricingSnapshot: data.pricingSnapshot,
     createdAt: now,
@@ -294,6 +302,7 @@ export async function insertTenantPendingOrder(
     address: data.address,
     lat: data.lat,
     lng: data.lng,
+    customerPhone: data.customerPhone,
     restaurantNote: data.restaurantNote,
     createdAt: now,
   });

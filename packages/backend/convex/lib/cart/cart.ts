@@ -9,6 +9,7 @@ import {
   getOrCreateCustomerFiche,
   insertTenantPendingOrder,
   listTenantItemModifierGroups,
+  readCustomerFicheById,
   requireTenantItem,
 } from "../tenancy";
 
@@ -240,12 +241,21 @@ export const createOrderFromCart = customerMutation({
     // The order belongs to the caller's OWN fiche (self-scope, silent provisioning).
     const customerId = await getOrCreateCustomerFiche(ctx, ctx.actor.userId);
 
+    // Denormalise `customers.phone` onto the pending order (pattern extended
+    // from `address`, ADR 0010 MOAT preserved). The fiche is the caller's OWN
+    // (just resolved above from `ctx.actor.userId`), so this read crosses no
+    // privacy boundary; the snapshot is bounded to THIS order so a future
+    // `kb_manager` reading `getOrder` only ever sees the phone of customers
+    // who ordered at THEIR tenant (no cross-tenant customers listing).
+    const fiche = await readCustomerFicheById(ctx, customerId);
+
     return insertTenantPendingOrder(ctx, ctx.tenantId, {
       customerId,
       mode: args.mode,
       address: args.address,
       lat: args.lat,
       lng: args.lng,
+      customerPhone: fiche?.phone,
       restaurantNote: args.restaurantNote,
       items: frozenItems,
     });

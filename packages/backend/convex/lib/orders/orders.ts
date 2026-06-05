@@ -19,6 +19,7 @@ import {
   insertTenantOrder,
   listTenantOrders,
   listTenantOrdersByStatus,
+  readCustomerFicheById,
   recordTenantOrderStatus,
   setTenantExceptionalClosure,
   setTenantOperationalPause,
@@ -89,6 +90,13 @@ export const getOrder = tenantQuery(OPERATIONAL_ALLOW)({
  * Place an order on the calling tenant (kb_manager / system): persists the order
  * (status `nouvelle`, source `direct`), FREEZES the line items, and stamps the
  * initial `nouvelle` event. Returns the new order id. Audited (a checkout write).
+ *
+ * Denormalises `customers.phone` onto `orders.customerPhone` (pattern extended
+ * from `address`, ADR 0010 MOAT preserved): the GLOBAL `customers` fiche is
+ * read via the sanctioned `readCustomerFicheById` seam (the kb_manager cannot
+ * query that table directly — it sees only its OWN orders + the copied phone).
+ * Snapshot is taken once at order time; a later phone update never propagates
+ * to already-placed orders (mirrors `address`).
  */
 export const placeOrder = tenantMutation()({
   args: {
@@ -111,8 +119,13 @@ export const placeOrder = tenantMutation()({
   },
   audit: true,
   action: "order.place",
-  handler: async (ctx, args): Promise<Id<"orders">> =>
-    insertTenantOrder(
+  handler: async (ctx, args): Promise<Id<"orders">> => {
+    // ADR 0010 MOAT — read the GLOBAL customers fiche ONLY through the
+    // sanctioned seam (never raw `ctx.db.query("customers")`). The copy is
+    // bounded to THIS order, so the kb_manager only ever sees the phone of
+    // customers who ordered AT their tenant (no cross-tenant listing).
+    const fiche = await readCustomerFicheById(ctx, args.customerId);
+    return insertTenantOrder(
       ctx,
       ctx.tenantId,
       {
@@ -121,12 +134,14 @@ export const placeOrder = tenantMutation()({
         address: args.address,
         lat: args.lat,
         lng: args.lng,
+        customerPhone: fiche?.phone,
         restaurantNote: args.restaurantNote,
         pricingSnapshot: args.pricingSnapshot,
         items: args.items,
       },
       ctx.actor.userId,
-    ),
+    );
+  },
 });
 
 /**

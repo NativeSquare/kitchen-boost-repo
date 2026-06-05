@@ -42,10 +42,16 @@ type Seed = Awaited<ReturnType<typeof seedTwoTenantsAllRoles>>;
 async function seedCustomer(
   t: ReturnType<typeof convexTest>,
   email: string,
+  phone?: string,
 ): Promise<Id<"customers">> {
   return t.run(async (ctx) => {
     const userId = await ctx.db.insert("users", { email, role: "customer" });
-    return ctx.db.insert("customers", { userId, email, createdAt: Date.now() });
+    return ctx.db.insert("customers", {
+      userId,
+      email,
+      phone,
+      createdAt: Date.now(),
+    });
   });
 }
 
@@ -229,6 +235,42 @@ describe("2.3-A orders — schema + tenant-scoped persistence via wrappers", () 
       orderId,
     });
     expect(order?.items[0].unitPrice).toBe(1290);
+  });
+
+  it("denormalises `customers.phone` onto `orders.customerPhone` at placeOrder (pattern extended from `address`, ADR 0010 MOAT preserved)", async () => {
+    // A customer fiche WITH a phone — the snapshot is taken at order time.
+    const customerWithPhone = await seedCustomer(
+      t,
+      "phone-eater@x.fr",
+      "+33612345678",
+    );
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+
+    const orderId = await asManager.mutation(api.lib.orders.orders.placeOrder, {
+      tenantId: seed.tenantA.tenantId,
+      ...orderInput(customerWithPhone),
+    });
+
+    const order = await asManager.query(api.lib.orders.orders.getOrder, {
+      tenantId: seed.tenantA.tenantId,
+      orderId,
+    });
+    expect(order?.customerPhone).toBe("+33612345678");
+  });
+
+  it("`orders.customerPhone` is absent when the customer fiche has no phone (customer-without-phone)", async () => {
+    // `seedCustomer` w/o phone — the fiche carries no phone (typical of an
+    // anonymous PWA visitor who hasn't filled it in checkout yet).
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    const orderId = await asManager.mutation(api.lib.orders.orders.placeOrder, {
+      tenantId: seed.tenantA.tenantId,
+      ...orderInput(customerA),
+    });
+    const order = await asManager.query(api.lib.orders.orders.getOrder, {
+      tenantId: seed.tenantA.tenantId,
+      orderId,
+    });
+    expect(order?.customerPhone).toBeUndefined();
   });
 
   it("a click & collect order needs no delivery address", async () => {

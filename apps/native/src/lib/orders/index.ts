@@ -69,3 +69,10 @@ export {
 } from "./decide-history";
 export { OrderHistoryEntry } from "./order-history-entry";
 export { OrderHistoryScreen } from "./order-history-screen";
+export { RevealableField, type RevealableFieldProps } from "./revealable-field";
+export {
+  decideTapAction,
+  revealableFieldReducer,
+  type RevealableFieldEvent,
+  type RevealableFieldState,
+} from "./decide-revealable-field";

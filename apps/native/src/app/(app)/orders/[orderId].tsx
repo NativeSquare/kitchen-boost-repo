@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { getConvexErrorMessage } from "@/utils/getConvexErrorMessage";
 import {
   RefuseDialog,
+  RevealableField,
   decideAutoExpiredDetailNote,
   decideModeTag,
   decidePickupHandoffNote,
@@ -28,6 +29,7 @@ import { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   Pressable,
   ScrollView,
   View,
@@ -51,16 +53,18 @@ import {
  * `en attente de paiement` is unreachable via the home (the live query
  * filters it out) but tolerated here as a discreet read-only view.
  *
- * Tap-to-reveal phone numbers (PRD 20 §4 + AC9) — client + courier numbers
- * are hidden by default and surfaced via a Pressable that flips a local
- * flag. NO CTA "Appeler" (PRD 20 Q4.2 — pas de dialer fiable, gain UX nul,
- * source de bugs cross-OS). For #401 V1: courier number out of scope (the
- * `deliveries` row landing is chantier 2.6); the schema today carries only
- * `address` on the order, so the client phone is exposed via the global
- * customers fiche which a `kb_manager` cannot reach directly per ADR 0010
- * (the MOAT). V1 sticks to address tap-to-reveal as the privacy-bounded
- * surface — phones come in via #403 when the refusal email flow needs
- * them (later slice).
+ * Tap-to-reveal PII (PRD 20 §4 + AC9) — adresse livraison + téléphone client
+ * are hidden by default behind a generic « Toucher pour afficher » Pressable
+ * (`<RevealableField />`). ADR 0010 MOAT preserved : the GLOBAL `customers`
+ * table is never read here; the phone surfaces via the DENORMALISED
+ * `orders.customerPhone` snapshot copied at `placeOrder` / `createOrderFromCart`
+ * from the caller's own fiche (pattern extended from `address`). The
+ * `kb_manager` only ever sees the phone of customers who ordered AT their
+ * tenant — no cross-tenant listing. Téléphone : second tap après reveal →
+ * `Linking.openURL("tel:" + phone)` (utile en cuisine : livraison ratée,
+ * allergène urgent). Adresse : pas de tap-to-action (PRD 20 Q4.2 — pas de
+ * Maps launch automatique). Courier number reste hors scope (le row
+ * `deliveries` arrive en chantier 2.6).
  *
  * Source badge (PRD 20 §2 + Q3.3) — V1 has NO direct badge displayed (all
  * orders are direct in V1 since marketplace ingestion is ADR 0009 V2).
@@ -102,9 +106,10 @@ export default function OrderDetailScreen() {
     session?.tenants.find((t) => t.tenantId === activeTenantId)?.name ??
     "Restaurant";
 
-  // Tap-to-reveal the delivery address (PRD 20 §4 — same UX rationale as the
-  // tap-to-reveal phones the schema doesn't yet expose at the order level).
-  const [addressRevealed, setAddressRevealed] = useState(false);
+  // Tap-to-reveal the delivery address + the customer phone (PRD 20 §4 + AC9,
+  // ADR 0010 MOAT preserved). Both flips live INSIDE `<RevealableField />` now,
+  // owning their own local `hidden → revealed` state; we just wire the optional
+  // tap-to-call side effect for the phone (no Maps launch for address — Q4.2).
   const [busy, setBusy] = useState(false);
   // #412 — local busy flag for the « Réimprimer » button. Distinct from
   // `busy` (workflow buttons) so a reprint mid-workflow doesn't disable the
@@ -467,36 +472,41 @@ export default function OrderDetailScreen() {
         </Card>
       ) : null}
 
-      {/* Adresse livraison — tap-to-reveal (PRD 20 §4) */}
+      {/* Adresse livraison — tap-to-reveal (PRD 20 §4). NO action wired sur
+          tap après reveal (Q4.2 : pas de Maps launch automatique). */}
       {order.mode === "delivery" && order.address !== undefined ? (
-        <Card className="mb-3">
-          <CardHeader>
-            <Text className="text-foreground text-base font-semibold">
-              Adresse livraison
-            </Text>
-          </CardHeader>
-          <CardContent>
-            {addressRevealed ? (
-              <Text className="text-foreground text-sm">{order.address}</Text>
-            ) : (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Afficher l'adresse de livraison"
-                onPress={() => setAddressRevealed(true)}
-                className="flex-row items-center gap-2"
-              >
-                <Ionicons
-                  name="eye-outline"
-                  size={16}
-                  className="text-muted-foreground"
-                />
-                <Text className="text-muted-foreground text-sm underline">
-                  Toucher pour afficher
-                </Text>
-              </Pressable>
-            )}
-          </CardContent>
-        </Card>
+        <RevealableField
+          label="Adresse livraison"
+          value={order.address}
+          icon="location-outline"
+          testID="revealable-address"
+        />
+      ) : null}
+
+      {/* Téléphone client — tap-to-reveal + tap-to-call (PRD 20 §4 + AC9, ADR
+          0010 MOAT). `customerPhone` est dénormalisé sur `orders` (snapshot du
+          `customers.phone` au moment du `placeOrder` / `createOrderFromCart`),
+          donc le `kb_manager` y accède sans lire la table customers globale.
+          Second tap après reveal → `tel:` ouvre l'app téléphone native. */}
+      {order.customerPhone !== undefined && order.customerPhone !== "" ? (
+        <RevealableField
+          label="Téléphone client"
+          value={order.customerPhone}
+          icon="call-outline"
+          actionLabel="Appeler le client"
+          actionIcon="call-outline"
+          onPress={() => {
+            // Linking.openURL est natif partout (iOS / Android) et ne demande
+            // aucune permission. Fire-and-forget : si l'OS refuse (pas de SIM,
+            // émulateur), l'erreur est silencieuse côté UI — la cuisinier
+            // verra simplement rien se passer, comportement attendu en dev.
+            const phone = order.customerPhone;
+            if (phone !== undefined) {
+              void Linking.openURL(`tel:${phone}`);
+            }
+          }}
+          testID="revealable-phone"
+        />
       ) : null}
 
       {/* #412 — « Réimprimer » manual button (PRD 20 §4 + §14). Available
