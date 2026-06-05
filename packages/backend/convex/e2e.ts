@@ -67,6 +67,7 @@
  */
 
 import { ConvexError, v } from "convex/values";
+import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
   internalMutation,
@@ -3163,6 +3164,34 @@ export const seedE2EKBOrdersNouvelleCmd = internalMutation({
       orderId,
       customerName: customer.firstName ?? "Client E2E",
     };
+  },
+});
+
+/**
+ * #404 — Déclenche manuellement le tick `expireIfNotAcknowledged` pour
+ * simuler le timeout 5 min sans attendre. Utilise le SCHEDULER comme en
+ * production (`runAfter(0, ...)`) pour rester fidèle au chemin réel — le tick
+ * ré-évalue l'état courant donc reste idempotent (no-op si déjà acceptée /
+ * refusée / déjà auto_expired).
+ *
+ * Helper E2E uniquement, sentinellé par usage explicite via convex CLI.
+ */
+export const triggerE2EAutoExpireKbOrder = internalMutation({
+  args: { orderId: v.id("orders") },
+  returns: v.object({ scheduled: v.boolean() }),
+  handler: async (ctx, args) => {
+    const order = await ctx.db.get(args.orderId);
+    if (order === null) {
+      throw new ConvexError({
+        message: `Order ${args.orderId} not found.`,
+      });
+    }
+    await ctx.scheduler.runAfter(
+      0,
+      internal.lib.orders.workflow.expireIfNotAcknowledged,
+      { tenantId: order.tenantId, orderId: args.orderId },
+    );
+    return { scheduled: true };
   },
 });
 
