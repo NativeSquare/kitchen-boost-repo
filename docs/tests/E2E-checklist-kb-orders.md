@@ -135,9 +135,27 @@ _(parcours ajoutés au fil des merges)_
 
 ## KBO-CMD — Commandes happy path
 
-> **Statut** : 🟡 0/? validés — issues couvertes #401 (TB-5 happy path direct livraison E2E), #402 (TB-6 happy path click & collect).
+> **Statut** : 🟡 **1/2 validés le 2026-06-05** — KBO-CMD1 PASS (#401 direct livraison). #402 (click & collect) à tester ensuite. Fix livré pendant le run : `587de17` exclude `remise` de la home queue côté V1 (sans webhook Uber Direct, sinon la cmd reste éternellement visible).
 
-_(parcours ajoutés au fil des merges)_
+### KBO-CMD1 — Réception live + workflow direct livraison (#401)
+
+- **Acteur** : KB Manager (`manager@kb.test`) en mode kiosque sur `test-t1`
+- **Pré-requis** : KBO-A4 PASS, home native vide. Lancer le seed côté Convex : `npx convex run e2e:seedE2EKBOrdersNouvelleCmd '{"mode":"delivery"}'` depuis `packages/backend` — insère 1 cmd `nouvelle` (burger + 2 frites, 27,50 €, mode delivery, adresse Paris).
+- **Étapes** :
+  1. Observer la home native — la card cmd arrive EN LIVE via Convex sub (< 5s sans refresh)
+  2. Tap card → detail screen (items frozen visibles, adresse livraison visible)
+  3. Tap **"Accepter / Préparer"** → status `en préparation` (badge change live)
+  4. Tap **"Prête"** → status `prête`
+  5. Tap **"Remise au coursier"** → status `remise`
+- **Attendu** :
+  - Réception live sans refresh, transitions instantanées (mutation Convex + sub home auto-update)
+  - Après "Remise au coursier" → la card fade out de la home (V1 archive après remise, en attendant le webhook Uber Direct V2 qui transitionnera vers `livrée`)
+  - Aucun crash, aucun "Mode déconnecté" rouge pendant le run
+- **Couvre** : #401 (réception Convex sub + workflow delivery + transitions backend + fade out V1)
+
+### KBO-CMD2 — Click & collect (#402) — à tester après refonte UI
+
+_(seed prêt : `npx convex run e2e:seedE2EKBOrdersNouvelleCmd '{"mode":"pickup"}'`)_
 
 ---
 
