@@ -59,9 +59,61 @@ Au moment du merge de chaque PR :
 
 ## KBO-A — Auth tablette + kiosque
 
-> **Statut** : 🟡 0/? validés — issues couvertes #393 (TB-1 kiosque toggle), #398 (TB-2 onboarding séquence), #399 (TB-16 switcher tenant), #400 (TB-22 révocation session côté app).
+> **Statut** : ✅ **4/4 validés le 2026-06-05** sur émulateur Lenovo Tab M8 (Android, mode dev build). Compte `manager@kb.test` mono-tenant `test-t1`. Pré-requis run : sync clock émulateur (cf. `docs/native/emulator-tls-fix.md`) sinon WebSocket Convex échoue en TLS. Issues couvertes #393 (kiosque toggle), #394 (force update gate), #395 (push banner fallback), #398 (onboarding séquence).
+>
+> **Fix shipped pendant le run** : `157f481` — bypass `<Button>` + `<Text>` custom par `Pressable` + `RNText` natif sur l'écran kiosque toggle. Cause non identifiée (Button custom rend pas les enfants quand padding override `py-6`). Dette technique à régler hors session.
 
-_(parcours ajoutés au fil des merges)_
+### KBO-A1 — Login email + password
+
+- **Acteur** : KB Manager
+- **Pré-requis** : compte `manager@kb.test` provisionné via `bootstrapE2EInvites` + accept-invite + password set ; clock émulateur syncée ; app fraîchement lancée sur écran login
+- **Étapes** :
+  1. Saisir email + password
+  2. Tap "Continue"
+- **Attendu** :
+  - Cookie session posé via Convex Auth, navigation vers écran kiosque toggle (premier login)
+  - Aucun flash "Mode déconnecté" rouge (WebSocket Convex OK)
+  - Écran login ne montre PAS de bouton Google/social ni lien Sign up (commenté pour V1 invite-only par `762bd23`)
+- **Couvre** : Convex Auth password flow, prérequis cleanup auth UI V1
+
+### KBO-A2 — Kiosque toggle mono-tenant → pin auto
+
+- **Acteur** : KB Manager mono-tenant
+- **Pré-requis** : KBO-A1 PASS, écran "Cette tablette sera dédiée à la cuisine ?" affiché, manager rattaché à 1 seul tenant (`test-t1`)
+- **Étapes** :
+  1. Tap "Oui — mode cuisine"
+- **Attendu** :
+  - Pin auto sur `test-t1` (pas de pick-tenant car mono-rattachement) → mutation `setMyDeviceMode({mode:"kiosque", pinnedTenantId:test-t1})` côté backend
+  - Stack rebascule vers `(onboarding)` puis `(app)` via le gate `_layout.tsx`
+  - Pas de switcher tenant visible dans la nav suivante (mode kiosque masque switcher)
+- **Couvre** : #393 (mode kiosque + tenant pinning + audit monolithique V1)
+
+### KBO-A3 — Onboarding séquence + fallback banner si push refusé
+
+- **Acteur** : KB Manager post-kiosque
+- **Pré-requis** : KBO-A2 PASS
+- **Étapes** :
+  1. Suivre l'onboarding checklist (volume max + désactiver veille — instructions visuelles, manip OS optionnelle)
+  2. Si prompt OS pour push permission apparaît → "Autoriser" ; sinon (cas où la permission a déjà été refusée précédemment dans l'historique de l'app sur cet appareil), passer
+  3. Tap CTA fin onboarding
+- **Attendu** :
+  - Arrivée sur home native (liste vide normale — pas de cmd seedée)
+  - L'onboarding ne se rejoue pas après kill+relaunch (persistance "completed")
+  - **Si permission push refusée** : banner rouge "Notifs désactivées — tu vas rater des commandes" visible avec CTA "Ouvrir réglages" qui deeplink Settings OS (story #395 prend le relais)
+- **Couvre** : #398 (onboarding séquence) + #395 (push permission detection + banner persistant)
+
+### KBO-A4 — Force update gate au boot — passe-plat nominal
+
+- **Acteur** : KB Manager loggé, mode kiosque activé
+- **Pré-requis** : KBO-A3 PASS, app installée avec un build dont `criticalIndex` ≥ valeur serveur Convex et `nativeBuildVersion` ≥ `minSupportedBuildVersion`
+- **Étapes** :
+  1. Kill app (swipe-up + close)
+  2. Relance depuis le launcher
+- **Attendu** :
+  - L'app boot directement sur la home (pas d'écran "Mise à jour requise")
+  - Aucun blocage au splash → le gate `ForceUpdateGate` au root `_layout.tsx` passe en silence
+- **Couvre** : #394 (couche OTA criticalIndex + couche native minSupportedBuildVersion, branche passe-plat)
+- **Note** : la branche BLOQUANTE du gate (force update affichée) n'est pas testée ici — nécessite de bumper `criticalIndex` côté `app.config.ts` OU `minSupportedBuildVersion` via mutation Convex. À tester séparément quand on validera explicitement #394 sous contrainte.
 
 ---
 
@@ -125,4 +177,11 @@ _(parcours ajoutés au fil des merges. Note : ces 4 issues touchent `apps/admin`
 
 À chaque merge, ajouter une ligne `## YYYY-MM-DD — PR #N` avec un résumé court (`gardé X tests, rejeté Y, fusionné Z`). Sert d'audit trail pour comprendre pourquoi un test E2E proposé par un agent ne se retrouve pas dans cette checklist.
 
-_(vide au 2026-06-03 — premier merge KB Orders à venir)_
+### 2026-06-05 — première session test groupe KBO-A
+
+- Documenté 4 parcours KBO-A1 à A4 couvrant 4 stories (#393, #394, #395, #398). Tous PASS sur Lenovo Tab M8 Android émulateur.
+- **Fusion** : #395 (push banner refusé) absorbé dans KBO-A3 (onboarding) au lieu d'un parcours dédié — le fallback banner est naturellement observable pendant l'onboarding sans interaction supplémentaire. Évite duplication.
+- **Rejeté** : test isolé "validation format email" du sign-in form (couvert TDD Zod côté `SignInSchema`).
+- **Rejeté** : test isolé "vérification absence boutons Google/social" du sign-in form après cleanup `762bd23` — intégré comme AC visuel dans KBO-A1 sans parcours dédié.
+- **Hors curation, dette ouverte** : bug rendering `<Button>` + `<Text>` custom avec override padding `py-6` sur écran kiosque toggle. Bypass shipped (`157f481`) avec `Pressable` + `RNText` natif. Cause non identifiée. À traiter hors session de test.
+- **Hors curation, doc complémentaire** : `docs/native/emulator-tls-fix.md` — sync clock émulateur Android pour éviter "Chain validation failed" sur WebSocket Convex. Pré-requis transverse à tous les parcours.
