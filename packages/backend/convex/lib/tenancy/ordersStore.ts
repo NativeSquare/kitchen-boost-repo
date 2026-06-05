@@ -463,6 +463,14 @@ export const TERMINAL_ORDER_STATUSES: readonly OrderStatus[] = [
  * newest first. EXCLUDES `en attente de paiement` (invisible until paid, PRD 10
  * §10/§11) AND the terminal states (archived into the history). Built on the
  * tenant-scoped `listTenantOrders` then filtered — small per-tenant cardinality.
+ *
+ * V1 quirk (#401, KBO-CMD1 spot 2026-06-05) : `remise` is filtered out of the
+ * home queue too. Per PRD §5 `remise` waits for an Uber Direct webhook (delivery)
+ * or an immediate archive (click & collect) to reach a true terminal state, but
+ * the Uber webhook is V2 scope (no V1 wiring), so without this filter a delivery
+ * order tapped `Remise au coursier` would stick to the home queue forever. The
+ * `remise` row stays as-is in the DB (and is NOT included in the history list
+ * either — see `listTenantTerminalOrders`) until V2 lands the webhook.
  */
 export async function listTenantLiveOrders(
   ctx: QueryCtx | MutationCtx,
@@ -472,6 +480,7 @@ export async function listTenantLiveOrders(
   return all.filter(
     (o) =>
       o.status !== "en attente de paiement" &&
+      o.status !== "remise" &&
       !TERMINAL_ORDER_STATUSES.includes(o.status),
   );
 }
