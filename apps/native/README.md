@@ -1,50 +1,65 @@
-# Welcome to your Expo app 👋
+# apps/native — Dev cycle
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+## Cycle quotidien (émulateur Android)
 
-## Get started
+```powershell
+# 1. Lancer l'émulateur Lenovo Tab M8 (Uber Eats) sans ouvrir Android Studio
+& "$env:LOCALAPPDATA\Android\Sdk\emulator\emulator.exe" -avd Lenovo_Tab_M8_Uber_Eats
 
-1. Install dependencies
+# 2. Dans apps/native, démarrer Metro
+npx expo start
 
-   ```bash
-   npm install
-   ```
+# 3. Dans le terminal Metro, presser `a` → l'app dev build s'ouvre sur l'émulateur
+#    (auto-connect via http://10.0.2.2:8081)
 
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+# 4. Code TS/JSX → save → Metro reload auto (Fast Refresh)
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Raccourcis Metro utiles : `r` reload, `j` ouvrir debugger, `m` toggle menu dev sur l'app, `shift+m` plus de tools.
 
-## Learn more
+## Cycle on-device (vraie tablette / smartphone)
 
-To learn more about developing your project with Expo, look at the following resources:
+```powershell
+# Même flow, mais à l'étape 3 → scanner le QR avec le dev build installé sur le device
+npx expo start
+```
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+Le device et la machine de dev doivent être sur le même réseau Wi-Fi. Si ça ne se connecte pas, utiliser `npx expo start --tunnel` (plus lent mais marche cross-network).
 
-## Join the community
+## Quand rebuild le natif (= refaire un EAS Build)
 
-Join our community of developers creating universal apps.
+Le dev build ne hot-reload **que** le JS/TS. Tu dois rebuild + réinstaller l'APK à chaque fois que tu :
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with other Expo users and ask questions.
+- Ajoutes/upgrades un package avec du **code natif** (ex: `expo-camera`, lib RN tierce)
+- Modifies un **config plugin** dans `app.config.ts` (ajout de plugin Expo, permission iOS/Android)
+- Bumpes la **version Expo SDK**
+- Changes `runtimeVersion`, `scheme`, ou les bundle IDs
+
+```powershell
+# Build cloud → produit un APK installable (developmentClient + distribution: internal)
+eas build --platform android --profile development
+
+# À la fin, le CLI demande "Install on Android Emulator? (Y/n)" → Y
+# Ou rétroactif sur un build existant :
+eas build:run -p android --latest
+# Ou install par ID précis :
+eas build:run -p android --id <build-id>
+```
+
+Builds visibles sur https://expo.dev/accounts/nativesquare-expo/projects/kitchen-boost/builds
+
+## Profil AVD
+
+**Lenovo Tab M8 (Uber Eats)** — 8" 1280x800, 160 dpi mdpi, 3 GB RAM, Android 15 (API 35) Google APIs Tablet x86_64. Mime la tablette cheap Uber Eats pour ne pas se mentir sur les perfs.
+
+Créé via Android Studio → Device Manager → New hardware profile. Hardware accel = WHPX (HAXM mort, AEHD sunset déc 2026).
+
+## Troubleshooting
+
+| Symptôme                                                          | Fix                                                                                                    |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `adb devices` vide alors que l'émulateur tourne                   | Attendre fin du boot, ou `adb kill-server; adb start-server`                                           |
+| "Could not connect to dev server" dans le dev client              | Ouvrir manuellement `http://10.0.2.2:8081` dans le dev client                                          |
+| Build EAS sort un AAB au lieu d'APK                               | Vérifier que le profil utilisé a `developmentClient: true` ou `distribution: internal` dans `eas.json` |
+| App s'installe mais bundle ID anti-attendu (`com.testmonorepo.*`) | Build pré-renaming `kitchen-boost`, refaire `eas build --platform android --profile development`       |
+| Émulateur lent au boot                                            | Première fois = cold boot (1-3 min), ensuite snapshot (~15s)                                           |

@@ -4,16 +4,18 @@ import { APP_NAME, APP_SLUG } from "@packages/shared";
 const IS_DEV = process.env.APP_VARIANT === "development";
 const IS_PREVIEW = process.env.APP_VARIANT === "preview";
 
+const BUNDLE_SLUG = APP_SLUG.replace(/-/g, "");
+
 const getUniqueIdentifier = () => {
   if (IS_DEV) {
-    return `com.${APP_SLUG}.dev`;
+    return `com.${BUNDLE_SLUG}.dev`;
   }
 
   if (IS_PREVIEW) {
-    return `com.${APP_SLUG}.preview`;
+    return `com.${BUNDLE_SLUG}.preview`;
   }
 
-  return `com.${APP_SLUG}`;
+  return `com.${BUNDLE_SLUG}`;
 };
 
 const getAppName = () => {
@@ -98,8 +100,14 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     reactCompiler: true,
   },
   owner: "nativesquare-expo",
+  updates: {
+    url: "https://u.expo.dev/9e87235c-b8c1-458f-9339-a6dfb2fdb15f",
+  },
   extra: {
     router: {},
+    eas: {
+      projectId: "9e87235c-b8c1-458f-9339-a6dfb2fdb15f",
+    },
     /**
      * #394 — `criticalIndex` of the « couche OTA » of the boot force-update
      * gate (PRD 20 §13 + [ADR 0017](../../docs/adr/0017-force-update-expo-pattern-deux-couches.md)).
