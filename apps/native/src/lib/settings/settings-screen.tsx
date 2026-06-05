@@ -498,6 +498,7 @@ export function SettingsScreen(): React.ReactElement {
         title="Se déconnecter"
         description="Tu devras te reconnecter pour accéder à ton compte."
         confirmLabel="Se déconnecter"
+        destructive
         onConfirm={handleLogout}
       />
 

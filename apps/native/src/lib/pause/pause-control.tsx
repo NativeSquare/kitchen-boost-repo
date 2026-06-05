@@ -143,17 +143,19 @@ export function PauseControl(): React.ReactElement | null {
             </Text>
           </View>
         </View>
+        {/* Action POSITIVE — reprendre = green KB (palette CLAUDE.md). */}
         <Button
-          variant="outline"
           size="sm"
           onPress={handleResume}
           disabled={submitting !== null}
           accessibilityLabel="Reprendre maintenant"
         >
           {submitting === "clear" ? (
-            <ActivityIndicator />
+            <ActivityIndicator color="white" />
           ) : (
-            <Text>Reprendre</Text>
+            <Text className="text-primary-foreground font-semibold">
+              Reprendre
+            </Text>
           )}
         </Button>
       </View>

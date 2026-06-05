@@ -254,16 +254,17 @@ export function PrinterSettingsScreen(): React.ReactElement {
               )}
             </Button>
             {config !== null ? (
+              // Action NÉGATIVE — retrait config imprimante = rouge destructive.
               <Button
-                variant="outline"
+                variant="destructive"
                 onPress={onClear}
                 disabled={savingState !== "idle"}
                 accessibilityLabel="Retirer l'imprimante"
               >
                 {savingState === "clearing" ? (
-                  <ActivityIndicator />
+                  <ActivityIndicator color="white" />
                 ) : (
-                  <Text className="text-destructive">
+                  <Text className="text-destructive-foreground font-semibold">
                     Retirer l&apos;imprimante
                   </Text>
                 )}

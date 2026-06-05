@@ -228,17 +228,19 @@ export function ClosureControl(): React.ReactElement | null {
             </Text>
           </View>
         </View>
+        {/* Action POSITIVE — rouvrir le resto = green KB (palette CLAUDE.md). */}
         <Button
-          variant="outline"
           size="sm"
           onPress={handleReopen}
           disabled={submitting !== null}
           accessibilityLabel="Rouvrir maintenant"
         >
           {submitting === "clear" ? (
-            <ActivityIndicator />
+            <ActivityIndicator color="white" />
           ) : (
-            <Text>Rouvrir</Text>
+            <Text className="text-primary-foreground font-semibold">
+              Rouvrir
+            </Text>
           )}
         </Button>
       </View>
@@ -340,16 +342,20 @@ export function ClosureControl(): React.ReactElement | null {
               {customError !== null ? (
                 <Text className="text-destructive text-sm">{customError}</Text>
               ) : null}
+              {/* Action NÉGATIVE — fermer le resto = rouge destructive. */}
               <Button
+                variant="destructive"
                 onPress={handleSubmitCustom}
                 disabled={submitting !== null}
                 accessibilityLabel="Fermer le resto avec les dates personnalisées"
                 className="h-12"
               >
                 {submitting === "custom" ? (
-                  <ActivityIndicator />
+                  <ActivityIndicator color="white" />
                 ) : (
-                  <Text>Fermer le resto</Text>
+                  <Text className="text-destructive-foreground font-semibold">
+                    Fermer le resto
+                  </Text>
                 )}
               </Button>
             </View>
