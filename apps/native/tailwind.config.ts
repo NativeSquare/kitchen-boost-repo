@@ -1,63 +1,50 @@
 import type { Config } from "tailwindcss";
 const { hairlineWidth } = require("nativewind/theme");
 
-/**
- * NativeWind v4 + React Native does NOT resolve `hsl(var(--xxx))` at runtime
- * (CSS vars are not a native concept; the parser cannot concatenate `hsl(` +
- * a dynamic var + `)` on Hermes/iOS/Android). Result: classes like
- * `text-foreground`, `bg-primary` rendered as transparent → invisible labels
- * (visible bug on the kiosque toggle screen, #393).
- *
- * Fix: hard-code the resolved HSL light-theme values directly. Dark mode in V1
- * is out of scope (PRD §10 §13). When V2 reintroduces it, switch to the
- * `vars()` runtime API or a ThemeProvider that swaps the config.
- */
-const lightColors = {
-  border: "hsl(0 0% 89.8%)",
-  input: "hsl(0 0% 89.8%)",
-  ring: "hsl(0 0% 63%)",
-  background: "hsl(0 0% 100%)",
-  foreground: "hsl(0 0% 3.9%)",
-  primary: {
-    DEFAULT: "hsl(0 0% 9%)",
-    foreground: "hsl(0 0% 98%)",
-  },
-  secondary: {
-    DEFAULT: "hsl(0 0% 96.1%)",
-    foreground: "hsl(0 0% 9%)",
-  },
-  destructive: {
-    DEFAULT: "hsl(0 84.2% 60.2%)",
-    foreground: "hsl(0 0% 98%)",
-  },
-  muted: {
-    DEFAULT: "hsl(0 0% 96.1%)",
-    foreground: "hsl(0 0% 45.1%)",
-  },
-  accent: {
-    DEFAULT: "hsl(0 0% 96.1%)",
-    foreground: "hsl(0 0% 9%)",
-  },
-  popover: {
-    DEFAULT: "hsl(0 0% 100%)",
-    foreground: "hsl(0 0% 3.9%)",
-  },
-  card: {
-    DEFAULT: "hsl(0 0% 100%)",
-    foreground: "hsl(0 0% 3.9%)",
-  },
-};
-
 export default {
   content: ["./src/**/*.{ts,tsx}"],
   presets: [require("nativewind/preset")],
   theme: {
     extend: {
-      colors: lightColors,
+      colors: {
+        border: "hsl(var(--border))",
+        input: "hsl(var(--input))",
+        ring: "hsl(var(--ring))",
+        background: "hsl(var(--background))",
+        foreground: "hsl(var(--foreground))",
+        primary: {
+          DEFAULT: "hsl(var(--primary))",
+          foreground: "hsl(var(--primary-foreground))",
+        },
+        secondary: {
+          DEFAULT: "hsl(var(--secondary))",
+          foreground: "hsl(var(--secondary-foreground))",
+        },
+        destructive: {
+          DEFAULT: "hsl(var(--destructive))",
+          foreground: "hsl(var(--destructive-foreground))",
+        },
+        muted: {
+          DEFAULT: "hsl(var(--muted))",
+          foreground: "hsl(var(--muted-foreground))",
+        },
+        accent: {
+          DEFAULT: "hsl(var(--accent))",
+          foreground: "hsl(var(--accent-foreground))",
+        },
+        popover: {
+          DEFAULT: "hsl(var(--popover))",
+          foreground: "hsl(var(--popover-foreground))",
+        },
+        card: {
+          DEFAULT: "hsl(var(--card))",
+          foreground: "hsl(var(--card-foreground))",
+        },
+      },
       borderRadius: {
-        lg: "0.625rem",
-        md: "calc(0.625rem - 2px)",
-        sm: "calc(0.625rem - 4px)",
+        lg: "var(--radius)",
+        md: "calc(var(--radius) - 2px)",
+        sm: "calc(var(--radius) - 4px)",
       },
       borderWidth: {
         hairline: hairlineWidth(),
