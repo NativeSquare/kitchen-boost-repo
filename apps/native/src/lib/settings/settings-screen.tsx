@@ -321,7 +321,7 @@ export function SettingsScreen(): React.ReactElement {
         contentContainerClassName="p-4 pb-10 sm:p-6 gap-5"
         contentInsetAdjustmentBehavior="automatic"
       >
-        <View className="w-full max-w-2xl self-center gap-6">
+        <View className="gap-6">
           <Text variant="h3" className="text-left">
             Réglages
           </Text>
