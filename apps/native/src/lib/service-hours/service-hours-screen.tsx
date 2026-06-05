@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Text } from "@/components/ui/text";
 import { useActiveTenantId } from "@/lib/tenant-switcher";
+import { notifyAction } from "@/lib/toast";
 import { getConvexErrorMessage } from "@/utils/getConvexErrorMessage";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "@packages/backend/convex/_generated/api";
@@ -225,10 +226,7 @@ export function ServiceHoursScreen(): React.ReactElement {
             )
           : draft;
       await setHours({ tenantId, windows: payload });
-      Alert.alert(
-        "Horaires enregistrés",
-        "La grille sera prise en compte côté client immédiatement.",
-      );
+      notifyAction("serviceHours.save");
     } catch (error) {
       Alert.alert(
         "Impossible d'enregistrer les horaires",

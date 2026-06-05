@@ -1,5 +1,6 @@
 import "@/lib/nativewind-interop";
 import { ThemeStatusBar } from "@/lib/theme-status-bar";
+import { TOAST_CONFIG } from "@/lib/toast";
 import { useDeviceId } from "@/hooks/use-device-id";
 import { ConnectionLostGate } from "@/lib/connection-lost";
 import { ForceUpdateGate } from "@/lib/force-update";
@@ -23,6 +24,7 @@ import { ActivityIndicator, Alert, Platform, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import Toast from "react-native-toast-message";
 import "./global.css";
 
 if (!process.env.EXPO_PUBLIC_CONVEX_URL) {
@@ -102,6 +104,16 @@ export default function RootLayout() {
                     <ThemeStatusBar />
                     <RootStack />
                     <PortalHost />
+                    {/*
+                     * Toast must sit AT THE BOTTOM of the tree (rendered
+                     * last, on top of every Modal / Dialog / BottomSheet) so
+                     * the « Commande acceptée » top-center pill is visible
+                     * even when a workflow mutation completes from inside the
+                     * Refuse dialog or a closure bottom sheet. Custom render
+                     * config is the closed `positive` / `destructive` pair
+                     * defined in `lib/toast/toast-config.tsx`.
+                     */}
+                    <Toast config={TOAST_CONFIG} />
                   </SafeAreaProvider>
                 </BottomSheetModalProvider>
               </GestureHandlerRootView>

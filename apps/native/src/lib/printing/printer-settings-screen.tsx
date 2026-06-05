@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Text } from "@/components/ui/text";
 import { useActiveTenantId } from "@/lib/tenant-switcher";
+import { notifyAction } from "@/lib/toast";
 import { getConvexErrorMessage } from "@/utils/getConvexErrorMessage";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "@packages/backend/convex/_generated/api";
@@ -101,6 +102,7 @@ export function PrinterSettingsScreen(): React.ReactElement {
     setFeedback(null);
     try {
       await setMutation({ tenantId, starWebPrntUrl: decision.displayUrl });
+      notifyAction("printer.save");
       setFeedback({
         kind: "ok",
         message: "URL imprimante enregistrée.",
@@ -124,6 +126,7 @@ export function PrinterSettingsScreen(): React.ReactElement {
         timeoutMs: 5_000,
       });
       if (verdict.kind === "ok") {
+        notifyAction("printer.testOk");
         setFeedback({
           kind: "ok",
           message: "Ticket de test envoyé — vérifie l'imprimante.",
@@ -159,6 +162,7 @@ export function PrinterSettingsScreen(): React.ReactElement {
             setSavingState("clearing");
             try {
               await clearMutation({ tenantId });
+              notifyAction("printer.remove");
               setInput("");
               setFeedback({
                 kind: "ok",

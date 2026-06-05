@@ -2,6 +2,7 @@ import { BottomSheetModal } from "@/components/custom/bottom-sheet";
 import { Button } from "@/components/ui/button";
 import { Text } from "@/components/ui/text";
 import { useActiveTenantId } from "@/lib/tenant-switcher";
+import { notifyAction } from "@/lib/toast";
 import { getConvexErrorMessage } from "@/utils/getConvexErrorMessage";
 import { Ionicons } from "@expo/vector-icons";
 import { BottomSheetModal as GorhomBottomSheetModal } from "@gorhom/bottom-sheet";
@@ -101,6 +102,9 @@ export function PauseControl(): React.ReactElement | null {
     try {
       const until = computePauseUntil(Date.now(), durationMin);
       await setPause({ tenantId, until });
+      notifyAction("availability.pause", {
+        detail: `Reprise auto à ${formatPauseEta(until)}`,
+      });
       sheetRef.current?.dismiss();
     } catch (error) {
       Alert.alert(
@@ -117,6 +121,7 @@ export function PauseControl(): React.ReactElement | null {
     setSubmitting("clear");
     try {
       await clearPause({ tenantId });
+      notifyAction("availability.resume");
     } catch (error) {
       Alert.alert("Impossible de lever la pause", getConvexErrorMessage(error));
     } finally {

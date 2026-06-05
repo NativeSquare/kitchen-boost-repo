@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Text } from "@/components/ui/text";
 import { useActiveTenantId } from "@/lib/tenant-switcher";
+import { notifyAction } from "@/lib/toast";
 import { getConvexErrorMessage } from "@/utils/getConvexErrorMessage";
 import { Ionicons } from "@expo/vector-icons";
 import { BottomSheetModal as GorhomBottomSheetModal } from "@gorhom/bottom-sheet";
@@ -152,6 +153,9 @@ export function ClosureControl(): React.ReactElement | null {
         from: window.from,
         until: window.until,
       });
+      notifyAction("availability.close", {
+        detail: `Jusqu'au ${formatClosureUntilDate(window.until)}`,
+      });
       sheetRef.current?.dismiss();
     } catch (error) {
       Alert.alert(
@@ -183,6 +187,9 @@ export function ClosureControl(): React.ReactElement | null {
     setSubmitting("custom");
     try {
       await setClosure({ tenantId, from: fromMs, until: untilMs });
+      notifyAction("availability.close", {
+        detail: `Jusqu'au ${formatClosureUntilDate(untilMs)}`,
+      });
       sheetRef.current?.dismiss();
     } catch (error) {
       Alert.alert(
@@ -199,6 +206,7 @@ export function ClosureControl(): React.ReactElement | null {
     setSubmitting("clear");
     try {
       await clearClosure({ tenantId });
+      notifyAction("availability.reopen");
     } catch (error) {
       Alert.alert(
         "Impossible de rouvrir le resto",

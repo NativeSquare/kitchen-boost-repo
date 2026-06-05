@@ -19,6 +19,7 @@ import {
 } from "@/lib/orders";
 import type { OrderMode } from "@packages/backend/convex/lib/orders";
 import { printOrderTicket } from "@/lib/printing";
+import { notifyAction, notifyWorkflowAction } from "@/lib/toast";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "@packages/backend/convex/_generated/api";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
@@ -224,6 +225,7 @@ export default function OrderDetailScreen() {
           tenantId: activeTenantId,
           orderId: order._id,
         });
+        notifyWorkflowAction("acknowledge", order.mode);
         // #412 — auto-print right after the mutation commits. Fire-and-
         // forget: a failure here is surfaced through a toast but does NOT
         // throw — the cmd is `en préparation` regardless of the printer.
@@ -233,11 +235,13 @@ export default function OrderDetailScreen() {
           tenantId: activeTenantId,
           orderId: order._id,
         });
+        notifyWorkflowAction("markPrepared", order.mode);
       } else if (buttonDecision.action === "markHandedOff") {
         await markHandedOff({
           tenantId: activeTenantId,
           orderId: order._id,
         });
+        notifyWorkflowAction("markHandedOff", order.mode);
       }
     } catch (err) {
       Alert.alert("Erreur", getConvexErrorMessage(err));
@@ -284,6 +288,7 @@ export default function OrderDetailScreen() {
         // l'utilisateur a saisi un texte). Le backend re-trim + re-valide.
         ...(customReason !== undefined ? { customReason } : {}),
       });
+      notifyAction("workflow.refuse");
       // The order is now `refusée` — pop the screen so the kiosque returns to
       // the home (the refused order is filtered out of the live queue and
       // surfaces in the history #417, not on the home).
