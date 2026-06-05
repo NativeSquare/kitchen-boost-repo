@@ -135,7 +135,7 @@ _(parcours ajoutés au fil des merges)_
 
 ## KBO-CMD — Commandes happy path
 
-> **Statut** : 🟡 **1/2 validés le 2026-06-05** — KBO-CMD1 PASS (#401 direct livraison). #402 (click & collect) à tester ensuite. Fix livré pendant le run : `587de17` exclude `remise` de la home queue côté V1 (sans webhook Uber Direct, sinon la cmd reste éternellement visible).
+> **Statut** : ✅ **2/2 validés le 2026-06-05** — KBO-CMD1 PASS (#401 direct livraison) + KBO-CMD2 PASS (#402 click & collect). Fix livré pendant le run : `587de17` exclude `remise` de la home queue côté V1 (sans webhook Uber Direct, sinon la cmd reste éternellement visible). Fix transverse livré pendant la session : `83b0a7c` pin `@react-navigation/drawer ~7.9.4` (le `^7.10.3` installé par la refonte drawer crashait l'app au boot — `Element type is invalid Screen` car expo-router SDK 55 attend strictement `~7.9.4`).
 
 ### KBO-CMD1 — Réception live + workflow direct livraison (#401)
 
@@ -153,9 +153,22 @@ _(parcours ajoutés au fil des merges)_
   - Aucun crash, aucun "Mode déconnecté" rouge pendant le run
 - **Couvre** : #401 (réception Convex sub + workflow delivery + transitions backend + fade out V1)
 
-### KBO-CMD2 — Click & collect (#402) — à tester après refonte UI
+### KBO-CMD2 — Click & collect (#402)
 
-_(seed prêt : `npx convex run e2e:seedE2EKBOrdersNouvelleCmd '{"mode":"pickup"}'`)_
+- **Acteur** : KB Manager (`manager@kb.test`) en mode kiosque sur `test-t1`
+- **Pré-requis** : KBO-A4 PASS, home native vide. Seed : `npx convex run e2e:seedE2EKBOrdersNouvelleCmd '{"mode":"pickup"}'` depuis `packages/backend` — insère 1 cmd `nouvelle` (burger + 2 frites, 27,50 €, mode pickup, customer **David**, **pas d'adresse**).
+- **Étapes** :
+  1. Observer la home native — la card cmd arrive EN LIVE via Convex sub (< 5s sans refresh)
+  2. Tap card → detail screen (items frozen visibles, marqueur "À emporter" / pickup, pas d'adresse de livraison)
+  3. Tap **"Accepter / Préparer"** → status `en préparation`
+  4. Tap **"Prête"** → status `prête`
+  5. Tap le bouton terminal pickup → status `collectée` (label différent de delivery, transition direct en terminal, pas via `remise`)
+- **Attendu** :
+  - Réception live sans refresh, transitions instantanées
+  - Detail screen conforme mode pickup (pas d'adresse, marqueur visuel)
+  - Status terminal `collectée` (pas `remise` — `remise` est réservé au mode delivery en attente du webhook Uber Direct V2)
+  - Card fade out de la home après `collectée`
+- **Couvre** : #402 (workflow pickup + transitions backend + fade out V1 + distinction visuelle delivery vs pickup)
 
 ---
 
@@ -203,3 +216,9 @@ _(parcours ajoutés au fil des merges. Note : ces 4 issues touchent `apps/admin`
 - **Rejeté** : test isolé "vérification absence boutons Google/social" du sign-in form après cleanup `762bd23` — intégré comme AC visuel dans KBO-A1 sans parcours dédié.
 - **Hors curation, dette ouverte** : bug rendering `<Button>` + `<Text>` custom avec override padding `py-6` sur écran kiosque toggle. Bypass shipped (`157f481`) avec `Pressable` + `RNText` natif. Cause non identifiée. À traiter hors session de test.
 - **Hors curation, doc complémentaire** : `docs/native/emulator-tls-fix.md` — sync clock émulateur Android pour éviter "Chain validation failed" sur WebSocket Convex. Pré-requis transverse à tous les parcours.
+
+### 2026-06-05 (suite) — KBO-CMD2 + refonte UI drawer/tabs
+
+- **KBO-CMD2 PASS** — click & collect (#402) — workflow pickup validé bout en bout sur Lenovo Tab M8. Transition terminale en `collectée` (vs `remise` pour delivery) OK, card fade out de la home après terminal, detail screen pickup sans adresse OK.
+- **Fix transverse pendant la session** : `83b0a7c` pin `@react-navigation/drawer ~7.9.4`. La refonte UI (commit `08cd473`) avait installé `^7.10.3` (latest npm), incompatible avec `expo-router` SDK 55 qui exige strictement `~7.9.4`. Résolvait `Screen` à `undefined` via la chaîne `@react-navigation/elements@2.9.x` transitif → crash boot `Element type is invalid`. Lockfile re-résolu, cleanup `node_modules` corrompu (`*_tmp_*` orphelins de pnpm installs interrompus par Metro qui watchait).
+- **Refonte UI** : `(tabs)/_layout.tsx` flippe maintenant entre `Drawer` (tablette/kiosque) et `NativeTabs` (téléphone) via `useFormFactorShell()`. 4 sections (Accueil / Historique / Stats / Paramètres). Drawer rétractable (`drawerType: "front"`). Quick stats sortis de l'Historique vers la section Stats dédiée. Settings `Ouverture & horaires` regroupe pause/fermeture/dispo items/horaires (précédemment éparpillés sur le home).
