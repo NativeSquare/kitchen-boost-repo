@@ -1,4 +1,5 @@
-import { SocialConnections } from "@/components/blocks/social-connections";
+// V1 KB Orders : auth invite-only, pas de social sign-in. Réactivable en V2.
+// import { SocialConnections } from "@/components/blocks/social-connections";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -9,7 +10,8 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
+// V1 KB Orders : pas de signup public → plus de séparateur "or" avant les social buttons.
+// import { Separator } from "@/components/ui/separator";
 import { Text } from "@/components/ui/text";
 import { getConvexErrorMessage } from "@/utils/getConvexErrorMessage";
 import { SignInSchema } from "@/validation/auth";
@@ -72,7 +74,7 @@ export function SignInForm() {
     if (user.banned) {
       if (!user.banExpires || user.banExpires > Date.now()) {
         setFormError(
-          "Your account has been suspended. Contact support for assistance."
+          "Your account has been suspended. Contact support for assistance.",
         );
         return;
       }
@@ -167,35 +169,41 @@ export function SignInForm() {
             </View>
             <Button className="w-full" onPress={onSubmit} disabled={isLoading}>
               {isLoading ? (
-                <ActivityIndicator color={colorScheme === "dark" ? "black" : "white"} />
+                <ActivityIndicator
+                  color={colorScheme === "dark" ? "black" : "white"}
+                />
               ) : (
                 <Text>Continue</Text>
               )}
             </Button>
           </View>
-          <View className="flex flex-row items-center justify-center">
-            <Text className="text-center text-sm text-md font-medium">
-              Don&apos;t have an account?{" "}
-            </Text>
-            <Button
-              variant={"link"}
-              size={"sm"}
-              className="text-md font-medium"
-              onPress={() => {
-                router.navigate("/sign-up");
-              }}
-            >
-              <Text className="text-sm underline underline-offset-4">
-                Sign Up
+          {/*
+            V1 KB Orders : auth invite-only, pas de social sign-in.
+            Réactivable en V2 quand on ouvrira un signup public.
+            <View className="flex flex-row items-center justify-center">
+              <Text className="text-center text-sm text-md font-medium">
+                Don&apos;t have an account?{" "}
               </Text>
-            </Button>
-          </View>
-          <View className="flex-row items-center">
-            <Separator className="flex-1" />
-            <Text className="text-muted-foreground px-4 text-sm">or</Text>
-            <Separator className="flex-1" />
-          </View>
-          <SocialConnections setError={setFormError} />
+              <Button
+                variant={"link"}
+                size={"sm"}
+                className="text-md font-medium"
+                onPress={() => {
+                  router.navigate("/sign-up");
+                }}
+              >
+                <Text className="text-sm underline underline-offset-4">
+                  Sign Up
+                </Text>
+              </Button>
+            </View>
+            <View className="flex-row items-center">
+              <Separator className="flex-1" />
+              <Text className="text-muted-foreground px-4 text-sm">or</Text>
+              <Separator className="flex-1" />
+            </View>
+            <SocialConnections setError={setFormError} />
+          */}
         </CardContent>
       </Card>
     </View>
