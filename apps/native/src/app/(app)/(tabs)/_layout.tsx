@@ -1,7 +1,8 @@
 import { useFormFactorShell } from "@/lib/form-factor";
+import { Ionicons } from "@expo/vector-icons";
+import { DrawerToggleButton } from "@react-navigation/drawer";
 import { Drawer } from "expo-router/drawer";
 import { NativeTabs } from "expo-router/unstable-native-tabs";
-import { Ionicons } from "@expo/vector-icons";
 
 /**
  * KB Orders top-level shell — drawer-on-tablet OR bottom-tabs-on-phone.
@@ -12,11 +13,14 @@ import { Ionicons } from "@expo/vector-icons";
  * `stats`, `account`). The file system is unique ; only the chrome
  * (drawer vs tabs) differs.
  *
- *  - **Drawer** (tablet kiosque + ≥ 768px viewports) — persistent left
- *    drawer (PRD 20 §12 — la cuisine est posée sur le comptoir, le menu
- *    de navigation doit être lisible à un bras de distance). `drawerType:
- *    "permanent"` garde le drawer toujours visible, jamais rétracté.
- *    Brief : « toujours visible, pas rétractable en V1 ».
+ *  - **Drawer** (tablet kiosque + ≥ 768px viewports) — drawer rétractable
+ *    standard (`drawerType: "front"`). Fermé par défaut, ouvrable via
+ *    bouton hamburger en header (gauche) ET via swipe depuis le bord
+ *    gauche (geste natif Material 3 / iOS). Overlay sur le contenu avec
+ *    scrim. Choix `front` plutôt que `slide` ou `permanent` : pattern le
+ *    plus standard react-navigation, identique à 99% des apps Android/iOS
+ *    avec drawer, n'amputaire pas la largeur utile du contenu sur tablette
+ *    portrait.
  *  - **NativeTabs** (téléphone, KB Manager en mobilité) — bottom tabs
  *    natives via `expo-router/unstable-native-tabs` (déjà câblé par
  *    #393, on étend de 2 à 4 entries alignées avec le drawer).
@@ -55,13 +59,25 @@ function DrawerShell() {
   return (
     <Drawer
       screenOptions={{
-        headerShown: false,
-        // `permanent` keeps the drawer always visible on screens ≥ a
-        // threshold ; combined with our form-factor gate (only mounted
-        // when width ≥ 768 OR kiosque), the drawer is effectively
-        // always-visible on a tablet. PRD 20 brief : « toujours visible,
-        // pas rétractable en V1 ».
-        drawerType: "permanent",
+        // Header minimal natif avec bouton hamburger à gauche (pattern
+        // react-navigation standard via `DrawerToggleButton`). Le titre
+        // de chaque section est défini par `options.title` sur chaque
+        // `Drawer.Screen` ci-dessous.
+        headerShown: true,
+        headerLeft: () => <DrawerToggleButton tintColor="#1B7A3D" />,
+        headerTitleStyle: {
+          fontSize: 18,
+          fontWeight: "600",
+          color: "#111111",
+        },
+        headerStyle: {
+          backgroundColor: "#ffffff",
+        },
+        headerTintColor: "#1B7A3D",
+        // `front` = drawer rétractable standard : fermé par défaut,
+        // overlay le contenu avec scrim, ouvrable via hamburger button
+        // OU swipe depuis le bord gauche (geste natif).
+        drawerType: "front",
         drawerStyle: {
           width: 240,
         },
@@ -79,6 +95,7 @@ function DrawerShell() {
       <Drawer.Screen
         name="index"
         options={{
+          title: "Accueil",
           drawerLabel: "Accueil",
           drawerIcon: ({ color, size }) => (
             <Ionicons name="home-outline" size={size} color={color} />
@@ -88,6 +105,7 @@ function DrawerShell() {
       <Drawer.Screen
         name="history"
         options={{
+          title: "Historique",
           drawerLabel: "Historique",
           drawerIcon: ({ color, size }) => (
             <Ionicons name="time-outline" size={size} color={color} />
@@ -97,6 +115,7 @@ function DrawerShell() {
       <Drawer.Screen
         name="stats"
         options={{
+          title: "Stats",
           drawerLabel: "Stats",
           drawerIcon: ({ color, size }) => (
             <Ionicons name="stats-chart-outline" size={size} color={color} />
@@ -106,6 +125,7 @@ function DrawerShell() {
       <Drawer.Screen
         name="account"
         options={{
+          title: "Paramètres",
           drawerLabel: "Paramètres",
           drawerIcon: ({ color, size }) => (
             <Ionicons name="settings-outline" size={size} color={color} />
