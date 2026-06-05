@@ -16,6 +16,7 @@ import {
   decideWorkflowButton,
   type RefusalReason,
 } from "@/lib/orders";
+import type { OrderMode } from "@packages/backend/convex/lib/orders";
 import { printOrderTicket } from "@/lib/printing";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "@packages/backend/convex/_generated/api";
@@ -531,19 +532,37 @@ export default function OrderDetailScreen() {
           (accept vs refuse) at a glance; on `en préparation` / `prête` the
           Refuser button is still surfaced (the cost-of-error gate lives in
           the dialog's 3-step flow, not in button hiding). On terminal
-          states no button is rendered at all. */}
+          states no button is rendered at all.
+
+          Visual i18n (cf. session prompt) — Ionicons précèdent chaque label
+          pour que les restaurateurs non-francophones puissent reconnaître
+          l'action sans lire le texte FR. L'icône reflète l'action :
+            - Accepter / Préparer  → restaurant-outline (cuisine commence)
+            - Prête                → checkmark-done-outline (terminée côté cuisine)
+            - Remise au coursier   → bicycle-outline (livraison)
+            - Remise au client / Collectée → bag-handle-outline (pickup)
+            - Refuser              → close-circle-outline (refus rouge plein)
+
+          Le bouton « Refuser » passe en variant `destructive` (rouge plein +
+          texte blanc) — actions destructives = rouge, aligné avec les autres
+          surfaces (closure « Fermer le resto », printer « Retirer »,
+          confirmation « Confirmer le refus + refund »). Le naming reste
+          `destructive` (NE PAS renommer en `alert`). */}
       {buttonDecision.kind === "show" ? (
         <View className="flex-row items-center gap-2">
           {refuseButton.kind === "show" ? (
             <Button
               size="lg"
-              variant="outline"
+              variant="destructive"
               onPress={() => setRefuseDialogOpen(true)}
               disabled={busy || refusing}
               accessibilityLabel={refuseButton.label}
               className="flex-1"
             >
-              <Text className="font-semibold">{refuseButton.label}</Text>
+              <Ionicons name="close-circle-outline" size={18} color="white" />
+              <Text className="text-destructive-foreground font-semibold">
+                {refuseButton.label}
+              </Text>
             </Button>
           ) : null}
           <Button
@@ -556,9 +575,19 @@ export default function OrderDetailScreen() {
             {busy ? (
               <ActivityIndicator color="white" />
             ) : (
-              <Text className="text-primary-foreground font-semibold">
-                {buttonDecision.label}
-              </Text>
+              <>
+                <Ionicons
+                  name={decideWorkflowButtonIcon(
+                    buttonDecision.action,
+                    order.mode,
+                  )}
+                  size={18}
+                  color="white"
+                />
+                <Text className="text-primary-foreground font-semibold">
+                  {buttonDecision.label}
+                </Text>
+              </>
             )}
           </Button>
         </View>
@@ -603,6 +632,34 @@ export default function OrderDetailScreen() {
  * `reason` value) does not silently fall back to "Autre" — the unknown
  * value passes through this filter and the card stays hidden.
  */
+/**
+ * Map a workflow action + mode to the matching Ionicon name. Visual i18n
+ * mirror of `decideWorkflowButton` — the icon must speak for itself for the
+ * non-francophone restaurateurs the session prompt mentions.
+ *
+ *   acknowledge    → restaurant-outline (cuisine commence)
+ *   markPrepared   → checkmark-done-outline (terminée côté cuisine)
+ *   markHandedOff (delivery) → bicycle-outline
+ *   markHandedOff (pickup)   → bag-handle-outline
+ *
+ * Choix `restaurant-outline` plutôt que `play-outline` pour « Accepter /
+ * Préparer » : un toque de chef = cuisine qui démarre, plus reconnaissable
+ * qu'un play générique (qui pourrait évoquer de la vidéo ou audio).
+ */
+function decideWorkflowButtonIcon(
+  action: "acknowledge" | "markPrepared" | "markHandedOff",
+  mode: OrderMode,
+): keyof typeof Ionicons.glyphMap {
+  switch (action) {
+    case "acknowledge":
+      return "restaurant-outline";
+    case "markPrepared":
+      return "checkmark-done-outline";
+    case "markHandedOff":
+      return mode === "delivery" ? "bicycle-outline" : "bag-handle-outline";
+  }
+}
+
 function deriveRefusalReasonLabelFromEvents(
   events: { status: string; reason?: string }[],
 ): string | null {

@@ -143,7 +143,8 @@ export function PauseControl(): React.ReactElement | null {
             </Text>
           </View>
         </View>
-        {/* Action POSITIVE — reprendre = green KB (palette CLAUDE.md). */}
+        {/* Action POSITIVE — reprendre = green KB (palette CLAUDE.md).
+            Icône play = lecture / reprise, reconnaissable internationalement. */}
         <Button
           size="sm"
           onPress={handleResume}
@@ -153,9 +154,12 @@ export function PauseControl(): React.ReactElement | null {
           {submitting === "clear" ? (
             <ActivityIndicator color="white" />
           ) : (
-            <Text className="text-primary-foreground font-semibold">
-              Reprendre
-            </Text>
+            <>
+              <Ionicons name="play-outline" size={16} color="white" />
+              <Text className="text-primary-foreground font-semibold">
+                Reprendre
+              </Text>
+            </>
           )}
         </Button>
       </View>

@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Text } from "@/components/ui/text";
+import { Ionicons } from "@expo/vector-icons";
 import { useReducer } from "react";
 import { ActivityIndicator, Pressable, View } from "react-native";
 import {
@@ -134,6 +135,7 @@ export function RefuseDialog({
                 disabled={busy}
                 accessibilityLabel="Retour"
               >
+                <Ionicons name="arrow-back-outline" size={18} color="#111111" />
                 <Text>Retour</Text>
               </Button>
               <Button
@@ -151,9 +153,12 @@ export function RefuseDialog({
                 {busy ? (
                   <ActivityIndicator color="white" />
                 ) : (
-                  <Text className="text-destructive-foreground font-semibold">
-                    Confirmer le refus + refund
-                  </Text>
+                  <>
+                    <Ionicons name="warning-outline" size={18} color="white" />
+                    <Text className="text-destructive-foreground font-semibold">
+                      Confirmer le refus + refund
+                    </Text>
+                  </>
                 )}
               </Button>
             </DialogFooter>
@@ -201,6 +206,7 @@ export function RefuseDialog({
                 disabled={busy}
                 accessibilityLabel="Retour"
               >
+                <Ionicons name="arrow-back-outline" size={18} color="#111111" />
                 <Text>Retour</Text>
               </Button>
               <Button
@@ -214,6 +220,11 @@ export function RefuseDialog({
                 <Text className="text-primary-foreground font-semibold">
                   Continuer
                 </Text>
+                <Ionicons
+                  name="arrow-forward-outline"
+                  size={18}
+                  color="white"
+                />
               </Button>
             </DialogFooter>
           </>
@@ -246,6 +257,7 @@ export function RefuseDialog({
                 }}
                 accessibilityLabel="Retour"
               >
+                <Ionicons name="arrow-back-outline" size={18} color="#111111" />
                 <Text>Retour</Text>
               </Button>
               <Button
@@ -255,6 +267,11 @@ export function RefuseDialog({
                 <Text className="text-primary-foreground font-semibold">
                   Continuer
                 </Text>
+                <Ionicons
+                  name="arrow-forward-outline"
+                  size={18}
+                  color="white"
+                />
               </Button>
             </DialogFooter>
           </>
@@ -301,6 +318,7 @@ export function RefuseDialog({
                 disabled={busy}
                 accessibilityLabel="Retour"
               >
+                <Ionicons name="arrow-back-outline" size={18} color="#111111" />
                 <Text>Retour</Text>
               </Button>
               <Button
@@ -319,9 +337,12 @@ export function RefuseDialog({
                 {busy ? (
                   <ActivityIndicator color="white" />
                 ) : (
-                  <Text className="text-destructive-foreground font-semibold">
-                    Confirmer le refus + refund
-                  </Text>
+                  <>
+                    <Ionicons name="warning-outline" size={18} color="white" />
+                    <Text className="text-destructive-foreground font-semibold">
+                      Confirmer le refus + refund
+                    </Text>
+                  </>
                 )}
               </Button>
             </DialogFooter>
@@ -347,8 +368,13 @@ export function RefuseDialog({
                   accessibilityLabel={`Motif : ${decideRefusalReasonLabel(
                     reason,
                   )}`}
-                  className="border-border rounded-md border bg-background px-4 py-4 active:bg-muted"
+                  className="border-border flex-row items-center gap-3 rounded-md border bg-background px-4 py-4 active:bg-muted"
                 >
+                  <Ionicons
+                    name={decideRefusalReasonIcon(reason)}
+                    size={22}
+                    color="#111111"
+                  />
                   <Text className="text-foreground text-base font-medium">
                     {decideRefusalReasonLabel(reason)}
                   </Text>
@@ -364,6 +390,7 @@ export function RefuseDialog({
                 }}
                 accessibilityLabel="Annuler"
               >
+                <Ionicons name="close-outline" size={18} color="#111111" />
                 <Text>Annuler</Text>
               </Button>
             </DialogFooter>
@@ -372,4 +399,29 @@ export function RefuseDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+/**
+ * Map a closed-set RefusalReason to its visual cue (Ionicon name). Visual
+ * i18n mirror of `decideRefusalReasonLabel` — pour les restaurateurs qui ne
+ * lisent pas le FR, l'icône doit suffire à reconnaître le motif :
+ *
+ *   rupture    → cube-outline           (stock manquant, plus de pièces)
+ *   fermeture  → lock-closed-outline    (resto fermé)
+ *   surcharge  → flame-outline          (cuisine en feu / overbooked)
+ *   autre      → ellipsis-horizontal-outline (motif libre)
+ */
+function decideRefusalReasonIcon(
+  reason: RefusalReason,
+): keyof typeof Ionicons.glyphMap {
+  switch (reason) {
+    case "rupture":
+      return "cube-outline";
+    case "fermeture":
+      return "lock-closed-outline";
+    case "surcharge":
+      return "flame-outline";
+    case "autre":
+      return "ellipsis-horizontal-outline";
+  }
 }

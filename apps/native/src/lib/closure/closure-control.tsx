@@ -228,7 +228,8 @@ export function ClosureControl(): React.ReactElement | null {
             </Text>
           </View>
         </View>
-        {/* Action POSITIVE — rouvrir le resto = green KB (palette CLAUDE.md). */}
+        {/* Action POSITIVE — rouvrir le resto = green KB (palette CLAUDE.md).
+            Icône lock-open = réouverture, miroir visuel de la fermeture. */}
         <Button
           size="sm"
           onPress={handleReopen}
@@ -238,9 +239,12 @@ export function ClosureControl(): React.ReactElement | null {
           {submitting === "clear" ? (
             <ActivityIndicator color="white" />
           ) : (
-            <Text className="text-primary-foreground font-semibold">
-              Rouvrir
-            </Text>
+            <>
+              <Ionicons name="lock-open-outline" size={16} color="white" />
+              <Text className="text-primary-foreground font-semibold">
+                Rouvrir
+              </Text>
+            </>
           )}
         </Button>
       </View>
@@ -342,7 +346,9 @@ export function ClosureControl(): React.ReactElement | null {
               {customError !== null ? (
                 <Text className="text-destructive text-sm">{customError}</Text>
               ) : null}
-              {/* Action NÉGATIVE — fermer le resto = rouge destructive. */}
+              {/* Action NÉGATIVE — fermer le resto = rouge destructive.
+                  Icône cadenas fermé = fermeture, miroir de l'icône
+                  d'ouverture (`lock-open-outline`) sur le bouton « Rouvrir ». */}
               <Button
                 variant="destructive"
                 onPress={handleSubmitCustom}
@@ -353,9 +359,16 @@ export function ClosureControl(): React.ReactElement | null {
                 {submitting === "custom" ? (
                   <ActivityIndicator color="white" />
                 ) : (
-                  <Text className="text-destructive-foreground font-semibold">
-                    Fermer le resto
-                  </Text>
+                  <>
+                    <Ionicons
+                      name="lock-closed-outline"
+                      size={18}
+                      color="white"
+                    />
+                    <Text className="text-destructive-foreground font-semibold">
+                      Fermer le resto
+                    </Text>
+                  </>
                 )}
               </Button>
             </View>

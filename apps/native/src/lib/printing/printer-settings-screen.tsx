@@ -236,9 +236,12 @@ export function PrinterSettingsScreen(): React.ReactElement {
               {savingState === "saving" ? (
                 <ActivityIndicator />
               ) : (
-                <Text className="text-primary-foreground font-semibold">
-                  Enregistrer
-                </Text>
+                <>
+                  <Ionicons name="save-outline" size={18} color="white" />
+                  <Text className="text-primary-foreground font-semibold">
+                    Enregistrer
+                  </Text>
+                </>
               )}
             </Button>
             <Button
@@ -250,11 +253,15 @@ export function PrinterSettingsScreen(): React.ReactElement {
               {savingState === "testing" ? (
                 <ActivityIndicator />
               ) : (
-                <Text>Tester l&apos;impression</Text>
+                <>
+                  <Ionicons name="print-outline" size={18} color="#111111" />
+                  <Text>Tester l&apos;impression</Text>
+                </>
               )}
             </Button>
             {config !== null ? (
               // Action NÉGATIVE — retrait config imprimante = rouge destructive.
+              // Icône poubelle = suppression / retrait, reconnaissable.
               <Button
                 variant="destructive"
                 onPress={onClear}
@@ -264,9 +271,12 @@ export function PrinterSettingsScreen(): React.ReactElement {
                 {savingState === "clearing" ? (
                   <ActivityIndicator color="white" />
                 ) : (
-                  <Text className="text-destructive-foreground font-semibold">
-                    Retirer l&apos;imprimante
-                  </Text>
+                  <>
+                    <Ionicons name="trash-outline" size={18} color="white" />
+                    <Text className="text-destructive-foreground font-semibold">
+                      Retirer l&apos;imprimante
+                    </Text>
+                  </>
                 )}
               </Button>
             ) : null}
@@ -323,6 +333,7 @@ export function PrinterSettingsScreen(): React.ReactElement {
         onPress={() => router.back()}
         accessibilityLabel="Retour"
       >
+        <Ionicons name="arrow-back-outline" size={18} color="#111111" />
         <Text>Retour</Text>
       </Button>
     </ScrollView>
