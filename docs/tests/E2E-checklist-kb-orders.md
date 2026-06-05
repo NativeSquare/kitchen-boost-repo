@@ -174,7 +174,7 @@ _(parcours ajoutés au fil des merges)_
 
 ## KBO-RJ — Refus + auto-expired
 
-> **Statut** : 🟡 0/? validés — issues couvertes #403 (TB-7 refus depuis nouvelle 2-step), #413 (TB-8 refus en prep/prête 3-step), #404 (TB-9 auto-expired timeout 5 min), ADR 0019 (refus `autre` + texte libre propagé au push).
+> **Statut** : 🟡 **1/2 PASS le 2026-06-06** — KBO-RJ1 PASS (#403 + ADR 0019 refus `autre` + customReason). Fixs livrés pendant le run : `f5be1e9` (dispatch open dialog manquant — bug latent depuis #403, masquait silencieusement les 4 motifs de refus) + Convex backend redeploy (validator `refuse` n'accepte `customReason` qu'après `npx convex dev --once`). En passant a aussi validé le **reveal téléphone client + tap-to-call** (livré `5a82340` dénormalisation `customerPhone` + composant générique `RevealableField` + ADR 0010 MOAT préservé via copie au `placeOrder`) et `ab56dc9` (seed `seedE2EKBOrdersNouvelleCmd` patché pour inclure customerPhone). KBO-RJ2 + KBO-RJ3 (#413) + KBO-RJ4 (#404) à tester ensuite. Issues couvertes #403, #413, #404, ADR 0019.
 
 ### KBO-RJ1 — Refus `autre` + custom reason → event row + push body (ADR 0019)
 
