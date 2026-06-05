@@ -1,11 +1,5 @@
 import { Text } from "@/components/ui/text";
-import { ClosureControl } from "@/lib/closure";
-import { ItemAvailabilityEntry } from "@/lib/item-availability";
-import { OrderCard, OrderHistoryEntry } from "@/lib/orders";
-import { PauseControl } from "@/lib/pause";
-import { PrinterEntry } from "@/lib/printing";
-import { QuickStats } from "@/lib/quick-stats";
-import { ServiceHoursEntry } from "@/lib/service-hours";
+import { OrderCard } from "@/lib/orders";
 import { useActiveTenantId } from "@/lib/tenant-switcher";
 import { api } from "@packages/backend/convex/_generated/api";
 import { useQuery } from "convex/react";
@@ -18,53 +12,52 @@ import {
 } from "react-native";
 
 /**
- * #401 — KB Orders home (PRD 20 §2 « Écran d'accueil cmds en cours »).
+ * KB Orders « Accueil » (PRD 20 §2 « Écran d'accueil cmds en cours »).
  *
- * Live queue of the active tenant's in-flight orders, newest first. The
- * backend `tenantOrders` query (chantier 2.3-D) excludes `en attente de
- * paiement` (invisible until paid) and every terminal state (those live in
- * the history) — the home only shows orders the kitchen is actively working.
+ * Focus opérationnel cuisine : la liste des commandes en cours DU TENANT
+ * COURANT et RIEN d'autre. Les widgets de disponibilité commerciale
+ * (pause / fermeture / dispo items / horaires), la config imprimante,
+ * les quick stats et l'entry historique vivent maintenant dans les
+ * autres sections du shell (drawer tablette OU bottom tabs téléphone) :
+ *  - « Historique » (Quick stats + écran historique 4 onglets)
+ *  - « Stats » (les 4 KPIs Quick stats)
+ *  - « Paramètres » (Ouverture & horaires + Imprimante + le reste)
  *
- * Transport (PRD 20 §13) — the Convex subscription IS the source of truth.
- * The push APNs/FCM wakeup (not implemented here, lives in the notifications
- * chantier) only reactivates the app; the cmd itself arrives via this
- * `useQuery` sub in < 5s p95 (PRD 20 AC9 transverse).
+ * Avant cette refonte, l'index empilait tout dans le même ScrollView et
+ * la cmd qui arrivait se retrouvait cachée sous 8 widgets — insupportable
+ * sur la tablette cuisine. L'Accueil est désormais le focus
+ * opérationnel : la cmd qui arrive est la première chose visible.
  *
- * Pull-to-refresh (PRD 20 §2) — kept as a « geste rassurant même si Convex
- * sub temps réel ». The Convex client doesn't expose a manual `refetch` for
- * a subscribed query (it always serves the latest server state), so the
- * pull-to-refresh is mostly a UX affordance; we toggle a short spinner to
- * acknowledge the gesture.
+ * Transport (PRD 20 §13) — la subscription Convex EST la source de vérité.
+ * Le push APNs/FCM wakeup (notifications chantier) ne sert qu'à réveiller
+ * l'app ; la cmd elle-même arrive via ce `useQuery` sub en < 5s p95
+ * (PRD 20 AC9 transverse).
  *
- * Tenant scoping (#399 + ADR 0010) — `useActiveTenantId` resolves the active
- * tenant from the device row + the session attachment list (kiosque pin
- * wins, else lastSelected, else first attached). `null` while loading or
- * when no tenant is resolvable; in that case we show a discreet empty
- * state instead of running the query.
+ * Pull-to-refresh (PRD 20 §2) — gardé comme « geste rassurant même si
+ * Convex sub temps réel ». Le client Convex n'expose pas de `refetch`
+ * manuel pour une query subscribed (il sert toujours le dernier état
+ * serveur), donc le PTR est surtout une UX affordance ; on toggle un
+ * spinner court pour acknowledger le geste.
  *
- * The `useQuery` itself is auto-scoped backend-side: `tenantQuery` keys on
- * `ctx.tenantId` resolved from the args, so a foreign tenantId would throw
- * Forbidden — but the Convex client wouldn't crash; we keep the input gated
- * on `useActiveTenantId !== null` for the cleaner "no tenant attached"
- * empty state.
+ * Tenant scoping (#399 + ADR 0010) — `useActiveTenantId` résout le tenant
+ * actif depuis le device row + la session attachment list (kiosque pin
+ * wins, else lastSelected, else first attached). `null` pendant le
+ * loading ou si aucun tenant n'est résolvable ; dans ce cas un placeholder
+ * discret remplace la liste plutôt que d'afficher un faux « 0 cmds ».
  */
-export default function Home() {
+export default function HomeScreen() {
   const activeTenantId = useActiveTenantId();
   const orders = useQuery(
     api.lib.orders.workflow.tenantOrders,
     activeTenantId !== null ? { tenantId: activeTenantId } : "skip",
   );
 
-  // Pull-to-refresh — purely cosmetic since the Convex sub already serves
-  // live state; we flip a short window so the spinner appears responsive.
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = () => {
     setRefreshing(true);
     setTimeout(() => setRefreshing(false), 400);
   };
 
-  // No tenant resolved yet (loading session/device OR kb_admin OR no
-  // attachment) — show a discreet placeholder rather than a stale "0 cmds".
   if (activeTenantId === null) {
     return (
       <View className="bg-background flex-1 items-center justify-center p-6">
@@ -76,7 +69,6 @@ export default function Home() {
     );
   }
 
-  // Convex query still in flight (first render of this tenant).
   if (orders === undefined) {
     return (
       <View className="bg-background flex-1 items-center justify-center p-6">
@@ -96,85 +88,6 @@ export default function Home() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
-      {/*
-       * #406 — Pause exceptionnelle (PRD 20 §7a + ADR 0018).
-       * Renders an entry-point pill in idle, or a « En pause jusqu'à HH:MM »
-       * badge + « Reprendre » button when a pause is active. The cmds en cours
-       * (the queue below) keep their workflow untouched — the pause only gates
-       * NEW checkouts server-side via `acceptsOrderNow`.
-       */}
-      <PauseControl />
-
-      {/*
-       * #407 — Fermeture exceptionnelle (PRD 20 §7b + ADR 0018).
-       * Sibling of `<PauseControl />` for the DURABLE 1+ day absence
-       * (vacances, panne frigo, intempéries). Idle = entry-point pill that
-       * opens a bottom sheet with quick presets (Aujourd'hui / J+1 / J+7) +
-       * custom YYYY-MM-DD. Live = rose badge « Fermé jusqu'au JJ/MM » with
-       * « Rouvrir » button. Same backend gate path as the pause — the
-       * cmds en cours queue below stays untouched, the closure only blocks
-       * NEW checkouts via `acceptsOrderNow`.
-       */}
-      <ClosureControl />
-
-      {/*
-       * #408 — Disponibilité des items (PRD 20 §7c + ADR 0018).
-       * Entry pill that navigates to `/disponibilite-items`. The list
-       * surfaces the first-usage tooltip (`ITEM_TOGGLE_TOOLTIP_TEXT`) before
-       * firing `setItemAvailability`, per the PRD-frozen pédagogie. The
-       * cmds en cours queue below stays untouched — toggling an item dispo
-       * only gates NEW cart additions / checkouts (the backend
-       * `createOrderFromCart` already rejects unavailable items at
-       * `freezeCartItem`, cart.ts §145-147).
-       */}
-      <ItemAvailabilityEntry />
-
-      {/*
-       * #409 — Horaires d'ouverture (PRD 20 §7d + ADR 0018).
-       * Entry pill that navigates to `/service-hours`. The screen exposes
-       * a toggle « Aujourd'hui » / « Cette semaine » + per-day slot editor
-       * wired to the SAME backend mutation (`serviceHours.set`) the KB
-       * Admin mirror uses (#236 / #397). Édition complète des horaires
-       * permanents (jours fériés annuels) reste KB Admin seul (ADR 0018).
-       * Les cmds en cours sur la home ne sont PAS impactées — la modif
-       * horaires ne gate que les NEW checkouts via `isOpenNow` côté PWA
-       * client (même discipline que pause / fermeture exceptionnelle).
-       */}
-      <ServiceHoursEntry />
-
-      {/*
-       * #412 — Imprimante cuisine Star WebPRNT (PRD 20 §14 + §10).
-       * Entry pill that navigates to `/printer`. The screen exposes the
-       * Star WebPRNT URL field + « Tester l'impression » + « Retirer
-       * l'imprimante » buttons wired to `api.lib.printing.printing.*`.
-       * Same state Convex partagé that KB Admin (#416) will write to
-       * (PRD 20 §14), so a change on the web admin flips the kitchen
-       * tablet live through the Convex sub.
-       */}
-      <PrinterEntry />
-
-      {/*
-       * #410 — Stats rapides V1 (PRD 20 §9).
-       * 4 KPI minimaux (CA jour, nb cmds jour, CA semaine, comparatif S-1)
-       * dans une grille 2×2 sous les entry pills de disponibilité commerciale.
-       * Pas de graphes — les graphes Recharts vivent côté KB Admin
-       * (F-STATS-DASHBOARD #252/#253/#257). Subscription Convex temps réel,
-       * le delta % est dérivé client-side via `decideQuickStats`.
-       * Les états terminaux `refusée` et `auto_expired` sont EXCLUS du CA
-       * (PRD 20 §9 « c'est du CA réalisé »).
-       */}
-      <QuickStats />
-
-      {/*
-       * #417 — Historique des commandes (PRD 20 §8).
-       * Entry pill that navigates to `/orders/history`. Le screen affiche
-       * les cmds terminales du tenant courant (livrée / collectée / refusée /
-       * auto_expired) avec 4 onglets, filtre période et recherche par ID.
-       * Lecture seule — le detail screen existant gère la lecture seule
-       * pour les états terminaux via `decideWorkflowButton`.
-       */}
-      <OrderHistoryEntry />
-
       <View className="mb-4 flex-row items-center justify-between">
         <Text className="text-foreground text-xl font-semibold">
           Commandes en cours

@@ -120,6 +120,19 @@ export default function AppLayout() {
               presentation: "card",
             }}
           />
+          {/* Drawer / bottom-tabs refonte — sous-écran « Ouverture &
+           horaires » du Paramètres (PRD 20 §7 + §10). Regroupe les 4
+           widgets de disponibilité commerciale (pause, fermeture, dispo
+           items, horaires) précédemment empilés sur le home. Pushed
+           depuis la section Settings « Ouverture & horaires ». */}
+          <Stack.Screen
+            name="settings/availability"
+            options={{
+              headerShown: true,
+              headerTitle: "Ouverture & horaires",
+              presentation: "card",
+            }}
+          />
         </Stack>
       </View>
     </TenantStatusCriticalGate>

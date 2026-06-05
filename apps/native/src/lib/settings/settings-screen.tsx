@@ -349,6 +349,26 @@ export function SettingsScreen(): React.ReactElement {
             </View>
           ) : null}
 
+          {/* Ouverture & horaires (drawer / bottom-tabs refonte) — entry
+           qui navigue vers `/settings/availability`, le sous-écran qui
+           regroupe les 4 widgets de disponibilité commerciale (pause,
+           fermeture, dispo items, horaires) précédemment empilés sur
+           le home. Visible uniquement pour les utilisateurs rattachés
+           à au moins un tenant (PRD 20 §7 + §10 — disponibilité par
+           tenant). */}
+          {visibility.showAccountTenant ? (
+            <SettingsGroup
+              title="Ouverture & horaires"
+              items={[
+                {
+                  label: "Pause, fermeture, items, horaires",
+                  icon: "time-outline",
+                  onPress: () => router.push("/settings/availability"),
+                },
+              ]}
+            />
+          ) : null}
+
           {/* Profile + password (point 1 + 2) */}
           {visibility.showProfile ? (
             <SettingsGroup
