@@ -212,7 +212,7 @@ _(parcours ajoutés au fil des merges)_
 
 ## KBO-DIS — Disponibilité commerciale
 
-> **Statut** : 🟡 0/? validés — issues couvertes #406 (TB-12 pause exceptionnelle), #407 (TB-13 fermeture exceptionnelle), #408 (TB-14 toggle dispo item), #409 (TB-15 modif horaires d'ouverture).
+> **Statut** : 🟡 **1/4 PASS le 2026-06-06** — KBO-DIS1 PASS (pause exceptionnelle #406 avec presets + custom + bannière persistante). Fixs livrés pendant le run : `599c2b8` (pause custom 15-240 min + retrait tab horaires + fix crash `accessibilityRole="tab"` qui cherchait NavigationContainer parent incompatible Expo Router) + `6e6181e` (bannière `availability-banner.tsx` persistante toutes routes auth avec helper pur 4-kinds priorité closure > pause > outsideHours + 22 tests vitest + monté entre TenantStatusBanner et PushPermissionBanner + CTA "Paramètres" deeplink). Vérif `acceptsOrderNow` faite en passant : 36 tests pinnés couvrent pause + closure + service hours + cross-tenant + auto-reprise — RAS côté backend. Issues couvertes #406, #407, #408, #409.
 
 _(parcours ajoutés au fil des merges)_
 
