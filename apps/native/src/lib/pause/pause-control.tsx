@@ -1,5 +1,6 @@
 import { BottomSheetModal } from "@/components/custom/bottom-sheet";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Text } from "@/components/ui/text";
 import { useActiveTenantId } from "@/lib/tenant-switcher";
 import { notifyAction } from "@/lib/toast";
@@ -11,10 +12,14 @@ import { useMutation, useQuery } from "convex/react";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, View } from "react-native";
 import {
+  CUSTOM_PAUSE_DURATION_MAX_MIN,
+  CUSTOM_PAUSE_DURATION_MIN_MIN,
   PAUSE_DURATIONS_MIN,
   computePauseUntil,
+  decideCanSubmitCustomPauseDuration,
   decidePauseControl,
   formatPauseEta,
+  parseCustomPauseDurationInput,
   type PauseDurationMin,
 } from "./decide-pause-control";
 
@@ -82,8 +87,19 @@ export function PauseControl(): React.ReactElement | null {
 
   const sheetRef = useRef<GorhomBottomSheetModal | null>(null);
   const [submitting, setSubmitting] = useState<
-    PauseDurationMin | "clear" | null
+    PauseDurationMin | "custom" | "clear" | null
   >(null);
+
+  /**
+   * Vue active à l'intérieur du bottom sheet :
+   *  - "presets" — les 4 boutons (15 / 30 / 60 / Personnalisée),
+   *  - "custom"  — l'input numeric + Confirmer / Retour.
+   * Re-set à "presets" à chaque ouverture du sheet (`onDismiss`) pour
+   * que le gérant retrouve toujours les presets en premier — la vue
+   * custom est une rampe, pas un mode persistant.
+   */
+  const [sheetView, setSheetView] = useState<"presets" | "custom">("presets");
+  const [customRaw, setCustomRaw] = useState<string>("");
 
   // No tenant resolved yet (loading session/device OR kb_admin OR no
   // attachment). Render nothing — the home already shows its own placeholder
@@ -101,6 +117,34 @@ export function PauseControl(): React.ReactElement | null {
     setSubmitting(durationMin);
     try {
       const until = computePauseUntil(Date.now(), durationMin);
+      await setPause({ tenantId, until });
+      notifyAction("availability.pause", {
+        detail: `Reprise auto à ${formatPauseEta(until)}`,
+      });
+      sheetRef.current?.dismiss();
+    } catch (error) {
+      Alert.alert(
+        "Impossible de mettre le resto en pause",
+        getConvexErrorMessage(error),
+      );
+    } finally {
+      setSubmitting(null);
+    }
+  }
+
+  // Valeur parsée du raw input — `null` si vide / fractionnaire /
+  // non-numérique. Le gate `decideCanSubmitCustomPauseDuration` n'est
+  // appelé QUE si on a une valeur entière.
+  const customParsed = parseCustomPauseDurationInput(customRaw);
+  const canSubmitCustom =
+    customParsed !== null && decideCanSubmitCustomPauseDuration(customParsed);
+
+  async function handleSubmitCustom() {
+    if (tenantId === null) return;
+    if (customParsed === null || !canSubmitCustom) return;
+    setSubmitting("custom");
+    try {
+      const until = computePauseUntil(Date.now(), customParsed);
       await setPause({ tenantId, until });
       notifyAction("availability.pause", {
         detail: `Reprise auto à ${formatPauseEta(until)}`,
@@ -177,7 +221,13 @@ export function PauseControl(): React.ReactElement | null {
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Mettre le resto en pause"
-        onPress={() => sheetRef.current?.present()}
+        onPress={() => {
+          // Reset sheet view au tap d'ouverture — le gérant retrouve
+          // toujours les presets, jamais le formulaire custom à froid.
+          setSheetView("presets");
+          setCustomRaw("");
+          sheetRef.current?.present();
+        }}
         className="mb-4 flex-row items-center justify-between gap-3 rounded-2xl border border-border bg-card p-4 active:opacity-70"
       >
         <View className="flex-row items-center gap-3">
@@ -189,7 +239,8 @@ export function PauseControl(): React.ReactElement | null {
               Pause exceptionnelle
             </Text>
             <Text className="text-muted-foreground text-xs">
-              Suspends les nouvelles commandes pendant 15, 30 ou 60 min.
+              Suspends les nouvelles commandes pendant 15, 30, 60 min ou une
+              durée personnalisée.
             </Text>
           </View>
         </View>
@@ -197,35 +248,108 @@ export function PauseControl(): React.ReactElement | null {
       </Pressable>
 
       <BottomSheetModal ref={sheetRef}>
-        <View className="gap-4 px-6 pb-2 pt-2">
-          <View className="gap-1">
-            <Text className="text-center text-xl font-semibold">
-              Pause exceptionnelle
-            </Text>
-            <Text className="text-muted-foreground text-center text-sm">
-              Choisis une durée. Les commandes en cours continuent ; seul le
-              checkout côté client est désactivé.
-            </Text>
-          </View>
-          <View className="gap-3 pt-2">
-            {PAUSE_DURATIONS_MIN.map((duration) => (
+        {sheetView === "presets" ? (
+          <View className="gap-4 px-6 pb-2 pt-2">
+            <View className="gap-1">
+              <Text className="text-center text-xl font-semibold">
+                Pause exceptionnelle
+              </Text>
+              <Text className="text-muted-foreground text-center text-sm">
+                Choisis une durée. Les commandes en cours continuent ; seul le
+                checkout côté client est désactivé.
+              </Text>
+            </View>
+            <View className="gap-3 pt-2">
+              {PAUSE_DURATIONS_MIN.map((duration) => (
+                <Button
+                  key={duration}
+                  variant="outline"
+                  onPress={() => handlePick(duration)}
+                  disabled={submitting !== null}
+                  accessibilityLabel={`Pause ${duration} minutes`}
+                  className="h-12"
+                >
+                  {submitting === duration ? (
+                    <ActivityIndicator />
+                  ) : (
+                    <Text>{duration} min</Text>
+                  )}
+                </Button>
+              ))}
+              {/* 4ème option — bascule vers la vue d'input. Outline pour
+                  rester secondaire vs les 3 presets. */}
               <Button
-                key={duration}
                 variant="outline"
-                onPress={() => handlePick(duration)}
+                onPress={() => {
+                  setCustomRaw("");
+                  setSheetView("custom");
+                }}
                 disabled={submitting !== null}
-                accessibilityLabel={`Pause ${duration} minutes`}
+                accessibilityLabel="Pause d'une durée personnalisée"
                 className="h-12"
               >
-                {submitting === duration ? (
-                  <ActivityIndicator />
+                <Ionicons name="time-outline" size={18} color="#111" />
+                <Text>Personnalisée</Text>
+              </Button>
+            </View>
+          </View>
+        ) : (
+          <View className="gap-4 px-6 pb-2 pt-2">
+            <View className="gap-1">
+              <Text className="text-center text-xl font-semibold">
+                Durée personnalisée
+              </Text>
+              <Text className="text-muted-foreground text-center text-sm">
+                Entre {CUSTOM_PAUSE_DURATION_MIN_MIN} et{" "}
+                {CUSTOM_PAUSE_DURATION_MAX_MIN} minutes
+              </Text>
+            </View>
+            <View className="gap-3 pt-2">
+              <Input
+                value={customRaw}
+                onChangeText={setCustomRaw}
+                placeholder="ex. 47"
+                keyboardType="numeric"
+                autoCapitalize="none"
+                autoCorrect={false}
+                accessibilityLabel="Durée de pause en minutes"
+                className="h-12"
+                editable={submitting === null}
+              />
+              <Button
+                onPress={() => {
+                  void handleSubmitCustom();
+                }}
+                disabled={submitting !== null || !canSubmitCustom}
+                accessibilityLabel="Confirmer la pause personnalisée"
+                className="h-12"
+              >
+                {submitting === "custom" ? (
+                  <ActivityIndicator color="white" />
                 ) : (
-                  <Text>{duration} min</Text>
+                  <>
+                    <Ionicons name="play-outline" size={16} color="white" />
+                    <Text className="text-primary-foreground font-semibold">
+                      Confirmer la pause
+                    </Text>
+                  </>
                 )}
               </Button>
-            ))}
+              <Button
+                variant="outline"
+                onPress={() => {
+                  setSheetView("presets");
+                }}
+                disabled={submitting !== null}
+                accessibilityLabel="Revenir aux durées prédéfinies"
+                className="h-12"
+              >
+                <Ionicons name="arrow-back" size={16} color="#111" />
+                <Text>Retour</Text>
+              </Button>
+            </View>
           </View>
-        </View>
+        )}
       </BottomSheetModal>
     </>
   );

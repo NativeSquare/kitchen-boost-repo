@@ -31,11 +31,29 @@
 
 import type { OperationalPause } from "@packages/backend/convex/lib/orders";
 
-/** PRD 20 §7a — durées figées V1, pas de custom, dans l'ordre d'affichage. */
+/** PRD 20 §7a — presets figés, dans l'ordre d'affichage. Une 4ème option
+ *  « Personnalisée » bascule vers un input numeric et passe par les
+ *  helpers `parseCustomPauseDurationInput` + `decideCanSubmitCustomPauseDuration`. */
 export const PAUSE_DURATIONS_MIN = [15, 30, 60] as const;
 
-/** Sugar type for the 3 valid choices. */
+/** Sugar type for the 3 valid preset choices (les boutons rapides). */
 export type PauseDurationMin = (typeof PAUSE_DURATIONS_MIN)[number];
+
+/**
+ * Bornes de la pause custom (PRD 20 §7a « 30 min - 4h »).
+ *
+ *  - `MIN_MIN = 15` — on s'aligne sur le preset le plus court : proposer
+ *    < 15 min côté custom serait inutile (le gérant qui veut moins
+ *    « reprend à la volée » via le bouton Reprendre). Aussi : un floor
+ *    élevé évite les tap accidentels qui figeraient la pause pour 1 min.
+ *
+ *  - `MAX_MIN = 240` — 4h, borne haute PRD 20 §7a. Au-delà, la pause
+ *    n'est plus une « pause » mais une fermeture, qui passe par
+ *    `<ClosureControl />` (#407) — flow dédié, audit séparé, badge
+ *    différent côté gérant + PWA client.
+ */
+export const CUSTOM_PAUSE_DURATION_MIN_MIN = 15;
+export const CUSTOM_PAUSE_DURATION_MAX_MIN = 240;
 
 /** Inputs the decision needs to reach a verdict. */
 export type PauseControlInputs = {
@@ -79,12 +97,56 @@ export function isPauseLive(pause: OperationalPause, nowMs: number): boolean {
  * the duration is captured the moment the gérant taps, NOT recomputed at the
  * mutation site; the host passes `computePauseUntil(Date.now(), 15)` straight
  * into `setOperationalPause({ until })`.
+ *
+ * Accepts un `PauseDurationMin` (un des 3 presets) OU n'importe quel `number`
+ * — la vue custom passe son entier validé par `decideCanSubmitCustomPauseDuration`,
+ * et le backend `setOperationalPause` n'a pas de cap sur `until`.
  */
 export function computePauseUntil(
   nowMs: number,
-  durationMin: PauseDurationMin,
+  durationMin: PauseDurationMin | number,
 ): number {
   return nowMs + durationMin * 60_000;
+}
+
+/**
+ * Parse the raw text input of the « Durée personnalisée » field. Strict :
+ * un entier positif (≥ 0) ou `null` si la chaîne est vide, non-numérique,
+ * fractionnaire ou négative. Le clamp à la plage `[15..240]` est délégué
+ * à `decideCanSubmitCustomPauseDuration` (séparation parse / validate).
+ *
+ * Raison du split : sur le clavier `numeric` (iOS/Android), l'utilisateur
+ * peut coller du texte arbitraire, ajouter des espaces ou taper « 0 » en
+ * milieu d'édition. On garde le state local en `number | null` plutôt
+ * qu'en string pour que le gate downstream voie directement la valeur
+ * sans avoir à re-parser à chaque render.
+ *
+ * PURE — pinned in `decide-pause-control.test.ts`.
+ */
+export function parseCustomPauseDurationInput(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return null;
+  // Refuse fractions / signe / autre garbage. Le clavier numeric permet
+  // de coller « 47.5 » ou « -15 » en pratique.
+  if (!/^\d+$/.test(trimmed)) return null;
+  const parsed = Number.parseInt(trimmed, 10);
+  if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) return null;
+  return parsed;
+}
+
+/**
+ * Gate du bouton « Confirmer la pause » de la vue custom. Retourne `true`
+ * ssi `minutes` est un entier dans `[CUSTOM_PAUSE_DURATION_MIN_MIN,
+ * CUSTOM_PAUSE_DURATION_MAX_MIN]` (bornes inclusives).
+ *
+ * PURE — pinned in `decide-pause-control.test.ts`.
+ */
+export function decideCanSubmitCustomPauseDuration(minutes: number): boolean {
+  if (!Number.isFinite(minutes)) return false;
+  if (!Number.isInteger(minutes)) return false;
+  if (minutes < CUSTOM_PAUSE_DURATION_MIN_MIN) return false;
+  if (minutes > CUSTOM_PAUSE_DURATION_MAX_MIN) return false;
+  return true;
 }
 
 /**

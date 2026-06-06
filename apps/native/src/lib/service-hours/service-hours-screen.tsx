@@ -17,17 +17,11 @@ import {
 } from "react-native";
 import {
   DEFAULT_NEW_SLOT,
-  SERVICE_HOURS_SEGMENTS,
   WEEK_DAYS,
-  dayLabel,
   decideServiceHoursScreen,
-  filterTodayWindows,
-  mergeTodayWindowsIntoWeek,
   minutesToTimeString,
-  parisDayOfWeek,
   timeStringToMinutes,
   validateServiceWindows,
-  type ServiceHoursSegment,
   type ServiceHoursValidationError,
   type ServiceWindow,
 } from "./decide-service-hours";
@@ -43,16 +37,17 @@ import {
  * windows[]. Le state Convex partagé fait le reste — un changement KB
  * Admin se reflète en temps réel ici, et inversement.
  *
- * Deux segments
- * -------------
- *   - « Aujourd'hui » — n'expose QUE les créneaux du jour courant (Paris).
- *     Cas d'usage cuisinier : « ce soir on ferme à 22h au lieu de 23h » —
- *     l'éditeur préserve les 6 autres jours (`mergeTodayWindowsIntoWeek`
- *     côté save, atomic UPSERT côté backend).
- *
- *   - « Cette semaine » — grille hebdo Lun → Dim (FR order). Édition
- *     posée mais terrain : un gérant peut ajuster son weekend depuis
- *     l'app sans ouvrir KB Admin sur grand écran.
+ * Vue unique « Cette semaine »
+ * ---------------------------
+ * Grille hebdo Lun → Dim (FR order). Édition posée mais terrain : un
+ * gérant peut ajuster ses créneaux depuis l'app sans ouvrir KB Admin sur
+ * grand écran. Le toggle « Aujourd'hui / Cette semaine » a été retiré
+ * comme redondant — la vue semaine expose déjà la ligne du jour en
+ * première position via l'ordre FR, et un gérant qui veut faire un
+ * ajustement « ce soir » trouve son jour en haut sans changer de mode.
+ * Cleanup secondaire : le segment switcher portait `accessibilityRole="tab"`
+ * / `"tablist"` non supporté par React Native sans NavigationContainer
+ * parent, ce qui crashait au tap sur « Cette semaine ».
  *
  * Édition complète des horaires permanents (jours fériés annuels) reste
  * **KB Admin seul** (ADR 0018) — pas dans cette story.
@@ -99,11 +94,6 @@ export function ServiceHoursScreen(): React.ReactElement {
   );
   const setHours = useMutation(api.lib.menu.serviceHours.set);
 
-  // Segment actif — par défaut « Aujourd'hui » (l'usage le plus
-  // fréquent : ajustement éclair du soir). Pinned localement (pas dans
-  // l'URL — le screen est une page unique sans deep-link interne).
-  const [segment, setSegment] = useState<ServiceHoursSegment>("today");
-
   // L'éditeur owns son state local — `hours` ne sert qu'à seeder à la
   // première frame chargée. Un re-render Convex pendant l'édition ne wipe
   // PAS les inputs en cours (même discipline que l'admin
@@ -119,12 +109,6 @@ export function ServiceHoursScreen(): React.ReactElement {
   if (draft === null && initialWindows !== null) {
     setDraft(initialWindows);
   }
-
-  // Stable `nowMs` for the duration of this screen mount — the « today »
-  // projection only needs a single value resolved at open (the gérant
-  // can't be in two days at once). Avoids re-renders flipping the day at
-  // a midnight boundary mid-edit.
-  const nowMs = useMemo<number>(() => Date.now(), []);
 
   const [submitting, setSubmitting] = useState<boolean>(false);
 
@@ -194,38 +178,25 @@ export function ServiceHoursScreen(): React.ReactElement {
     if (err.kind === "OVERLAP") indicesWithError.add(err.otherWindowIndex);
   }
 
-  // Choose what to render based on the active segment.
-  const todayDayOfWeek = parisDayOfWeek(nowMs);
-  const rowsForRender =
-    segment === "today"
-      ? [{ dayOfWeek: todayDayOfWeek, label: dayLabel(todayDayOfWeek) }]
-      : WEEK_DAYS;
+  // Vue unique « Cette semaine » — affiche les 7 jours en ordre FR
+  // (Lun → Dim). Le toggle « Aujourd'hui / Cette semaine » a été retiré
+  // (redondant, et son `accessibilityRole="tab"` causait un crash
+  // « Couldn't find a navigation context » au tap).
+  const rowsForRender = WEEK_DAYS;
 
   async function handleSave(): Promise<void> {
     if (!validation.isValid) return;
     if (draft === null) return;
     // Re-narrow `tenantId` inside the closure — the outer `null` guard
-    // (line ~120) only protects the synchronous render path; TS doesn't
-    // track that narrowing across the async callback.
+    // only protects the synchronous render path; TS doesn't track that
+    // narrowing across the async callback.
     if (tenantId === null) return;
     setSubmitting(true);
     try {
-      // Both segments commit the SAME mutation (`serviceHours.set` replaces
-      // the entire windows[] atomically). The « Aujourd'hui » segment only
-      // exposes today's créneaux for edit, but on save we still send the
-      // FULL list — the other 6 days are preserved unchanged via
-      // `mergeTodayWindowsIntoWeek` (defence in depth: even if the draft
-      // already happens to carry all 7 days because the segment-toggle
-      // never wiped them, the merge is idempotent).
-      const payload =
-        segment === "today"
-          ? mergeTodayWindowsIntoWeek(
-              initialWindows ?? [],
-              filterTodayWindows(draft, nowMs),
-              nowMs,
-            )
-          : draft;
-      await setHours({ tenantId, windows: payload });
+      // `serviceHours.set` remplace l'ENTIER windows[] atomically (UPSERT
+      // par tenant). On envoie directement le draft édité — vue unique
+      // semaine, donc tous les jours sont déjà dans le draft.
+      await setHours({ tenantId, windows: draft });
       notifyAction("serviceHours.save");
     } catch (error) {
       Alert.alert(
@@ -244,47 +215,7 @@ export function ServiceHoursScreen(): React.ReactElement {
     >
       <Header />
 
-      {/* Segment toggle */}
-      <View
-        accessibilityRole="tablist"
-        className="bg-muted mb-4 flex-row gap-1 rounded-lg p-1"
-      >
-        {SERVICE_HOURS_SEGMENTS.map((s) => {
-          const isActive = segment === s;
-          return (
-            <Pressable
-              key={s}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: isActive }}
-              accessibilityLabel={
-                s === "today"
-                  ? "Modifier les horaires d'aujourd'hui"
-                  : "Modifier les horaires de la semaine"
-              }
-              onPress={() => {
-                setSegment(s);
-              }}
-              className={
-                isActive
-                  ? "bg-background flex-1 items-center justify-center rounded-md py-2 shadow-sm"
-                  : "flex-1 items-center justify-center rounded-md py-2"
-              }
-            >
-              <Text
-                className={
-                  isActive
-                    ? "text-foreground text-sm font-semibold"
-                    : "text-muted-foreground text-sm font-medium"
-                }
-              >
-                {s === "today" ? "Aujourd'hui" : "Cette semaine"}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-
-      {/* Day rows */}
+      {/* Day rows — vue unique « Cette semaine » (Lun → Dim, FR order) */}
       <View className="gap-3">
         {rowsForRender.map((row) => {
           const daySlots = draft
@@ -294,9 +225,7 @@ export function ServiceHoursScreen(): React.ReactElement {
             <DayRow
               key={row.dayOfWeek}
               dayOfWeek={row.dayOfWeek}
-              label={
-                segment === "today" ? `Aujourd'hui — ${row.label}` : row.label
-              }
+              label={row.label}
               slots={daySlots}
               errorIndices={indicesWithError}
               errors={validation.errors}
@@ -339,8 +268,8 @@ function Header(): React.ReactElement {
         Horaires d&apos;ouverture
       </Text>
       <Text className="text-muted-foreground text-sm">
-        Ajuste les créneaux d&apos;aujourd&apos;hui ou de la semaine courante.
-        Les jours fériés annuels se gèrent depuis KB Admin.
+        Ajuste les créneaux de la semaine. Les jours fériés annuels se gèrent
+        depuis KB Admin.
       </Text>
     </View>
   );

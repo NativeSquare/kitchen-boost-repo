@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  CUSTOM_PAUSE_DURATION_MAX_MIN,
+  CUSTOM_PAUSE_DURATION_MIN_MIN,
   PAUSE_DURATIONS_MIN,
   computePauseUntil,
+  decideCanSubmitCustomPauseDuration,
   decidePauseControl,
   formatPauseEta,
   isPauseLive,
+  parseCustomPauseDurationInput,
 } from "./decide-pause-control";
 
 /**
@@ -120,5 +124,118 @@ describe("#406 decidePauseControl — verdict du panneau Pause sur la home", () 
     expect(
       decidePauseControl({ pause: { until: NOW - HOUR }, nowMs: NOW }),
     ).toEqual({ kind: "idle" });
+  });
+});
+
+describe("#406 CUSTOM_PAUSE_DURATION bounds — 4ème option « Personnalisée » (PRD 20 §7a 30 min - 4h)", () => {
+  // PRD 20 §7a accepts une plage 30 min - 4h pour la pause exceptionnelle.
+  // On démarre la borne basse au plus court preset (15 min) pour ne PAS
+  // proposer plus court que ce que les boutons fixes offrent déjà — un
+  // gérant qui veut < 15 min utilise plutôt « Reprendre » à la volée.
+  it("min = 15 (≥ preset le plus court)", () => {
+    expect(CUSTOM_PAUSE_DURATION_MIN_MIN).toBe(15);
+  });
+
+  it("max = 240 (4h, borne haute PRD 20 §7a)", () => {
+    expect(CUSTOM_PAUSE_DURATION_MAX_MIN).toBe(240);
+  });
+});
+
+describe("#406 decideCanSubmitCustomPauseDuration — gate du bouton « Confirmer » de la vue custom", () => {
+  // Bornes inclusives : 15 et 240 doivent être acceptés (ce sont les
+  // valeurs limites valides ; refuser exactement la borne serait un piège
+  // UX classique « j'ai tapé 240 et c'est rouge »).
+  it("true pour 15 (borne min inclusive)", () => {
+    expect(decideCanSubmitCustomPauseDuration(15)).toBe(true);
+  });
+
+  it("true pour 47 (valeur arbitraire dans la plage)", () => {
+    expect(decideCanSubmitCustomPauseDuration(47)).toBe(true);
+  });
+
+  it("true pour 240 (borne max inclusive — 4h)", () => {
+    expect(decideCanSubmitCustomPauseDuration(240)).toBe(true);
+  });
+
+  it("false pour 14 (< min)", () => {
+    expect(decideCanSubmitCustomPauseDuration(14)).toBe(false);
+  });
+
+  it("false pour 241 (> max)", () => {
+    expect(decideCanSubmitCustomPauseDuration(241)).toBe(false);
+  });
+
+  it("false pour 0 (vide / non saisi)", () => {
+    expect(decideCanSubmitCustomPauseDuration(0)).toBe(false);
+  });
+
+  it("false pour -1 (négatif — un parseur lax pourrait laisser passer)", () => {
+    expect(decideCanSubmitCustomPauseDuration(-1)).toBe(false);
+  });
+
+  it("false pour 15.5 (non-entier — minute fractionnaire non supportée)", () => {
+    expect(decideCanSubmitCustomPauseDuration(15.5)).toBe(false);
+  });
+
+  it("false pour NaN (parsing en amont raté)", () => {
+    expect(decideCanSubmitCustomPauseDuration(Number.NaN)).toBe(false);
+  });
+
+  it("false pour Infinity (garde defensive)", () => {
+    expect(decideCanSubmitCustomPauseDuration(Number.POSITIVE_INFINITY)).toBe(
+      false,
+    );
+  });
+});
+
+describe("#406 parseCustomPauseDurationInput — parse strict du raw text input (clavier numeric)", () => {
+  // Le clavier `numeric` sur iOS/Android n'empêche pas tout — l'utilisateur
+  // peut coller, ajouter des espaces, tester une fraction. On parse strict
+  // (entier positif) et on délègue le clamp à `decideCanSubmitCustomPauseDuration`.
+  it("parse « 47 » → 47", () => {
+    expect(parseCustomPauseDurationInput("47")).toBe(47);
+  });
+
+  it("trim les espaces de tête / fin", () => {
+    expect(parseCustomPauseDurationInput(" 47")).toBe(47);
+    expect(parseCustomPauseDurationInput("47 ")).toBe(47);
+    expect(parseCustomPauseDurationInput("  47  ")).toBe(47);
+  });
+
+  it("rejette une chaîne vide", () => {
+    expect(parseCustomPauseDurationInput("")).toBeNull();
+    expect(parseCustomPauseDurationInput("   ")).toBeNull();
+  });
+
+  it("rejette les chaînes non-numériques", () => {
+    expect(parseCustomPauseDurationInput("abc")).toBeNull();
+    expect(parseCustomPauseDurationInput("47abc")).toBeNull();
+    expect(parseCustomPauseDurationInput("abc47")).toBeNull();
+  });
+
+  it("rejette les valeurs fractionnaires (47.5, 0.5)", () => {
+    expect(parseCustomPauseDurationInput("47.5")).toBeNull();
+    expect(parseCustomPauseDurationInput("0.5")).toBeNull();
+  });
+
+  it("rejette les valeurs négatives", () => {
+    expect(parseCustomPauseDurationInput("-15")).toBeNull();
+  });
+
+  it("accepte « 0 » côté parsing (le clamp range est la responsabilité du gate)", () => {
+    // 0 est un entier valide — c'est `decideCanSubmitCustomPauseDuration`
+    // qui le refuse côté UX. Garder le parsing « entier ou rien » garantit
+    // que le state local reste numeric pour le gate downstream.
+    expect(parseCustomPauseDurationInput("0")).toBe(0);
+  });
+
+  it("accepte « 240 » (borne max)", () => {
+    expect(parseCustomPauseDurationInput("240")).toBe(240);
+  });
+
+  it("accepte un nombre arbitraire au-delà de la plage (le gate downstream rejette)", () => {
+    // Le parser ne clamp PAS — il extrait juste un entier. C'est
+    // `decideCanSubmitCustomPauseDuration(500)` qui retourne false.
+    expect(parseCustomPauseDurationInput("500")).toBe(500);
   });
 });
