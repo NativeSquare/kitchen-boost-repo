@@ -88,10 +88,12 @@ export default function HomeScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
-      <View className="mb-4 flex-row items-center justify-between">
-        <Text className="text-foreground text-xl font-semibold">
-          Commandes en cours
-        </Text>
+      {/* H2 « Commandes en cours » retiré le 2026-06-07 : le header natif du
+          drawer (cf. `(tabs)/_layout.tsx` Drawer.Screen `title`) porte déjà ce
+          libellé, l'empiler en H2 dans le body produisait un doublon visuel
+          immédiat sous le hamburger. On garde uniquement le compteur en pill
+          discrète sur la droite — la liste qui suit est l'élément focus. */}
+      <View className="mb-4 flex-row items-center justify-end">
         <Text className="text-muted-foreground text-sm">
           {orders.length} en cours
         </Text>

@@ -7,8 +7,22 @@ import {
 } from "@/lib/tenant-status";
 import { Stack } from "expo-router";
 import { View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function AppLayout() {
+  // `expo-status-bar` est `translucent` par défaut sur Android (le contenu se
+  // dessine SOUS la status bar). Sans inset, la première bannière visible
+  // (`TenantStatusBanner` / `AvailabilityBanner` / `PushPermissionBanner`)
+  // chevauche l'heure / batterie / wifi du système (bug remonté par Alex le
+  // 2026-06-07 sur Lenovo Tab M8 — capture « Resto fermé jusqu'au 07/06 » qui
+  // mord sur la status bar). On consomme `useSafeAreaInsets().top` UNE SEULE
+  // FOIS ici et on l'applique en `paddingTop` sur la View qui wrappe le
+  // cluster de bannières — comme ça, peu importe combien de bannières sont
+  // visibles en même temps (TenantStatus + Availability + Push), l'inset
+  // n'est appliqué qu'une fois et il n'y a jamais de double-padding. Le
+  // contenu du `<Stack>` rendu en dessous reste sans inset (les écrans
+  // gèrent leur propre safe-area si besoin via leurs ScrollView intérieurs).
+  const insets = useSafeAreaInsets();
   return (
     /*
      * #411 — « Alertes statut tenant » critical gate (PRD 20 §13).
@@ -26,34 +40,44 @@ export default function AppLayout() {
     <TenantStatusCriticalGate>
       <View className="flex-1 bg-background">
         {/*
-         * #411 — non-critical banner (sibling of the gate above). Surfaces
-         * when the verdict is `warning` (Stripe KYC pending, Uber Direct
-         * dégradé avec C&C en fallback, statut tenant pas encore `active`).
-         * Mounted FIRST among the in-layout banners so the gérant la voit
-         * tout de suite en haut de page. Dismissible le temps de la session.
+         * Cluster bannières — `paddingTop = insets.top` appliqué UNE FOIS sur
+         * le wrapper (pas sur chaque bannière) pour rester sous la status bar
+         * Android sans risque de double-inset si deux bannières coexistent.
+         * Si AUCUNE bannière n'est visible (`hidden` partout), la View reste
+         * vide avec juste l'inset top — pas de drama visuel, la status bar
+         * Android (translucent) se dessine sur le `bg-background` blanc.
          */}
-        <TenantStatusBanner />
-        {/*
-         * KB Orders — bannière de disponibilité commerciale persistante (PRD
-         * 20 §7 + ADR 0018). Surfacée APRÈS `<TenantStatusBanner />` (statut
-         * tenant = priorité absolue) et AVANT `<PushPermissionBanner />`
-         * (push OS = signal infra, important mais moins immédiat qu'« mon
-         * resto est en pause »). Rend rouge / amber / gris selon que la
-         * fermeture exceptionnelle / la pause / le hors-horaires de service
-         * est actif, avec un CTA « Paramètres » qui deeplink direct
-         * `/settings/availability`. Rend null (kind `hidden`) quand tout va
-         * bien — pas de pollution sur la home.
-         */}
-        <AvailabilityBanner />
-        {/*
-         * #395 — OS push permission banner (PRD 20 §3 + §13 + §15 edge case
-         * « push refusé au niveau OS »). Mounted ABOVE the <Stack> so the red
-         * sticky banner overlays every authenticated route whenever the
-         * OS-level push permission is `denied`. Re-renders nothing
-         * (decidePushPermissionBanner → "hidden") when the permission is
-         * `granted` / `undetermined` / still loading.
-         */}
-        <PushPermissionBanner />
+        <View style={{ paddingTop: insets.top }}>
+          {/*
+           * #411 — non-critical banner (sibling of the gate above). Surfaces
+           * when the verdict is `warning` (Stripe KYC pending, Uber Direct
+           * dégradé avec C&C en fallback, statut tenant pas encore `active`).
+           * Mounted FIRST among the in-layout banners so the gérant la voit
+           * tout de suite en haut de page. Dismissible le temps de la session.
+           */}
+          <TenantStatusBanner />
+          {/*
+           * KB Orders — bannière de disponibilité commerciale persistante (PRD
+           * 20 §7 + ADR 0018). Surfacée APRÈS `<TenantStatusBanner />` (statut
+           * tenant = priorité absolue) et AVANT `<PushPermissionBanner />`
+           * (push OS = signal infra, important mais moins immédiat qu'« mon
+           * resto est en pause »). Rend rouge / amber / gris selon que la
+           * fermeture exceptionnelle / la pause / le hors-horaires de service
+           * est actif, avec un CTA « Paramètres » qui deeplink direct
+           * `/settings/availability`. Rend null (kind `hidden`) quand tout va
+           * bien — pas de pollution sur la home.
+           */}
+          <AvailabilityBanner />
+          {/*
+           * #395 — OS push permission banner (PRD 20 §3 + §13 + §15 edge case
+           * « push refusé au niveau OS »). Mounted ABOVE the <Stack> so the red
+           * sticky banner overlays every authenticated route whenever the
+           * OS-level push permission is `denied`. Re-renders nothing
+           * (decidePushPermissionBanner → "hidden") when the permission is
+           * `granted` / `undetermined` / still loading.
+           */}
+          <PushPermissionBanner />
+        </View>
         {/*
          * #399 — Header tenant switcher (PRD 20 §1b + §12 + AC7). Mounted ABOVE
          * the <Stack> so the chip lives in a thin strip on top of every (tabs)
@@ -67,6 +91,18 @@ export default function AppLayout() {
           screenOptions={{
             headerShown: false,
             contentStyle: { backgroundColor: "transparent" },
+            // Note: les Stack.Screen avec `headerShown: true` (orders/history,
+            // disponibilite-items, etc.) utilisent `@react-navigation/native-
+            // stack` qui pilote le UINavigationBar/Toolbar natif — l'inset
+            // status-bar est calculé en natif, on ne peut pas l'override via
+            // un `headerStatusBarHeight` (option absente du native stack).
+            // Côté visuel le wrapper bannières ci-dessus a déjà consommé
+            // `insets.top` et les bannières sont elles-mêmes hidden sur la
+            // plupart des écrans pushed depuis le drawer (tenant healthy /
+            // disponible / push granted = `hidden`), donc le risque de
+            // double-inset reste périphérique. Si Alex le constate sur ces
+            // écrans pushed, le fix serait de monter les bannières INSIDE
+            // chaque Stack.Screen au lieu de SIBLING — refacto + lourd.
           }}
         >
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />

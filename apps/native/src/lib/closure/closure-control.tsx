@@ -7,18 +7,10 @@ import { getConvexErrorMessage } from "@/utils/getConvexErrorMessage";
 import { Ionicons } from "@expo/vector-icons";
 import { BottomSheetModal as GorhomBottomSheetModal } from "@gorhom/bottom-sheet";
 import { api } from "@packages/backend/convex/_generated/api";
-import DateTimePicker, {
-  type DateTimePickerEvent,
-} from "@react-native-community/datetimepicker";
 import { useMutation, useQuery } from "convex/react";
 import { useEffect, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  Platform,
-  Pressable,
-  View,
-} from "react-native";
+import { ActivityIndicator, Alert, Pressable, View } from "react-native";
+import { Calendar, LocaleConfig } from "react-native-calendars";
 import {
   CLOSURE_QUICK_PRESETS,
   type ClosureQuickPreset,
@@ -64,9 +56,9 @@ import {
  *  - **idle** — render the « Fermer le resto » entry-point pill. Tap opens
  *    a bottom sheet with the 3 quick presets (Aujourd'hui / J+1 / J+7) and
  *    a custom date pair (« Du… au… »). The window is computed via
- *    `computeQuickClosureWindow` (presets) or directly from the
- *    `DateTimePicker` natif epoch (custom) so the same `[from, until)`
- *    discipline applies on both paths.
+ *    `computeQuickClosureWindow` (presets) or directly from the calendar
+ *    selection (custom) so the same `[from, until)` discipline applies on
+ *    both paths.
  *
  *  - **live** — render a rose badge « Resto fermé jusqu'au JJ/MM » with a
  *    secondary « Rouvrir maintenant » button. Tapping calls
@@ -80,24 +72,113 @@ import {
  * unchanged; we never hide or grey-out the order cards. The closure truly is
  * « disponibilité commerciale only, kitchen keeps cooking out residual ».
  *
- * Date picker UX (2026-06-07 — remplace les inputs texte d'origine) :
+ * Date picker UX (2026-06-07 — pivot vers `react-native-calendars`) :
  *
+ *  - L'ancienne intégration `@react-native-community/datetimepicker` était un
+ *    TurboModule natif qui crashait au runtime sur tout dev build qui n'avait
+ *    pas été rebuild après son ajout (« RNCDatePicker could not be found »).
+ *    Rebuilder un dev client à chaque variation de modules natifs casse le
+ *    workflow Expo Go-like d'Alex. On bascule sur `react-native-calendars`
+ *    (Wix) — calendar 100% JS, ZÉRO module natif, marche immédiatement avec
+ *    le dev client existant + Expo Go.
  *  - Deux `<Pressable>` (style outline, h-48) sous les labels « Du » / « Au »
- *    qui ouvrent le `DateTimePicker` natif au tap. La date sélectionnée est
- *    affichée en plein texte fr-FR sous le label (« vendredi 12 juin 2026 »)
- *    — pas d'ambiguïté possible JJ/MM vs MM/JJ.
- *  - Android (`display="default"`) : popup natif Material (sheet plein écran
- *    avec calendrier visuel), un seul tap pour ouvrir.
- *  - iOS (`display="inline"`) : calendar inline compact, render permanent
- *    contrôlé par l'état `isOpen` (on l'affiche en push-down sous le bouton
- *    quand le gérant tape).
- *  - `minimumDate = today` sur `Du` (pas de fermeture rétroactive — la
+ *    qui togglent l'affichage d'un `<Calendar>` sous le bouton. Tap sur une
+ *    date du calendar → applique la sélection + ferme le calendar.
+ *  - Branding KB : `selectedDayBackgroundColor` / `todayTextColor` /
+ *    `arrowColor` = vert KB `#1B7A3D` (palette CLAUDE.md).
+ *  - Locale fr-FR configurée au top-level via `LocaleConfig` (xdate
+ *    re-export) — nom des mois et jours en français dans le calendar header.
+ *  - `minDate` sur `Du` = aujourd'hui (pas de fermeture rétroactive — la
  *    mutation backend la rejetterait, autant la bloquer côté UI).
- *  - `minimumDate = from + 24h` sur `Au` (cohérent avec la validation
+ *  - `minDate` sur `Au` = `Du + 24h` (cohérent avec la validation
  *    `from >= until` côté backend + le contrat « 1+ jour » du PRD §7b).
  *  - Zéro touche le backend : la mutation `setExceptionalClosure` accepte
  *    déjà des epoch ms.
  */
+
+// --- Locale fr-FR pour react-native-calendars ----------------------------
+// LocaleConfig est un alias `xdate` re-exporté par react-native-calendars.
+// On configure une seule fois au chargement du module (idempotent : si le
+// module est ré-importé par un fast-refresh, l'assignation reste correcte).
+// Tous les libellés du calendar (mois, jours abrégés, today) passent en
+// français — cohérent avec le copy fr-FR du reste de l'app KB Orders.
+LocaleConfig.locales["fr"] = {
+  monthNames: [
+    "Janvier",
+    "Février",
+    "Mars",
+    "Avril",
+    "Mai",
+    "Juin",
+    "Juillet",
+    "Août",
+    "Septembre",
+    "Octobre",
+    "Novembre",
+    "Décembre",
+  ],
+  monthNamesShort: [
+    "Janv.",
+    "Févr.",
+    "Mars",
+    "Avr.",
+    "Mai",
+    "Juin",
+    "Juil.",
+    "Août",
+    "Sept.",
+    "Oct.",
+    "Nov.",
+    "Déc.",
+  ],
+  dayNames: [
+    "Dimanche",
+    "Lundi",
+    "Mardi",
+    "Mercredi",
+    "Jeudi",
+    "Vendredi",
+    "Samedi",
+  ],
+  dayNamesShort: ["Dim.", "Lun.", "Mar.", "Mer.", "Jeu.", "Ven.", "Sam."],
+  today: "Aujourd'hui",
+};
+LocaleConfig.defaultLocale = "fr";
+
+// Vert KB foncé (CLAUDE.md palette).
+const KB_GREEN = "#1B7A3D";
+
+// Theme calendar — branding KB sur les éléments interactifs (jour sélectionné,
+// today, flèches mois). Le reste reste neutre pour ne pas heurter le mode
+// sombre éventuel.
+const CALENDAR_THEME = {
+  selectedDayBackgroundColor: KB_GREEN,
+  selectedDayTextColor: "#ffffff",
+  todayTextColor: KB_GREEN,
+  arrowColor: KB_GREEN,
+  textDayFontWeight: "500",
+  textMonthFontWeight: "600",
+  textDayHeaderFontWeight: "600",
+} as const;
+
+/** Convert epoch ms → `YYYY-MM-DD` (local time) for react-native-calendars. */
+function epochToCalendarDate(ms: number): string {
+  const d = new Date(ms);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+/** Convert `YYYY-MM-DD` (calendar selection) → epoch ms at local midnight. */
+function calendarDateToEpoch(yyyyMmDd: string): number {
+  const [yearStr, monthStr, dayStr] = yyyyMmDd.split("-");
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+  const day = Number(dayStr);
+  return new Date(year, month - 1, day, 0, 0, 0, 0).getTime();
+}
+
 export function ClosureControl(): React.ReactElement | null {
   const tenantId = useActiveTenantId();
   const closure = useQuery(
@@ -130,9 +211,9 @@ export function ClosureControl(): React.ReactElement | null {
     ClosureQuickPreset | "custom" | "clear" | null
   >(null);
 
-  // Custom window — `customFrom` / `customUntil` are epoch ms now (was
-  // text), seeded at sheet open via the pure helpers. The picker writes
-  // directly into these states via the `onChange` callback.
+  // Custom window — `customFrom` / `customUntil` are epoch ms, seeded at sheet
+  // open via the pure helpers. The calendar writes directly into these states
+  // via the `onDayPress` callback.
   const [customFrom, setCustomFrom] = useState<number>(() =>
     decideClosureCustomFromInitial(Date.now()),
   );
@@ -141,13 +222,10 @@ export function ClosureControl(): React.ReactElement | null {
   );
   const [customError, setCustomError] = useState<string | null>(null);
 
-  // iOS uses `display="inline"` which is a permanent inline render — we
-  // toggle visibility via `showFromPicker` / `showUntilPicker` so the
-  // calendar only appears when the gérant taps the matching button.
-  // Android uses `display="default"` which is a one-shot modal; we set the
-  // flag to true to open the modal then reset it to false in `onChange`.
-  const [showFromPicker, setShowFromPicker] = useState<boolean>(false);
-  const [showUntilPicker, setShowUntilPicker] = useState<boolean>(false);
+  // Which calendar (if any) is currently expanded under the « Du » / « Au »
+  // pressable. `null` = no calendar visible (the two pressable rows stay
+  // collapsed). Toggling either one closes the other so they never stack.
+  const [editing, setEditing] = useState<"from" | "until" | null>(null);
 
   // No tenant resolved yet (loading session/device OR kb_admin OR no
   // attachment). Render nothing — the home already shows its own
@@ -165,8 +243,7 @@ export function ClosureControl(): React.ReactElement | null {
     setCustomFrom(from);
     setCustomUntil(decideClosureCustomUntilMinimum(from));
     setCustomError(null);
-    setShowFromPicker(false);
-    setShowUntilPicker(false);
+    setEditing(null);
   }
 
   function openSheet() {
@@ -174,36 +251,24 @@ export function ClosureControl(): React.ReactElement | null {
     sheetRef.current?.present();
   }
 
-  function handleFromChange(event: DateTimePickerEvent, picked?: Date) {
-    // Android dismisses the modal on any user action — we always close the
-    // picker. iOS keeps the inline calendar mounted, so we leave it open.
-    if (Platform.OS === "android") {
-      setShowFromPicker(false);
-    }
-    if (event.type === "dismissed" || picked === undefined) {
-      return;
-    }
-    const nextFrom = picked.getTime();
+  function handleFromPick(yyyyMmDd: string) {
+    const nextFrom = calendarDateToEpoch(yyyyMmDd);
     setCustomFrom(nextFrom);
     // Keep the « Au » coherent : if it's now <= from + 24h, bump it to the
-    // new minimum. The picker `minimumDate` enforces the same floor on the
+    // new minimum. The calendar `minDate` enforces the same floor on the
     // next render — this just keeps the displayed value valid in between.
     const minUntil = decideClosureCustomUntilMinimum(nextFrom);
     if (customUntil < minUntil) {
       setCustomUntil(minUntil);
     }
     setCustomError(null);
+    setEditing(null);
   }
 
-  function handleUntilChange(event: DateTimePickerEvent, picked?: Date) {
-    if (Platform.OS === "android") {
-      setShowUntilPicker(false);
-    }
-    if (event.type === "dismissed" || picked === undefined) {
-      return;
-    }
-    setCustomUntil(picked.getTime());
+  function handleUntilPick(yyyyMmDd: string) {
+    setCustomUntil(calendarDateToEpoch(yyyyMmDd));
     setCustomError(null);
+    setEditing(null);
   }
 
   async function handlePickPreset(preset: ClosureQuickPreset) {
@@ -315,7 +380,12 @@ export function ClosureControl(): React.ReactElement | null {
   }
 
   // idle — entry-point pill
-  const minUntil = decideClosureCustomUntilMinimum(customFrom);
+  const minUntilMs = decideClosureCustomUntilMinimum(customFrom);
+  const minFromCalendar = epochToCalendarDate(
+    decideClosureCustomFromInitial(Date.now()),
+  );
+  const minUntilCalendar = epochToCalendarDate(minUntilMs);
+
   return (
     <>
       <Pressable
@@ -384,47 +454,81 @@ export function ClosureControl(): React.ReactElement | null {
               <View className="gap-1">
                 <Text className="text-muted-foreground text-xs">Du</Text>
                 <Pressable
-                  onPress={() => setShowFromPicker(true)}
+                  onPress={() =>
+                    setEditing((current) =>
+                      current === "from" ? null : "from",
+                    )
+                  }
                   accessibilityRole="button"
                   accessibilityLabel="Choisir la date de début de la fermeture"
-                  className="border-border bg-background h-12 justify-center rounded-md border px-3 active:opacity-70"
+                  className="border-border bg-background h-12 flex-row items-center justify-between rounded-md border px-3 active:opacity-70"
                 >
                   <Text className="text-foreground text-base">
                     {formatClosureFullDate(customFrom)}
                   </Text>
-                </Pressable>
-                {showFromPicker ? (
-                  <DateTimePicker
-                    value={new Date(customFrom)}
-                    mode="date"
-                    display={Platform.OS === "ios" ? "inline" : "default"}
-                    minimumDate={
-                      new Date(decideClosureCustomFromInitial(Date.now()))
+                  <Ionicons
+                    name={
+                      editing === "from"
+                        ? "chevron-up-outline"
+                        : "chevron-down-outline"
                     }
-                    onChange={handleFromChange}
+                    size={18}
+                    color="#666"
                   />
+                </Pressable>
+                {editing === "from" ? (
+                  <View className="border-border mt-1 overflow-hidden rounded-md border">
+                    <Calendar
+                      current={epochToCalendarDate(customFrom)}
+                      minDate={minFromCalendar}
+                      onDayPress={(day) => handleFromPick(day.dateString)}
+                      markedDates={{
+                        [epochToCalendarDate(customFrom)]: { selected: true },
+                      }}
+                      theme={CALENDAR_THEME}
+                      firstDay={1}
+                    />
+                  </View>
                 ) : null}
               </View>
               <View className="gap-1">
                 <Text className="text-muted-foreground text-xs">Au</Text>
                 <Pressable
-                  onPress={() => setShowUntilPicker(true)}
+                  onPress={() =>
+                    setEditing((current) =>
+                      current === "until" ? null : "until",
+                    )
+                  }
                   accessibilityRole="button"
                   accessibilityLabel="Choisir la date de fin de la fermeture"
-                  className="border-border bg-background h-12 justify-center rounded-md border px-3 active:opacity-70"
+                  className="border-border bg-background h-12 flex-row items-center justify-between rounded-md border px-3 active:opacity-70"
                 >
                   <Text className="text-foreground text-base">
                     {formatClosureFullDate(customUntil)}
                   </Text>
-                </Pressable>
-                {showUntilPicker ? (
-                  <DateTimePicker
-                    value={new Date(customUntil)}
-                    mode="date"
-                    display={Platform.OS === "ios" ? "inline" : "default"}
-                    minimumDate={new Date(minUntil)}
-                    onChange={handleUntilChange}
+                  <Ionicons
+                    name={
+                      editing === "until"
+                        ? "chevron-up-outline"
+                        : "chevron-down-outline"
+                    }
+                    size={18}
+                    color="#666"
                   />
+                </Pressable>
+                {editing === "until" ? (
+                  <View className="border-border mt-1 overflow-hidden rounded-md border">
+                    <Calendar
+                      current={epochToCalendarDate(customUntil)}
+                      minDate={minUntilCalendar}
+                      onDayPress={(day) => handleUntilPick(day.dateString)}
+                      markedDates={{
+                        [epochToCalendarDate(customUntil)]: { selected: true },
+                      }}
+                      theme={CALENDAR_THEME}
+                      firstDay={1}
+                    />
+                  </View>
                 ) : null}
               </View>
               {customError !== null ? (

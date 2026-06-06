@@ -65,6 +65,12 @@ function DrawerShell() {
         // `Drawer.Screen` ci-dessous.
         headerShown: true,
         headerLeft: () => <DrawerToggleButton tintColor="#1B7A3D" />,
+        // L'inset status-bar (Android translucent) est CONSOMMÉ une seule fois
+        // par le wrapper bannières dans `(app)/_layout.tsx` (`paddingTop =
+        // insets.top`). Sans ce 0 explicite, `@react-navigation/elements`
+        // ajouterait un second `insets.top` au header → double-padding visible
+        // (« énorme padding-top » remonté par Alex le 2026-06-07).
+        headerStatusBarHeight: 0,
         headerTitleStyle: {
           fontSize: 18,
           fontWeight: "600",
@@ -95,7 +101,12 @@ function DrawerShell() {
       <Drawer.Screen
         name="index"
         options={{
-          title: "Accueil",
+          // Header natif = titre LONG (« Commandes en cours ») — anciennement
+          // dupliqué en H2 dans le body de `index.tsx`, supprimé pour ne pas
+          // empiler deux fois le même titre sous le hamburger (correctif UI
+          // 2026-06-07). Le `drawerLabel` reste court (« Accueil ») pour le
+          // menu rétractable, qui est contraint en largeur (240px).
+          title: "Commandes en cours",
           drawerLabel: "Accueil",
           drawerIcon: ({ color, size }) => (
             <Ionicons name="home-outline" size={size} color={color} />
@@ -115,7 +126,10 @@ function DrawerShell() {
       <Drawer.Screen
         name="stats"
         options={{
-          title: "Stats",
+          // Header natif = titre LONG (« Stats rapides ») — anciennement
+          // dupliqué en H2 dans le body de `stats.tsx`, supprimé (correctif UI
+          // 2026-06-07). `drawerLabel` reste court pour le menu.
+          title: "Stats rapides",
           drawerLabel: "Stats",
           drawerIcon: ({ color, size }) => (
             <Ionicons name="stats-chart-outline" size={size} color={color} />

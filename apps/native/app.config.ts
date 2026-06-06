@@ -74,7 +74,6 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     bundler: "metro",
   },
   plugins: [
-    "@react-native-community/datetimepicker",
     "expo-camera",
     "expo-image",
     "expo-image-picker",

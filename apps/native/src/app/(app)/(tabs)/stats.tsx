@@ -1,4 +1,3 @@
-import { Text } from "@/components/ui/text";
 import { QuickStats } from "@/lib/quick-stats";
 import { ScrollView, View } from "react-native";
 
@@ -19,9 +18,9 @@ export default function StatsScreen() {
       className="bg-background flex-1"
       contentContainerClassName="p-4 sm:p-6 gap-4"
     >
-      <Text className="text-foreground text-xl font-semibold">
-        Stats rapides
-      </Text>
+      {/* H2 « Stats rapides » retiré le 2026-06-07 : le header natif du drawer
+          (cf. `(tabs)/_layout.tsx` Drawer.Screen `title`) le porte déjà.
+          Empiler le même libellé en H2 sous le hamburger faisait doublon. */}
       <View>
         <QuickStats />
       </View>
