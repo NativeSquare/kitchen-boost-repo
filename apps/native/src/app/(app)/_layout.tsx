@@ -1,3 +1,4 @@
+import { AvailabilityBanner } from "@/lib/availability";
 import { PushPermissionBanner } from "@/lib/push-permission";
 import { TenantSwitcher } from "@/lib/tenant-switcher";
 import {
@@ -32,6 +33,18 @@ export default function AppLayout() {
          * tout de suite en haut de page. Dismissible le temps de la session.
          */}
         <TenantStatusBanner />
+        {/*
+         * KB Orders — bannière de disponibilité commerciale persistante (PRD
+         * 20 §7 + ADR 0018). Surfacée APRÈS `<TenantStatusBanner />` (statut
+         * tenant = priorité absolue) et AVANT `<PushPermissionBanner />`
+         * (push OS = signal infra, important mais moins immédiat qu'« mon
+         * resto est en pause »). Rend rouge / amber / gris selon que la
+         * fermeture exceptionnelle / la pause / le hors-horaires de service
+         * est actif, avec un CTA « Paramètres » qui deeplink direct
+         * `/settings/availability`. Rend null (kind `hidden`) quand tout va
+         * bien — pas de pollution sur la home.
+         */}
+        <AvailabilityBanner />
         {/*
          * #395 — OS push permission banner (PRD 20 §3 + §13 + §15 edge case
          * « push refusé au niveau OS »). Mounted ABOVE the <Stack> so the red
