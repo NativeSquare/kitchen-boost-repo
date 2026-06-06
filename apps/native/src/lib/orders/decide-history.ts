@@ -59,6 +59,8 @@
  * construction.
  */
 
+import type { Ionicons } from "@expo/vector-icons";
+
 import type { Doc } from "@packages/backend/convex/_generated/dataModel";
 import type { OrderStatus } from "@packages/backend/convex/lib/orders";
 
@@ -352,4 +354,87 @@ export function decideAutoExpiredDetailNote(
     };
   }
   return { kind: "hide" };
+}
+
+// ---------------------------------------------------------------------------
+// Historique — color-coded status badge (positifs vert KB, négatifs rouge)
+// ---------------------------------------------------------------------------
+
+/**
+ * Visual decision for one historique badge (PRD 20 §8). Closed-set sur les
+ * 4 terminaux possibles dans l'historique (cf. `HISTORY_TERMINAL_STATUSES`).
+ *
+ *  - `label`     — FR copy aligné sur `decideStatusLabel` du
+ *    `decide-order-card.ts` (« Livrée / Collectée / Refusée / Manquée »).
+ *  - `toneClass` — la classe Tailwind portée par le texte ET l'icône :
+ *      `text-primary`      pour les terminaux POSITIFS (livrée / collectée)
+ *      `text-destructive`  pour les terminaux NÉGATIFS (refusée / auto_expired)
+ *    Naming `destructive` conservé (cf. session prompt : NE PAS renommer
+ *    en `alert` — confusion précédente).
+ *  - `iconName`  — Ionicon à gauche du label (cohérent avec le pattern
+ *    icônes Ionicons partout : workflow buttons du detail screen, refuse
+ *    button, etc.) :
+ *      livrée / collectée → checkmark-circle-outline
+ *      refusée            → close-circle-outline
+ *      auto_expired       → time-outline (sémantique « timeout »)
+ *
+ * Le helper renvoie `null` pour tout statut hors du set terminal de
+ * l'historique — le caller (HistoryRow OU detail screen sur un état
+ * terminal) sait alors qu'il doit rendre le badge gris-neutre par défaut
+ * (statuts in-flight `nouvelle` / `en préparation` / `prête` / `remise`
+ * et le pré-paiement `en attente de paiement`).
+ */
+export type HistoryStatusBadgeStyle = {
+  label: string;
+  toneClass: string;
+  iconName: keyof typeof Ionicons.glyphMap;
+};
+
+export function decideHistoryStatusBadgeStyle(
+  status: OrderStatus,
+): HistoryStatusBadgeStyle | null {
+  switch (status) {
+    case "livrée":
+      // Happy-path delivery terminal — vert KB (text-primary = #1B7A3D).
+      return {
+        label: "Livrée",
+        toneClass: "text-primary",
+        iconName: "checkmark-circle-outline",
+      };
+    case "collectée":
+      // Happy-path click & collect terminal — vert KB.
+      return {
+        label: "Collectée",
+        toneClass: "text-primary",
+        iconName: "checkmark-circle-outline",
+      };
+    case "refusée":
+      // Human refus avec motif (PRD 20 §6a) — rouge destructive.
+      return {
+        label: "Refusée",
+        toneClass: "text-destructive",
+        iconName: "close-circle-outline",
+      };
+    case "auto_expired":
+      // System timeout (ADR 0016) — rouge destructive, icône `time-outline`
+      // qui signale visuellement la nature « expirée par timeout ».
+      return {
+        label: "Manquée",
+        toneClass: "text-destructive",
+        iconName: "time-outline",
+      };
+    case "en attente de paiement":
+    case "nouvelle":
+    case "en préparation":
+    case "prête":
+    case "remise":
+      // Non-terminal — l'historique ne devrait jamais voir ces statuts
+      // (cf. `applyHistoryTabFilter` qui drop déjà tout ce qui n'est pas
+      // dans `HISTORY_TERMINAL_STATUSES`), mais le helper retourne `null`
+      // par défense en profondeur pour que le caller sache qu'il doit
+      // tomber sur le rendu gris-neutre par défaut.
+      return null;
+    default:
+      return null;
+  }
 }

@@ -8,6 +8,7 @@ import {
   RefuseDialog,
   RevealableField,
   decideAutoExpiredDetailNote,
+  decideHistoryStatusBadgeStyle,
   decideModeTag,
   decidePickupHandoffNote,
   decideRefusalReasonLabel,
@@ -154,6 +155,13 @@ export default function OrderDetailScreen() {
   const items = detail.items;
   const modeTag = decideModeTag(order.mode);
   const statusLabel = decideStatusLabel(order.status);
+  // #417 follow-up — color-coded badge sur les terminaux historisés (vert KB
+  // pour livrée/collectée, rouge destructive pour refusée/auto_expired). Le
+  // helper renvoie `null` pour les statuts in-flight ; on retombe alors sur
+  // le label gris-neutre actuel (`text-muted-foreground`), cohérent avec
+  // l'absence d'icône status sur le workflow vivant (la primary surface
+  // d'info est le bouton « Accepter / Prête / Remise », pas le statut).
+  const statusBadgeStyle = decideHistoryStatusBadgeStyle(order.status);
   const buttonDecision = decideWorkflowButton(order.status, order.mode);
   const refuseButton = decideRefuseButton(order.status);
   // #413 — 2-step from `nouvelle`, 3-step from `en préparation` / `prête`
@@ -343,7 +351,24 @@ export default function OrderDetailScreen() {
         ) : null}
       </View>
 
-      <Text className="text-muted-foreground mb-4 text-sm">{statusLabel}</Text>
+      {statusBadgeStyle !== null ? (
+        <View className="mb-4 flex-row items-center gap-1">
+          <Ionicons
+            name={statusBadgeStyle.iconName}
+            size={14}
+            className={statusBadgeStyle.toneClass}
+          />
+          <Text
+            className={cn("text-sm font-medium", statusBadgeStyle.toneClass)}
+          >
+            {statusBadgeStyle.label}
+          </Text>
+        </View>
+      ) : (
+        <Text className="text-muted-foreground mb-4 text-sm">
+          {statusLabel}
+        </Text>
+      )}
 
       {/* Items récap (PRD 20 §4) */}
       <Card className="mb-3">

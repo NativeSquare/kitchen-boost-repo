@@ -34,6 +34,7 @@ import {
   STATUSES_FOR_HISTORY_TAB,
   applyHistoryTabFilter,
   decideAutoExpiredDetailNote,
+  decideHistoryStatusBadgeStyle,
   filterOrdersByDateRange,
   isHistoryTerminal,
   searchOrdersById,
@@ -423,6 +424,65 @@ describe("#417 decideAutoExpiredDetailNote — PRD 20 §8 « message neutre si a
     expect(decideAutoExpiredDetailNote("en attente de paiement")).toEqual({
       kind: "hide",
     });
+  });
+});
+
+describe("decideHistoryStatusBadgeStyle — color-coded historique badge (vert KB positifs / rouge destructive négatifs)", () => {
+  it("`livrée` → label « Livrée », vert KB (text-primary), checkmark icon", () => {
+    // Happy-path delivery terminal — vert KB pour signaler le résultat
+    // positif d'un coup d'œil dans une liste scrollable.
+    expect(decideHistoryStatusBadgeStyle("livrée")).toEqual({
+      label: "Livrée",
+      toneClass: "text-primary",
+      iconName: "checkmark-circle-outline",
+    });
+  });
+
+  it("`collectée` → label « Collectée », vert KB (text-primary), checkmark icon", () => {
+    // Happy-path click & collect terminal — même teinte vert KB que
+    // « Livrée » (les deux sont des succès symétriques delivery vs pickup).
+    expect(decideHistoryStatusBadgeStyle("collectée")).toEqual({
+      label: "Collectée",
+      toneClass: "text-primary",
+      iconName: "checkmark-circle-outline",
+    });
+  });
+
+  it("`refusée` → label « Refusée », rouge destructive, close icon", () => {
+    // Human refus avec motif (PRD 20 §6a) — rouge destructive. Naming
+    // `destructive` conservé (cf. session prompt : NE PAS renommer en
+    // `alert`).
+    expect(decideHistoryStatusBadgeStyle("refusée")).toEqual({
+      label: "Refusée",
+      toneClass: "text-destructive",
+      iconName: "close-circle-outline",
+    });
+  });
+
+  it("`auto_expired` → label « Manquée », rouge destructive, time icon", () => {
+    // System timeout (ADR 0016). Icône `time-outline` plutôt que
+    // `close-circle-outline` pour distinguer visuellement le timeout du
+    // refus humain — les deux sont rouges mais la sémantique est
+    // orthogonale (cf. STATUSES_FOR_HISTORY_TAB).
+    expect(decideHistoryStatusBadgeStyle("auto_expired")).toEqual({
+      label: "Manquée",
+      toneClass: "text-destructive",
+      iconName: "time-outline",
+    });
+  });
+
+  it("renvoie `null` sur les statuts non-terminaux (l'historique ne les voit jamais)", () => {
+    // Défense en profondeur : l'historique filtre déjà à
+    // `HISTORY_TERMINAL_STATUSES` upstream (`applyHistoryTabFilter`), mais
+    // le helper renvoie `null` pour signaler au caller qu'il doit retomber
+    // sur un rendu gris-neutre par défaut si un statut non-terminal lui
+    // parvient (race, future schema add, detail screen sur un état
+    // in-flight).
+    expect(decideHistoryStatusBadgeStyle("nouvelle")).toBeNull();
+    expect(decideHistoryStatusBadgeStyle("en préparation")).toBeNull();
+    expect(decideHistoryStatusBadgeStyle("prête")).toBeNull();
+    expect(decideHistoryStatusBadgeStyle("remise")).toBeNull();
+    expect(decideHistoryStatusBadgeStyle("en attente de paiement")).toBeNull();
   });
 });
 

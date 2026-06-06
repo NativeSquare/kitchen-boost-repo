@@ -15,6 +15,7 @@ import {
   DATE_RANGE_PRESETS,
   ORDER_HISTORY_TABS,
   applyHistoryTabFilter,
+  decideHistoryStatusBadgeStyle,
   filterOrdersByDateRange,
   searchOrdersById,
   type DateRangeKey,
@@ -270,7 +271,13 @@ function HistoryRow({
   order: Doc<"orders">;
   onPress: (orderId: Id<"orders">) => void;
 }) {
-  const statusLabel = decideStatusLabel(order.status);
+  // Color-coded badge (sémantique : terminaux POSITIFS = vert KB, NÉGATIFS
+  // = rouge destructive). `decideHistoryStatusBadgeStyle` renvoie `null`
+  // pour les statuts non-terminaux ; l'historique filtre déjà ces statuts
+  // upstream (`applyHistoryTabFilter` → `HISTORY_TERMINAL_STATUSES`), mais
+  // on garde un fallback gris-neutre par défense en profondeur (au cas où
+  // un statut in-flight leak via une race / un futur ajout de schema).
+  const badgeStyle = decideHistoryStatusBadgeStyle(order.status);
   const modeTag = decideModeTag(order.mode);
   const totalEuros =
     order.pricingSnapshot !== undefined
@@ -304,7 +311,7 @@ function HistoryRow({
         ) : null}
       </View>
       <View className="mt-1 flex-row items-center justify-between">
-        <Text className="text-muted-foreground text-sm">{statusLabel}</Text>
+        <HistoryStatusBadge status={order.status} badgeStyle={badgeStyle} />
         {totalEuros !== null ? (
           <Text className="text-foreground text-base font-semibold">
             {totalEuros} €
@@ -312,6 +319,49 @@ function HistoryRow({
         ) : null}
       </View>
     </Pressable>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// HistoryStatusBadge — small reusable badge (icon + colored label)
+// ---------------------------------------------------------------------------
+
+/**
+ * Badge status historique (icône + label colorisé). Texte coloré + icône
+ * SANS background coloré — on garde le bg du card neutre (le row reste
+ * discret dans une FlatList scrollable). Le color-coding sémantique vit
+ * dans `decideHistoryStatusBadgeStyle` (pure, testable).
+ *
+ * Fallback : si `badgeStyle === null` (statut non-terminal, défense en
+ * profondeur), on rend le label gris-neutre via `decideStatusLabel`. Ce
+ * cas ne devrait jamais arriver dans l'historique mais protège un detail
+ * screen ouvert sur un état in-flight.
+ */
+function HistoryStatusBadge({
+  status,
+  badgeStyle,
+}: {
+  status: Doc<"orders">["status"];
+  badgeStyle: ReturnType<typeof decideHistoryStatusBadgeStyle>;
+}) {
+  if (badgeStyle === null) {
+    return (
+      <Text className="text-muted-foreground text-sm">
+        {decideStatusLabel(status)}
+      </Text>
+    );
+  }
+  return (
+    <View className="flex-row items-center gap-1">
+      <Ionicons
+        name={badgeStyle.iconName}
+        size={14}
+        className={badgeStyle.toneClass}
+      />
+      <Text className={cn("text-sm font-medium", badgeStyle.toneClass)}>
+        {badgeStyle.label}
+      </Text>
+    </View>
   );
 }
 
