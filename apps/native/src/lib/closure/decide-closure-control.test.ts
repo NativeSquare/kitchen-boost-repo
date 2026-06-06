@@ -3,6 +3,9 @@ import {
   CLOSURE_QUICK_PRESETS,
   computeQuickClosureWindow,
   decideClosureControl,
+  decideClosureCustomFromInitial,
+  decideClosureCustomUntilMinimum,
+  formatClosureFullDate,
   formatClosureUntilDate,
   isClosureLive,
   parseLocalDateInput,
@@ -142,6 +145,84 @@ describe("#407 formatClosureUntilDate — fr-FR `JJ/MM` (PRD 20 §7b « jusqu'au
   it("1er janvier", () => {
     const date = new Date(2027, 0, 1, 0, 0, 0, 0);
     expect(formatClosureUntilDate(date.getTime())).toBe("01/01");
+  });
+});
+
+describe("#407 decideClosureCustomFromInitial — graine custom = aujourd'hui local 00:00", () => {
+  // Le DateTimePicker natif a besoin d'une valeur initiale (epoch ms) quand
+  // on ouvre le bottom sheet. On amorce avec « aujourd'hui à minuit local »
+  // — la borne `from` la plus permissive (la closure peut commencer
+  // immédiatement) et celle que le gérant veut dans 80% des cas
+  // (« je ferme à partir d'aujourd'hui »).
+  it("milieu de journée → minuit local du même jour", () => {
+    const now = new Date(2026, 5, 15, 14, 30, 0, 0).getTime();
+    const expected = new Date(2026, 5, 15, 0, 0, 0, 0).getTime();
+    expect(decideClosureCustomFromInitial(now)).toBe(expected);
+  });
+
+  it("juste après minuit local → minuit local du même jour", () => {
+    const now = new Date(2026, 5, 15, 0, 0, 1, 0).getTime();
+    const expected = new Date(2026, 5, 15, 0, 0, 0, 0).getTime();
+    expect(decideClosureCustomFromInitial(now)).toBe(expected);
+  });
+
+  it("23:59 local → minuit local DU MÊME jour (pas du lendemain)", () => {
+    const now = new Date(2026, 5, 15, 23, 59, 59, 999).getTime();
+    const expected = new Date(2026, 5, 15, 0, 0, 0, 0).getTime();
+    expect(decideClosureCustomFromInitial(now)).toBe(expected);
+  });
+});
+
+describe("#407 decideClosureCustomUntilMinimum — borne min `Au` = from + 24h", () => {
+  // Le DateTimePicker du `Au` doit refuser toute date <= `Du` (la mutation
+  // backend rejette `from >= until`). En pratique on impose +24h pour rester
+  // cohérent avec la durée min « 1 jour » de la fermeture exceptionnelle
+  // (PRD 20 §7b — c'est une absence durable, pas une pause).
+  it("from = aujourd'hui 00:00 → min until = demain 00:00", () => {
+    const from = new Date(2026, 5, 15, 0, 0, 0, 0).getTime();
+    const expected = new Date(2026, 5, 16, 0, 0, 0, 0).getTime();
+    expect(decideClosureCustomUntilMinimum(from)).toBe(expected);
+  });
+
+  it("from = 23:59 local → min until = 23:59 local lendemain (offset constant 24h)", () => {
+    const from = new Date(2026, 5, 15, 23, 59, 0, 0).getTime();
+    const expected = from + 24 * 60 * 60 * 1000;
+    expect(decideClosureCustomUntilMinimum(from)).toBe(expected);
+  });
+
+  it("from = transition été→hiver (DST) → offset 24h constant (helper trivial)", () => {
+    // Le helper ne tente PAS de gérer DST : il ajoute 24h exactement, le
+    // picker natif Android/iOS gère la conversion epoch → date locale
+    // affichée. Si jamais une DST tombe entre from et from+24h, le picker
+    // affichera l'heure locale réellement correspondante. C'est OK pour la
+    // borne MIN — on autorise toute date strictement > from + 24h.
+    const from = new Date(2026, 9, 25, 12, 0, 0, 0).getTime(); // 25 oct 2026 12:00
+    expect(decideClosureCustomUntilMinimum(from)).toBe(
+      from + 24 * 60 * 60 * 1000,
+    );
+  });
+});
+
+describe("#407 formatClosureFullDate — fr-FR « vendredi 12 juin 2026 »", () => {
+  // Le bouton Pressable du date picker affiche la date sélectionnée sous le
+  // label « Du » / « Au » en plein texte (vs le badge JJ/MM compact). Plus
+  // de surface pour la lisibilité cuisine = format long.
+  it("retourne `weekday JJ mois YYYY` en fr-FR", () => {
+    // 12 juin 2026 = vendredi (vérifié contre Date.prototype.toLocaleDateString)
+    const date = new Date(2026, 5, 12, 0, 0, 0, 0);
+    const result = formatClosureFullDate(date.getTime());
+    expect(result).toContain("juin");
+    expect(result).toContain("2026");
+    expect(result).toContain("12");
+  });
+
+  it("inclut le nom du jour de la semaine", () => {
+    const date = new Date(2026, 5, 12, 0, 0, 0, 0);
+    const result = formatClosureFullDate(date.getTime());
+    // Au moins un nom de jour fr-FR doit apparaître.
+    expect(result).toMatch(
+      /lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche/,
+    );
   });
 });
 

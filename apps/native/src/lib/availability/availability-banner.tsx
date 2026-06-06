@@ -26,14 +26,19 @@ import {
  * hors horaires de service. Cette bannière comble le trou : visible partout,
  * tap → deeplink direct vers l'écran de gestion.
  *
- * Trois états « visibles » + un état hidden :
+ * Quatre états « visibles » + un état hidden :
  *
- *  - `closure`      — rouge destructive, fermeture exceptionnelle 1+ jour.
- *  - `pause`        — amber, pause exceptionnelle 15-60 min.
- *  - `outsideHours` — gris/muted, tenant hors plage de service.
- *  - `hidden`       — tout va bien (ou queries Convex en flight).
+ *  - `closure`          — rouge destructive, fermeture exceptionnelle ACTIVE
+ *                         1+ jour.
+ *  - `pause`            — amber, pause exceptionnelle 15-60 min.
+ *  - `closureScheduled` — gris muted/info, fermeture exceptionnelle
+ *                         PROGRAMMÉE (`from > now`). Preview persistante des
+ *                         bornes saisies — feedback immédiat après la
+ *                         soumission du bottom sheet (bug 2026-06-07 Alex).
+ *  - `outsideHours`     — gris/muted, tenant hors plage de service.
+ *  - `hidden`           — tout va bien (ou queries Convex en flight).
  *
- * Priorité — closure > pause > outsideHours > hidden (cf.
+ * Priorité — closure > pause > closureScheduled > outsideHours > hidden (cf.
  * `decideAvailabilityBanner`). Si deux états sont actifs en même temps, le
  * plus durable / impactant gagne l'attention du gérant.
  *
@@ -165,6 +170,15 @@ const TONES: Record<
   // (`bg-amber-50`/`border-amber-300`) mais en version bannière dense
   // (#D97706 = amber-600, lisible sur fg blanc).
   pause: { bg: "#D97706", fg: "#ffffff", icon: "pause-circle" },
+  // Gris muted info — fermeture programmée pas encore live. Plus discret
+  // que le rouge ACTIVE pour ne pas crier au loup (la fermeture n'a pas
+  // encore commencé). Icône calendar-outline = planifié, miroir de
+  // l'entry-point pill du `<ClosureControl />` idle.
+  closureScheduled: {
+    bg: "#4B5563",
+    fg: "#ffffff",
+    icon: "calendar-outline",
+  },
   // Gris — hors horaires, signal informatif non bloquant. Plus discret que
   // les deux précédents pour ne pas crier au loup à chaque fin de service.
   outsideHours: { bg: "#374151", fg: "#ffffff", icon: "time-outline" },
@@ -178,6 +192,8 @@ function describeMessage(
       return `Resto fermé jusqu'au ${formatAvailabilityClosureUntilDate(decision.until)}`;
     case "pause":
       return `Resto en pause jusqu'à ${formatAvailabilityPauseEta(decision.until)}`;
+    case "closureScheduled":
+      return `Fermeture programmée du ${formatAvailabilityClosureUntilDate(decision.from)} au ${formatAvailabilityClosureUntilDate(decision.until)}`;
     case "outsideHours":
       return "Resto hors des horaires d'ouverture";
   }

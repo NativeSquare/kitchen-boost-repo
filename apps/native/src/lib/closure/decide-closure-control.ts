@@ -188,6 +188,35 @@ export function parseLocalDateInput(value: string): number | null {
 }
 
 /**
+ * Initial value for the « Du » date picker when the gérant opens the bottom
+ * sheet — local midnight of TODAY. Most permissive `from` (the closure can
+ * start immediately) AND the value most gérants want in practice (« je
+ * ferme à partir d'aujourd'hui »). The picker also enforces this as the
+ * `minimumDate` so retroactive closures are rejected at the UI layer.
+ *
+ * Pure: same `nowMs` ⇒ same epoch. Tests pin a fixed `now` to verify the
+ * 00:00 alignment + the day-boundary edges (juste après minuit / 23:59).
+ */
+export function decideClosureCustomFromInitial(nowMs: number): number {
+  return startOfLocalDay(nowMs);
+}
+
+/**
+ * Minimum value for the « Au » date picker = `from + 24h`. The backend
+ * mutation `setExceptionalClosure` rejects `from >= until`; the UI enforces
+ * a stricter +24h floor because the « fermeture exceptionnelle » spec is a
+ * DURABLE absence (PRD 20 §7b, ≥ 1 jour). Anything shorter would belong to
+ * the pause (`<PauseControl />` #406, 15-60 min).
+ *
+ * Pure: trivial offset, no DST handling. The picker natif lit l'epoch en
+ * temps local, donc une DST entre `from` et `from + 24h` est gérée par le
+ * picker à l'affichage — pas notre problème côté contrat.
+ */
+export function decideClosureCustomUntilMinimum(fromMs: number): number {
+  return fromMs + 24 * 60 * 60 * 1000;
+}
+
+/**
  * Format the réouverture date as fr-FR `JJ/MM`. Used by the home badge
  * today (« Resto fermé jusqu'au JJ/MM ») AND, when the PWA client banner
  * lands, by the customer-side message (PRD 20 §7b) — same formatting in
@@ -208,6 +237,34 @@ export function formatClosureUntilDate(untilMs: number): string {
     const day = String(d.getDate()).padStart(2, "0");
     const month = String(d.getMonth() + 1).padStart(2, "0");
     return `${day}/${month}`;
+  }
+}
+
+/**
+ * Format a date in full fr-FR long form — « vendredi 12 juin 2026 ». Used
+ * under the « Du » / « Au » Pressable buttons that drive the
+ * `DateTimePicker` natif : the home badge format (`JJ/MM`) is too compact
+ * to confirm a year when the gérant is picking a multi-month window. The
+ * full form removes ambiguity (12/06 = 12 juin OR 6 décembre US? Here :
+ * « vendredi 12 juin 2026 », sans ambiguïté).
+ *
+ * The `try`/`catch` defends against ancient runtimes where
+ * `Intl.DateTimeFormat` may throw; we fall back to a minimal numeric
+ * `JJ/MM/AAAA`.
+ */
+export function formatClosureFullDate(ms: number): string {
+  try {
+    return new Intl.DateTimeFormat("fr-FR", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    }).format(new Date(ms));
+  } catch {
+    const d = new Date(ms);
+    const day = String(d.getDate()).padStart(2, "0");
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    return `${day}/${month}/${d.getFullYear()}`;
   }
 }
 

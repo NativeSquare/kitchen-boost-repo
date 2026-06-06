@@ -107,19 +107,6 @@ describe("decideAvailabilityBanner — kind `closure` (rouge, le plus impactant)
     ).toEqual({ kind: "closure", until: closure.until });
   });
 
-  it("fermeture planifiée pour demain (from > now) → NE GATE PAS", () => {
-    // INCLUSIVE sur `from` : tant que `from > now`, la fermeture est future,
-    // pas encore live. Mirror du backend `isClosureActive`.
-    expect(
-      decideAvailabilityBanner({
-        pause: null,
-        closure: { from: NOW + HOUR, until: NOW + DAY },
-        isOpenNow: true,
-        nowMs: NOW,
-      }),
-    ).toEqual({ kind: "hidden" });
-  });
-
   it("fermeture qui finit exactement maintenant (until == now) → NE GATE PLUS", () => {
     // EXCLUSIVE sur `until` : à l'instant exact `until`, c'est fini.
     expect(
@@ -130,6 +117,50 @@ describe("decideAvailabilityBanner — kind `closure` (rouge, le plus impactant)
         nowMs: NOW,
       }),
     ).toEqual({ kind: "hidden" });
+  });
+});
+
+describe("decideAvailabilityBanner — kind `closureScheduled` (planifiée, info muted)", () => {
+  // Bug 2026-06-07 (Alex) : la bannière ne flip pas quand le gérant saisit
+  // une fenêtre custom future via le bottom sheet. Conséquence UX : aucun
+  // feedback de confirmation que les bornes saisies sont correctes. Fix :
+  // surfacer un nouveau kind `closureScheduled` (gris/muted) tant que
+  // `from > now`. Le backend NE gate PAS encore les checkouts (cohérent
+  // avec `isClosureActive` qui reste exclusif sur le futur), mais le gérant
+  // a une preview visuelle persistante des bornes — il peut détecter une
+  // erreur de saisie immédiatement.
+  it("fermeture planifiée pour demain (from > now) → closureScheduled + from/until exposés", () => {
+    const closure = { from: NOW + HOUR, until: NOW + DAY };
+    expect(
+      decideAvailabilityBanner({
+        pause: null,
+        closure,
+        isOpenNow: true,
+        nowMs: NOW,
+      }),
+    ).toEqual({
+      kind: "closureScheduled",
+      from: closure.from,
+      until: closure.until,
+    });
+  });
+
+  it("fermeture planifiée + isOpenNow false → closureScheduled wins sur outsideHours", () => {
+    // Priorité (top → bottom) : closure > pause > closureScheduled > outsideHours > hidden.
+    // Une fermeture programmée est plus actionnable qu'une simple info hors horaires.
+    const closure = { from: NOW + HOUR, until: NOW + DAY };
+    expect(
+      decideAvailabilityBanner({
+        pause: null,
+        closure,
+        isOpenNow: false,
+        nowMs: NOW,
+      }),
+    ).toEqual({
+      kind: "closureScheduled",
+      from: closure.from,
+      until: closure.until,
+    });
   });
 });
 
@@ -196,7 +227,7 @@ describe("decideAvailabilityBanner — kind `outsideHours` (gris, info)", () => 
 });
 
 describe("decideAvailabilityBanner — PRIORITÉ quand plusieurs signaux sont actifs", () => {
-  // L'ordre canonique est : closure > pause > outsideHours > hidden.
+  // L'ordre canonique est : closure > pause > closureScheduled > outsideHours > hidden.
   // « Le plus durable / impactant gagne l'attention du gérant. »
 
   it("closure ACTIVE + pause ACTIVE → closure wins (closure plus durable)", () => {
@@ -244,6 +275,20 @@ describe("decideAvailabilityBanner — PRIORITÉ quand plusieurs signaux sont ac
         nowMs: NOW,
       }),
     ).toEqual({ kind: "closure", until: closure.until });
+  });
+
+  it("pause ACTIVE + closureScheduled → pause wins (pause active = plus urgent)", () => {
+    // V1 : on ne stacke pas 2 bannières. La pause active (transient, gère
+    // le service en cours) prime sur la closure programmée (info passive).
+    const closure = { from: NOW + HOUR, until: NOW + DAY };
+    expect(
+      decideAvailabilityBanner({
+        pause: { until: NOW + 30 * 60 * 1000 },
+        closure,
+        isOpenNow: true,
+        nowMs: NOW,
+      }),
+    ).toEqual({ kind: "pause", until: NOW + 30 * 60 * 1000 });
   });
 });
 

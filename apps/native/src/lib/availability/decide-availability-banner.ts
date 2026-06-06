@@ -22,24 +22,35 @@
  *    sans attendre re-render Convex, même discipline que ClosureControl),
  *  - délègue le verdict à `decideAvailabilityBanner` ci-dessous.
  *
- * Quatre verdicts mutuellement exclusifs, dans l'ordre de priorité
+ * Cinq verdicts mutuellement exclusifs, dans l'ordre de priorité
  * d'affichage (le plus visible au moins) :
  *
- *  1. `closure`      — fermeture exceptionnelle ACTIVE (`from <= now < until`).
- *                      Rouge, la plus longue donc la plus impactante.
- *  2. `pause`        — pause exceptionnelle ACTIVE (`until > now`). Amber,
- *                      transient (15-60 min).
- *  3. `outsideHours` — `isOpenNow === false` (hors horaires de service).
- *                      Gris/neutre — non bloquant, c'est l'état normal en
- *                      dehors des plages, juste un rappel pour le gérant qui
- *                      reste connecté.
- *  4. `hidden`       — tenant ouvre normalement, aucune anomalie à surfacer.
+ *  1. `closure`          — fermeture exceptionnelle ACTIVE
+ *                          (`from <= now < until`). Rouge, la plus longue
+ *                          donc la plus impactante.
+ *  2. `pause`            — pause exceptionnelle ACTIVE (`until > now`).
+ *                          Amber, transient (15-60 min).
+ *  3. `closureScheduled` — fermeture exceptionnelle PROGRAMMÉE (`from > now`).
+ *                          Gris/info muted — preview persistante des bornes
+ *                          saisies par le gérant, sert de confirmation
+ *                          visuelle immédiate après la saisie du bottom
+ *                          sheet (bug 2026-06-07 Alex : sans ça, aucun
+ *                          feedback pour valider les bornes custom).
+ *  4. `outsideHours`     — `isOpenNow === false` (hors horaires de service).
+ *                          Gris/neutre — non bloquant, c'est l'état normal en
+ *                          dehors des plages, juste un rappel pour le gérant
+ *                          qui reste connecté.
+ *  5. `hidden`           — tenant ouvre normalement, aucune anomalie à
+ *                          surfacer.
  *
  * Priorité — si DEUX états sont actifs en même temps (pause `+` fermeture,
  * ou hors horaires `+` fermeture), la fermeture l'emporte. La pause
- * l'emporte sur le hors horaires. Cohérent avec le gate backend
- * `acceptsOrderNow` qui refuse dès qu'UN signal est négatif, et avec la
- * grammaire « le plus durable / impactant gagne l'attention du gérant ».
+ * l'emporte sur la closure programmée ET sur le hors horaires (active >
+ * planifiée > info passive). Cohérent avec le gate backend
+ * `acceptsOrderNow` qui refuse dès qu'UN signal ACTIF est négatif, et avec
+ * la grammaire « le plus durable / impactant gagne l'attention du gérant ».
+ * V1 : on ne stacke pas 2 bannières — si pause active ET closure
+ * programmée, on perd l'info programmée jusqu'à la fin de la pause.
  *
  * Pure / déterministe — aucun `Date.now()` interne, l'horloge est injectée
  * via `nowMs`. La truth table est pinnée par
@@ -99,6 +110,13 @@ export type AvailabilityBannerDecision =
       /** epoch ms — fin de la pause (le composant formate en `HH:MM`). */
       until: number;
     }
+  | {
+      kind: "closureScheduled";
+      /** epoch ms — début de la fermeture programmée (`JJ/MM`). */
+      from: number;
+      /** epoch ms — fin de la fermeture programmée (`JJ/MM`). */
+      until: number;
+    }
   | { kind: "outsideHours" };
 
 /**
@@ -118,6 +136,20 @@ function isPauseLive(pause: OperationalPause, nowMs: number): boolean {
 function isClosureLive(closure: ExceptionalClosure, nowMs: number): boolean {
   if (closure === null) return false;
   return closure.from <= nowMs && closure.until > nowMs;
+}
+
+/**
+ * Pure predicate : la fermeture est PROGRAMMÉE dans le futur (pas encore
+ * live). `from > nowMs` ET `until > nowMs` — le second test est défensif
+ * pour ignorer un row corrompu où `until < from` (le backend rejette déjà
+ * cette forme mais on ne fait pas confiance au shape de la sub).
+ */
+function isClosureScheduled(
+  closure: ExceptionalClosure,
+  nowMs: number,
+): boolean {
+  if (closure === null) return false;
+  return closure.from > nowMs && closure.until > nowMs;
 }
 
 /**
@@ -142,27 +174,47 @@ export function decideAvailabilityBanner(
     return { kind: "hidden" };
   }
 
-  // 1. Fermeture exceptionnelle — la plus impactante (1+ jour). Wins sur tout.
-  //    Re-narrow `closure !== null` côté local pour atteindre `.until` —
-  //    `isClosureLive` retourne un `boolean` qui perd le discriminant.
+  // 1. Fermeture exceptionnelle ACTIVE — la plus impactante (1+ jour). Wins
+  //    sur tout. Re-narrow `closure !== null` côté local pour atteindre
+  //    `.until` — `isClosureLive` retourne un `boolean` qui perd le
+  //    discriminant.
   if (inputs.closure !== null && isClosureLive(inputs.closure, inputs.nowMs)) {
     return { kind: "closure", until: inputs.closure.until };
   }
 
-  // 2. Pause exceptionnelle — transient (15-60 min). Wins sur hors horaires.
-  //    Même pattern de re-narrow que pour la fermeture ci-dessus.
+  // 2. Pause exceptionnelle — transient (15-60 min). Wins sur fermeture
+  //    programmée + hors horaires (active > planifiée > info passive). Même
+  //    pattern de re-narrow que pour la fermeture ci-dessus.
   if (inputs.pause !== null && isPauseLive(inputs.pause, inputs.nowMs)) {
     return { kind: "pause", until: inputs.pause.until };
   }
 
-  // 3. Hors horaires — uniquement si `isOpenNow` est résolu ET vaut `false`.
+  // 3. Fermeture exceptionnelle PROGRAMMÉE (`from > now`) — preview
+  //    persistante. Indispensable comme feedback immédiat après la saisie
+  //    du bottom sheet `<ClosureControl />` (bug 2026-06-07 Alex : sans
+  //    cette ligne, le gérant n'a aucune confirmation que les bornes
+  //    custom ont bien été enregistrées). Le backend `acceptsOrderNow` ne
+  //    refuse PAS encore les checkouts (cohérent avec `isClosureActive`
+  //    inclusif sur `from`) — c'est uniquement un signal d'information UX.
+  if (
+    inputs.closure !== null &&
+    isClosureScheduled(inputs.closure, inputs.nowMs)
+  ) {
+    return {
+      kind: "closureScheduled",
+      from: inputs.closure.from,
+      until: inputs.closure.until,
+    };
+  }
+
+  // 4. Hors horaires — uniquement si `isOpenNow` est résolu ET vaut `false`.
   //    Si la query est en flight, on rend `hidden` plutôt que de flasher un
   //    « hors horaires » qui se révélerait faux 200ms plus tard.
   if (inputs.isOpenNow === false) {
     return { kind: "outsideHours" };
   }
 
-  // 4. Tout va bien (ou isOpenNow encore en flight) — hidden.
+  // 5. Tout va bien (ou isOpenNow encore en flight) — hidden.
   return { kind: "hidden" };
 }
 

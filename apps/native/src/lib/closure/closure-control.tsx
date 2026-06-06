@@ -1,6 +1,5 @@
 import { BottomSheetModal } from "@/components/custom/bottom-sheet";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Text } from "@/components/ui/text";
 import { useActiveTenantId } from "@/lib/tenant-switcher";
 import { notifyAction } from "@/lib/toast";
@@ -8,16 +7,27 @@ import { getConvexErrorMessage } from "@/utils/getConvexErrorMessage";
 import { Ionicons } from "@expo/vector-icons";
 import { BottomSheetModal as GorhomBottomSheetModal } from "@gorhom/bottom-sheet";
 import { api } from "@packages/backend/convex/_generated/api";
+import DateTimePicker, {
+  type DateTimePickerEvent,
+} from "@react-native-community/datetimepicker";
 import { useMutation, useQuery } from "convex/react";
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  Platform,
+  Pressable,
+  View,
+} from "react-native";
 import {
   CLOSURE_QUICK_PRESETS,
   type ClosureQuickPreset,
   computeQuickClosureWindow,
   decideClosureControl,
+  decideClosureCustomFromInitial,
+  decideClosureCustomUntilMinimum,
+  formatClosureFullDate,
   formatClosureUntilDate,
-  parseLocalDateInput,
 } from "./decide-closure-control";
 
 /**
@@ -53,9 +63,10 @@ import {
  *
  *  - **idle** — render the « Fermer le resto » entry-point pill. Tap opens
  *    a bottom sheet with the 3 quick presets (Aujourd'hui / J+1 / J+7) and
- *    a custom YYYY-MM-DD pair (« Du… au… »). The window is computed via
- *    `computeQuickClosureWindow` (presets) or `parseLocalDateInput` (custom)
- *    so the same `[from, until)` discipline applies on both paths.
+ *    a custom date pair (« Du… au… »). The window is computed via
+ *    `computeQuickClosureWindow` (presets) or directly from the
+ *    `DateTimePicker` natif epoch (custom) so the same `[from, until)`
+ *    discipline applies on both paths.
  *
  *  - **live** — render a rose badge « Resto fermé jusqu'au JJ/MM » with a
  *    secondary « Rouvrir maintenant » button. Tapping calls
@@ -69,16 +80,23 @@ import {
  * unchanged; we never hide or grey-out the order cards. The closure truly is
  * « disponibilité commerciale only, kitchen keeps cooking out residual ».
  *
- * Date picker UX: the issue prompt mentions
- * `@react-native-community/datetimepicker` — not currently installed in
- * `apps/native/package.json`. We use the SAME shape the admin mirror uses
- * (YYYY-MM-DD text via `<Input>`) for two reasons: (1) zero new native
- * module → no expo prebuild change, no install surface; (2) the parser
- * `parseLocalDateInput` is the EXACT mirror of the admin `dateInputToMs`,
- * so a closure typed in the native bottom sheet produces the SAME epoch
- * the admin side would have produced for the same date — zero cross-surface
- * drift. A richer native date picker can be slotted in V2 (or here as a
- * follow-up) without touching the decision module.
+ * Date picker UX (2026-06-07 — remplace les inputs texte d'origine) :
+ *
+ *  - Deux `<Pressable>` (style outline, h-48) sous les labels « Du » / « Au »
+ *    qui ouvrent le `DateTimePicker` natif au tap. La date sélectionnée est
+ *    affichée en plein texte fr-FR sous le label (« vendredi 12 juin 2026 »)
+ *    — pas d'ambiguïté possible JJ/MM vs MM/JJ.
+ *  - Android (`display="default"`) : popup natif Material (sheet plein écran
+ *    avec calendrier visuel), un seul tap pour ouvrir.
+ *  - iOS (`display="inline"`) : calendar inline compact, render permanent
+ *    contrôlé par l'état `isOpen` (on l'affiche en push-down sous le bouton
+ *    quand le gérant tape).
+ *  - `minimumDate = today` sur `Du` (pas de fermeture rétroactive — la
+ *    mutation backend la rejetterait, autant la bloquer côté UI).
+ *  - `minimumDate = from + 24h` sur `Au` (cohérent avec la validation
+ *    `from >= until` côté backend + le contrat « 1+ jour » du PRD §7b).
+ *  - Zéro touche le backend : la mutation `setExceptionalClosure` accepte
+ *    déjà des epoch ms.
  */
 export function ClosureControl(): React.ReactElement | null {
   const tenantId = useActiveTenantId();
@@ -112,12 +130,24 @@ export function ClosureControl(): React.ReactElement | null {
     ClosureQuickPreset | "custom" | "clear" | null
   >(null);
 
-  // Seed the custom date inputs with sane defaults (today / tomorrow) so
-  // the gérant who opens the sheet on small screens sees a valid window
-  // pre-filled. Re-seeded on each sheet open via the resetCustom effect.
-  const [customFrom, setCustomFrom] = useState<string>("");
-  const [customUntil, setCustomUntil] = useState<string>("");
+  // Custom window — `customFrom` / `customUntil` are epoch ms now (was
+  // text), seeded at sheet open via the pure helpers. The picker writes
+  // directly into these states via the `onChange` callback.
+  const [customFrom, setCustomFrom] = useState<number>(() =>
+    decideClosureCustomFromInitial(Date.now()),
+  );
+  const [customUntil, setCustomUntil] = useState<number>(() =>
+    decideClosureCustomUntilMinimum(decideClosureCustomFromInitial(Date.now())),
+  );
   const [customError, setCustomError] = useState<string | null>(null);
+
+  // iOS uses `display="inline"` which is a permanent inline render — we
+  // toggle visibility via `showFromPicker` / `showUntilPicker` so the
+  // calendar only appears when the gérant taps the matching button.
+  // Android uses `display="default"` which is a one-shot modal; we set the
+  // flag to true to open the modal then reset it to false in `onChange`.
+  const [showFromPicker, setShowFromPicker] = useState<boolean>(false);
+  const [showUntilPicker, setShowUntilPicker] = useState<boolean>(false);
 
   // No tenant resolved yet (loading session/device OR kb_admin OR no
   // attachment). Render nothing — the home already shows its own
@@ -131,16 +161,49 @@ export function ClosureControl(): React.ReactElement | null {
   }
 
   function resetCustom() {
-    const today = msToDateInput(Date.now());
-    const tomorrow = msToDateInput(Date.now() + 24 * 60 * 60 * 1000);
-    setCustomFrom(today);
-    setCustomUntil(tomorrow);
+    const from = decideClosureCustomFromInitial(Date.now());
+    setCustomFrom(from);
+    setCustomUntil(decideClosureCustomUntilMinimum(from));
     setCustomError(null);
+    setShowFromPicker(false);
+    setShowUntilPicker(false);
   }
 
   function openSheet() {
     resetCustom();
     sheetRef.current?.present();
+  }
+
+  function handleFromChange(event: DateTimePickerEvent, picked?: Date) {
+    // Android dismisses the modal on any user action — we always close the
+    // picker. iOS keeps the inline calendar mounted, so we leave it open.
+    if (Platform.OS === "android") {
+      setShowFromPicker(false);
+    }
+    if (event.type === "dismissed" || picked === undefined) {
+      return;
+    }
+    const nextFrom = picked.getTime();
+    setCustomFrom(nextFrom);
+    // Keep the « Au » coherent : if it's now <= from + 24h, bump it to the
+    // new minimum. The picker `minimumDate` enforces the same floor on the
+    // next render — this just keeps the displayed value valid in between.
+    const minUntil = decideClosureCustomUntilMinimum(nextFrom);
+    if (customUntil < minUntil) {
+      setCustomUntil(minUntil);
+    }
+    setCustomError(null);
+  }
+
+  function handleUntilChange(event: DateTimePickerEvent, picked?: Date) {
+    if (Platform.OS === "android") {
+      setShowUntilPicker(false);
+    }
+    if (event.type === "dismissed" || picked === undefined) {
+      return;
+    }
+    setCustomUntil(picked.getTime());
+    setCustomError(null);
   }
 
   async function handlePickPreset(preset: ClosureQuickPreset) {
@@ -170,15 +233,7 @@ export function ClosureControl(): React.ReactElement | null {
   async function handleSubmitCustom() {
     if (tenantId === null) return;
     setCustomError(null);
-    const fromMs = parseLocalDateInput(customFrom);
-    const untilMs = parseLocalDateInput(customUntil);
-    if (fromMs === null || untilMs === null) {
-      setCustomError(
-        "Saisis une date de début et de fin au format AAAA-MM-JJ.",
-      );
-      return;
-    }
-    if (fromMs >= untilMs) {
+    if (customFrom >= customUntil) {
       setCustomError(
         "La date de fin doit être strictement après la date de début.",
       );
@@ -186,9 +241,9 @@ export function ClosureControl(): React.ReactElement | null {
     }
     setSubmitting("custom");
     try {
-      await setClosure({ tenantId, from: fromMs, until: untilMs });
+      await setClosure({ tenantId, from: customFrom, until: customUntil });
       notifyAction("availability.close", {
-        detail: `Jusqu'au ${formatClosureUntilDate(untilMs)}`,
+        detail: `Jusqu'au ${formatClosureUntilDate(customUntil)}`,
       });
       sheetRef.current?.dismiss();
     } catch (error) {
@@ -260,6 +315,7 @@ export function ClosureControl(): React.ReactElement | null {
   }
 
   // idle — entry-point pill
+  const minUntil = decideClosureCustomUntilMinimum(customFrom);
   return (
     <>
       <Pressable
@@ -327,29 +383,49 @@ export function ClosureControl(): React.ReactElement | null {
             <View className="gap-3">
               <View className="gap-1">
                 <Text className="text-muted-foreground text-xs">Du</Text>
-                <Input
-                  value={customFrom}
-                  onChangeText={(text) => {
-                    setCustomFrom(text);
-                  }}
-                  placeholder="AAAA-MM-JJ"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  accessibilityLabel="Date de début de la fermeture"
-                />
+                <Pressable
+                  onPress={() => setShowFromPicker(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Choisir la date de début de la fermeture"
+                  className="border-border bg-background h-12 justify-center rounded-md border px-3 active:opacity-70"
+                >
+                  <Text className="text-foreground text-base">
+                    {formatClosureFullDate(customFrom)}
+                  </Text>
+                </Pressable>
+                {showFromPicker ? (
+                  <DateTimePicker
+                    value={new Date(customFrom)}
+                    mode="date"
+                    display={Platform.OS === "ios" ? "inline" : "default"}
+                    minimumDate={
+                      new Date(decideClosureCustomFromInitial(Date.now()))
+                    }
+                    onChange={handleFromChange}
+                  />
+                ) : null}
               </View>
               <View className="gap-1">
                 <Text className="text-muted-foreground text-xs">Au</Text>
-                <Input
-                  value={customUntil}
-                  onChangeText={(text) => {
-                    setCustomUntil(text);
-                  }}
-                  placeholder="AAAA-MM-JJ"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  accessibilityLabel="Date de fin de la fermeture"
-                />
+                <Pressable
+                  onPress={() => setShowUntilPicker(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Choisir la date de fin de la fermeture"
+                  className="border-border bg-background h-12 justify-center rounded-md border px-3 active:opacity-70"
+                >
+                  <Text className="text-foreground text-base">
+                    {formatClosureFullDate(customUntil)}
+                  </Text>
+                </Pressable>
+                {showUntilPicker ? (
+                  <DateTimePicker
+                    value={new Date(customUntil)}
+                    mode="date"
+                    display={Platform.OS === "ios" ? "inline" : "default"}
+                    minimumDate={new Date(minUntil)}
+                    onChange={handleUntilChange}
+                  />
+                ) : null}
               </View>
               {customError !== null ? (
                 <Text className="text-destructive text-sm">{customError}</Text>
@@ -385,16 +461,6 @@ export function ClosureControl(): React.ReactElement | null {
       </BottomSheetModal>
     </>
   );
-}
-
-/** Convert an epoch ms to the YYYY-MM-DD shape the text input expects.
- * Mirror of the admin `msToDateInput`. */
-function msToDateInput(ms: number): string {
-  const d = new Date(ms);
-  const y = String(d.getFullYear()).padStart(4, "0");
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
 }
 
 function presetLabel(preset: ClosureQuickPreset): string {
