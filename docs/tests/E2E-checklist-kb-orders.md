@@ -127,7 +127,7 @@ _(parcours ajoutés au fil des merges)_
 
 ## KBO-N — Notifications + permissions
 
-> **Statut** : 🟡 0/? validés — issues couvertes #395 (TB-4 push permission detection + banner), #414 (TB-10 escalation push T+60s).
+> **Statut** : 🟢 **PASS le 2026-06-07 (partiel — #395 validé, #414 GAP V1 confirmé)** — #395 PushPermissionBanner CLOSED : OS denial → banner rouge sticky `#B91C1C` toutes routes `(app)` (pas pré-auth) avec copy « Notifs désactivées — tu vas rater des commandes » + bouton « Ouvrir réglages » → `Linking.openSettings()` ouvre la page app-scoped Android ; toggle re-grant + retour foreground → banner disparait via `AppState.addEventListener("change")` (canonical pattern OS flip). #414 escalation T+60s : **OPEN, non implémenté V1** — pas de pipeline Expo push backend → device, donc pas de `scheduler.runAfter(60s, escalateIfNotAcknowledged)` posté à `paymentSucceeded`. Comportement actuel observable confirme le gap : cmd `nouvelle` → rien à T+60s → `auto_expired` à T+5min (#404 fonctionne via Convex sub source de vérité PRD §13). Gap accepté V1 — filet T+60s reporté V2. Issues couvertes #395 ✓, #414 ⏸.
 
 _(parcours ajoutés au fil des merges)_
 
