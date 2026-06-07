@@ -1,5 +1,6 @@
 import { useAuthActions } from "@convex-dev/auth/react";
-import { useConvexAuth } from "convex/react";
+import { api } from "@packages/backend/convex/_generated/api";
+import { useConvexAuth, useQuery } from "convex/react";
 import { useEffect, useRef, useState } from "react";
 import { Text, View } from "react-native";
 import {
@@ -94,6 +95,18 @@ export function SessionRevokedGate({
     wasAuthenticatedRef.current = true;
   }
 
+  // #400 watcher backend — fix bug E2E KBO-AD §D6 (2026-06-07). Convex Auth
+  // garde le JWT côté client jusqu'à expiration TTL (~1h), donc
+  // `isAuthenticated` ne flippe pas immédiatement après un revoke serveur.
+  // Cette sub re-pushe `alive: false` au client dès que la `authSessions`
+  // row est supprimée → flip immédiat de l'overlay. Skip quand pas auth
+  // (la query throw sans auth, et on n'a rien à watcher dans ce cas).
+  const livenessProbe = useQuery(
+    api.lib.auth.sessions.isMySessionAlive,
+    isAuthenticated === true ? {} : "skip",
+  );
+  const livenessRevoked = livenessProbe?.alive === false;
+
   // The decision: `undefined` while Convex Auth is still resolving on cold
   // boot OR right after a foreground re-check. The pure function treats
   // `undefined` as « do not surface overlay » (see truth table).
@@ -103,6 +116,7 @@ export function SessionRevokedGate({
   const decision: SessionRevokedDecision = decideSessionRevoked({
     isAuthenticated: resolvedAuth,
     wasAuthenticated: wasAuthenticatedRef.current,
+    livenessRevoked,
     intentionalSignOut,
   });
 

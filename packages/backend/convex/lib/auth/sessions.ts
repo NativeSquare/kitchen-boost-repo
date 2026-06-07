@@ -1,6 +1,11 @@
+import { getAuthSessionId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "../../_generated/dataModel";
-import type { MutationCtx, QueryCtx } from "../../_generated/server";
+import {
+  query,
+  type MutationCtx,
+  type QueryCtx,
+} from "../../_generated/server";
 import { tenantMutation, tenantQuery } from "../tenancy";
 
 /**
@@ -220,5 +225,63 @@ export const revokeSession = tenantMutation({
 
     await ctx.db.delete(sessionId);
     return null;
+  },
+});
+
+// ---------------------------------------------------------------------------
+// `isMySessionAlive` — public, self-scoped liveness watcher (#400 live revoke)
+// ---------------------------------------------------------------------------
+
+/**
+ * #400 watcher — résout le bug E2E identifié par Alex le 2026-06-07 sur KBO-AD :
+ * Convex Auth utilise un JWT côté client qui n'est PAS re-vérifié contre
+ * la table `authSessions` à chaque requête (la signature suffit). Donc
+ * supprimer la row server-side n'invalide PAS immédiatement `useConvexAuth`
+ * côté client — le JWT reste « valide » jusqu'à expiration TTL (~1h
+ * Convex Auth default). Conséquence : un kb_admin pouvait révoquer une
+ * session via `revokeSession`, et le client natif continuait sa vie
+ * comme si de rien n'était jusqu'à la prochaine refresh.
+ *
+ * Solution : un query SUBSCRIBED par le natif (`SessionRevokedGate` côté
+ * #400) qui lit le sessionId du caller via `getAuthSessionId(ctx)` et
+ * regarde si la row existe encore. Convex pousse automatiquement le nouveau
+ * `alive: false` au client dès que la row est supprimée — flip immédiat
+ * du gate.
+ *
+ * Cas limites :
+ *  - `getAuthSessionId(ctx)` retourne `null` si le caller n'est pas auth.
+ *    On retourne `{ alive: false, reason: "no-session" }` — le gate native
+ *    n'aura jamais lieu d'appeler cette query dans cet état (il skip via
+ *    `isAuthenticated`), mais la réponse reste honnête.
+ *  - La row peut ne plus exister mais le JWT être encore valide
+ *    (le scénario que cette query existe pour traiter). `alive: false,
+ *    reason: "revoked"` — gate flip overlay.
+ *  - Cette query est `query`-direct (pas tenantQuery, pas kbAdminQuery) :
+ *    pas de tenant, pas de RBAC, juste self-scoped. `lib/auth/**` est l'un
+ *    des SANCTIONED PATHS de `no-untenanted-query` (ADR 0010 / eslint).
+ */
+export const isMySessionAlive = query({
+  args: {},
+  returns: v.object({
+    alive: v.boolean(),
+    reason: v.union(
+      v.literal("ok"),
+      v.literal("no-session"),
+      v.literal("revoked"),
+    ),
+  }),
+  handler: async (
+    ctx,
+  ): Promise<{ alive: boolean; reason: "ok" | "no-session" | "revoked" }> => {
+    // `getAuthSessionId` peut retourner `null` (anonymous) OU `undefined` /
+    // `""` selon les implems / shims de test (convex-test parse le subject
+    // au format `"userId|sessionId"` et renvoie `undefined` quand il n'y a
+    // pas de pipe). On normalise tous les falsy en `no-session` — le gate
+    // natif n'a pas besoin de discriminer.
+    const sessionId = await getAuthSessionId(ctx);
+    if (!sessionId) return { alive: false, reason: "no-session" };
+    const session = await ctx.db.get(sessionId);
+    if (session === null) return { alive: false, reason: "revoked" };
+    return { alive: true, reason: "ok" };
   },
 });

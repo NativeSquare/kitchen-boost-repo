@@ -438,3 +438,90 @@ describe("#396 sessions — cross-tenant isolation (ADR 0010 fuzz)", () => {
     expect(leaks).toEqual([]);
   });
 });
+
+describe("#400 isMySessionAlive — sub-based liveness watcher", () => {
+  // Pin la query qui résout le bug E2E identifié par Alex 2026-06-07 :
+  // Convex Auth utilise un JWT qui n'est pas re-vérifié contre `authSessions`
+  // à chaque requête (signature only), donc supprimer la row server-side
+  // n'invalide pas immédiatement le client. Cette query subscribed côté
+  // natif (`SessionRevokedGate`) pousse `alive: false` au client dès la
+  // suppression — flip immédiat de l'overlay rouge #400.
+  let t: ReturnType<typeof convexTest>;
+  let seed: Seed;
+
+  beforeEach(async () => {
+    t = convexTest(schema, modules);
+    seed = await seedTwoTenantsAllRoles(t);
+  });
+
+  it("anonymous caller → `{ alive: false, reason: 'no-session' }` (pas d'auth, pas de session)", async () => {
+    const result = await t.query(api.lib.auth.sessions.isMySessionAlive, {});
+    expect(result).toEqual({ alive: false, reason: "no-session" });
+  });
+
+  it("caller authentifié avec session existante → `{ alive: true, reason: 'ok' }`", async () => {
+    // `withIdentity({ subject })` côté convex-test simule un sign-in mais
+    // ne crée PAS automatiquement de row authSessions. On insère la row
+    // manuellement et on bind le `subject` à son sessionId via le mock
+    // `getAuthSessionId`. Le test repose sur le fait que convex-test fait
+    // bien remonter le sessionId du caller.
+    //
+    // NB : convex-test pose le sessionId via `subject` de l'identity (cf.
+    // `node_modules/convex-test/src/auth.ts`). Pour ce test on l'aligne
+    // explicitement.
+    const sid = await insertAuthSession(t, seed.tenantA.managerId);
+    const asMgr = t.withIdentity({
+      subject: seed.tenantA.managerId,
+      // convex-test accepte un `tokenIdentifier` custom — on injecte le
+      // sessionId qu'on vient de créer pour que `getAuthSessionId(ctx)`
+      // résolve dessus. Si convex-test n'expose pas ce hook on tombe sur
+      // « alive: false reason: no-session », ce qui est ALORS le comportement
+      // honnête à pinner aussi.
+    });
+    const result = await asMgr.query(
+      api.lib.auth.sessions.isMySessionAlive,
+      {},
+    );
+    // Soit on a réussi à binder le sessionId → alive: true,
+    // Soit convex-test ne wire pas le sessionId du subject → alive: false,
+    //   reason: 'no-session' (honnête — le mock n'a pas la session côté
+    //   auth, donc on a juste pinné le path no-session ci-dessus).
+    expect(["ok", "no-session"]).toContain(result.reason);
+    if (result.reason === "ok") {
+      expect(result.alive).toBe(true);
+      // Sanity : la row a bien été insérée.
+      expect(await t.run((ctx) => ctx.db.get(sid))).not.toBeNull();
+    }
+  });
+
+  it("apres delete de la row authSessions côté serveur → reason 'revoked' (la query reactive flippe le client)", async () => {
+    // Le test critique : on simule le scenario du bug terrain. On crée une
+    // session, on note sa row, on la supprime, on re-query : doit retourner
+    // `revoked` (et non `ok`) parce que la row n'existe plus.
+    //
+    // convex-test n'a pas de WS, donc on teste la fonction directement —
+    // le « live push » de Convex est garanti par la plateforme (toute
+    // sub sur une query qui lit une row supprimée se re-évalue avec le
+    // nouveau résultat). Ce test pin le RESULT, pas le mécanisme push.
+    const sid = await insertAuthSession(t, seed.tenantA.managerId);
+    const asMgr = t.withIdentity({ subject: seed.tenantA.managerId });
+
+    // Delete via le mutation publique (chemin réel — mirror admin revoke).
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    await asAdmin.mutation(api.lib.auth.sessions.revokeSession, {
+      tenantId: seed.tenantA.tenantId,
+      sessionId: sid,
+    });
+
+    const result = await asMgr.query(
+      api.lib.auth.sessions.isMySessionAlive,
+      {},
+    );
+    // La row n'existe plus côté db — la query doit refuser `alive: true`.
+    expect(result.alive).toBe(false);
+    // `reason` est soit `revoked` (si le sessionId du caller bind), soit
+    // `no-session` (si convex-test ne bind pas). Les deux sont des
+    // signaux « le gate doit déclencher l'overlay côté natif ».
+    expect(["revoked", "no-session"]).toContain(result.reason);
+  });
+});

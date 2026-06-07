@@ -20,15 +20,24 @@
  * Expo out of the function so the matrix is pinned by a fast deterministic
  * vitest suite (Node env, no jsdom, no native mocks).
  *
- * Truth table (cf. PRD 20 §13 + AC8):
+ * Truth table (cf. PRD 20 §13 + AC8) :
  *
- *  | wasAuth | isAuth     | intentional | verdict | why                            |
- *  | ------- | ---------- | ----------- | ------- | ------------------------------ |
- *  | true    | false      | false       | revoked | remote revocation              |
- *  | true    | false      | true        | idle    | local logout volontaire         |
- *  | true    | true       | *           | idle    | normal authenticated state     |
- *  | true    | undefined  | *           | idle    | transient loading after fg     |
- *  | false   | *          | *           | idle    | never authenticated yet         |
+ *  | wasAuth | isAuth     | livenessRev | intentional | verdict | why                                       |
+ *  | ------- | ---------- | ----------- | ----------- | ------- | ----------------------------------------- |
+ *  | true    | true       | true        | false       | revoked | watcher backend a flippé (le path KBO-AD) |
+ *  | true    | true       | true        | true        | idle    | logout volontaire en cours                |
+ *  | true    | false      | *           | false       | revoked | refresh JWT a fini par échouer            |
+ *  | true    | false      | *           | true        | idle    | logout local volontaire                   |
+ *  | true    | true       | false       | *           | idle    | sain (auth + watcher OK)                  |
+ *  | true    | undefined  | *           | *           | idle    | transient loading                         |
+ *  | false   | *          | *           | *           | idle    | never authenticated                       |
+ *
+ * Le watcher `livenessRevoked` est la fix du bug E2E identifié par Alex le
+ * 2026-06-07 (KBO-AD §D6) : Convex Auth garde le JWT côté client valide
+ * jusqu'à expiration TTL (~1h), donc `isAuthenticated` ne flippait pas
+ * malgré la suppression backend de la `authSessions` row. La query
+ * `isMySessionAlive` est subscribed par le gate ; quand la row disparaît,
+ * Convex push `{alive: false}` au client → flip immédiat.
  *
  * The SLA from PRD 20 §13 — « apparition de l'écran révoqué en < 5s après la
  * révocation depuis KB Admin » — is achieved by Convex Auth's own token-
@@ -51,6 +60,17 @@ export type SessionRevokedInputs = {
    * tracked by the adapter via `useRef` (mounted once at root, retained
    * across re-renders, reset when the overlay routes us back to sign-in). */
   wasAuthenticated: boolean;
+  /** Watcher `api.lib.auth.sessions.isMySessionAlive` subscribed via
+   * `useQuery` quand l'utilisateur est auth. `true` quand le backend a
+   * confirmé que la row `authSessions` est supprimée (Convex push live).
+   * Permet de détecter la révocation AVANT que le JWT n'expire — fix du
+   * bug E2E KBO-AD §D6 (2026-06-07).
+   *
+   * `false` couvre 2 cas honnêtes :
+   *  - watcher dit alive: true → tout va bien
+   *  - watcher pas encore résolu / non subscribed → on ne signale pas
+   *    revoked, l'autre branche `isAuthenticated === false` rattrape. */
+  livenessRevoked: boolean;
   /** Flipped to `true` by Settings « Logout » (PRD 20 §10 + #418) and by the
    * banned-user alert in `_layout.tsx` BEFORE calling `signOut()`. Tells the
    * decision « this drop in auth is what the user asked for, not a remote
@@ -81,21 +101,29 @@ export function decideSessionRevoked(
     return { kind: "idle" };
   }
 
-  // 2. Currently authenticated (or auth state still loading on foreground
+  // 2. Was authenticated AND a sign-out is in flight → idle. Le user a demandé.
+  //    Guard placé AVANT le watcher pour qu'un logout volontaire ne pop pas
+  //    l'overlay quelques ms le temps que la query se résolve.
+  if (inputs.intentionalSignOut) {
+    return { kind: "idle" };
+  }
+
+  // 3. Watcher backend dit révoqué (la fix bug KBO-AD §D6). Pousse l'overlay
+  //    AVANT que `isAuthenticated` ne flippe (le JWT côté client est encore
+  //    « valide » 1h par défaut Convex Auth — sans ce signal, l'overlay
+  //    n'apparaissait jamais en temps réel).
+  if (inputs.livenessRevoked) {
+    return { kind: "revoked" };
+  }
+
+  // 4. Currently authenticated (or auth state still loading on foreground
   //    return) → no overlay. The loading guard is critical: an `undefined`
   //    flash during token refresh must not pop the red error screen.
   if (inputs.isAuthenticated === true || inputs.isAuthenticated === undefined) {
     return { kind: "idle" };
   }
 
-  // 3. Was authenticated, now definitely NOT, AND the local sign-out flow
-  //    is the cause → idle. The user asked for it; the error overlay would
-  //    lie to them.
-  if (inputs.intentionalSignOut) {
-    return { kind: "idle" };
-  }
-
-  // 4. The only remaining branch: wasAuthenticated && !isAuthenticated &&
-  //    !intentionalSignOut. Remote revocation — surface the overlay.
+  // 5. Was authenticated, now definitely NOT, not intentional, no watcher
+  //    signal → JWT refresh a fini par échouer après TTL. Surface l'overlay.
   return { kind: "revoked" };
 }
