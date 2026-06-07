@@ -91,8 +91,16 @@ async function requireTenantAccess(
 
   // Has a resto role on the tenant, but is it permitted for THIS action?
   if (!allow.includes(actor.effectiveRole)) {
+    // `allow: []` est l'idiome « kb_admin only via tenant route » (cf.
+    // `sessions.ts` post-grilling 2026-06-07) — le check `kb_admin` ligne
+    // 83 a déjà court-circuité un root caller. Surface un message lisible
+    // au lieu de l'awkward « requires one of: » vide.
+    const requirement =
+      allow.length === 0
+        ? "requires kb_admin role"
+        : `requires one of: ${allow.join(", ")}`;
     throw forbidden(
-      `role "${actor.effectiveRole}" not permitted (requires one of: ${allow.join(", ")})`,
+      `role "${actor.effectiveRole}" not permitted (${requirement})`,
     );
   }
 

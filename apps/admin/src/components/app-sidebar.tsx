@@ -148,7 +148,10 @@ const ADMIN_SUPERVISION_ITEMS: SidebarNavItem[] = [
   { label: "Tenants", href: "/tenants", iconName: "tenants" },
 ];
 
-function buildOperationalItems(tenantId: Id<"tenants">): SidebarNavItem[] {
+function buildOperationalItems(
+  tenantId: Id<"tenants">,
+  opts: { isAdmin: boolean },
+): SidebarNavItem[] {
   const base = `/t/${tenantId as unknown as string}`;
   return [
     { label: "Tableau de bord", href: base, iconName: "dashboard" },
@@ -178,7 +181,21 @@ function buildOperationalItems(tenantId: Id<"tenants">): SidebarNavItem[] {
     // RGPD Article 2 ter contrat). Placée entre QR et Paramètres : c'est de
     // la config tenant (sécurité-adjacente), pas un onglet opérationnel
     // quotidien.
-    { label: "Sessions", href: `${base}/sessions`, iconName: "sessions" },
+    //
+    // RBAC (décision terrain 2026-06-07) : kb_admin only. Le backend rejette
+    // un kb_manager au gate (`sessions.ts` allow: []), la page rend
+    // `<UnauthorizedCard/>` en defense in depth, et la sidebar n'affiche
+    // simplement pas l'entrée pour un kb_manager — pas d'onglet cliquable
+    // qui ouvre un Forbidden.
+    ...(opts.isAdmin
+      ? [
+          {
+            label: "Sessions",
+            href: `${base}/sessions`,
+            iconName: "sessions" as const,
+          },
+        ]
+      : []),
     { label: "Paramètres", href: `${base}/parametres`, iconName: "parametres" },
   ];
 }
@@ -232,7 +249,7 @@ export function decideSidebarNav(input: SidebarNavInput): SidebarNavDecision {
   if (urlTenantId !== null) {
     return {
       kind: "manager-operational",
-      items: buildOperationalItems(urlTenantId),
+      items: buildOperationalItems(urlTenantId, { isAdmin }),
       supportItem: buildOperationalSupportItem(urlTenantId),
     };
   }
@@ -243,7 +260,7 @@ export function decideSidebarNav(input: SidebarNavInput): SidebarNavDecision {
     const fallback = tenants[0].tenantId;
     return {
       kind: "manager-operational",
-      items: buildOperationalItems(fallback),
+      items: buildOperationalItems(fallback, { isAdmin: false }),
       supportItem: buildOperationalSupportItem(fallback),
     };
   }

@@ -159,7 +159,7 @@ describe("decideSidebarNav", () => {
 
   // --- Operational space (manager OR admin under /t/[id]) ------------------
 
-  it("KB Manager on `/t/<A>/menu` → `manager-operational` items scoped to /t/<A>/... (11 items now: #397 adds Disponibilité between Commandes and Mes clients — opérationnel quotidien, PRD 20 §7 / ADR 0018)", () => {
+  it("KB Manager on `/t/<A>/menu` → `manager-operational` 10 items scoped to /t/<A>/... (Sessions retiré 2026-06-07 — kb_admin only RBAC, #396)", () => {
     const input: SidebarNavInput = {
       session: managerSession([
         { id: TENANT_A, slug: "lartisan", name: "L'Artisan" },
@@ -168,6 +168,57 @@ describe("decideSidebarNav", () => {
     };
     const result = decideSidebarNav(input);
     expect(result.kind).toBe("manager-operational");
+    // 10 items pour kb_manager — Sessions absent (RBAC durci 2026-06-07).
+    expect(result.items.map((i) => i.label)).toEqual([
+      "Tableau de bord",
+      "Menu",
+      "Commandes",
+      "Disponibilité",
+      "Mes clients",
+      "Statistiques",
+      "Campagnes",
+      "Pricing",
+      "QR",
+      "Paramètres",
+    ]);
+    expect(result.items.map((i) => i.href)).toEqual([
+      `/t/${TENANT_A}`,
+      `/t/${TENANT_A}/menu`,
+      `/t/${TENANT_A}/commandes`,
+      `/t/${TENANT_A}/disponibilite`,
+      `/t/${TENANT_A}/mes-clients`,
+      `/t/${TENANT_A}/stats`,
+      `/t/${TENANT_A}/campagnes`,
+      `/t/${TENANT_A}/pricing`,
+      `/t/${TENANT_A}/qr`,
+      `/t/${TENANT_A}/parametres`,
+    ]);
+    // Pins requested by the issues #389/#390 spec.
+    expect(result.items[0].href).toBe(`/t/${TENANT_A}`);
+    // #397 — Disponibilité sits right after Commandes (operational quotidien
+    // — frontière ADR 0018 : actions « ici et maintenant »).
+    expect(result.items[3].href).toBe(`/t/${TENANT_A}/disponibilite`);
+    expect(result.items[5].href).toBe(`/t/${TENANT_A}/stats`);
+    // #396 — Sessions ABSENT pour kb_manager (RBAC durci 2026-06-07).
+    // Régression défensive : ré-introduire l'entrée pour un kb_manager fait
+    // tomber ce test loud.
+    expect(result.items.some((i) => i.label === "Sessions")).toBe(false);
+    expect(result.items.some((i) => i.href === `/t/${TENANT_A}/sessions`)).toBe(
+      false,
+    );
+  });
+
+  it("KB Admin on `/t/<A>/menu` → `manager-operational` 11 items WITH Sessions entry between QR et Paramètres (root override RBAC #396)", () => {
+    const input: SidebarNavInput = {
+      session: adminSession(),
+      pathname: `/t/${TENANT_A}/menu`,
+    };
+    const result = decideSidebarNav(input);
+    expect(result.kind).toBe("manager-operational");
+    // items[0] = Tableau de bord, scoped to the URL tenant base path.
+    expect(result.items[0].href).toBe(`/t/${TENANT_A}`);
+    // 11 items pour kb_admin (root override) — Sessions présent entre QR et
+    // Paramètres (security-adjacent section, sits next to tenant config).
     expect(result.items.map((i) => i.label)).toEqual([
       "Tableau de bord",
       "Menu",
@@ -181,39 +232,7 @@ describe("decideSidebarNav", () => {
       "Sessions",
       "Paramètres",
     ]);
-    expect(result.items.map((i) => i.href)).toEqual([
-      `/t/${TENANT_A}`,
-      `/t/${TENANT_A}/menu`,
-      `/t/${TENANT_A}/commandes`,
-      `/t/${TENANT_A}/disponibilite`,
-      `/t/${TENANT_A}/mes-clients`,
-      `/t/${TENANT_A}/stats`,
-      `/t/${TENANT_A}/campagnes`,
-      `/t/${TENANT_A}/pricing`,
-      `/t/${TENANT_A}/qr`,
-      `/t/${TENANT_A}/sessions`,
-      `/t/${TENANT_A}/parametres`,
-    ]);
-    // Pins requested by the issues #389/#390 spec.
-    expect(result.items[0].href).toBe(`/t/${TENANT_A}`);
-    // #397 — Disponibilité sits right after Commandes (operational quotidien
-    // — frontière ADR 0018 : actions « ici et maintenant »).
-    expect(result.items[3].href).toBe(`/t/${TENANT_A}/disponibilite`);
-    expect(result.items[5].href).toBe(`/t/${TENANT_A}/stats`);
-    // #396 — Sessions entry is between QR and Paramètres (security-adjacent
-    // section, sits next to tenant config).
     expect(result.items[9].href).toBe(`/t/${TENANT_A}/sessions`);
-  });
-
-  it("KB Admin on `/t/<A>/menu` → `manager-operational` scoped to /t/<A>/... (root override in operational view)", () => {
-    const input: SidebarNavInput = {
-      session: adminSession(),
-      pathname: `/t/${TENANT_A}/menu`,
-    };
-    const result = decideSidebarNav(input);
-    expect(result.kind).toBe("manager-operational");
-    // items[0] = Tableau de bord, scoped to the URL tenant base path.
-    expect(result.items[0].href).toBe(`/t/${TENANT_A}`);
   });
 
   it("KB Admin on `/t/<B>/parametres` → operational scoped to /t/<B>/... (URL tenant wins, not the first session tenant)", () => {

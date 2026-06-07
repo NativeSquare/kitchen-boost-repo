@@ -24,28 +24,35 @@ const modules = Object.fromEntries(
  * #396 (KB Admin Page Sessions actives + bouton « Révoquer ») — backend
  * contract:
  *
- *   - `listTenantSessions({ tenantId })` — `tenantQuery({ allow: ["kb_manager"] })`.
- *     Returns the ACTIVE `authSessions` belonging to users with an ACTIVE
- *     `userTenants` attachment on `tenantId`. Each row projects the minimal
- *     identity (`userName` / `userEmail`) the page needs — never raw user docs.
+ *   - `listTenantSessions({ tenantId })` — `tenantQuery({ allow: [] })` —
+ *     kb_admin only (root override via `withTenant.ts:83`). Returns the
+ *     ACTIVE `authSessions` belonging to users with an ACTIVE `userTenants`
+ *     attachment on `tenantId`. Each row projects the minimal identity
+ *     (`userName` / `userEmail`) the page needs — never raw user docs.
  *     Sorted by creation desc.
  *
  *   - `revokeSession({ tenantId, sessionId })` —
- *     `tenantMutation({ allow: ["kb_manager"], audit: true, action:
- *     "auth.revokeSession" })`. Verifies the session's user has an ACTIVE
- *     `userTenants` attachment on `tenantId` (cross-tenant guard, V1 audit
- *     monolithique = pas de scope multi-tenant sur une même session). Deletes
- *     the `authSessions` row AND cascades the user's refresh tokens whose
- *     `sessionId` matches (so the native client cannot refresh back). Returns
- *     `null`. Writes an audit row via the wrapper's onSuccess hook
- *     (`actorRole: kb_manager`, `tenantId: <tenantId>`, `action:
- *     "auth.revokeSession"`).
+ *     `tenantMutation({ allow: [], audit: true, action:
+ *     "auth.revokeSession" })`. kb_admin only. Verifies the session's user
+ *     has an ACTIVE `userTenants` attachment on `tenantId` (cross-tenant
+ *     guard, défense en profondeur même si seul kb_admin atteint cette
+ *     branche). Deletes the `authSessions` row AND cascades the user's
+ *     refresh tokens whose `sessionId` matches (so the native client cannot
+ *     refresh back). Returns `null`. Writes an audit row via the wrapper's
+ *     onSuccess hook (`actorRole: kb_admin`, `tenantId: <tenantId>`,
+ *     `action: "auth.revokeSession"`).
  *
- * Cross-tenant isolation (ADR 0010, layer 3 fuzz):
- *  - manager of tenant B → Forbidden when targeting tenant A's listing OR
- *    revoking a session of a user attached only to tenant A.
- *  - detached / customer / anonymous → Forbidden.
- *  - root override : kb_admin passes regardless of tenant.
+ * RBAC (décision terrain 2026-06-07, grilling KBO-AD) :
+ *  - **kb_admin only** sur les 2 surfaces. À l'origine `allow: ["kb_manager"]`
+ *    pour exposer la révocation aux gérants (PRD 20 §13 « vol/perte/employé
+ *    licencié »), Alex a identifié une privilege escalation latérale entre
+ *    managers du même tenant (Walid peut booter Khan).
+ *  - kb_manager / staff → FORBIDDEN sur les 2 fonctions, même attachés au
+ *    tenant ciblé. Section dédiée plus bas pin ce contrat.
+ *
+ * Cross-tenant isolation (ADR 0010, layer 3 fuzz) :
+ *  - kb_admin passe (root override).
+ *  - kb_manager / staff / detached / customer / anonymous → Forbidden.
  */
 
 type Seed = Awaited<ReturnType<typeof seedTwoTenantsAllRoles>>;
@@ -88,7 +95,7 @@ async function insertRefreshToken(
   );
 }
 
-describe("#396 listTenantSessions — happy paths", () => {
+describe("#396 listTenantSessions — happy paths (kb_admin only post 2026-06-07)", () => {
   let t: ReturnType<typeof convexTest>;
   let seed: Seed;
 
@@ -97,15 +104,15 @@ describe("#396 listTenantSessions — happy paths", () => {
     seed = await seedTwoTenantsAllRoles(t);
   });
 
-  it("KB Manager of tenant A lists only sessions of users attached to A", async () => {
+  it("kb_admin lists only sessions of users attached to the targeted tenant", async () => {
     // Seed: one session for A's manager, one for A's staff, one for B's
     // manager (must NOT leak into A's listing).
     await insertAuthSession(t, seed.tenantA.managerId);
     await insertAuthSession(t, seed.tenantA.staffId);
     await insertAuthSession(t, seed.tenantB.managerId);
 
-    const asMgr = t.withIdentity({ subject: seed.tenantA.managerId });
-    const sessions = await asMgr.query(
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    const sessions = await asAdmin.query(
       api.lib.auth.sessions.listTenantSessions,
       { tenantId: seed.tenantA.tenantId },
     );
@@ -123,10 +130,11 @@ describe("#396 listTenantSessions — happy paths", () => {
   it("each row projects only the minimal identity fields the page needs (no raw user doc, no expirationTime leak shape)", async () => {
     const sid = await insertAuthSession(t, seed.tenantA.managerId);
 
-    const asMgr = t.withIdentity({ subject: seed.tenantA.managerId });
-    const [row] = await asMgr.query(api.lib.auth.sessions.listTenantSessions, {
-      tenantId: seed.tenantA.tenantId,
-    });
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    const [row] = await asAdmin.query(
+      api.lib.auth.sessions.listTenantSessions,
+      { tenantId: seed.tenantA.tenantId },
+    );
 
     expect(row.sessionId).toBe(sid);
     expect(row.userId).toBe(seed.tenantA.managerId);
@@ -138,7 +146,7 @@ describe("#396 listTenantSessions — happy paths", () => {
     expect((row as Record<string, unknown>).user).toBeUndefined();
   });
 
-  it("kb_admin (root override) sees sessions of any tenant", async () => {
+  it("kb_admin sees sessions of any tenant (root override on `allow: []`)", async () => {
     await insertAuthSession(t, seed.tenantA.managerId);
     await insertAuthSession(t, seed.tenantB.managerId);
 
@@ -167,11 +175,11 @@ describe("#396 listTenantSessions — happy paths", () => {
     );
     await insertAuthSession(t, seed.tenantA.managerId);
 
-    const asA = t.withIdentity({ subject: seed.tenantA.managerId });
-    const inA = await asA.query(api.lib.auth.sessions.listTenantSessions, {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    const inA = await asAdmin.query(api.lib.auth.sessions.listTenantSessions, {
       tenantId: seed.tenantA.tenantId,
     });
-    const inB = await asA.query(api.lib.auth.sessions.listTenantSessions, {
+    const inB = await asAdmin.query(api.lib.auth.sessions.listTenantSessions, {
       tenantId: seed.tenantB.tenantId,
     });
     expect(inA.map((r) => r.userId)).toEqual([seed.tenantA.managerId]);
@@ -193,7 +201,7 @@ describe("#396 listTenantSessions — happy paths", () => {
   });
 });
 
-describe("#396 revokeSession — happy paths", () => {
+describe("#396 revokeSession — happy paths (kb_admin only post 2026-06-07)", () => {
   let t: ReturnType<typeof convexTest>;
   let seed: Seed;
 
@@ -202,11 +210,11 @@ describe("#396 revokeSession — happy paths", () => {
     seed = await seedTwoTenantsAllRoles(t);
   });
 
-  it("KB Manager revokes a session of a user attached to the same tenant → row deleted + audit row written", async () => {
+  it("kb_admin revokes a session of a user attached to the targeted tenant → row deleted + audit row written", async () => {
     const sid = await insertAuthSession(t, seed.tenantA.staffId);
-    const asMgr = t.withIdentity({ subject: seed.tenantA.managerId });
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
 
-    await asMgr.mutation(api.lib.auth.sessions.revokeSession, {
+    await asAdmin.mutation(api.lib.auth.sessions.revokeSession, {
       tenantId: seed.tenantA.tenantId,
       sessionId: sid,
     });
@@ -219,8 +227,8 @@ describe("#396 revokeSession — happy paths", () => {
     const rows = await readAuditLog(t);
     const row = rows.find((r) => r.action === "auth.revokeSession");
     expect(row).toBeDefined();
-    expect(row?.actorUserId).toBe(seed.tenantA.managerId);
-    expect(row?.actorRole).toBe("kb_manager");
+    expect(row?.actorUserId).toBe(seed.adminId);
+    expect(row?.actorRole).toBe("kb_admin");
     expect(row?.tenantId).toBe(seed.tenantA.tenantId);
   });
 
@@ -229,8 +237,8 @@ describe("#396 revokeSession — happy paths", () => {
     const rt1 = await insertRefreshToken(t, sid);
     const rt2 = await insertRefreshToken(t, sid);
 
-    const asMgr = t.withIdentity({ subject: seed.tenantA.managerId });
-    await asMgr.mutation(api.lib.auth.sessions.revokeSession, {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    await asAdmin.mutation(api.lib.auth.sessions.revokeSession, {
       tenantId: seed.tenantA.tenantId,
       sessionId: sid,
     });
@@ -239,7 +247,7 @@ describe("#396 revokeSession — happy paths", () => {
     expect(await t.run((ctx) => ctx.db.get(rt2))).toBeNull();
   });
 
-  it("kb_admin (root override) can revoke any tenant's session", async () => {
+  it("kb_admin can revoke any tenant's session (root override on `allow: []`)", async () => {
     const sid = await insertAuthSession(t, seed.tenantB.managerId);
     const asAdmin = t.withIdentity({ subject: seed.adminId });
 
@@ -252,10 +260,10 @@ describe("#396 revokeSession — happy paths", () => {
 
   it("revoking a non-existent session throws (no silent no-op — the caller must learn the action did nothing)", async () => {
     const fakeSid = "authSessions:does_not_exist" as Id<"authSessions">;
-    const asMgr = t.withIdentity({ subject: seed.tenantA.managerId });
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
 
     await expect(
-      asMgr.mutation(api.lib.auth.sessions.revokeSession, {
+      asAdmin.mutation(api.lib.auth.sessions.revokeSession, {
         tenantId: seed.tenantA.tenantId,
         sessionId: fakeSid,
       }),
@@ -264,17 +272,92 @@ describe("#396 revokeSession — happy paths", () => {
 
   it("revoke is idempotent at the listing level: a second list call no longer contains the revoked session", async () => {
     const sid = await insertAuthSession(t, seed.tenantA.staffId);
-    const asMgr = t.withIdentity({ subject: seed.tenantA.managerId });
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
 
-    await asMgr.mutation(api.lib.auth.sessions.revokeSession, {
+    await asAdmin.mutation(api.lib.auth.sessions.revokeSession, {
       tenantId: seed.tenantA.tenantId,
       sessionId: sid,
     });
 
-    const after = await asMgr.query(api.lib.auth.sessions.listTenantSessions, {
-      tenantId: seed.tenantA.tenantId,
-    });
+    const after = await asAdmin.query(
+      api.lib.auth.sessions.listTenantSessions,
+      { tenantId: seed.tenantA.tenantId },
+    );
     expect(after.find((r) => r.sessionId === sid)).toBeUndefined();
+  });
+});
+
+describe("#396 sessions — kb_manager / staff bloqués (RBAC durci 2026-06-07)", () => {
+  // Pin la décision terrain : un gérant ou un staff attaché au tenant ciblé
+  // ne peut plus ni lister ni révoquer les sessions de ce tenant. La
+  // motivation (privilege escalation latérale Walid → Khan) vit dans le
+  // docblock de `sessions.ts`.
+  let t: ReturnType<typeof convexTest>;
+  let seed: Seed;
+
+  beforeEach(async () => {
+    t = convexTest(schema, modules);
+    seed = await seedTwoTenantsAllRoles(t);
+  });
+
+  it("kb_manager attaché au tenant A → listTenantSessions sur A throws FORBIDDEN", async () => {
+    await insertAuthSession(t, seed.tenantA.staffId);
+    const asMgr = t.withIdentity({ subject: seed.tenantA.managerId });
+
+    await expect(
+      asMgr.query(api.lib.auth.sessions.listTenantSessions, {
+        tenantId: seed.tenantA.tenantId,
+      }),
+    ).rejects.toThrow(/forbidden/i);
+  });
+
+  it("kb_manager attaché au tenant A → revokeSession sur A throws FORBIDDEN + row inchangé", async () => {
+    const sid = await insertAuthSession(t, seed.tenantA.staffId);
+    const asMgr = t.withIdentity({ subject: seed.tenantA.managerId });
+
+    await expect(
+      asMgr.mutation(api.lib.auth.sessions.revokeSession, {
+        tenantId: seed.tenantA.tenantId,
+        sessionId: sid,
+      }),
+    ).rejects.toThrow(/forbidden/i);
+    // La session cible n'a PAS été supprimée — la révocation a été rejetée
+    // au gate, pas à l'intérieur du handler.
+    expect(await t.run((ctx) => ctx.db.get(sid))).not.toBeNull();
+  });
+
+  it("staff attaché au tenant A → listTenantSessions throws FORBIDDEN", async () => {
+    await insertAuthSession(t, seed.tenantA.staffId);
+    const asStaff = t.withIdentity({ subject: seed.tenantA.staffId });
+
+    await expect(
+      asStaff.query(api.lib.auth.sessions.listTenantSessions, {
+        tenantId: seed.tenantA.tenantId,
+      }),
+    ).rejects.toThrow(/forbidden/i);
+  });
+
+  it("staff attaché au tenant A → revokeSession throws FORBIDDEN", async () => {
+    const sid = await insertAuthSession(t, seed.tenantA.managerId);
+    const asStaff = t.withIdentity({ subject: seed.tenantA.staffId });
+
+    await expect(
+      asStaff.mutation(api.lib.auth.sessions.revokeSession, {
+        tenantId: seed.tenantA.tenantId,
+        sessionId: sid,
+      }),
+    ).rejects.toThrow(/forbidden/i);
+  });
+
+  it("le message d'erreur mentionne `kb_admin role` (clean copy via `requireTenantAccess`)", async () => {
+    // Belt + suspenders : surface lisible quand `allow: []` rejette un caller
+    // tenant-attaché. Pas « requires one of: » vide qui ferait penser à un bug.
+    const asMgr = t.withIdentity({ subject: seed.tenantA.managerId });
+    await expect(
+      asMgr.query(api.lib.auth.sessions.listTenantSessions, {
+        tenantId: seed.tenantA.tenantId,
+      }),
+    ).rejects.toThrow(/kb_admin/);
   });
 });
 
@@ -338,6 +421,10 @@ describe("#396 sessions — cross-tenant isolation (ADR 0010 fuzz)", () => {
       isQuery: (fn) => fn === api.lib.auth.sessions.listTenantSessions,
       tenantId: seed.tenantA.tenantId,
       actors: [
+        // Post-RBAC 2026-06-07 : A-manager et A-staff sont aussi des fuzz
+        // actors « unauthorized » (avant ils étaient les happy paths).
+        { label: "A-manager", subject: seed.tenantA.managerId },
+        { label: "A-staff", subject: seed.tenantA.staffId },
         { label: "B-manager", subject: seed.tenantB.managerId },
         { label: "detached", subject: seed.detachedUserId },
         { label: "customer", subject: seed.customerId },

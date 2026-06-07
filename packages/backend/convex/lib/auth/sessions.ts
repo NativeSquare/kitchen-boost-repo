@@ -17,20 +17,31 @@ import { tenantMutation, tenantQuery } from "../tenancy";
  * appelées `api.lib.auth.sessions.listTenantSessions` et
  * `api.lib.auth.sessions.revokeSession`) :
  *
- *  - `listTenantSessions({ tenantId })` — `tenantQuery({ allow:
- *    ["kb_manager"] })`. Retourne les `authSessions` ACTIVES dont le
+ *  - `listTenantSessions({ tenantId })` — `tenantQuery({ allow: [] })` —
+ *    **kb_admin only** (root override passe via `withTenant.ts:83` AVANT le
+ *    check `allow.includes`). Retourne les `authSessions` ACTIVES dont le
  *    `userId` a une ligne `userTenants` ACTIVE sur ce tenant. Projection
  *    minimale (sessionId + identité + lifetime) — JAMAIS le row `users`
  *    brut ni l'`expirationTime` Convex Auth interne.
  *
- *  - `revokeSession({ tenantId, sessionId })` — `tenantMutation({ allow:
- *    ["kb_manager"], audit: true, action: "auth.revokeSession" })`.
- *    Vérifie que la session cible appartient à un user attaché au
- *    `tenantId` (cross-tenant guard, layer 1 — ADR 0010 / fuzz). Supprime
- *    le row `authSessions` ET cascade les `authRefreshTokens` indexés par
- *    `sessionId` (sinon le client peut refresh la session révoquée). La
- *    ligne d'audit est écrite par le wrapper (composition `onSuccess`,
- *    même transaction).
+ *  - `revokeSession({ tenantId, sessionId })` — `tenantMutation({ allow: [],
+ *    audit: true, action: "auth.revokeSession" })`. Vérifie que la session
+ *    cible appartient à un user attaché au `tenantId` (cross-tenant guard,
+ *    layer 1 — ADR 0010 / fuzz, défense en profondeur même si seul kb_admin
+ *    atteint cette branche). Supprime le row `authSessions` ET cascade les
+ *    `authRefreshTokens` indexés par `sessionId` (sinon le client peut
+ *    refresh la session révoquée). La ligne d'audit est écrite par le
+ *    wrapper (composition `onSuccess`, même transaction).
+ *
+ * ── RBAC : kb_admin only (décision terrain 2026-06-07) ──────────────────
+ * À l'origine `allow: ["kb_manager"]` pour exposer la révocation aux
+ * gérants (PRD 20 §13 « vol/perte/employé licencié/device en SAV »). Alex
+ * a identifié en grilling KBO-AD que ça ouvre une privilege escalation
+ * latérale : Walid peut booter Khan sur le même tenant. Décision : la
+ * gestion des sessions devient kb_admin only ; les cas terrain qui
+ * justifiaient l'accès gérant restent traités via un ticket support qui
+ * tape kb_admin. La frontière backend (`allow: []`) est le SEUL vrai gate
+ * (ADR 0010) ; sidebar + page guard côté admin sont du polish UX.
  *
  * Pourquoi `lib/auth/` plutôt que `lib/admin/` :
  *  - `lib/auth/**` est l'un des SANCTIONED PATHS de `no-untenanted-query`
@@ -121,7 +132,10 @@ async function listActiveUserIdsForTenant(
 // ---------------------------------------------------------------------------
 
 export const listTenantSessions = tenantQuery({
-  allow: ["kb_manager"],
+  // kb_admin only — décision terrain 2026-06-07 (cf. docblock RBAC). Le
+  // wrapper `withTenant.ts:83` laisse passer `kb_admin` AVANT de tester
+  // `allow.includes(effectiveRole)`, donc une `allow` vide = kb_admin only.
+  allow: [],
 })({
   args: {},
   returns: v.array(sessionRowValidator),
@@ -154,7 +168,10 @@ export const listTenantSessions = tenantQuery({
 // ---------------------------------------------------------------------------
 
 export const revokeSession = tenantMutation({
-  allow: ["kb_manager"],
+  // kb_admin only — décision terrain 2026-06-07 (cf. docblock RBAC). Le
+  // wrapper `withTenant.ts:83` laisse passer `kb_admin` AVANT de tester
+  // `allow.includes(effectiveRole)`, donc une `allow` vide = kb_admin only.
+  allow: [],
 })({
   args: { sessionId: v.id("authSessions") },
   returns: v.null(),
