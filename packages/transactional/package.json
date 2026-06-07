@@ -5,7 +5,8 @@
   "main": "./index.ts",
   "types": "./index.ts",
   "scripts": {
-    "build": "email build",
+    "build": "echo 'noop — emails rendered at runtime via @react-email/render. Use build:preview for the local preview server.'",
+    "build:preview": "email build",
     "dev": "email dev -p 3001",
     "export": "email export",
     "start": "email start -p 3001",
