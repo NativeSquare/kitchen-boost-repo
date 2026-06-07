@@ -3196,6 +3196,208 @@ export const triggerE2EAutoExpireKbOrder = internalMutation({
 });
 
 /**
+ * Mix terminaux pour KBO-OPS3 — historique des cmds (#417).
+ *
+ * Insère 8 orders sentinellées `[E2E KBO-OPS3]` sur le tenant arg (default
+ * `test-t1`) avec un panachage des 4 statuts terminaux (livrée /
+ * collectée / refusée / auto_expired) et des dates variées (today / -3j /
+ * -10j / -40j) pour exercer les 4 onglets PRD 20 §8 + les 4 filtres période.
+ *
+ * Pas de events / pas de refusalReason — la liste historique n'en a pas
+ * besoin (le badge utilise `status` directement), le détail lit les events
+ * via `getOrder` mais en V1 il rend gracieusement même sans events
+ * (read-only sur les terminaux).
+ *
+ * Idempotent par compteur — recrée si déjà supprimé par wipe.
+ */
+export const seedE2EKBOrdersHistoryMix = internalMutation({
+  args: { tenantSlug: v.optional(v.string()) },
+  returns: v.object({ created: v.number() }),
+  handler: async (ctx, args) => {
+    const slug = args.tenantSlug ?? "test-t1";
+    const tenant = await ctx.db
+      .query("tenants")
+      .withIndex("by_slug", (q) => q.eq("slug", slug))
+      .unique();
+    if (tenant === null) {
+      throw new ConvexError({ message: `Tenant "${slug}" not found.` });
+    }
+    const link = await ctx.db
+      .query("customerOrdersPerTenant")
+      .withIndex("by_tenant_customer", (q) => q.eq("tenantId", tenant._id))
+      .first();
+    if (link === null) {
+      throw new ConvexError({
+        message: `No customer linked to "${slug}" — run seedE2ECustomerKPIs first.`,
+      });
+    }
+    const customer = await ctx.db.get(link.customerId);
+    if (customer === null) {
+      throw new ConvexError({ message: "Customer missing." });
+    }
+
+    const now = Date.now();
+    const DAY = 24 * 60 * 60 * 1000;
+
+    // (status, mode, addressNeeded, daysAgo, total, itemName)
+    const fixtures = [
+      // Today — exerce le filtre "Aujourd'hui"
+      {
+        status: "livrée",
+        mode: "delivery",
+        daysAgo: 0,
+        total: 2750,
+        item: "Burger maison",
+      },
+      {
+        status: "livrée",
+        mode: "delivery",
+        daysAgo: 0,
+        total: 1450,
+        item: "Salade César",
+      },
+      {
+        status: "collectée",
+        mode: "pickup",
+        daysAgo: 0,
+        total: 1800,
+        item: "Pizza Margherita",
+      },
+      {
+        status: "refusée",
+        mode: "delivery",
+        daysAgo: 0,
+        total: 3200,
+        item: "Bowl saumon",
+      },
+      {
+        status: "auto_expired",
+        mode: "pickup",
+        daysAgo: 0,
+        total: 1100,
+        item: "Sandwich poulet",
+      },
+      // -3j — toujours visible sur 7 jours, hors aujourd'hui
+      {
+        status: "livrée",
+        mode: "pickup",
+        daysAgo: 3,
+        total: 2100,
+        item: "Pâtes carbonara",
+      },
+      {
+        status: "refusée",
+        mode: "delivery",
+        daysAgo: 3,
+        total: 1900,
+        item: "Wrap végé",
+      },
+      // -10j — visible sur 30j seulement
+      {
+        status: "collectée",
+        mode: "pickup",
+        daysAgo: 10,
+        total: 1300,
+        item: "Quiche lorraine",
+      },
+      // -40j — visible uniquement sur "Tout"
+      {
+        status: "livrée",
+        mode: "delivery",
+        daysAgo: 40,
+        total: 2500,
+        item: "Risotto champignons",
+      },
+    ] as const;
+
+    let created = 0;
+    for (const f of fixtures) {
+      const createdAt = now - f.daysAgo * DAY;
+      const note = `[E2E KBO-OPS3] ${f.status} ${f.daysAgo}j ${createdAt}`;
+      const orderId = await ctx.db.insert("orders", {
+        tenantId: tenant._id,
+        customerId: customer._id,
+        status: f.status,
+        mode: f.mode,
+        source: "direct",
+        address:
+          f.mode === "delivery" ? "12 rue de la Paix, 75002 Paris" : undefined,
+        lat: f.mode === "delivery" ? 48.8694 : undefined,
+        lng: f.mode === "delivery" ? 2.3318 : undefined,
+        customerPhone: customer.phone ?? "0612345678",
+        restaurantNote: note,
+        pricingSnapshot: {
+          subtotal: f.total - (f.mode === "delivery" ? 350 : 0),
+          deliveryFee: f.mode === "delivery" ? 350 : 0,
+          total: f.total,
+        },
+        paymentRef: `pi_e2e_ops3_${createdAt}`,
+        createdAt,
+        paidAt: createdAt,
+        // Stamp les transitions appropriées au statut final pour que le détail
+        // affiche un timestamp cohérent.
+        ...(f.status === "livrée" || f.status === "collectée"
+          ? {
+              acceptedAt: createdAt + 60_000,
+              readyAt: createdAt + 600_000,
+              handedOverAt: createdAt + 900_000,
+              completedAt: createdAt + 1_200_000,
+            }
+          : {}),
+        ...(f.status === "refusée" ? { refusedAt: createdAt + 30_000 } : {}),
+        ...(f.status === "auto_expired"
+          ? { autoExpiredAt: createdAt + 300_000 }
+          : {}),
+      });
+      await ctx.db.insert("orderItems", {
+        tenantId: tenant._id,
+        orderId,
+        itemName: f.item,
+        unitPrice: f.total - (f.mode === "delivery" ? 350 : 0),
+        quantity: 1,
+        modifiers: [],
+        allergens: [],
+      });
+      created += 1;
+    }
+    return { created };
+  },
+});
+
+/**
+ * Wipe toutes les orders sentinellées `[E2E KBO-OPS3] *`.
+ */
+export const wipeE2EKBOrdersHistoryMix = internalMutation({
+  args: {},
+  returns: v.object({ ordersDeleted: v.number() }),
+  handler: async (ctx) => {
+    let deleted = 0;
+    const all = await ctx.db.query("orders").collect();
+    for (const row of all) {
+      if (row.restaurantNote?.startsWith("[E2E KBO-OPS3] ")) {
+        const items = await ctx.db
+          .query("orderItems")
+          .withIndex("by_order", (q) =>
+            q.eq("tenantId", row.tenantId).eq("orderId", row._id),
+          )
+          .collect();
+        for (const it of items) await ctx.db.delete(it._id);
+        const events = await ctx.db
+          .query("orderEvents")
+          .withIndex("by_order", (q) =>
+            q.eq("tenantId", row.tenantId).eq("orderId", row._id),
+          )
+          .collect();
+        for (const ev of events) await ctx.db.delete(ev._id);
+        await ctx.db.delete(row._id);
+        deleted += 1;
+      }
+    }
+    return { ordersDeleted: deleted };
+  },
+});
+
+/**
  * Wipe toutes les orders sentinellées `[E2E KBO-CMD] *` (toutes les cmds
  * créées par `seedE2EKBOrdersNouvelleCmd`).
  */
