@@ -56,24 +56,22 @@ import {
  *
  *  1. **Profile** (#398/#413 baseline) — name + email read-only via
  *     `currentUser`, link to the existing `/account/edit` route (the
- *     starter template already pins photo + name editing).
+ *     starter template already pins photo + name editing). NB: password
+ *     management is handled exclusively from KB Admin web — the native
+ *     app intentionally does NOT surface a « Changer le mot de passe »
+ *     entry (KBO terrain 2026-06-07).
  *
- *  2. **Change password** — opens the existing forgot-password flow
- *     (Convex Auth's password reset is the sanctioned path; there is no
- *     in-session `changePassword` mutation in this codebase). Sheet copy
- *     explains that a verification code will be emailed.
- *
- *  3. **Notifs** (PRD 20 §3 + §10) — DNT start/end HH:MM, sounds on/off,
+ *  2. **Notifs** (PRD 20 §3 + §10) — DNT start/end HH:MM, sounds on/off,
  *     vibration on/off. Persisted locally in SecureStore via
  *     `useNotifPreferences` (V1 leg — Convex twin is a follow-up open
  *     question, cf. the hook's docstring).
  *
- *  4. **Compte rattaché** — tenant list (from `getSession`) + Stripe +
+ *  3. **Compte rattaché** — tenant list (from `getSession`) + Stripe +
  *     Uber Direct badges (reused from #411 `getTenantHealth`) + a deep
  *     link to KB Admin web. The badges use the same three-state semantics
  *     as the runtime #411 gate so Settings + home agree.
  *
- *  5. **Imprimante cuisine** (#412 plug) — entry row that navigates to
+ *  4. **Imprimante cuisine** (#412 plug) — entry row that navigates to
  *     `/printer` (the existing `PrinterSettingsScreen` from
  *     `lib/printing`). Replaces the placeholder pill the home strip used
  *     during the #412 launch — cf. PRD 20 §10 « La section Imprimante
@@ -81,12 +79,12 @@ import {
  *     posé par #412 ». We keep the home pill (gérant convenience) AND
  *     surface the section in Settings (PRD).
  *
- *  6. **Switcher tenant** (#399 plug) — only visible in mode téléphone
+ *  5. **Switcher tenant** (#399 plug) — only visible in mode téléphone
  *     for N≥2 tenants. The header `<TenantSwitcher />` (in
  *     `(app)/_layout.tsx`) is the actual picker; this row presents
  *     « Restaurant actif » + a tap-to-open hint pointing at the chip.
  *
- *  7. **Mode kiosque/téléphone toggle** (#393 plug) — re-modifiable from
+ *  6. **Mode kiosque/téléphone toggle** (#393 plug) — re-modifiable from
  *     here (PRD 20 §12). Rebascule fires `setMyDeviceMode` then
  *     `Updates.reloadAsync()` so the `(app)` shell re-arms with the new
  *     mode (the layout hides/surfaces the TenantSwitcher above the Stack
@@ -94,23 +92,23 @@ import {
  *     `decideRebasculeMode` to drive the right branch (mono, multi-pick,
  *     no tenant).
  *
- *  8. **Logout** (#396/#400 reuse) — `markIntentionalSignOut()` BEFORE
+ *  7. **Logout** (#396/#400 reuse) — `markIntentionalSignOut()` BEFORE
  *     `signOut()` so the « Session révoquée » overlay (#400) doesn't
  *     misfire on a voluntary path. Same pattern as the existing tabs
  *     account screen and the banned-user alert.
  *
- *  9. **Version app + check update** — `Application.nativeBuildVersion` +
+ *  8. **Version app + check update** — `Application.nativeBuildVersion` +
  *     OTA `runtimeVersion` for diagnostic context. The « Mettre à jour »
  *     CTA opens the App Store / Play Store directly (same URLs the
  *     #394 `ForceUpdateGate` uses on `block-native-update`).
  *
- * 10. **Lien support KB** — `mailto:support@kitchen-boost.fr` with a
+ *  9. **Lien support KB** — `mailto:support@kitchen-boost.fr` with a
  *     diagnostic-friendly subject (device + tenant id), so support can
  *     triage the message without back-and-forth.
  */
 
 const SUPPORT_EMAIL = "support@kitchen-boost.fr";
-const KB_ADMIN_URL = "https://kb-admin.kitchen-boost.fr";
+const KB_ADMIN_URL = "https://admin.kitchen-boost.com";
 const STORE_LINKS = {
   ios: "https://apps.apple.com/",
   android: "https://play.google.com/store/apps/",
@@ -154,7 +152,6 @@ export function SettingsScreen(): React.ReactElement {
   // Sheets — re-used the ConfirmationSheet pattern from the existing
   // tabs/account.tsx for logout / delete / mode rebascule confirmation.
   const logoutSheetRef = React.useRef<BottomSheetModal>(null);
-  const passwordSheetRef = React.useRef<BottomSheetModal>(null);
   const rebasculeSheetRef = React.useRef<BottomSheetModal>(null);
   const tenantPickerSheetRef = React.useRef<BottomSheetModal>(null);
 
@@ -296,18 +293,6 @@ export function SettingsScreen(): React.ReactElement {
     );
   };
 
-  const handleStartPasswordChange = () => {
-    passwordSheetRef.current?.dismiss();
-    if (user?.email !== undefined && user.email !== null) {
-      router.push({
-        pathname: "/forgot-password",
-        params: { email: user.email },
-      });
-    } else {
-      router.push("/forgot-password");
-    }
-  };
-
   // Render guard — wait for the bare-minimum (currentUser) to resolve. The
   // visibility decision already gates sub-sections; this guard avoids a
   // flash of « Compte / — » initials at first frame.
@@ -375,7 +360,7 @@ export function SettingsScreen(): React.ReactElement {
             />
           ) : null}
 
-          {/* Profile + password (point 1 + 2) */}
+          {/* Profile (point 1) */}
           {visibility.showProfile ? (
             <SettingsGroup
               title="Profil"
@@ -384,11 +369,6 @@ export function SettingsScreen(): React.ReactElement {
                   label: "Modifier le profil",
                   icon: "person-outline",
                   onPress: () => router.push("/account/edit"),
-                },
-                {
-                  label: "Changer le mot de passe",
-                  icon: "key-outline",
-                  onPress: () => passwordSheetRef.current?.present(),
                 },
               ]}
             />
@@ -511,15 +491,6 @@ export function SettingsScreen(): React.ReactElement {
         confirmLabel="Se déconnecter"
         destructive
         onConfirm={handleLogout}
-      />
-
-      <ConfirmationSheet
-        sheetRef={passwordSheetRef}
-        icon="key-outline"
-        title="Changer le mot de passe"
-        description="On t'envoie un code par email. Tu pourras choisir un nouveau mot de passe."
-        confirmLabel="Recevoir le code"
-        onConfirm={handleStartPasswordChange}
       />
 
       <ConfirmationSheet
