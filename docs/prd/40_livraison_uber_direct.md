@@ -2,6 +2,7 @@
 
 **Statut** : 🟡 Squelette · **Version** : 0.3 · **Dernière mise à jour** : 2026-05-24
 **Lié au master** : [00_master.md § 5 bloc 5](00_master.md#5-surface-fonctionnelle-macro-vue-doiseau)
+**Recherche associée** : [Uber Direct deep dive](../research/uber_direct_deep_dive.md) · [Alternatives Uber Direct](../research/alternatives_uber_direct.md) · [Dispatch orchestration patterns](../research/dispatch_orchestration_patterns.md) ← **patterns d'implémentation (eager vs PATCH vs lazy booking, webhooks, edge cases)**
 
 > **v0.3** : Grilling DDD acté 2026-05-24 — flow address-first, tracking client Lottie SVG (pas de map V1), 3 cas distincts d'incident livraison (course refusée Uber / courier annule avant pickup / incident après pickup / client absent), frais d'attente courier à charge resto + notif KDS, pas de tip V1, pas de review V1 (V2 → Google Reviews jamais Uber Eats), horaires KB source de vérité, click & collect activé par défaut, choix client au checkout.
 > **v0.2** : Scope V1 étendu suite révision master v2.0. Mode click & collect **dès V1** (modulable par resto). Intégration avec moteur pricing [35](35_pricing_engine.md) (quote Uber Direct → règles → part client / part resto).
