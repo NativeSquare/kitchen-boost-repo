@@ -4,7 +4,10 @@
       "Skill(update-config)",
       "Skill(update-config:*)",
       "Edit(~/.claude/skills/work-next-agent-issue/**)",
-      "Edit(~/.claude/skills/work-all-agent-issues/**)"
+      "Edit(~/.claude/skills/work-all-agent-issues/**)",
+      "Skill(deep-research)",
+      "Skill(deep-research:*)",
+      "Workflow(deep-research)"
     ]
   }
 }
