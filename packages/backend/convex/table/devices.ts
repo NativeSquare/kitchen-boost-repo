@@ -35,12 +35,15 @@ import { v } from "convex/values";
  *
  *  5. **`itemToggleTooltipSeen`** (PRD 20 §7c, #408) — true once the gérant
  *     has dismissed the FIRST-USAGE tooltip on the « toggle dispo item »
- *     surface on THIS device. The tooltip text is PRD-frozen
- *     (cf. `ITEM_TOGGLE_TOOLTIP_TEXT` in the native module) and explains the
- *     ADR 0018 frontière (« masque côté client, pas une suppression
- *     catalogue »). Per-device on purpose: the gérant might use the app on
- *     both a tablet kitchen and his phone — both surfaces need the
- *     pédagogie on first usage.
+ *     surface on THIS device. Le tooltip (title + body) est PRD-frozen
+ *     (cf. `ITEM_TOGGLE_TOOLTIP_TITLE` + `ITEM_TOGGLE_TOOLTIP_BODY` in the
+ *     native module, reworded 2026-06-07) et demande au gérant si l'item
+ *     doit être rendu indisponible temporairement. Le tooltip ne s'affiche
+ *     QUE dans le sens disponible → indisponible (asymétrie OFF/ON post
+ *     reword 2026-06-07) ; le sens inverse (réactivation) est un flip
+ *     direct sans pédagogie. Per-device on purpose: the gérant might use
+ *     the app on both a tablet kitchen and his phone — both surfaces need
+ *     the pédagogie on first usage.
  *
  * ── USER-SCOPED, NO `tenantId` SCOPING KEY — accessed via the SELF-IDENTITY seam
  * Unlike most 2.x tables (ADR 0010), this row is NOT a tenant resource: it is

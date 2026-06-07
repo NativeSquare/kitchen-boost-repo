@@ -14,15 +14,18 @@
  *    Lists every category + items of the active tenant with a per-item
  *    switch (lecture + toggle, PAS d'édition catalogue, ADR 0018). The
  *    first usage on a device surfaces the PRD-frozen tooltip
- *    (`ITEM_TOGGLE_TOOLTIP_TEXT`) BEFORE firing the mutation; subsequent
- *    usages are silent (flag `device.itemToggleTooltipSeen`,
- *    `markItemToggleTooltipSeen`).
+ *    (`ITEM_TOGGLE_TOOLTIP_TITLE` + `ITEM_TOGGLE_TOOLTIP_BODY`) BEFORE
+ *    firing the mutation pour le sens DISPONIBLE → INDISPONIBLE
+ *    uniquement (asymétrie OFF/ON, PRD 20 §7c reword 2026-06-07).
+ *    Subsequent usages sont silencieux (flag
+ *    `device.itemToggleTooltipSeen`, `markItemToggleTooltipSeen`).
  *
  *  - `decideTooltipGate` / `decideItemListEntryPoint` /
- *    `ITEM_TOGGLE_TOOLTIP_TEXT` — the PURE decision functions + the
- *    PRD-frozen tooltip constant. Truth tables pinned in the next-door
- *    vitest. Same split convention as `decideClosureControl` (#407),
- *    `decidePauseControl` (#406), `decideTenantSwitcher` (#399).
+ *    `ITEM_TOGGLE_TOOLTIP_TITLE` + `ITEM_TOGGLE_TOOLTIP_BODY` — the PURE
+ *    decision functions + les PRD-frozen tooltip constants (title + body).
+ *    Truth tables pinned in the next-door vitest. Same split convention
+ *    as `decideClosureControl` (#407), `decidePauseControl` (#406),
+ *    `decideTenantSwitcher` (#399).
  *
  * Backend SoT — REUSE :
  *
@@ -51,7 +54,8 @@
  * formulaire d'édition de menu — uniquement lecture + toggle dispo.
  */
 export {
-  ITEM_TOGGLE_TOOLTIP_TEXT,
+  ITEM_TOGGLE_TOOLTIP_BODY,
+  ITEM_TOGGLE_TOOLTIP_TITLE,
   decideItemListEntryPoint,
   decideTooltipGate,
   type ItemListEntryPointDecision,

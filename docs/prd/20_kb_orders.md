@@ -209,9 +209,13 @@ Synchro KB Admin ↔ app native pour chacune des 4 surfaces (#397 côté admin).
 
 - Vue Menu lecture + toggle dispo/indispo par item (**pas d'édition** cf. ADR 0018)
 - **Granularité item uniquement** V1 — pas de toggle catégorie entière (acté Q3.7a)
-- **Tooltip obligatoire au premier usage** sur un device :
-  > _« Ce toggle masque l'item du menu côté client. Pas de modification permanente — il restera disponible dans ton catalogue KB Admin. »_
+- **Badge état visuel par item** (post-test E2E 2026-06-07) : icône + label colorisé à côté du toggle pour lever l'ambiguïté « ON = disponible ou indisponible ? » — `checkmark-circle` vert KB + « Disponible » (`text-primary`) OU `close-circle` rouge + « Indisponible » (`text-destructive`). Aligné sur le pattern badges historique (commit `d06cdd3`).
+- **Tooltip obligatoire au premier usage** sur un device, **uniquement pour le sens disponible → indisponible** (asymétrie OFF/ON, post-test E2E 2026-06-07). Le sens inverse (réactiver un item) est un flip direct sans modal — pas de pédagogie nécessaire pour la réactivation. Wording simplifié post-test E2E 2026-06-07, plus actionnable pour le gérant :
+  > **Titre** : _« Rendre cette article indisponible temporairement ? »_
+  > **Sous-titre** : _« En poursuivant, cet article ne sera plus disponible pour les clients jusqu'à réactivation. »_
+  > **Boutons** : « OK, j'ai compris » (primary vert) + « Annuler » (outline)
 - Tooltip dismissé pour usages suivants (flag `device.itemToggleTooltipSeen`)
+- **Optimistic update + per-item disabled state** (post-test E2E 2026-06-07) : le tap d'un toggle flip immédiatement la valeur affichée (via `useMutation(...).withOptimisticUpdate` Convex natif sur `api.lib.menu.items.list`), et SEUL ce toggle passe en `disabled` pendant le round-trip — les autres items restent interactifs. Rollback automatique sur erreur (toast _« Mise à jour échouée »_). Évite le freeze global du précédent design `submitting: boolean`.
 - **Comportement event-driven côté PWA client** : si l'item passe en `unavailable` pendant qu'un client a cet item au panier, le client reçoit une erreur à `confirmPayment` (_« Désolé, cet item n'est plus disponible »_) — le panier PWA revalide à confirmation, pas à T0 d'ajout
 
 #### 7d. Modif horaires d'ouverture du jour / de la semaine (#409)
@@ -366,7 +370,7 @@ Intégration **Star Micronics WebPRNT** — HTTP-based sur la LAN du resto, **z�
 5. **Auto-expired timeout** : cmd reçue à 12h00, Khan absent (téléphone perso oublié, tablette HS) → à 12h05 le scheduler Convex passe la cmd en `auto_expired` → refund Stripe auto + push client **neutre** _« Votre commande n'a pas pu être traitée »_. Cmd visible dans Historique → onglet _« Manquées »_. Si Khan dépasse le seuil de cmds manquées/jour, KB ops reçoit alerte (#415).
 6. **Escalation T+60s** : cmd reçue à 12h00, ni la tablette ni le téléphone n'ack à 12h01 → re-trigger push _« URGENT — cmd non prise »_ sur les 2 devices → Khan voit la notif sur son téléphone, ouvre l'app, ack.
 7. **Pause exceptionnelle** : frigo cassé à 19h05 → Khan tap _« Pause »_ sur le home → choisit _« 30 min »_ → PWA client affiche _« Resto en pause, reprise 19:35 »_ + checkout désactivé → après 30 min auto-reprise.
-8. **Toggle item indispo** : rupture surprise du smash double à 20h → Khan ouvre Menu dans l'app → toggle « Smash double » indispo. Premier usage du toggle → tooltip _« Ce toggle masque l'item du menu côté client. Pas de modification permanente — il restera disponible dans ton catalogue KB Admin. »_ → dismiss. Le client qui a smash double au panier voit erreur à `confirmPayment`.
+8. **Toggle item indispo** : rupture surprise du smash double à 20h → Khan ouvre Menu dans l'app → toggle « Smash double » indispo (badge passe rouge « Indisponible »). Premier usage du toggle dans le sens OFF → tooltip _« Rendre cette article indisponible temporairement ? »_ + _« En poursuivant, cet article ne sera plus disponible pour les clients jusqu'à réactivation. »_ → « OK, j'ai compris ». Le client qui a smash double au panier voit erreur à `confirmPayment`. Plus tard quand la livraison du fournisseur arrive, Khan re-tap le toggle (sens ON, flip direct sans tooltip — pas de pédagogie nécessaire pour la réactivation).
 9. **Modif horaires soir** : un seul cuisinier ce soir → Khan ouvre Modif horaires → onglet _« Aujourd'hui »_ → ferme 22h au lieu de 23h → PWA client bloque le checkout dès 22h.
 10. **Mode déconnecté** : tablette perd le wifi → 5s plus tard écran rouge plein écran _« Connexion perdue »_ → wifi revient → écran disparaît automatiquement.
 11. **Force update natif** : faille sécurité détectée → KB ops mute `minSupportedBuildVersion` côté Convex → toutes les tablettes anciennes affichent au boot écran rouge bloquant avec lien Play Store / App Store.

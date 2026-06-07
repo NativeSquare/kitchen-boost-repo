@@ -12,13 +12,17 @@
  *
  * Two concerns are decided here:
  *
- *  1. **`decideTooltipGate`** — given the loaded `devices` row, decide whether
- *     the FIRST-USAGE tooltip must be surfaced BEFORE firing
- *     `setItemAvailability`, or fire it directly. PRD 20 §7c is unambiguous:
- *     the tooltip is OBLIGATOIRE the first time the gérant touches the
- *     toggle on a device, and dismissed for subsequent usages
- *     (`device.itemToggleTooltipSeen`). The exact PRD-frozen sentence lives
- *     in `ITEM_TOGGLE_TOOLTIP_TEXT` below.
+ *  1. **`decideTooltipGate`** — given the loaded `devices` row AND the
+ *     direction of the flip (`targetAvailable`), decide whether the
+ *     FIRST-USAGE tooltip must be surfaced BEFORE firing
+ *     `setItemAvailability`, or fire it directly. PRD 20 §7c (reword
+ *     2026-06-07) : le tooltip est OBLIGATOIRE la première fois que le
+ *     gérant rend un item INDISPONIBLE sur un device, et dismissé pour
+ *     usages suivants (`device.itemToggleTooltipSeen`). Le sens INVERSE
+ *     (réactivation, `targetAvailable === true`) ne déclenche jamais le
+ *     tooltip — flip direct. Les exacts PRD-frozen title + body vivent
+ *     dans `ITEM_TOGGLE_TOOLTIP_TITLE` + `ITEM_TOGGLE_TOOLTIP_BODY`
+ *     ci-dessous.
  *
  *  2. **`decideItemListEntryPoint`** — the home pill / nav entry verdict
  *     (`loading` / `ready`). Used to avoid surfacing the entry before the
@@ -36,12 +40,19 @@
  */
 
 /**
- * PRD 20 §7c — PRD-frozen first-usage tooltip text. Pinned by the test suite
- * so a rename / reword breaks loudly. The hyphen between « permanente » and
- * « il restera » is a TYPOGRAPHIC EM DASH (`—`, U+2014), as in the PRD.
+ * PRD 20 §7c — PRD-frozen first-usage tooltip wording (reworded 2026-06-07
+ * post-test E2E KBO-DIS3). Title pose la QUESTION actionnable au gérant
+ * (« Rendre cette article indisponible temporairement ? »), body explique
+ * l'effet côté client. Pinned by the test suite so un rename / reword silencieux
+ * break loudly.
+ *
+ * Historique : le wording précédent était un paragraphe descriptif (« Ce toggle
+ * masque… ») moins actionnable que la question directe. Validé Alex 2026-06-07.
  */
-export const ITEM_TOGGLE_TOOLTIP_TEXT =
-  "Ce toggle masque l'item du menu côté client. Pas de modification permanente — il restera disponible dans ton catalogue KB Admin.";
+export const ITEM_TOGGLE_TOOLTIP_TITLE =
+  "Rendre cette article indisponible temporairement ?";
+export const ITEM_TOGGLE_TOOLTIP_BODY =
+  "En poursuivant, cet article ne sera plus disponible pour les clients jusqu'à réactivation.";
 
 /**
  * The minimal shape `decideTooltipGate` needs to read off the loaded
@@ -63,6 +74,15 @@ export type TooltipGateInputs = {
    *    verdict (absent / `false` / `true`).
    */
   device: DeviceTooltipState | null | undefined;
+  /**
+   * La valeur d'`available` APRÈS le flip (la cible que la mutation va écrire).
+   * Asymétrie OFF / ON (PRD 20 §7c reword 2026-06-07) :
+   *  - `false` (sens disponible → indisponible) = sens DANGEREUX, masque côté
+   *    client. Le tooltip first-usage explique cette pédagogie.
+   *  - `true` (sens indisponible → disponible) = réactivation, aucune pédagogie
+   *    nécessaire — flip direct, jamais de tooltip.
+   */
+  targetAvailable: boolean;
 };
 
 /** The three mutually-exclusive verdicts the host renders against. */
@@ -78,6 +98,13 @@ export type TooltipGateDecision =
  * Decide whether to surface the first-usage tooltip BEFORE firing the toggle.
  * Pure: same inputs ⇒ same output. Truth table pinned in
  * `decide-item-availability.test.ts`.
+ *
+ * Précédence des règles (haut → bas) :
+ *  1. Device encore en chargement → `loading` (les deux axes ignorés).
+ *  2. Sens ON (`targetAvailable === true`) → `proceed` direct, jamais de tooltip
+ *     (asymétrie post-reword 2026-06-07 : pas de pédagogie pour la réactivation).
+ *  3. Device déjà tagué `itemToggleTooltipSeen === true` → `proceed`.
+ *  4. Sinon (sens OFF, device legacy / fresh / false explicite) → `show-tooltip`.
  */
 export function decideTooltipGate(
   inputs: TooltipGateInputs,
@@ -85,13 +112,19 @@ export function decideTooltipGate(
   if (inputs.device === undefined) {
     return { kind: "loading" };
   }
+  // Asymétrie OFF / ON : le sens « rendre disponible » ne déclenche jamais le
+  // tooltip — pas de pédagogie nécessaire pour réactiver un item.
+  if (inputs.targetAvailable === true) {
+    return { kind: "proceed" };
+  }
   if (inputs.device === null) {
     return { kind: "show-tooltip" };
   }
   if (inputs.device.itemToggleTooltipSeen === true) {
     return { kind: "proceed" };
   }
-  // Absent OR explicit `false` — show the tooltip. PRD 20 §7c safe default.
+  // Sens OFF + device fresh / legacy / explicit reset → tooltip. PRD 20 §7c
+  // safe default.
   return { kind: "show-tooltip" };
 }
 

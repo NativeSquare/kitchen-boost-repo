@@ -5,15 +5,18 @@ import { Text } from "@/components/ui/text";
 import { useDeviceId } from "@/hooks/use-device-id";
 import { useActiveTenantId } from "@/lib/tenant-switcher";
 import { getConvexErrorMessage } from "@/utils/getConvexErrorMessage";
+import { cn } from "@/lib/utils";
 import { Ionicons } from "@expo/vector-icons";
 import { BottomSheetModal as GorhomBottomSheetModal } from "@gorhom/bottom-sheet";
 import { api } from "@packages/backend/convex/_generated/api";
 import type { Doc, Id } from "@packages/backend/convex/_generated/dataModel";
 import { useMutation, useQuery } from "convex/react";
 import { useRef, useState } from "react";
-import { ActivityIndicator, Alert, ScrollView, View } from "react-native";
+import { ActivityIndicator, ScrollView, View } from "react-native";
+import Toast from "react-native-toast-message";
 import {
-  ITEM_TOGGLE_TOOLTIP_TEXT,
+  ITEM_TOGGLE_TOOLTIP_BODY,
+  ITEM_TOGGLE_TOOLTIP_TITLE,
   decideTooltipGate,
 } from "./decide-item-availability";
 
@@ -22,7 +25,7 @@ import {
  *
  * Lecture-seule du menu publié + toggle dispo par item. ADR 0018 trace la
  * frontière : édition catalogue (prix, photo, modifiers, création) reste
- * KB Admin seul. Ici on n'a QUE le switch.
+ * KB Admin seul. Ici on n'a QUE le switch + le badge état.
  *
  * State Convex partagé (#397 / ADR 0018) — le toggle déclenche la mutation
  * `setItemAvailability` (chantier 2.2-D, déjà câblée + tests cross-tenant).
@@ -33,13 +36,37 @@ import {
  * Granularité item uniquement V1 (acté Q3.7a, PRD 20 §7c). Pas de toggle
  * catégorie entière.
  *
- * Tooltip premier usage (PRD 20 §7c, OBLIGATOIRE) — la première fois que
- * le gérant tape un toggle sur ce device, on intercepte le tap et on
- * affiche le bottom-sheet pédagogique avec le texte EXACT spec'd. Une
- * fois le gérant « OK compris », on stamp `device.itemToggleTooltipSeen`
- * via `markItemToggleTooltipSeen` + on enchaîne la mutation initiale qu'il
- * avait demandée. Les toggles suivants sont silencieux (decision pure
- * `decideTooltipGate`).
+ * Trois invariants UX (PRD 20 §7c, reworded 2026-06-07 post-test E2E
+ * KBO-DIS3) :
+ *
+ *  1. **Badge état visuel par item** — à côté de chaque toggle, un badge
+ *     icône + label colorisé lève l'ambiguïté « ON = dispo ou indispo ? » :
+ *     `checkmark-circle` vert KB (`text-primary`) + « Disponible » OU
+ *     `close-circle` rouge destructive (`text-destructive`) + « Indisponible ».
+ *     Aligné sur le pattern badges historique (commit `d06cdd3` — couleur
+ *     texte + icône Ionicon, sans background coloré, pour rester discret
+ *     dans la liste scrollable).
+ *
+ *  2. **Tooltip first-usage asymétrique (sens OFF uniquement)** — la
+ *     première fois que le gérant tape un toggle dans le sens DISPONIBLE
+ *     → INDISPONIBLE sur ce device, on intercepte le tap et on affiche
+ *     le bottom-sheet pédagogique avec le title + body EXACT spec'd
+ *     (`ITEM_TOGGLE_TOOLTIP_TITLE` + `ITEM_TOGGLE_TOOLTIP_BODY`). Une
+ *     fois le gérant « OK compris », on stamp
+ *     `device.itemToggleTooltipSeen` via `markItemToggleTooltipSeen` + on
+ *     enchaîne la mutation initiale qu'il avait demandée. Le sens INVERSE
+ *     (indisponible → disponible) n'a JAMAIS de tooltip — flip direct,
+ *     pas de pédagogie nécessaire pour la réactivation. Les toggles
+ *     suivants sont silencieux dans les deux sens (decision pure
+ *     `decideTooltipGate`).
+ *
+ *  3. **Optimistic update + per-item disabled state** — le tap d'un toggle
+ *     flip immédiatement la valeur affichée via le pattern Convex natif
+ *     `useMutation(...).withOptimisticUpdate` sur `api.lib.menu.items.list`,
+ *     et SEUL ce toggle passe en `disabled` pendant le round-trip (Set
+ *     `submittingItemIds` par-item, pas un boolean global). Les autres
+ *     items restent interactifs. Rollback automatique sur erreur (Convex
+ *     replay la query serveur) + toast d'erreur « Mise à jour échouée ».
  *
  * Trois branches d'état :
  *
@@ -48,7 +75,7 @@ import {
  *  - tenant résolu mais aucune catégorie / aucun item → empty state qui
  *    pointe vers KB Admin (édition catalogue, ADR 0018).
  *  - tenant résolu + items chargés → liste de cards groupées par catégorie,
- *    chaque card carry le switch + l'état dispo/indispo.
+ *    chaque card carry le badge état + le switch.
  */
 export function ItemAvailabilityList(): React.ReactElement {
   const tenantId = useActiveTenantId();
@@ -67,9 +94,41 @@ export function ItemAvailabilityList(): React.ReactElement {
     deviceId !== null ? { deviceId } : "skip",
   );
 
+  // `withOptimisticUpdate` Convex natif (cf. docs.convex.dev/client/react/
+  // optimistic-updates). Patch la query `api.lib.menu.items.list` localement
+  // dès le tap → le badge + le switch flip avant le round-trip. Le store
+  // revertit automatiquement si la mutation throw. Synchronous handler
+  // obligatoire (cf. type contraint dans `convex/react/client.d.ts`).
   const setItemAvailability = useMutation(
     api.lib.menu.availability.setItemAvailability,
-  );
+  ).withOptimisticUpdate((localStore, args) => {
+    const current = localStore.getQuery(api.lib.menu.items.list, {
+      tenantId: args.tenantId,
+    });
+    if (current === undefined) {
+      // La query n'a pas encore été chargée localement — rien à patcher.
+      // Le tap n'a pas pu partir de toute façon (les guards UI empêchent
+      // un tap pendant loading), mais on défense en profondeur.
+      return;
+    }
+    localStore.setQuery(
+      api.lib.menu.items.list,
+      { tenantId: args.tenantId },
+      current.map((item) =>
+        item._id === args.itemId
+          ? {
+              ...item,
+              available: args.available,
+              // Stamp local approx de `unavailableSince` pour cohérence visuelle
+              // immédiate (le backend stampe la valeur faisante autorité,
+              // qui écrasera celle-ci au prochain push serveur).
+              unavailableSince:
+                args.available === false ? Date.now() : undefined,
+            }
+          : item,
+      ),
+    );
+  });
   const markTooltipSeen = useMutation(
     api.lib.devices.devices.markItemToggleTooltipSeen,
   );
@@ -81,9 +140,16 @@ export function ItemAvailabilityList(): React.ReactElement {
     itemId: Id<"menuItems">;
     nextAvailable: boolean;
   } | null>(null);
-  const [submitting, setSubmitting] = useState<
-    Id<"menuItems"> | "tooltip" | null
-  >(null);
+  // Per-item disabled state. Replaces the previous global `submitting:
+  // boolean` (qui freezait TOUS les toggles pendant le round-trip d'UN
+  // toggle — UX bug rapporté lors du test E2E 2026-06-07). Chaque item
+  // s'affiche disabled UNIQUEMENT pendant son propre round-trip.
+  const [submittingItemIds, setSubmittingItemIds] = useState<
+    Set<Id<"menuItems">>
+  >(() => new Set());
+  // Tooltip acknowledgement is its own slot (the replay touches device + item
+  // mutations sequentially, the bottom-sheet button needs its own busy flag).
+  const [tooltipAcknowledging, setTooltipAcknowledging] = useState(false);
 
   const tooltipSheetRef = useRef<GorhomBottomSheetModal | null>(null);
 
@@ -97,18 +163,42 @@ export function ItemAvailabilityList(): React.ReactElement {
         ? null
         : { itemToggleTooltipSeen: device.itemToggleTooltipSeen };
 
+  function addSubmitting(itemId: Id<"menuItems">): void {
+    setSubmittingItemIds((prev) => {
+      const next = new Set(prev);
+      next.add(itemId);
+      return next;
+    });
+  }
+
+  function removeSubmitting(itemId: Id<"menuItems">): void {
+    setSubmittingItemIds((prev) => {
+      if (!prev.has(itemId)) return prev;
+      const next = new Set(prev);
+      next.delete(itemId);
+      return next;
+    });
+  }
+
   async function fireToggle(itemId: Id<"menuItems">, nextAvailable: boolean) {
     if (tenantId === null) return;
-    setSubmitting(itemId);
+    addSubmitting(itemId);
     try {
       await setItemAvailability({ tenantId, itemId, available: nextAvailable });
     } catch (error) {
-      Alert.alert(
-        "Impossible de mettre à jour l'item",
-        getConvexErrorMessage(error),
-      );
+      // L'optimistic update Convex rollback automatiquement la query locale
+      // dès que la mutation throw (le store revertit au snapshot serveur le
+      // plus récent). Ici on ne fait que surface le toast d'erreur — pas de
+      // rollback manuel à orchestrer (sinon on dérive de la valeur serveur).
+      Toast.show({
+        type: "error",
+        position: "top",
+        topOffset: 32,
+        text1: "Mise à jour échouée",
+        text2: getConvexErrorMessage(error),
+      });
     } finally {
-      setSubmitting(null);
+      removeSubmitting(itemId);
     }
   }
 
@@ -116,7 +206,10 @@ export function ItemAvailabilityList(): React.ReactElement {
     itemId: Id<"menuItems">,
     nextAvailable: boolean,
   ) {
-    const gate = decideTooltipGate({ device: tooltipInputDevice });
+    const gate = decideTooltipGate({
+      device: tooltipInputDevice,
+      targetAvailable: nextAvailable,
+    });
     if (gate.kind === "loading") {
       // Race-defensive: do nothing while we cannot tell whether to show the
       // tooltip. The switch's `disabled` prop also blocks the tap, this is
@@ -128,7 +221,8 @@ export function ItemAvailabilityList(): React.ReactElement {
       tooltipSheetRef.current?.present();
       return;
     }
-    // gate.kind === "proceed" — subsequent usage, no tooltip.
+    // gate.kind === "proceed" — soit subsequent usage, soit sens ON (asymétrie
+    // OFF/ON, PRD 20 §7c reword 2026-06-07) : flip direct sans tooltip.
     await fireToggle(itemId, nextAvailable);
   }
 
@@ -140,27 +234,33 @@ export function ItemAvailabilityList(): React.ReactElement {
       setPendingToggle(null);
       return;
     }
-    setSubmitting("tooltip");
+    const { itemId, nextAvailable } = pendingToggle;
+    setTooltipAcknowledging(true);
+    addSubmitting(itemId);
     try {
       // Stamp the per-device flag FIRST so a crash mid-stream still skips the
       // tooltip on the next launch — re-prompting would be more annoying than
       // missing one toggle.
       await markTooltipSeen({ deviceId });
-      // Then replay the toggle the gérant initiated.
+      // Then replay the toggle the gérant initiated (avec optimistic update).
       await setItemAvailability({
         tenantId,
-        itemId: pendingToggle.itemId,
-        available: pendingToggle.nextAvailable,
+        itemId,
+        available: nextAvailable,
       });
       tooltipSheetRef.current?.dismiss();
       setPendingToggle(null);
     } catch (error) {
-      Alert.alert(
-        "Impossible de mettre à jour l'item",
-        getConvexErrorMessage(error),
-      );
+      Toast.show({
+        type: "error",
+        position: "top",
+        topOffset: 32,
+        text1: "Mise à jour échouée",
+        text2: getConvexErrorMessage(error),
+      });
     } finally {
-      setSubmitting(null);
+      setTooltipAcknowledging(false);
+      removeSubmitting(itemId);
     }
   }
 
@@ -240,52 +340,53 @@ export function ItemAvailabilityList(): React.ReactElement {
                 {category.name}
               </Text>
               <View className="border-border bg-card overflow-hidden rounded-2xl border">
-                {categoryItems.map((item, index) => (
-                  <View
-                    key={item._id}
-                    className={
-                      index === 0
-                        ? "flex-row items-center justify-between gap-3 p-4"
-                        : "border-border flex-row items-center justify-between gap-3 border-t p-4"
-                    }
-                  >
-                    <View className="flex-1 gap-0.5">
-                      <Text
-                        className={
-                          item.available
-                            ? "text-foreground text-base font-medium"
-                            : "text-muted-foreground text-base font-medium line-through"
-                        }
-                      >
-                        {item.name}
-                      </Text>
-                      <Text className="text-muted-foreground text-xs">
-                        {item.available
-                          ? "Disponible côté client"
-                          : "Indisponible côté client"}
-                      </Text>
+                {categoryItems.map((item, index) => {
+                  const isSubmittingThisItem = submittingItemIds.has(item._id);
+                  return (
+                    <View
+                      key={item._id}
+                      className={
+                        index === 0
+                          ? "flex-row items-center justify-between gap-3 p-4"
+                          : "border-border flex-row items-center justify-between gap-3 border-t p-4"
+                      }
+                    >
+                      <View className="flex-1 gap-0.5">
+                        <Text
+                          className={
+                            item.available
+                              ? "text-foreground text-base font-medium"
+                              : "text-muted-foreground text-base font-medium line-through"
+                          }
+                        >
+                          {item.name}
+                        </Text>
+                        <AvailabilityBadge available={item.available} />
+                      </View>
+                      {isSubmittingThisItem ? (
+                        <ActivityIndicator />
+                      ) : (
+                        <Switch
+                          checked={item.available}
+                          onCheckedChange={(next) => {
+                            void handleTogglePress(item._id, next);
+                          }}
+                          // Per-item disabled : SEUL ce toggle est bloqué
+                          // pendant son propre round-trip. Loading device
+                          // (tooltipInputDevice === undefined) bloque tous
+                          // les toggles defensively (on ne sait pas encore
+                          // si on doit afficher le tooltip).
+                          disabled={tooltipInputDevice === undefined}
+                          accessibilityLabel={
+                            item.available
+                              ? `Rendre ${item.name} indisponible`
+                              : `Rendre ${item.name} disponible`
+                          }
+                        />
+                      )}
                     </View>
-                    {submitting === item._id ? (
-                      <ActivityIndicator />
-                    ) : (
-                      <Switch
-                        checked={item.available}
-                        onCheckedChange={(next) => {
-                          void handleTogglePress(item._id, next);
-                        }}
-                        disabled={
-                          submitting !== null ||
-                          tooltipInputDevice === undefined
-                        }
-                        accessibilityLabel={
-                          item.available
-                            ? `Rendre ${item.name} indisponible`
-                            : `Rendre ${item.name} disponible`
-                        }
-                      />
-                    )}
-                  </View>
-                ))}
+                  );
+                })}
               </View>
             </View>
           );
@@ -298,26 +399,29 @@ export function ItemAvailabilityList(): React.ReactElement {
             <View className="bg-muted h-12 w-12 items-center justify-center rounded-full">
               <Ionicons name="information-circle" size={28} color="#1B7A3D" />
             </View>
-            <Text className="text-center text-xl font-semibold">
-              Disponibilité « ici et maintenant »
+            <Text
+              className="text-foreground text-center text-xl font-semibold"
+              accessibilityLabel="Tooltip disponibilité item — titre"
+            >
+              {ITEM_TOGGLE_TOOLTIP_TITLE}
             </Text>
           </View>
           <Text
-            className="text-foreground text-center text-base leading-6"
-            accessibilityLabel="Tooltip disponibilité item"
+            className="text-muted-foreground text-center text-base leading-6"
+            accessibilityLabel="Tooltip disponibilité item — sous-titre"
           >
-            {ITEM_TOGGLE_TOOLTIP_TEXT}
+            {ITEM_TOGGLE_TOOLTIP_BODY}
           </Text>
           <View className="gap-2 pt-2">
             <Button
               onPress={() => {
                 void handleTooltipAcknowledge();
               }}
-              disabled={submitting !== null}
+              disabled={tooltipAcknowledging}
               accessibilityLabel="OK, j'ai compris — appliquer le toggle"
               className="h-12"
             >
-              {submitting === "tooltip" ? (
+              {tooltipAcknowledging ? (
                 <ActivityIndicator />
               ) : (
                 <Text>OK, j&apos;ai compris</Text>
@@ -326,7 +430,7 @@ export function ItemAvailabilityList(): React.ReactElement {
             <Button
               variant="outline"
               onPress={handleTooltipCancel}
-              disabled={submitting !== null}
+              disabled={tooltipAcknowledging}
               accessibilityLabel="Annuler"
               className="h-12"
             >
@@ -336,6 +440,37 @@ export function ItemAvailabilityList(): React.ReactElement {
         </View>
       </BottomSheetModal>
     </>
+  );
+}
+
+/**
+ * Badge état dispo / indispo (post-test E2E 2026-06-07 KBO-DIS3). Pattern
+ * aligné sur les badges historique (commit `d06cdd3`) : icône Ionicon +
+ * label colorisé via `text-primary` (vert KB #1B7A3D) ou `text-destructive`
+ * (rouge), SANS background coloré pour rester discret dans la liste.
+ *
+ * Pourquoi ici (pas dans `decide-item-availability.ts`) : le mapping est
+ * trivial sur un boolean (closed-set de 2 valeurs) et le helper ne porte
+ * aucune décision branchante. Le badge historique a sa propre fonction
+ * pure (`decideHistoryStatusBadgeStyle`) parce qu'il branchait sur 4
+ * statuts + un fallback null — ici un ternaire suffit.
+ */
+function AvailabilityBadge({
+  available,
+}: {
+  available: boolean;
+}): React.ReactElement {
+  const toneClass = available ? "text-primary" : "text-destructive";
+  const iconName = available ? "checkmark-circle" : "close-circle";
+  const label = available ? "Disponible" : "Indisponible";
+  return (
+    <View
+      className="flex-row items-center gap-1"
+      accessibilityLabel={`État : ${label}`}
+    >
+      <Ionicons name={iconName} size={14} className={toneClass} />
+      <Text className={cn("text-xs font-medium", toneClass)}>{label}</Text>
+    </View>
   );
 }
 
