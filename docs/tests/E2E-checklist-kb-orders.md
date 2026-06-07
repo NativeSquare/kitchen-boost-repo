@@ -119,7 +119,7 @@ Au moment du merge de chaque PR :
 
 ## KBO-FU — Force update + mode déconnecté
 
-> **Statut** : 🟡 0/? validés — issues couvertes #394 (TB-3 force update gate Expo 2 couches), #405 (TB-11 mode déconnecté écran rouge), #411 (TB-19 alertes statut tenant).
+> **Statut** : 🟢 **PASS le 2026-06-07** (#394 + #405 validés visuellement, #411 critical/warning visuel reporté → couvert par tests vitest). KBO-FU PASS : Force Update Gate #394 — preuve par l'absence (boot dev = `allow` court-circuit `__DEV__` ADR 0017 obligatoire), code review du `BlockingNativeUpdateScreen` (rouge `#B91C1C`, titre « Mise à jour requise », bouton « Mettre à jour » → Play Store, pas de back/skip), logique pinnée par 64+ tests vitest + 9 tests backend `app.test.ts`. Mode déconnecté Gate #405 — mode avion 3+s → overlay rouge full-screen « Connexion perdue » + icône AlertTriangle + body « Vérifie le Wi-Fi / 4G » sans bouton Retry (PRD 20 §13) ; désactivation mode avion → overlay disparait au reconnect WS ; overlay **remplace** l'arbre donc masque les BottomSheet / Dialog ouverts ; au boot offline (`hasEverConnected=false`) → splash et pas d'écran rouge prématuré. Alertes tenant #411 critical/warning : data path déjà couvert via badges Stripe/Uber de KBO-OPS4 (« Compte rattaché »), visuel critical/warning testable via mutation tenant status reportée — covered by vitest pin. Issues couvertes #394, #405, #411.
 
 _(parcours ajoutés au fil des merges)_
 
