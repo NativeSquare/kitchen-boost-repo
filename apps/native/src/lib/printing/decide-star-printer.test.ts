@@ -55,8 +55,34 @@ describe("#412 isValidStarWebPrntUrl — gérant input gate", () => {
     ).toBe(true);
   });
 
+  it("accepts an explicit port (Android emulator → host stub at :9999)", () => {
+    expect(
+      isValidStarWebPrntUrl("http://10.0.2.2:9999/StarWebPRNT/SendMessage"),
+    ).toBe(true);
+  });
+
+  it("accepts a trailing slash on the canonical path", () => {
+    expect(
+      isValidStarWebPrntUrl("http://192.168.1.42/StarWebPRNT/SendMessage/"),
+    ).toBe(true);
+  });
+
   it("rejects a bare IP (no scheme)", () => {
     expect(isValidStarWebPrntUrl("192.168.1.42")).toBe(false);
+  });
+
+  it("rejects http://<host> missing the canonical Star path (`http://invalid`)", () => {
+    // Regression: the previous regex only checked the scheme so `http://invalid`
+    // surfaced as « valid » in the form and triggered a misleading « Save »
+    // enable. PRD 20 §14 mandates the canonical /StarWebPRNT/SendMessage path
+    // — anything else means the gérant pasted the printer's homepage by
+    // mistake.
+    expect(isValidStarWebPrntUrl("http://invalid")).toBe(false);
+    expect(isValidStarWebPrntUrl("http://192.168.1.42")).toBe(false);
+    expect(isValidStarWebPrntUrl("http://192.168.1.42/")).toBe(false);
+    expect(isValidStarWebPrntUrl("http://192.168.1.42/SendMessage")).toBe(
+      false,
+    );
   });
 
   it("rejects the empty string", () => {
@@ -119,7 +145,20 @@ describe("#412 decidePrinterConfigForm — Settings form state", () => {
     expect(v.canSubmit).toBe(false);
     expect(v.canTest).toBe(false);
     expect(v.displayUrl).toBe("192.168.1.42");
-    expect(v.error).toMatch(/http/i);
+    expect(v.error).toMatch(/StarWebPRNT/i);
+  });
+
+  it("missing canonical path (`http://invalid`) → canSubmit=false, error explicite", () => {
+    // Regression: `http://invalid` used to surface as « valid » because the
+    // gate only checked the scheme. Pin the rejection so the form never
+    // enables Save on an obviously broken URL.
+    const v = decidePrinterConfigForm({
+      input: "http://invalid",
+      currentUrl: null,
+    });
+    expect(v.canSubmit).toBe(false);
+    expect(v.canTest).toBe(false);
+    expect(v.error).toMatch(/StarWebPRNT/i);
   });
 
   it("valid input → canSubmit=true, canTest=true, displayUrl=normalisé, no error", () => {

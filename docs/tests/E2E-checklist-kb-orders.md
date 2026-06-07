@@ -220,7 +220,7 @@ _(parcours ajoutés au fil des merges)_
 
 ## KBO-OPS — Ops & maintenance
 
-> **Statut** : 🟡 **1/4 PASS le 2026-06-07** — KBO-OPS1 PASS (stats rapides #410). Grille 2×2 (CA aujourd'hui / Cmds aujourd'hui / CA cette semaine / vs S-1) avec real-time refresh via Convex sub + comparator emerald/rose/gris/Nouveau + tenant scope ADR 0010 préservé. Issues couvertes #410, #412, #417, #418.
+> **Statut** : 🟡 **2/4 PASS le 2026-06-07** — KBO-OPS1 PASS (stats rapides #410, grille 2×2 + comparator emerald/rose/gris/Nouveau + Convex sub temps réel). KBO-OPS2 PASS (impression Star WebPRNT #412 — validation URL stricte côté client+serveur exigeant `/StarWebPRNT/SendMessage` (fix `http://invalid` qui passait), save+test+auto-impression au accept+réimpression manuelle+retirer avec Alert natif, toasts `printer.save / testOk / remove / reprintOk / reprintError` ; mock Node `scripts/star-webprnt-stub.mjs` reçoit les 3 tickets — ESC/POS `Test Restaurant 1 / Cmd #6EVF / LIVRAISON / items + modifiers / note client / Total 27,50 EUR` byte-identique sur la réimpression). Issues couvertes #410, #412, #417, #418.
 
 _(parcours ajoutés au fil des merges)_
 

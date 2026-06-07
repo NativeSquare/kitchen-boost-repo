@@ -110,6 +110,20 @@ describe("decideToastVariant", () => {
       durationMs: 2500,
     },
     {
+      action: "printer.reprintOk",
+      kind: "positive",
+      label: "Ticket réimprimé",
+      icon: "print-outline",
+      durationMs: 2500,
+    },
+    {
+      action: "printer.reprintError",
+      kind: "destructive",
+      label: "Réimpression échouée",
+      icon: "warning-outline",
+      durationMs: 4000,
+    },
+    {
       action: "serviceHours.save",
       kind: "positive",
       label: "Horaires mis à jour",
@@ -142,12 +156,14 @@ describe("decideToastVariant", () => {
     });
   }
 
-  it("uses 4000 ms only for the closure toast (longer date body)", () => {
-    // Defense-in-depth: keep the long-duration branch unique. If a future
-    // action needs > 2500 ms, add it explicitly here so the rationale stays
-    // visible in the test suite.
+  it("uses 4000 ms only for closure (longer date body) and reprint error (gérant must SEE the printer failed)", () => {
+    // Defense-in-depth: long-duration branch is reserved for actions whose
+    // body needs lingering. If a future action needs > 2500 ms, add it
+    // explicitly here so the rationale stays visible in the test suite.
     const longRunning = cases.filter((c) => c.durationMs !== 2500);
-    expect(longRunning.map((c) => c.action)).toEqual(["availability.close"]);
+    expect(longRunning.map((c) => c.action).sort()).toEqual(
+      ["availability.close", "printer.reprintError"].sort(),
+    );
   });
 });
 

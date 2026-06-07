@@ -145,6 +145,32 @@ describe("#412 printerConfig — tenant-scoped persistence (PRD 20 §14)", () =>
     ).rejects.toThrow();
   });
 
+  it("rejects http URL missing the canonical /StarWebPRNT/SendMessage path", async () => {
+    // Regression: a previous regex only validated the http(s):// prefix, so
+    // `http://invalid` slipped through and the gérant could save garbage. The
+    // path is mandatory — Star printers ALWAYS expose
+    // `/StarWebPRNT/SendMessage`, so any other path is a paste error.
+    const asManager = t.withIdentity({ subject: seed.tenantA.managerId });
+    await expect(
+      asManager.mutation(api.lib.printing.printing.setPrinterConfig, {
+        tenantId: seed.tenantA.tenantId,
+        starWebPrntUrl: "http://invalid",
+      }),
+    ).rejects.toThrow();
+    await expect(
+      asManager.mutation(api.lib.printing.printing.setPrinterConfig, {
+        tenantId: seed.tenantA.tenantId,
+        starWebPrntUrl: "http://192.168.1.42/",
+      }),
+    ).rejects.toThrow();
+    await expect(
+      asManager.mutation(api.lib.printing.printing.setPrinterConfig, {
+        tenantId: seed.tenantA.tenantId,
+        starWebPrntUrl: "http://192.168.1.42/SendMessage",
+      }),
+    ).rejects.toThrow();
+  });
+
   it("staff (operational) can read the printer config but NOT set or clear it (gérant action)", async () => {
     await t
       .withIdentity({ subject: seed.tenantA.managerId })

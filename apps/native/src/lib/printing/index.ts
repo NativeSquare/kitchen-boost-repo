@@ -33,7 +33,11 @@
 
 export { PrinterEntry } from "./printer-entry";
 export { PrinterSettingsScreen } from "./printer-settings-screen";
-export { printOrderTicket, type PrintOrderInput } from "./print-order-helper";
+export {
+  printOrderTicket,
+  type PrintOrderInput,
+  type PrintOrderVerdict,
+} from "./print-order-helper";
 export {
   STAR_WEB_PRNT_PATH,
   buildStarWebPrntEndpoint,

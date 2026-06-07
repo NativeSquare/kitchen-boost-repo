@@ -226,7 +226,7 @@ export function PrinterSettingsScreen(): React.ReactElement {
               <Text className="text-destructive text-xs">{decision.error}</Text>
             ) : (
               <Text className="text-muted-foreground text-xs">
-                Vérifié côté client ET côté serveur (PRD 20 §14).
+                Vérifié côté client ET côté serveur.
               </Text>
             )}
           </View>

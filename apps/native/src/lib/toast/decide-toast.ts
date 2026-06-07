@@ -37,6 +37,8 @@ export type ActionKey =
   | "printer.save"
   | "printer.testOk"
   | "printer.remove"
+  | "printer.reprintOk"
+  | "printer.reprintError"
   | "serviceHours.save"
   | "menu.itemSetAvailable"
   | "menu.itemSetUnavailable";
@@ -145,6 +147,20 @@ export function decideToastVariant(action: ActionKey): ToastVariant {
         label: "Imprimante retirée",
         icon: "trash-outline",
         durationMs: 2500,
+      };
+    case "printer.reprintOk":
+      return {
+        kind: "positive",
+        label: "Ticket réimprimé",
+        icon: "print-outline",
+        durationMs: 2500,
+      };
+    case "printer.reprintError":
+      return {
+        kind: "destructive",
+        label: "Réimpression échouée",
+        icon: "warning-outline",
+        durationMs: 4000,
       };
     case "serviceHours.save":
       return {

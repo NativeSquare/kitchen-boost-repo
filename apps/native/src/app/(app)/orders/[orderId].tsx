@@ -19,7 +19,7 @@ import {
   type RefusalReason,
 } from "@/lib/orders";
 import type { OrderMode } from "@packages/backend/convex/lib/orders";
-import { printOrderTicket } from "@/lib/printing";
+import { printOrderTicket, type PrintOrderVerdict } from "@/lib/printing";
 import { notifyAction, notifyWorkflowAction } from "@/lib/toast";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "@packages/backend/convex/_generated/api";
@@ -194,13 +194,17 @@ export default function OrderDetailScreen() {
    *    print à l'ack);
    *  - the « Réimprimer » button (manual recourse if the first print failed).
    *
-   * No-printer → silent no-op. Network / HTTP / timeout error → non-blocking
-   * Alert « Impression échouée — vérifie l'imprimante » (PRD 20 §14). The
-   * workflow has ALREADY committed by the time we get here, so a failed
-   * print never blocks the cuisinier.
+   * Returns the verdict so each caller surfaces feedback its own way:
+   *  - auto-print → silent on success, Alert.alert on error (the cuisinier is
+   *    at a critical moment of accepting a cmd, a modal Alert ensures she
+   *    sees the failure even mid-action);
+   *  - manual reprint → toast on BOTH success and error (the cuisinier
+   *    explicitly tapped « Réimprimer » and expects feedback).
+   *
+   * No-printer → `{ kind: "no-printer" }`, both callers stay silent.
    */
-  const printThisOrder = async (): Promise<void> => {
-    const verdict = await printOrderTicket({
+  const printThisOrder = async (): Promise<PrintOrderVerdict> =>
+    printOrderTicket({
       starWebPrntUrl: printerConfig?.starWebPrntUrl ?? null,
       ticket: {
         tenantName,
@@ -216,13 +220,6 @@ export default function OrderDetailScreen() {
         totalCents: order.pricingSnapshot?.total,
       },
     });
-    if (verdict.kind === "error") {
-      Alert.alert(
-        "Impression échouée",
-        "Vérifie l'imprimante (alimentation, réseau, IP). La commande reste acceptée.",
-      );
-    }
-  };
 
   const onWorkflowPress = async () => {
     if (buttonDecision.kind !== "show" || busy) return;
@@ -235,9 +232,16 @@ export default function OrderDetailScreen() {
         });
         notifyWorkflowAction("acknowledge", order.mode);
         // #412 — auto-print right after the mutation commits. Fire-and-
-        // forget: a failure here is surfaced through a toast but does NOT
-        // throw — the cmd is `en préparation` regardless of the printer.
-        await printThisOrder();
+        // forget: failure surfaces through a modal Alert (cuisinier is at a
+        // critical moment, a toast might be missed) but does NOT throw — the
+        // cmd is `en préparation` regardless of the printer.
+        const printVerdict = await printThisOrder();
+        if (printVerdict.kind === "error") {
+          Alert.alert(
+            "Impression échouée",
+            "Vérifie l'imprimante (alimentation, réseau, IP). La commande reste acceptée.",
+          );
+        }
       } else if (buttonDecision.action === "markPrepared") {
         await markPrepared({
           tenantId: activeTenantId,
@@ -259,13 +263,19 @@ export default function OrderDetailScreen() {
   };
 
   // #412 — « Réimprimer » manual button (PRD 20 §4 + §14). Tap once →
-  // re-fire the same payload at the configured printer. Same non-blocking
-  // toast on error.
+  // re-fire the same payload at the configured printer. The cuisinier
+  // explicitly tapped this, so we always surface a toast (success OR error).
+  // « no-printer » is silent — the button is hidden in that case anyway.
   const onReprintPress = async () => {
     if (reprinting) return;
     setReprinting(true);
     try {
-      await printThisOrder();
+      const verdict = await printThisOrder();
+      if (verdict.kind === "ok") {
+        notifyAction("printer.reprintOk");
+      } else if (verdict.kind === "error") {
+        notifyAction("printer.reprintError");
+      }
     } finally {
       setReprinting(false);
     }

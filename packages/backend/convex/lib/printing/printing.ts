@@ -57,9 +57,13 @@ const OPERATIONAL_ALLOW: { allow: TenantRole[] } = {
  * the rule on BOTH surfaces means a request crafted outside the native form
  * still hits this server-side check.
  *
- * Accepts `http://…` and `https://…`. Rejects:
+ * Accepts only the canonical Star WebPRNT shape:
+ *   `http(s)://<host>[:<port>]/StarWebPRNT/SendMessage[/]`
+ * Rejects:
  *   - empty / whitespace-only (would silently mean « no printer »);
  *   - a bare IP (`192.168.1.42` without scheme — common copy-paste mistake);
+ *   - http URLs missing the canonical path (`http://invalid` — Star printers
+ *     ALWAYS expose `/StarWebPRNT/SendMessage`, so any other path is wrong);
  *   - unsafe schemes (`javascript:`, `file:`, `data:`).
  *
  * The URL itself is NOT fetched here — the printer is on a private LAN
@@ -76,11 +80,13 @@ function assertValidStarWebPrntUrl(input: string): void {
         "L'adresse de l'imprimante est obligatoire (ex http://192.168.1.42/StarWebPRNT/SendMessage).",
     });
   }
-  if (!/^https?:\/\//i.test(trimmed)) {
+  if (
+    !/^https?:\/\/[^\s/]+(?::\d+)?\/StarWebPRNT\/SendMessage\/?$/i.test(trimmed)
+  ) {
     throw new ConvexError({
       code: "INVALID_PRINTER_URL",
       message:
-        "L'adresse de l'imprimante doit commencer par http:// ou https:// (ex http://192.168.1.42/StarWebPRNT/SendMessage).",
+        "Adresse invalide. Format attendu : http://<ip>/StarWebPRNT/SendMessage (ex http://192.168.1.42/StarWebPRNT/SendMessage).",
     });
   }
 }

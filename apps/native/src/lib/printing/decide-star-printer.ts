@@ -35,18 +35,21 @@ export function normaliseStarWebPrntUrl(input: string): string {
 }
 
 /**
- * Gérant input gate — accepts http/https URLs, rejects everything else.
+ * Gérant input gate — accepts the canonical Star WebPRNT URL shape only.
  *
- * This is the SAME guard the backend `setPrinterConfig` enforces upstream
- * (PRD 20 §14): keeping the rule on BOTH surfaces means a request crafted
- * outside the native form still hits the server check. The URL itself is
- * NOT fetched here — the printer is on a private LAN, and the validation
- * runs synchronously in the form (no network round-trip on every keystroke).
+ * Must match `^https?://<host>[:<port>]/StarWebPRNT/SendMessage[/]$` (case-
+ * insensitive). A bare `http://invalid` passes the scheme but lacks the
+ * canonical Star path → rejected. The same rule lives on `setPrinterConfig`
+ * (printing.ts) so a request crafted outside the native form is still
+ * rejected server-side. The URL itself is NOT fetched here — the printer is
+ * on a private LAN and the validation runs synchronously in the form.
  */
 export function isValidStarWebPrntUrl(input: string): boolean {
   const trimmed = input.trim();
   if (trimmed === "") return false;
-  return /^https?:\/\//i.test(trimmed);
+  return /^https?:\/\/[^\s/]+(?::\d+)?\/StarWebPRNT\/SendMessage\/?$/i.test(
+    trimmed,
+  );
 }
 
 /**
@@ -111,7 +114,7 @@ export function decidePrinterConfigForm(
       canTest: false,
       displayUrl: normalised,
       error:
-        "L'adresse doit commencer par http:// ou https:// (ex http://192.168.1.42/StarWebPRNT/SendMessage).",
+        "Adresse invalide. Format attendu : http://<ip>/StarWebPRNT/SendMessage (ex http://192.168.1.42/StarWebPRNT/SendMessage).",
     };
   }
 
