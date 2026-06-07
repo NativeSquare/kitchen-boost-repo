@@ -220,7 +220,7 @@ _(parcours ajoutés au fil des merges)_
 
 ## KBO-OPS — Ops & maintenance
 
-> **Statut** : 🟡 0/? validés — issues couvertes #410 (TB-18 stats rapides V1), #412 (TB-20 impression Star WebPRNT), #417 (TB-17 historique cmds + onglet manquées), #418 (TB-21 page settings complète).
+> **Statut** : 🟡 **1/4 PASS le 2026-06-07** — KBO-OPS1 PASS (stats rapides #410). Grille 2×2 (CA aujourd'hui / Cmds aujourd'hui / CA cette semaine / vs S-1) avec real-time refresh via Convex sub + comparator emerald/rose/gris/Nouveau + tenant scope ADR 0010 préservé. Issues couvertes #410, #412, #417, #418.
 
 _(parcours ajoutés au fil des merges)_
 
