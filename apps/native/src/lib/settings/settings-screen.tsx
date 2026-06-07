@@ -1,7 +1,10 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
+// V1 — Notifications widget commenté (KBO terrain 2026-06-07, le gérant
+// n'a pas de choix donné côté DNT/sons/vibration en V1). Import laissés
+// commentés, prêts à être ré-activés en V2 sans drift.
+// import { Input } from "@/components/ui/input";
+// import { Switch } from "@/components/ui/switch";
 import { Text } from "@/components/ui/text";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ConfirmationSheet } from "@/components/shared/confirmation-sheet";
@@ -32,7 +35,7 @@ import {
   ScrollView,
   View,
 } from "react-native";
-import { isValidHHMM } from "./decide-notif-preferences";
+// import { isValidHHMM } from "./decide-notif-preferences"; // V1 — widget Notifs commenté
 import {
   decideRebasculeMode,
   decideSettingsVisibility,
@@ -40,7 +43,7 @@ import {
   decideUberBadge,
   type IntegrationBadge,
 } from "./decide-settings";
-import { useNotifPreferences } from "./use-notif-preferences";
+// import { useNotifPreferences } from "./use-notif-preferences"; // V1 — widget Notifs commenté
 
 /**
  * #418 — KB Orders « Settings complète » (PRD 20 §10).
@@ -143,7 +146,10 @@ export function SettingsScreen(): React.ReactElement {
         : { isAdmin: session.isAdmin, tenantCount: session.tenants.length },
   });
 
-  const notifs = useNotifPreferences();
+  // V1 — Notifications widget retiré (KBO terrain 2026-06-07). Pas de choix
+  // donné au cuisinier sur DNT/sons/vibration en V1. Le hook + le widget
+  // restent en mémoire prêts à être ré-activés en V2.
+  // const notifs = useNotifPreferences();
 
   // Sheets — re-used the ConfirmationSheet pattern from the existing
   // tabs/account.tsx for logout / delete / mode rebascule confirmation.
@@ -388,16 +394,21 @@ export function SettingsScreen(): React.ReactElement {
             />
           ) : null}
 
-          {/* Notifs (point 3) */}
-          {visibility.showNotifs ? (
-            <NotifsSection
-              prefs={notifs.prefs}
-              setDntStart={notifs.setDntStart}
-              setDntEnd={notifs.setDntEnd}
-              setSoundEnabled={notifs.setSoundEnabled}
-              setVibrationEnabled={notifs.setVibrationEnabled}
-            />
-          ) : null}
+          {/* Notifs (point 3) — V1 commenté (KBO terrain 2026-06-07).
+           *  Le gérant n'a pas le choix sur DNT/sons/vibration en V1.
+           *  Décommenter le bloc ci-dessous + ses imports pour ré-activer
+           *  en V2 (aucun drift backend — le hook persiste en SecureStore).
+           *
+           *  {visibility.showNotifs ? (
+           *    <NotifsSection
+           *      prefs={notifs.prefs}
+           *      setDntStart={notifs.setDntStart}
+           *      setDntEnd={notifs.setDntEnd}
+           *      setSoundEnabled={notifs.setSoundEnabled}
+           *      setVibrationEnabled={notifs.setVibrationEnabled}
+           *    />
+           *  ) : null}
+           */}
 
           {/* Compte rattaché (point 4) */}
           {visibility.showAccountTenant ? (
@@ -551,140 +562,145 @@ export function SettingsScreen(): React.ReactElement {
 // Sub-sections (split for readability)
 // ---------------------------------------------------------------------------
 
-function NotifsSection({
-  prefs,
-  setDntStart,
-  setDntEnd,
-  setSoundEnabled,
-  setVibrationEnabled,
-}: {
-  prefs: ReturnType<typeof useNotifPreferences>["prefs"];
-  setDntStart: (v: string) => Promise<void>;
-  setDntEnd: (v: string) => Promise<void>;
-  setSoundEnabled: (v: boolean) => Promise<void>;
-  setVibrationEnabled: (v: boolean) => Promise<void>;
-}) {
-  // Local mirror so the user can type without each setState shipping a
-  // SecureStore write on every keystroke. We persist `onBlur` or on each
-  // valid `HH:MM` shape (the validator pinned by the vitest suite).
-  const [dntStartInput, setDntStartInput] = React.useState<string | null>(null);
-  const [dntEndInput, setDntEndInput] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    if (prefs !== null && dntStartInput === null)
-      setDntStartInput(prefs.dntStart);
-  }, [prefs, dntStartInput]);
-  React.useEffect(() => {
-    if (prefs !== null && dntEndInput === null) setDntEndInput(prefs.dntEnd);
-  }, [prefs, dntEndInput]);
-
-  if (prefs === null) {
-    return (
-      <Card>
-        <CardHeader>
-          <Text className="text-foreground text-base font-semibold">
-            Notifications
-          </Text>
-        </CardHeader>
-        <CardContent>
-          <ActivityIndicator />
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <View className="flex-row items-center gap-2">
-          <Ionicons name="notifications-outline" size={18} color="#444" />
-          <Text className="text-foreground text-base font-semibold">
-            Notifications
-          </Text>
-        </View>
-      </CardHeader>
-      <CardContent className="gap-4">
-        <View className="gap-2">
-          <Text className="text-foreground text-sm font-medium">
-            Heures de silence (do not disturb)
-          </Text>
-          <Text className="text-muted-foreground text-xs">
-            Format 24h HH:MM — pas de son pendant la fenêtre.
-          </Text>
-          <View className="flex-row gap-2">
-            <View className="flex-1 gap-1">
-              <Text className="text-muted-foreground text-xs">Début</Text>
-              <Input
-                accessibilityLabel="Début des heures de silence"
-                value={dntStartInput ?? ""}
-                onChangeText={(v) => setDntStartInput(v)}
-                onBlur={() => {
-                  if (dntStartInput !== null && isValidHHMM(dntStartInput)) {
-                    void setDntStart(dntStartInput);
-                  } else if (prefs !== null) {
-                    // revert on invalid blur
-                    setDntStartInput(prefs.dntStart);
-                  }
-                }}
-                placeholder="22:00"
-                keyboardType="numbers-and-punctuation"
-                maxLength={5}
-              />
-            </View>
-            <View className="flex-1 gap-1">
-              <Text className="text-muted-foreground text-xs">Fin</Text>
-              <Input
-                accessibilityLabel="Fin des heures de silence"
-                value={dntEndInput ?? ""}
-                onChangeText={(v) => setDntEndInput(v)}
-                onBlur={() => {
-                  if (dntEndInput !== null && isValidHHMM(dntEndInput)) {
-                    void setDntEnd(dntEndInput);
-                  } else if (prefs !== null) {
-                    setDntEndInput(prefs.dntEnd);
-                  }
-                }}
-                placeholder="08:00"
-                keyboardType="numbers-and-punctuation"
-                maxLength={5}
-              />
-            </View>
-          </View>
-        </View>
-
-        <View className="flex-row items-center justify-between">
-          <View className="flex-1 pr-3">
-            <Text className="text-foreground text-sm font-medium">Sons</Text>
-            <Text className="text-muted-foreground text-xs">
-              Joue le son à chaque nouvelle commande.
-            </Text>
-          </View>
-          <Switch
-            accessibilityLabel="Activer les sons"
-            checked={prefs.soundEnabled}
-            onCheckedChange={(v) => void setSoundEnabled(v)}
-          />
-        </View>
-
-        <View className="flex-row items-center justify-between">
-          <View className="flex-1 pr-3">
-            <Text className="text-foreground text-sm font-medium">
-              Vibration
-            </Text>
-            <Text className="text-muted-foreground text-xs">
-              Vibre à chaque nouvelle commande.
-            </Text>
-          </View>
-          <Switch
-            accessibilityLabel="Activer les vibrations"
-            checked={prefs.vibrationEnabled}
-            onCheckedChange={(v) => void setVibrationEnabled(v)}
-          />
-        </View>
-      </CardContent>
-    </Card>
-  );
-}
+// V1 — `NotifsSection` commenté (KBO terrain 2026-06-07). Pas de choix donné
+// au cuisinier sur DNT/sons/vibration en V1. Le widget reste prêt à être
+// ré-activé en V2 — dépend de `Input`, `Switch`, `Ionicons`, `isValidHHMM`,
+// `useNotifPreferences` (tous laissés disponibles, imports commentés).
+//
+// function NotifsSection({
+//   prefs,
+//   setDntStart,
+//   setDntEnd,
+//   setSoundEnabled,
+//   setVibrationEnabled,
+// }: {
+//   prefs: ReturnType<typeof useNotifPreferences>["prefs"];
+//   setDntStart: (v: string) => Promise<void>;
+//   setDntEnd: (v: string) => Promise<void>;
+//   setSoundEnabled: (v: boolean) => Promise<void>;
+//   setVibrationEnabled: (v: boolean) => Promise<void>;
+// }) {
+//   // Local mirror so the user can type without each setState shipping a
+//   // SecureStore write on every keystroke. We persist `onBlur` or on each
+//   // valid `HH:MM` shape (the validator pinned by the vitest suite).
+//   const [dntStartInput, setDntStartInput] = React.useState<string | null>(null);
+//   const [dntEndInput, setDntEndInput] = React.useState<string | null>(null);
+//
+//   React.useEffect(() => {
+//     if (prefs !== null && dntStartInput === null)
+//       setDntStartInput(prefs.dntStart);
+//   }, [prefs, dntStartInput]);
+//   React.useEffect(() => {
+//     if (prefs !== null && dntEndInput === null) setDntEndInput(prefs.dntEnd);
+//   }, [prefs, dntEndInput]);
+//
+//   if (prefs === null) {
+//     return (
+//       <Card>
+//         <CardHeader>
+//           <Text className="text-foreground text-base font-semibold">
+//             Notifications
+//           </Text>
+//         </CardHeader>
+//         <CardContent>
+//           <ActivityIndicator />
+//         </CardContent>
+//       </Card>
+//     );
+//   }
+//
+//   return (
+//     <Card>
+//       <CardHeader>
+//         <View className="flex-row items-center gap-2">
+//           <Ionicons name="notifications-outline" size={18} color="#444" />
+//           <Text className="text-foreground text-base font-semibold">
+//             Notifications
+//           </Text>
+//         </View>
+//       </CardHeader>
+//       <CardContent className="gap-4">
+//         <View className="gap-2">
+//           <Text className="text-foreground text-sm font-medium">
+//             Heures de silence (do not disturb)
+//           </Text>
+//           <Text className="text-muted-foreground text-xs">
+//             Format 24h HH:MM — pas de son pendant la fenêtre.
+//           </Text>
+//           <View className="flex-row gap-2">
+//             <View className="flex-1 gap-1">
+//               <Text className="text-muted-foreground text-xs">Début</Text>
+//               <Input
+//                 accessibilityLabel="Début des heures de silence"
+//                 value={dntStartInput ?? ""}
+//                 onChangeText={(v) => setDntStartInput(v)}
+//                 onBlur={() => {
+//                   if (dntStartInput !== null && isValidHHMM(dntStartInput)) {
+//                     void setDntStart(dntStartInput);
+//                   } else if (prefs !== null) {
+//                     // revert on invalid blur
+//                     setDntStartInput(prefs.dntStart);
+//                   }
+//                 }}
+//                 placeholder="22:00"
+//                 keyboardType="numbers-and-punctuation"
+//                 maxLength={5}
+//               />
+//             </View>
+//             <View className="flex-1 gap-1">
+//               <Text className="text-muted-foreground text-xs">Fin</Text>
+//               <Input
+//                 accessibilityLabel="Fin des heures de silence"
+//                 value={dntEndInput ?? ""}
+//                 onChangeText={(v) => setDntEndInput(v)}
+//                 onBlur={() => {
+//                   if (dntEndInput !== null && isValidHHMM(dntEndInput)) {
+//                     void setDntEnd(dntEndInput);
+//                   } else if (prefs !== null) {
+//                     setDntEndInput(prefs.dntEnd);
+//                   }
+//                 }}
+//                 placeholder="08:00"
+//                 keyboardType="numbers-and-punctuation"
+//                 maxLength={5}
+//               />
+//             </View>
+//           </View>
+//         </View>
+//
+//         <View className="flex-row items-center justify-between">
+//           <View className="flex-1 pr-3">
+//             <Text className="text-foreground text-sm font-medium">Sons</Text>
+//             <Text className="text-muted-foreground text-xs">
+//               Joue le son à chaque nouvelle commande.
+//             </Text>
+//           </View>
+//           <Switch
+//             accessibilityLabel="Activer les sons"
+//             checked={prefs.soundEnabled}
+//             onCheckedChange={(v) => void setSoundEnabled(v)}
+//           />
+//         </View>
+//
+//         <View className="flex-row items-center justify-between">
+//           <View className="flex-1 pr-3">
+//             <Text className="text-foreground text-sm font-medium">
+//               Vibration
+//             </Text>
+//             <Text className="text-muted-foreground text-xs">
+//               Vibre à chaque nouvelle commande.
+//             </Text>
+//           </View>
+//           <Switch
+//             accessibilityLabel="Activer les vibrations"
+//             checked={prefs.vibrationEnabled}
+//             onCheckedChange={(v) => void setVibrationEnabled(v)}
+//           />
+//         </View>
+//       </CardContent>
+//     </Card>
+//   );
+// }
 
 function AccountTenantSection({
   tenants,

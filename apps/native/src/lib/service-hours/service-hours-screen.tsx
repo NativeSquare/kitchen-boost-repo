@@ -1,13 +1,13 @@
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Text } from "@/components/ui/text";
 import { useActiveTenantId } from "@/lib/tenant-switcher";
 import { notifyAction } from "@/lib/toast";
 import { getConvexErrorMessage } from "@/utils/getConvexErrorMessage";
 import { Ionicons } from "@expo/vector-icons";
+import { BottomSheetModal as GorhomBottomSheetModal } from "@gorhom/bottom-sheet";
 import { api } from "@packages/backend/convex/_generated/api";
 import { useMutation, useQuery } from "convex/react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -20,11 +20,11 @@ import {
   WEEK_DAYS,
   decideServiceHoursScreen,
   minutesToTimeString,
-  timeStringToMinutes,
   validateServiceWindows,
   type ServiceHoursValidationError,
   type ServiceWindow,
 } from "./decide-service-hours";
+import { TimeWheelPickerSheet } from "./time-wheel-picker-sheet";
 
 /**
  * #409 — KB Orders « Modif horaires d'ouverture » screen (PRD 20 §7d +
@@ -60,17 +60,23 @@ import {
  * reste la source de vérité (défense en profondeur) — même si le front
  * est contourné, la mutation `set` rejette tout windows[] invalide.
  *
- * Time picker
- * -----------
- * Le PRD prompt mentionne `@react-native-community/datetimepicker` —
- * pas installé dans `apps/native/package.json` (vérifié pkg.json). Pour
- * éviter d'introduire un native module qui forcerait un prebuild Expo +
- * fenêtre d'install supplémentaire, l'éditeur reprend l'approche de
- * `<ClosureControl />` (#407) : `Input` text + parser strict (`HH:MM` via
- * `timeStringToMinutes`). Même shape que la mirror admin
- * (`<input type="time">` accepte aussi `HH:MM`) — un créneau saisi côté
- * native lit identiquement côté admin et inversement (pas de drift).
- * Un picker richer peut être plug en V2 sans toucher la decision layer.
+ * Time picker (2026-06-07 — pivot vers wheel JS-only)
+ * ----------------------------------------------------
+ * Première itération : deux `<Input>` texte HH:MM + parser strict
+ * `timeStringToMinutes`. Bug terrain KBO-DIS4 : le parser rejette TOUT
+ * input partiel (regex `/^(\d{1,2}):(\d{2})$/` exige la shape complète) →
+ * un keystroke isolé (« 1 » avant que « 12:30 » soit tapé) retournait NaN
+ * → state non muté → le render suivant force l'Input à la canonical
+ * `minutesToTimeString` de l'état inchangé → le caractère tapé disparaît.
+ *
+ * Pivot vers une wheel picker JS-only (`<TimeWheelPickerSheet />`,
+ * `./time-wheel-picker-sheet.tsx`) — même discipline que le calendar
+ * `react-native-calendars` (commit `70252ba`) : ZÉRO module natif, marche
+ * immédiatement avec le dev client existant. Tap sur « Début » / « Fin » →
+ * bottom sheet → deux colonnes scrollables (heures 00-23 | minutes 00, 05,
+ * ..., 55) → tap Valider compose `hour * 60 + minute` et set le state via
+ * `updateSlot`. Le format de SAUVEGARDE reste identique (int minutes), la
+ * mirror admin lit la même valeur sans drift.
  *
  * Loading / empty
  * ---------------
@@ -112,6 +118,17 @@ export function ServiceHoursScreen(): React.ReactElement {
 
   const [submitting, setSubmitting] = useState<boolean>(false);
 
+  // Wheel time picker — one shared sheet at the screen level. `pendingEdit`
+  // tracks which slot + which field (start / end) the user tapped so the
+  // sheet seeds the right value AND the confirm callback knows where to
+  // commit. Null when no picker is open.
+  const pickerSheetRef = useRef<GorhomBottomSheetModal | null>(null);
+  const [pendingEdit, setPendingEdit] = useState<{
+    slotIndex: number;
+    field: "start" | "end";
+    initialMinutes: number;
+  } | null>(null);
+
   if (tenantId === null) {
     return (
       <View className="bg-background flex-1 items-center justify-center p-6">
@@ -152,6 +169,25 @@ export function ServiceHoursScreen(): React.ReactElement {
     setDraft((prev) =>
       prev === null ? prev : prev.filter((_, i) => i !== index),
     );
+  };
+
+  const openPicker = (
+    slotIndex: number,
+    field: "start" | "end",
+    initialMinutes: number,
+  ): void => {
+    setPendingEdit({ slotIndex, field, initialMinutes });
+    pickerSheetRef.current?.present();
+  };
+
+  const handlePickerConfirm = (totalMinutes: number): void => {
+    if (pendingEdit === null) return;
+    const patch =
+      pendingEdit.field === "start"
+        ? { startMinute: totalMinutes }
+        : { endMinute: totalMinutes };
+    updateSlot(pendingEdit.slotIndex, patch);
+    setPendingEdit(null);
   };
 
   const addSlot = (dayOfWeek: number): void => {
@@ -232,7 +268,7 @@ export function ServiceHoursScreen(): React.ReactElement {
               onAdd={() => {
                 addSlot(row.dayOfWeek);
               }}
-              onUpdate={updateSlot}
+              onOpenPicker={openPicker}
               onRemove={removeSlot}
             />
           );
@@ -257,6 +293,17 @@ export function ServiceHoursScreen(): React.ReactElement {
           </Text>
         ) : null}
       </View>
+
+      {/* Wheel time picker — shared sheet at the screen level (KBO-DIS4 fix,
+       *  remplace les <Input> HH:MM qui mangeaient les keystrokes). */}
+      <TimeWheelPickerSheet
+        sheetRef={pickerSheetRef}
+        title={
+          pendingEdit?.field === "end" ? "Fin du créneau" : "Début du créneau"
+        }
+        initialMinutes={pendingEdit?.initialMinutes ?? 12 * 60}
+        onConfirm={handlePickerConfirm}
+      />
     </ScrollView>
   );
 }
@@ -286,7 +333,7 @@ function DayRow({
   errorIndices,
   errors,
   onAdd,
-  onUpdate,
+  onOpenPicker,
   onRemove,
 }: {
   dayOfWeek: number;
@@ -295,9 +342,10 @@ function DayRow({
   errorIndices: ReadonlySet<number>;
   errors: readonly ServiceHoursValidationError[];
   onAdd: () => void;
-  onUpdate: (
-    index: number,
-    patch: Partial<Pick<ServiceWindow, "startMinute" | "endMinute">>,
+  onOpenPicker: (
+    slotIndex: number,
+    field: "start" | "end",
+    initialMinutes: number,
   ) => void;
   onRemove: (index: number) => void;
 }): React.ReactElement {
@@ -336,39 +384,37 @@ function DayRow({
               <View key={s.index} className="gap-1">
                 <View className="flex-row items-center gap-2">
                   <View className="flex-1">
-                    <Input
-                      value={minutesToTimeString(s.window.startMinute)}
-                      placeholder="HH:MM"
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      keyboardType="numbers-and-punctuation"
-                      accessibilityLabel="Début du créneau"
-                      onChangeText={(text) => {
-                        const parsed = timeStringToMinutes(text);
-                        if (!Number.isNaN(parsed)) {
-                          onUpdate(s.index, { startMinute: parsed });
-                        }
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Début du créneau, ${minutesToTimeString(s.window.startMinute)}`}
+                      accessibilityHint="Ouvre le sélecteur d'heure"
+                      onPress={() => {
+                        onOpenPicker(s.index, "start", s.window.startMinute);
                       }}
-                    />
+                      className="border-border bg-background h-12 items-center justify-center rounded-md border active:opacity-70"
+                    >
+                      <Text className="text-foreground text-base font-medium">
+                        {minutesToTimeString(s.window.startMinute)}
+                      </Text>
+                    </Pressable>
                   </View>
                   <Text aria-hidden className="text-muted-foreground">
                     →
                   </Text>
                   <View className="flex-1">
-                    <Input
-                      value={minutesToTimeString(s.window.endMinute)}
-                      placeholder="HH:MM"
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      keyboardType="numbers-and-punctuation"
-                      accessibilityLabel="Fin du créneau"
-                      onChangeText={(text) => {
-                        const parsed = timeStringToMinutes(text);
-                        if (!Number.isNaN(parsed)) {
-                          onUpdate(s.index, { endMinute: parsed });
-                        }
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Fin du créneau, ${minutesToTimeString(s.window.endMinute)}`}
+                      accessibilityHint="Ouvre le sélecteur d'heure"
+                      onPress={() => {
+                        onOpenPicker(s.index, "end", s.window.endMinute);
                       }}
-                    />
+                      className="border-border bg-background h-12 items-center justify-center rounded-md border active:opacity-70"
+                    >
+                      <Text className="text-foreground text-base font-medium">
+                        {minutesToTimeString(s.window.endMinute)}
+                      </Text>
+                    </Pressable>
                   </View>
                   <Pressable
                     accessibilityRole="button"
