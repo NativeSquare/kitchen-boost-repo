@@ -1,4 +1,3 @@
-import { Button } from "@/components/ui/button";
 import { Text } from "@/components/ui/text";
 import { useActiveTenantId } from "@/lib/tenant-switcher";
 import { notifyAction } from "@/lib/toast";
@@ -7,14 +6,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { BottomSheetModal as GorhomBottomSheetModal } from "@gorhom/bottom-sheet";
 import { api } from "@packages/backend/convex/_generated/api";
 import { useMutation, useQuery } from "convex/react";
-import { useMemo, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  ScrollView,
-  View,
-} from "react-native";
+import { useRef, useState } from "react";
+import { ActivityIndicator, Pressable, ScrollView, View } from "react-native";
+import Toast from "react-native-toast-message";
 import {
   DEFAULT_NEW_SLOT,
   WEEK_DAYS,
@@ -52,13 +46,58 @@ import { TimeWheelPickerSheet } from "./time-wheel-picker-sheet";
  * Édition complète des horaires permanents (jours fériés annuels) reste
  * **KB Admin seul** (ADR 0018) — pas dans cette story.
  *
+ * Persistance immédiate per-slot (refactor 2026-06-07)
+ * ----------------------------------------------------
+ * Avant : pattern « draft + Save global » — chaque édition (tap Valider
+ * wheel / Ajouter / Supprimer) mutait un `draft` local, et un bouton
+ * « Enregistrer » global tout en bas fire la mutation `set` une fois.
+ * Modèle copié de KB Admin où l'éditeur a un Save global cohérent avec
+ * d'autres écrans desktop.
+ *
+ * Après : chaque édition fire `setHours` IMMÉDIATEMENT avec le nouveau
+ * `windows[]` complet — pas de draft global, pas de bouton Save. Même
+ * pattern que `ItemAvailabilityList` (commit `f016467`) : `withOptimisticUpdate`
+ * patche la query `serviceHours.get` locale dès le tap pour un flip
+ * instantané du Pressable « Début / Fin », et le store revertit
+ * automatiquement si la mutation throw (validation backend rejette
+ * OVERLAP / START_AFTER_OR_EQUAL_END / OUT_OF_BOUNDS). Toast vert
+ * « Horaires mis à jour » après chaque success, toast rouge erreur sur
+ * throw.
+ *
+ * Pourquoi ce pivot
+ * -----------------
+ * Sur cuisine terrain, le gérant qui ajuste son horaire en plein service
+ * ne doit JAMAIS oublier de taper Save. La phase « draft » ouvre un
+ * gouffre cognitif (« j'ai modifié, mais c'est sauvé ? ») qu'un toggle
+ * dispo item ne crée pas. La persistance unitaire aligne le mental model
+ * service-hours sur le mental model toggle-dispo (#408) et toggle-pause /
+ * fermeture exceptionnelle (#406 / #407) — chaque tap a un effet immédiat
+ * + un toast de confirmation.
+ *
  * Validation
  * ----------
  * `validateServiceWindows` (pur, mirror du backend `assertServiceWindows`)
- * tourne sur le state local à chaque render. Bouton Enregistrer désactivé
- * tant qu'il y a une erreur ; message inline par créneau fautif. Backend
- * reste la source de vérité (défense en profondeur) — même si le front
- * est contourné, la mutation `set` rejette tout windows[] invalide.
+ * tourne toujours pour deux usages :
+ *
+ *   1. **Gate du tap Valider wheel** — si la nouvelle valeur tapée fait
+ *      que `start >= end` SUR LE SLOT COURANT, on bloque le tap Valider
+ *      au niveau du sheet (affiche une erreur inline dans le sheet, NE
+ *      ferme PAS, NE fire PAS la mutation). C'est le seul cas où une
+ *      validation locale BLOQUE — parce qu'envoyer un slot dont on sait
+ *      qu'il est invalide est une round-trip inutile + un toast d'erreur
+ *      qu'on peut éviter.
+ *
+ *   2. **Affichage inline des erreurs cross-créneau (OVERLAP)** — la
+ *      validation tourne aussi sur le full windows[] pour surfacer un
+ *      message d'erreur sous chaque créneau fautif. Mais elle ne BLOQUE
+ *      plus aucun save (pas de save global à bloquer). Si le gérant
+ *      réussit à créer un OVERLAP via une édition, la mutation
+ *      `set` tente, le backend rejette, le toast d'erreur prend le
+ *      relais et le store Convex rollback la valeur optimistic.
+ *
+ * Backend reste la source de vérité (défense en profondeur) — même si
+ * le front est contourné, la mutation `set` rejette tout windows[]
+ * invalide via `assertServiceWindows`.
  *
  * Time picker (2026-06-07 — pivot vers wheel JS-only)
  * ----------------------------------------------------
@@ -74,9 +113,11 @@ import { TimeWheelPickerSheet } from "./time-wheel-picker-sheet";
  * `react-native-calendars` (commit `70252ba`) : ZÉRO module natif, marche
  * immédiatement avec le dev client existant. Tap sur « Début » / « Fin » →
  * bottom sheet → deux colonnes scrollables (heures 00-23 | minutes 00, 05,
- * ..., 55) → tap Valider compose `hour * 60 + minute` et set le state via
- * `updateSlot`. Le format de SAUVEGARDE reste identique (int minutes), la
- * mirror admin lit la même valeur sans drift.
+ * ..., 55) → tap Valider compose `hour * 60 + minute` et fire la mutation
+ * via le callback `onSubmit` passé par le parent (pattern callback :
+ * le sheet ne touche pas Convex, il delegate). Le format de SAUVEGARDE
+ * reste identique (int minutes), la mirror admin lit la même valeur
+ * sans drift.
  *
  * Loading / empty
  * ---------------
@@ -98,25 +139,30 @@ export function ServiceHoursScreen(): React.ReactElement {
     api.lib.menu.serviceHours.get,
     tenantId !== null ? { tenantId } : "skip",
   );
-  const setHours = useMutation(api.lib.menu.serviceHours.set);
-
-  // L'éditeur owns son state local — `hours` ne sert qu'à seeder à la
-  // première frame chargée. Un re-render Convex pendant l'édition ne wipe
-  // PAS les inputs en cours (même discipline que l'admin
-  // `ServiceHoursEditor`). Re-seed via `useMemo` + clé sur `hours` quand
-  // on passe de `loading` à `ready` (i.e. quand le screen vient d'ouvrir).
-  const initialWindows = useMemo<ServiceWindow[] | null>(() => {
-    if (hours === undefined) return null;
-    return hours.windows.map((w) => ({ ...w }));
-  }, [hours]);
-
-  const [draft, setDraft] = useState<ServiceWindow[] | null>(null);
-  // Seed `draft` on the first frame where Convex has resolved.
-  if (draft === null && initialWindows !== null) {
-    setDraft(initialWindows);
-  }
-
-  const [submitting, setSubmitting] = useState<boolean>(false);
+  // Optimistic update Convex natif — patch la query `serviceHours.get` locale
+  // dès le tap (Pressable Début/Fin flip avant le round-trip). Le store
+  // revertit automatiquement si la mutation throw (le backend rejette
+  // OVERLAP / START_AFTER_OR_EQUAL_END / OUT_OF_BOUNDS via
+  // `assertServiceWindows`) — pas de rollback manuel à orchestrer.
+  // Synchronous handler obligatoire (cf. type contraint dans
+  // `convex/react/client.d.ts`).
+  const setHours = useMutation(
+    api.lib.menu.serviceHours.set,
+  ).withOptimisticUpdate((localStore, args) => {
+    const current = localStore.getQuery(api.lib.menu.serviceHours.get, {
+      tenantId: args.tenantId,
+    });
+    if (current === undefined) {
+      // Query pas encore résolue localement — rien à patcher. Les guards
+      // UI empêchent un tap pendant loading, defense en profondeur.
+      return;
+    }
+    localStore.setQuery(
+      api.lib.menu.serviceHours.get,
+      { tenantId: args.tenantId },
+      { windows: args.windows },
+    );
+  });
 
   // Wheel time picker — one shared sheet at the screen level. `pendingEdit`
   // tracks which slot + which field (start / end) the user tapped so the
@@ -127,6 +173,9 @@ export function ServiceHoursScreen(): React.ReactElement {
     slotIndex: number;
     field: "start" | "end";
     initialMinutes: number;
+    /** Snapshot of the slot's OTHER bound — used by the wheel sheet to
+     *  pre-validate start < end before firing the parent `onSubmit`. */
+    otherBound: { field: "start" | "end"; minutes: number };
   } | null>(null);
 
   if (tenantId === null) {
@@ -141,7 +190,7 @@ export function ServiceHoursScreen(): React.ReactElement {
   }
 
   const decision = decideServiceHoursScreen(hours);
-  if (decision.kind === "loading" || draft === null) {
+  if (decision.kind === "loading") {
     return (
       <View className="bg-background flex-1 items-center justify-center p-6">
         <ActivityIndicator />
@@ -152,23 +201,68 @@ export function ServiceHoursScreen(): React.ReactElement {
     );
   }
 
+  // Le rendu se fait DIRECTEMENT depuis la query Convex (patchée optimistic
+  // au tap via `withOptimisticUpdate`). Plus de `draft` local — chaque
+  // édition fire `setHours` immédiatement.
+  const windows = decision.windows;
+
+  // --- Mutation helpers ----------------------------------------------------
+
+  /**
+   * Fire `setHours` avec un nouveau `windows[]` complet. Centralise le
+   * try/catch + le toast de succès / d'erreur pour les TROIS chemins
+   * d'édition (modify slot via wheel, add slot, remove slot).
+   *
+   * Le `withOptimisticUpdate` ci-dessus patche la query AVANT que cette
+   * fonction soit appelée (le store voit déjà la nouvelle valeur) — donc
+   * le Pressable Début/Fin / le Day Row flip instantanément, sans attendre
+   * le round-trip. Si le backend rejette, Convex rollback automatiquement
+   * et le toast d'erreur informe le gérant.
+   */
+  async function persist(nextWindows: ServiceWindow[]): Promise<void> {
+    // Re-narrow `tenantId` inside the closure — the outer guard only
+    // protects the synchronous render path; TS doesn't track narrowing
+    // across the async callback.
+    if (tenantId === null) return;
+    try {
+      await setHours({ tenantId, windows: nextWindows });
+      notifyAction("serviceHours.save");
+    } catch (error) {
+      Toast.show({
+        type: "error",
+        position: "top",
+        topOffset: 32,
+        text1: "Mise à jour échouée",
+        text2: getConvexErrorMessage(error),
+      });
+    }
+  }
+
   // --- Edit helpers --------------------------------------------------------
 
   const updateSlot = (
     index: number,
     patch: Partial<Pick<ServiceWindow, "startMinute" | "endMinute">>,
   ): void => {
-    setDraft((prev) =>
-      prev === null
-        ? prev
-        : prev.map((w, i) => (i === index ? { ...w, ...patch } : w)),
-    );
+    const next = windows.map((w, i) => (i === index ? { ...w, ...patch } : w));
+    void persist(next);
   };
 
   const removeSlot = (index: number): void => {
-    setDraft((prev) =>
-      prev === null ? prev : prev.filter((_, i) => i !== index),
-    );
+    const next = windows.filter((_, i) => i !== index);
+    void persist(next);
+  };
+
+  const addSlot = (dayOfWeek: number): void => {
+    const next: ServiceWindow[] = [
+      ...windows,
+      {
+        dayOfWeek,
+        startMinute: DEFAULT_NEW_SLOT.startMinute,
+        endMinute: DEFAULT_NEW_SLOT.endMinute,
+      },
+    ];
+    void persist(next);
   };
 
   const openPicker = (
@@ -176,11 +270,23 @@ export function ServiceHoursScreen(): React.ReactElement {
     field: "start" | "end",
     initialMinutes: number,
   ): void => {
-    setPendingEdit({ slotIndex, field, initialMinutes });
+    const slot = windows[slotIndex];
+    if (slot === undefined) return;
+    // Capture the OTHER bound's current value so the wheel sheet can
+    // pre-validate `start < end` before submitting (e.g. editing « Début »
+    // → the « Fin » value is the constraint). Snapshot taken at open time
+    // — if a concurrent Convex push changes it mid-edit, the backend
+    // re-validates on `set` and rolls back the optimistic update if
+    // anything's off.
+    const otherBound =
+      field === "start"
+        ? { field: "end" as const, minutes: slot.endMinute }
+        : { field: "start" as const, minutes: slot.startMinute };
+    setPendingEdit({ slotIndex, field, initialMinutes, otherBound });
     pickerSheetRef.current?.present();
   };
 
-  const handlePickerConfirm = (totalMinutes: number): void => {
+  const handlePickerSubmit = (totalMinutes: number): void => {
     if (pendingEdit === null) return;
     const patch =
       pendingEdit.field === "start"
@@ -190,24 +296,13 @@ export function ServiceHoursScreen(): React.ReactElement {
     setPendingEdit(null);
   };
 
-  const addSlot = (dayOfWeek: number): void => {
-    setDraft((prev) =>
-      prev === null
-        ? prev
-        : [
-            ...prev,
-            {
-              dayOfWeek,
-              startMinute: DEFAULT_NEW_SLOT.startMinute,
-              endMinute: DEFAULT_NEW_SLOT.endMinute,
-            },
-          ],
-    );
-  };
-
-  const validation = validateServiceWindows(draft);
+  const validation = validateServiceWindows(windows);
 
   // Build a Set<windowIndex> of slots that carry at least one error.
+  // Used to surface inline error messages under each offending slot —
+  // even si le save n'est plus gated par cette validation (le backend
+  // rejette via `assertServiceWindows`, on garde l'affichage local
+  // pour signaler immédiatement les OVERLAPs cross-créneau au gérant).
   const indicesWithError = new Set<number>();
   for (const err of validation.errors) {
     indicesWithError.add(err.windowIndex);
@@ -220,30 +315,6 @@ export function ServiceHoursScreen(): React.ReactElement {
   // « Couldn't find a navigation context » au tap).
   const rowsForRender = WEEK_DAYS;
 
-  async function handleSave(): Promise<void> {
-    if (!validation.isValid) return;
-    if (draft === null) return;
-    // Re-narrow `tenantId` inside the closure — the outer `null` guard
-    // only protects the synchronous render path; TS doesn't track that
-    // narrowing across the async callback.
-    if (tenantId === null) return;
-    setSubmitting(true);
-    try {
-      // `serviceHours.set` remplace l'ENTIER windows[] atomically (UPSERT
-      // par tenant). On envoie directement le draft édité — vue unique
-      // semaine, donc tous les jours sont déjà dans le draft.
-      await setHours({ tenantId, windows: draft });
-      notifyAction("serviceHours.save");
-    } catch (error) {
-      Alert.alert(
-        "Impossible d'enregistrer les horaires",
-        getConvexErrorMessage(error),
-      );
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
   return (
     <ScrollView
       className="bg-background flex-1"
@@ -254,7 +325,7 @@ export function ServiceHoursScreen(): React.ReactElement {
       {/* Day rows — vue unique « Cette semaine » (Lun → Dim, FR order) */}
       <View className="gap-3">
         {rowsForRender.map((row) => {
-          const daySlots = draft
+          const daySlots = windows
             .map((w, index) => ({ window: w, index }))
             .filter((s) => s.window.dayOfWeek === row.dayOfWeek);
           return (
@@ -275,34 +346,25 @@ export function ServiceHoursScreen(): React.ReactElement {
         })}
       </View>
 
-      {/* Save */}
-      <View className="mt-6 gap-2">
-        <Button
-          onPress={() => {
-            void handleSave();
-          }}
-          disabled={submitting || !validation.isValid}
-          accessibilityLabel="Enregistrer les horaires"
-          className="h-12"
-        >
-          {submitting ? <ActivityIndicator /> : <Text>Enregistrer</Text>}
-        </Button>
-        {!validation.isValid ? (
-          <Text className="text-destructive text-center text-xs">
-            Corrige les erreurs pour pouvoir enregistrer.
-          </Text>
-        ) : null}
-      </View>
-
       {/* Wheel time picker — shared sheet at the screen level (KBO-DIS4 fix,
-       *  remplace les <Input> HH:MM qui mangeaient les keystrokes). */}
+       *  remplace les <Input> HH:MM qui mangeaient les keystrokes).
+       *
+       *  Pattern callback : le sheet ne touche pas Convex, il delegate via
+       *  `onSubmit(totalMinutes)`. Le sheet PRE-valide localement
+       *  `start < end` sur le slot courant via `otherBound` — si la
+       *  nouvelle valeur viole cette règle, le sheet AFFICHE l'erreur
+       *  inline et BLOQUE le submit (pas de mutation envoyée, pas de
+       *  rollback à orchestrer). Les autres validations (OVERLAP) sont
+       *  tentées et le backend les rejette avec un toast d'erreur. */}
       <TimeWheelPickerSheet
         sheetRef={pickerSheetRef}
         title={
           pendingEdit?.field === "end" ? "Fin du créneau" : "Début du créneau"
         }
         initialMinutes={pendingEdit?.initialMinutes ?? 12 * 60}
-        onConfirm={handlePickerConfirm}
+        editingField={pendingEdit?.field ?? "start"}
+        otherBound={pendingEdit?.otherBound ?? null}
+        onSubmit={handlePickerSubmit}
       />
     </ScrollView>
   );
@@ -315,8 +377,7 @@ function Header(): React.ReactElement {
         Horaires d&apos;ouverture
       </Text>
       <Text className="text-muted-foreground text-sm">
-        Ajuste les créneaux de la semaine. Les jours fériés annuels se gèrent
-        depuis KB Admin.
+        Ajuste les créneaux de la semaine.
       </Text>
     </View>
   );

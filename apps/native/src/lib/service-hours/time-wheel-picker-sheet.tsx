@@ -26,8 +26,27 @@ import {
  * 1px-bordered overlay at the vertical center of the wheel. The user drags
  * to spin a column; on momentum-scroll-end we snap to the nearest row and
  * commit a local (hour, minute) draft. Tapping « Valider » commits the
- * compound value to the parent via `onConfirm(totalMinutes)` and dismisses
- * the sheet. « Annuler » closes without committing.
+ * compound value to the parent via `onSubmit(totalMinutes)` (refactor
+ * 2026-06-07 — renamed from `onConfirm` to align with the per-slot
+ * persistance immédiate pattern of the parent screen). « Annuler » closes
+ * without committing.
+ *
+ * Per-slot validation locale (refactor 2026-06-07)
+ * ------------------------------------------------
+ * Parent passe `editingField` (« start » ou « end ») + `otherBound` (la
+ * valeur de l'autre borne du slot courant). Au tap Valider :
+ *
+ *   - si la nouvelle valeur violerait `start < end` sur ce slot →
+ *     **affiche un message d'erreur inline dans le sheet, NE ferme PAS,
+ *     NE call PAS `onSubmit`**. C'est la SEULE validation locale qui
+ *     bloque — pour éviter d'envoyer une mutation qu'on sait condamnée +
+ *     le toast d'erreur qui suivrait.
+ *   - sinon → ferme le sheet + call `onSubmit(totalMinutes)`.
+ *
+ * Les autres validations (OVERLAP cross-créneau) restent côté parent :
+ * la mutation tente, le backend rejette via `assertServiceWindows`, et un
+ * toast d'erreur prend le relais avec un rollback automatique du store
+ * Convex (optimistic update wiped).
  *
  * Why not a single FlatList per column ?
  * --------------------------------------
@@ -57,43 +76,84 @@ export type TimeWheelPickerSheetProps = {
   /** Seed value (minutes from midnight). The wheel restores this position
    *  every time the sheet is `present()`ed. */
   initialMinutes: number;
-  /** Called when the user taps « Valider ». Passes the composed minute count
-   *  (HH * 60 + MM). The parent dismisses the sheet inside this callback if
-   *  it wants instant feedback (the sheet dismisses itself anyway). */
-  onConfirm: (totalMinutes: number) => void;
+  /** Which bound of the slot the user is editing — needed for the local
+   *  `start < end` guard. */
+  editingField: "start" | "end";
+  /** The OTHER bound's current value (snapshot taken when the parent
+   *  opened the sheet). Used to pre-validate `start < end` before firing
+   *  `onSubmit`. `null` when the parent has no pending edit (sheet closed)
+   *  — the validation is then a no-op (sheet won't be visible). */
+  otherBound: { field: "start" | "end"; minutes: number } | null;
+  /** Called when the user taps « Valider » AND the local `start < end`
+   *  guard passes. Passes the composed minute count (HH * 60 + MM). The
+   *  sheet dismisses itself before calling. */
+  onSubmit: (totalMinutes: number) => void;
 };
 
 export function TimeWheelPickerSheet({
   sheetRef,
   title,
   initialMinutes,
-  onConfirm,
+  editingField,
+  otherBound,
+  onSubmit,
 }: TimeWheelPickerSheetProps) {
   const seed = React.useMemo(
     () => splitWheelMinutes(initialMinutes),
     [initialMinutes],
   );
 
-  // Local draft — lives between `present()` and `onConfirm` / dismiss. Re-
+  // Local draft — lives between `present()` and `onSubmit` / dismiss. Re-
   // seeded when the parent passes a new `initialMinutes` (e.g. user opens
   // the picker for a different slot).
   const [hour, setHour] = React.useState<number>(seed.hour);
   const [minute, setMinute] = React.useState<number>(seed.minute);
+  const [localError, setLocalError] = React.useState<string | null>(null);
 
   // Re-seed on prop change so the wheel never shows stale state when the
-  // parent re-opens for another field.
+  // parent re-opens for another field. Also clear any prior error message
+  // (the user is starting a fresh edit).
   React.useEffect(() => {
     setHour(seed.hour);
     setMinute(seed.minute);
+    setLocalError(null);
   }, [seed.hour, seed.minute]);
 
-  const handleConfirm = () => {
+  /**
+   * Tap « Valider ». Local guard : if the composed value would violate
+   * `start < end` on the current slot, surface a FR error inline and
+   * bail. Otherwise close the sheet + call `onSubmit`.
+   */
+  const handleSubmit = () => {
     const total = composeWheelMinutes(hour, minute);
-    if (!Number.isNaN(total)) onConfirm(total);
+    if (Number.isNaN(total)) {
+      // Shouldn't fire — the wheel only proposes valid (hour, minute)
+      // pairs. Defense in depth: bail silently rather than send NaN.
+      return;
+    }
+    // Local `start < end` guard. The other-bound snapshot was captured
+    // by the parent at sheet-open time. If a concurrent push moved it
+    // mid-edit, the backend re-validates anyway and rollbacks on throw.
+    if (otherBound !== null) {
+      const violatesOrder =
+        (editingField === "start" && total >= otherBound.minutes) ||
+        (editingField === "end" && total <= otherBound.minutes);
+      if (violatesOrder) {
+        setLocalError(
+          editingField === "start"
+            ? "Le début doit être strictement avant la fin."
+            : "La fin doit être strictement après le début.",
+        );
+        return;
+      }
+    }
+    setLocalError(null);
     sheetRef.current?.dismiss();
+    onSubmit(total);
   };
 
   const handleCancel = () => {
+    setLocalError(null);
     sheetRef.current?.dismiss();
   };
 
@@ -111,7 +171,10 @@ export function TimeWheelPickerSheet({
             accessibilityLabel="Heures"
             values={WHEEL_HOURS}
             selected={hour}
-            onChange={setHour}
+            onChange={(v) => {
+              setHour(v);
+              setLocalError(null);
+            }}
           />
           <View className="items-center justify-center">
             <Text className="text-foreground text-xl font-semibold">:</Text>
@@ -120,9 +183,21 @@ export function TimeWheelPickerSheet({
             accessibilityLabel="Minutes"
             values={WHEEL_MINUTES}
             selected={minute}
-            onChange={setMinute}
+            onChange={(v) => {
+              setMinute(v);
+              setLocalError(null);
+            }}
           />
         </View>
+
+        {localError !== null ? (
+          <Text
+            className="text-destructive text-center text-xs"
+            accessibilityLabel={`Erreur : ${localError}`}
+          >
+            {localError}
+          </Text>
+        ) : null}
 
         <View className="flex-row gap-2 pt-2">
           <View className="flex-1">
@@ -135,10 +210,7 @@ export function TimeWheelPickerSheet({
             </Button>
           </View>
           <View className="flex-1">
-            <Button
-              onPress={handleConfirm}
-              accessibilityLabel="Valider l'heure"
-            >
+            <Button onPress={handleSubmit} accessibilityLabel="Valider l'heure">
               <Text>Valider</Text>
             </Button>
           </View>
