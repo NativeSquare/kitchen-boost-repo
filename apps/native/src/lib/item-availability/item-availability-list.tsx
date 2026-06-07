@@ -12,7 +12,7 @@ import { api } from "@packages/backend/convex/_generated/api";
 import type { Doc, Id } from "@packages/backend/convex/_generated/dataModel";
 import { useMutation, useQuery } from "convex/react";
 import { useRef, useState } from "react";
-import { ActivityIndicator, ScrollView, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, View } from "react-native";
 import Toast from "react-native-toast-message";
 import {
   ITEM_TOGGLE_TOOLTIP_BODY,
@@ -67,6 +67,23 @@ import {
  *     `submittingItemIds` par-item, pas un boolean global). Les autres
  *     items restent interactifs. Rollback automatique sur erreur (Convex
  *     replay la query serveur) + toast d'erreur « Mise à jour échouée ».
+ *
+ *     **Pas de spinner pendant la mutation** (reword 2026-06-07 post-test
+ *     KBO-DIS3-bis) : le Switch reste toujours rendu, jamais remplacé par
+ *     un `<ActivityIndicator />`. C'est ce qui donne l'illusion d'instantanéité
+ *     — le Switch affiche la valeur optimistic IMMÉDIATEMENT au tap (cache
+ *     local Convex patché synchronement). Un spinner ferait perdre cette
+ *     illusion en signalant un état « en cours » alors que l'UX vise « déjà
+ *     fait ». Le `disabled={isSubmittingThisItem}` reste, anti-fat-finger
+ *     pour bloquer un re-tap pendant le round-trip, mais sans feedback visuel.
+ *
+ *  4. **Touch target = toute la card item** (post-test KBO-DIS3-bis) — la
+ *     row item entière (nom + badge + Switch) est wrappée dans un `<Pressable>`
+ *     qui flip l'item. Le Switch reste visible comme indicateur d'état mais
+ *     n'a plus de handler propre (toute interaction passe par le Pressable
+ *     parent). Pattern courant cuisine : grand hit-target pour gants / doigts
+ *     gras. A11y : `accessibilityRole="switch"` + `accessibilityState` portés
+ *     par le Pressable lui-même.
  *
  * Trois branches d'état :
  *
@@ -342,14 +359,40 @@ export function ItemAvailabilityList(): React.ReactElement {
               <View className="border-border bg-card overflow-hidden rounded-2xl border">
                 {categoryItems.map((item, index) => {
                   const isSubmittingThisItem = submittingItemIds.has(item._id);
+                  // Loading device → on bloque tous les toggles defensively
+                  // (on ne sait pas encore si on doit afficher le tooltip).
+                  // Per-item submitting → anti-fat-finger sur ce toggle
+                  // précis pendant son round-trip (les autres restent
+                  // interactifs).
+                  const isToggleDisabled =
+                    tooltipInputDevice === undefined || isSubmittingThisItem;
                   return (
-                    <View
+                    <Pressable
                       key={item._id}
-                      className={
-                        index === 0
-                          ? "flex-row items-center justify-between gap-3 p-4"
-                          : "border-border flex-row items-center justify-between gap-3 border-t p-4"
+                      onPress={() => {
+                        if (isToggleDisabled) return;
+                        // Toggle target = NOT current value (le Pressable
+                        // déclenche un flip simple).
+                        void handleTogglePress(item._id, !item.available);
+                      }}
+                      disabled={isToggleDisabled}
+                      // A11y : le Pressable EST le toggle (le Switch interne
+                      // n'a plus de handler propre — c'est un indicateur
+                      // visuel). Screen readers le voient comme un switch.
+                      accessibilityRole="switch"
+                      accessibilityState={{
+                        checked: item.available,
+                        disabled: isToggleDisabled,
+                      }}
+                      accessibilityLabel={
+                        item.available
+                          ? `Rendre ${item.name} indisponible`
+                          : `Rendre ${item.name} disponible`
                       }
+                      className={cn(
+                        "flex-row items-center justify-between gap-3 p-4 active:opacity-70",
+                        index !== 0 && "border-border border-t",
+                      )}
                     >
                       <View className="flex-1 gap-0.5">
                         <Text
@@ -363,28 +406,28 @@ export function ItemAvailabilityList(): React.ReactElement {
                         </Text>
                         <AvailabilityBadge available={item.available} />
                       </View>
-                      {isSubmittingThisItem ? (
-                        <ActivityIndicator />
-                      ) : (
-                        <Switch
-                          checked={item.available}
-                          onCheckedChange={(next) => {
-                            void handleTogglePress(item._id, next);
-                          }}
-                          // Per-item disabled : SEUL ce toggle est bloqué
-                          // pendant son propre round-trip. Loading device
-                          // (tooltipInputDevice === undefined) bloque tous
-                          // les toggles defensively (on ne sait pas encore
-                          // si on doit afficher le tooltip).
-                          disabled={tooltipInputDevice === undefined}
-                          accessibilityLabel={
-                            item.available
-                              ? `Rendre ${item.name} indisponible`
-                              : `Rendre ${item.name} disponible`
-                          }
-                        />
-                      )}
-                    </View>
+                      {/*
+                       * Switch = indicateur visuel d'état UNIQUEMENT (post-
+                       * KBO-DIS3-bis). Pas de `onCheckedChange` : tout le tap
+                       * passe par le `<Pressable>` parent (touch target = card
+                       * entière). `value={item.available}` lit la valeur
+                       * optimistic du cache local Convex → flip instantané au
+                       * tap, sans spinner intermédiaire.
+                       *
+                       * `disabled` propage le visuel grisé (opacity 50) mais
+                       * c'est le Pressable qui bloque réellement le tap.
+                       */}
+                      <Switch
+                        checked={item.available}
+                        disabled={isToggleDisabled}
+                        // Pas de handler — le Pressable parent gère le tap.
+                        // RN-primitives Switch accepte un onCheckedChange no-op
+                        // (le tap natif sur le thumb propage au Pressable parent).
+                        onCheckedChange={() => {
+                          /* noop — handled by Pressable parent */
+                        }}
+                      />
+                    </Pressable>
                   );
                 })}
               </View>
@@ -481,8 +524,7 @@ function Header(): React.ReactElement {
         Disponibilité des items
       </Text>
       <Text className="text-muted-foreground text-sm">
-        Masque temporairement un item du menu côté client. L&apos;édition (prix,
-        photo) reste dans KB Admin.
+        Masque temporairement un item du menu côté client.
       </Text>
     </View>
   );
