@@ -4,6 +4,7 @@ import { Switch } from "@/components/ui/switch";
 import { Text } from "@/components/ui/text";
 import { useDeviceId } from "@/hooks/use-device-id";
 import { useActiveTenantId } from "@/lib/tenant-switcher";
+import { notifyAction } from "@/lib/toast";
 import { getConvexErrorMessage } from "@/utils/getConvexErrorMessage";
 import { cn } from "@/lib/utils";
 import { Ionicons } from "@expo/vector-icons";
@@ -155,6 +156,7 @@ export function ItemAvailabilityList(): React.ReactElement {
   //   2) replay it when the gérant taps « OK, j'ai compris » in the sheet.
   const [pendingToggle, setPendingToggle] = useState<{
     itemId: Id<"menuItems">;
+    itemName: string;
     nextAvailable: boolean;
   } | null>(null);
   // Per-item disabled state. Replaces the previous global `submitting:
@@ -197,11 +199,25 @@ export function ItemAvailabilityList(): React.ReactElement {
     });
   }
 
-  async function fireToggle(itemId: Id<"menuItems">, nextAvailable: boolean) {
+  async function fireToggle(
+    itemId: Id<"menuItems">,
+    itemName: string,
+    nextAvailable: boolean,
+  ) {
     if (tenantId === null) return;
     addSubmitting(itemId);
     try {
       await setItemAvailability({ tenantId, itemId, available: nextAvailable });
+      // Toast de confirmation APRÈS résolution de la mutation (= backend OK).
+      // Le tap initial est silencieux : le feedback visuel instantané vient
+      // de l'optimistic update (le Switch + le badge flippent au tap). Le
+      // toast confirme côté serveur, sans bloquer l'UX. Si la mutation
+      // throw, on saute le toast confirm (le catch ci-dessous fire le
+      // toast d'erreur à la place, pas de double notification).
+      notifyAction(
+        nextAvailable ? "menu.itemSetAvailable" : "menu.itemSetUnavailable",
+        { detail: itemName },
+      );
     } catch (error) {
       // L'optimistic update Convex rollback automatiquement la query locale
       // dès que la mutation throw (le store revertit au snapshot serveur le
@@ -221,6 +237,7 @@ export function ItemAvailabilityList(): React.ReactElement {
 
   async function handleTogglePress(
     itemId: Id<"menuItems">,
+    itemName: string,
     nextAvailable: boolean,
   ) {
     const gate = decideTooltipGate({
@@ -234,13 +251,13 @@ export function ItemAvailabilityList(): React.ReactElement {
       return;
     }
     if (gate.kind === "show-tooltip") {
-      setPendingToggle({ itemId, nextAvailable });
+      setPendingToggle({ itemId, itemName, nextAvailable });
       tooltipSheetRef.current?.present();
       return;
     }
     // gate.kind === "proceed" — soit subsequent usage, soit sens ON (asymétrie
     // OFF/ON, PRD 20 §7c reword 2026-06-07) : flip direct sans tooltip.
-    await fireToggle(itemId, nextAvailable);
+    await fireToggle(itemId, itemName, nextAvailable);
   }
 
   async function handleTooltipAcknowledge() {
@@ -251,7 +268,7 @@ export function ItemAvailabilityList(): React.ReactElement {
       setPendingToggle(null);
       return;
     }
-    const { itemId, nextAvailable } = pendingToggle;
+    const { itemId, itemName, nextAvailable } = pendingToggle;
     setTooltipAcknowledging(true);
     addSubmitting(itemId);
     try {
@@ -265,6 +282,15 @@ export function ItemAvailabilityList(): React.ReactElement {
         itemId,
         available: nextAvailable,
       });
+      // Toast confirm APRÈS la mutation serveur (cf. fireToggle pour le
+      // même pattern). Le sens "show-tooltip" ne se déclenche que pour
+      // disponible → indisponible (asymétrie tooltip), donc en pratique
+      // ce sera toujours `menu.itemSetUnavailable` ici. On garde le
+      // ternaire pour rester defensif (si la décision change un jour).
+      notifyAction(
+        nextAvailable ? "menu.itemSetAvailable" : "menu.itemSetUnavailable",
+        { detail: itemName },
+      );
       tooltipSheetRef.current?.dismiss();
       setPendingToggle(null);
     } catch (error) {
@@ -373,7 +399,11 @@ export function ItemAvailabilityList(): React.ReactElement {
                         if (isToggleDisabled) return;
                         // Toggle target = NOT current value (le Pressable
                         // déclenche un flip simple).
-                        void handleTogglePress(item._id, !item.available);
+                        void handleTogglePress(
+                          item._id,
+                          item.name,
+                          !item.available,
+                        );
                       }}
                       disabled={isToggleDisabled}
                       // A11y : le Pressable EST le toggle (le Switch interne
@@ -416,17 +446,30 @@ export function ItemAvailabilityList(): React.ReactElement {
                        *
                        * `disabled` propage le visuel grisé (opacity 50) mais
                        * c'est le Pressable qui bloque réellement le tap.
+                       *
+                       * **Touch passthrough** (post-test KBO-DIS3-ter,
+                       * 2026-06-07) — le Switch RN-primitives est un
+                       * `Pressable` interne qui CAPTE le touch event au layer
+                       * composant sans propager au parent. Résultat : tap pile
+                       * sur le thumb → rien (le `onCheckedChange` est no-op).
+                       * Wrap dans une `<View pointerEvents="none">` rend
+                       * toute la zone transparente aux touches → les taps
+                       * traversent et atteignent le `<Pressable>` parent qui
+                       * porte la vraie logique de flip.
                        */}
-                      <Switch
-                        checked={item.available}
-                        disabled={isToggleDisabled}
-                        // Pas de handler — le Pressable parent gère le tap.
-                        // RN-primitives Switch accepte un onCheckedChange no-op
-                        // (le tap natif sur le thumb propage au Pressable parent).
-                        onCheckedChange={() => {
-                          /* noop — handled by Pressable parent */
-                        }}
-                      />
+                      <View pointerEvents="none">
+                        <Switch
+                          checked={item.available}
+                          disabled={isToggleDisabled}
+                          // Handler no-op : la `<View pointerEvents="none">`
+                          // ci-dessus empêche de toute façon ce handler d'être
+                          // appelé (le Switch ne reçoit plus aucun touch). Le
+                          // tap est captured par le Pressable parent.
+                          onCheckedChange={() => {
+                            /* noop — handled by Pressable parent */
+                          }}
+                        />
+                      </View>
                     </Pressable>
                   );
                 })}

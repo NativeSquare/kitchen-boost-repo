@@ -37,7 +37,9 @@ export type ActionKey =
   | "printer.save"
   | "printer.testOk"
   | "printer.remove"
-  | "serviceHours.save";
+  | "serviceHours.save"
+  | "menu.itemSetAvailable"
+  | "menu.itemSetUnavailable";
 
 export type ToastVariant = {
   kind: ToastKind;
@@ -149,6 +151,20 @@ export function decideToastVariant(action: ActionKey): ToastVariant {
         kind: "positive",
         label: "Horaires mis à jour",
         icon: "time-outline",
+        durationMs: 2500,
+      };
+    case "menu.itemSetAvailable":
+      return {
+        kind: "positive",
+        label: "Article rendu disponible",
+        icon: "checkmark-circle-outline",
+        durationMs: 2500,
+      };
+    case "menu.itemSetUnavailable":
+      return {
+        kind: "destructive",
+        label: "Article rendu indisponible",
+        icon: "close-circle-outline",
         durationMs: 2500,
       };
   }

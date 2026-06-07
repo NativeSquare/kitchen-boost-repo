@@ -116,6 +116,20 @@ describe("decideToastVariant", () => {
       icon: "time-outline",
       durationMs: 2500,
     },
+    {
+      action: "menu.itemSetAvailable",
+      kind: "positive",
+      label: "Article rendu disponible",
+      icon: "checkmark-circle-outline",
+      durationMs: 2500,
+    },
+    {
+      action: "menu.itemSetUnavailable",
+      kind: "destructive",
+      label: "Article rendu indisponible",
+      icon: "close-circle-outline",
+      durationMs: 2500,
+    },
   ];
 
   for (const c of cases) {
