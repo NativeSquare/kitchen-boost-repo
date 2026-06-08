@@ -10,9 +10,6 @@
  *     « À implémenter » placeholder body (the editors land in
  *     F-PARAMETRES-03..05); section 1 has been WIRED by F-PARAMETRES-02
  *     (#229) and now mounts the live `BrandingEditor`.
- *   - The « Zone livraison Uber Direct » read-only informational block
- *     (user story 12 from EPIC #148) — V1 cannot be edited.
- *
  * Split out of `page.tsx` (which owns `useTenantQuery`) so vitest can pin
  * every branch under `environment: "node"` — same React-tree-serializer
  * pattern as `menu-view.test.tsx` / `mes-clients-view.test.tsx`. The page
@@ -24,10 +21,7 @@
  *     et affiche les 4 sections (vides, placeholders) » → 4 section titles
  *     and the per-section « À implémenter » placeholder are pinned here.
  *     Wiring of `useTenantQuery` itself is pinned by `page.test.ts`.
- *   - AC3 « Le bloc « Zone livraison Uber Direct » s'affiche en lecture
- *     seule » → assert the block surfaces with the read-only marker, and the
- *     copy makes clear the rayon is « Géré par Uber Direct » (V1 informative).
- *   - AC5 « Composants UI shadcn (Card, Separator) utilisés » → pinned by
+ *   - AC5 « Composants UI shadcn (Card) utilisés » → pinned by
  *     looking for the canonical `data-slot="card"` markers from
  *     `components/ui/card.tsx`.
  *   - AC6 « Aucune mutation appelée » → pinned at source-string level by
@@ -311,32 +305,12 @@ describe("ParametresView — F-PARAMETRES-01 (#193)", () => {
     expect(text).not.toMatch(/[ÀA] impl[ée]menter/);
   });
 
-  it("AC3 — surfaces the « Zone livraison Uber Direct » read-only block with the V1 informative copy", () => {
-    const tree = serialize(ParametresView(EMPTY));
-    const text = allText(tree);
-    expect(text).toMatch(/Zone livraison Uber Direct/);
-    // V1 copy: « Géré par Uber Direct » (the rayon is informative — no edit
-    // surface). The exact polish stays free; the load-bearing fact is that
-    // the block makes the read-only intent visible.
-    expect(text).toMatch(/G[ée]r[ée] par Uber Direct/);
-  });
-
-  it("AC3 — Uber Direct block carries a stable data-slot marker so consumers (and tests) can target it", () => {
-    const slots = dataSlots(serialize(ParametresView(EMPTY)));
-    expect(slots).toContain("parametres-uber-direct-readonly");
-  });
-
   it("AC5 — uses shadcn `Card` primitives (the canonical `bg-card` className from `components/ui/card.tsx` surfaces on every section)", () => {
     // The shadcn `Card` primitive's root div carries `bg-card text-card-
-    // foreground …` (see `components/ui/card.tsx`). Each of the 5 cards in
-    // this view (4 sections + 1 Uber Direct block) MUST surface that
-    // className when serialized — pinning the count >= 4 so a refactor that
-    // inlines one Card without the primitive still passes for the others.
-    //
-    // We can't pin via `data-slot="card"` here: each Card overrides the
-    // primitive's default data-slot with a section-specific marker (same
-    // pattern as `menu-view.tsx`'s `data-slot="menu-category-row"`), which
-    // is itself pinned by the per-section slot tests above.
+    // foreground …` (see `components/ui/card.tsx`). Each section card MUST
+    // surface that className when serialized — pinning the count >= 5 so
+    // a refactor that inlines one Card without the primitive still passes
+    // for the others.
     const tree = serialize(ParametresView(EMPTY));
     const classes = flatten(tree)
       .map((n) => {
@@ -346,28 +320,10 @@ describe("ParametresView — F-PARAMETRES-01 (#193)", () => {
       })
       .filter((c): c is string => c !== null);
     const cardClassCount = classes.filter((c) => c.includes("bg-card")).length;
-    // #416 — the page now hosts 5 section cards + the Uber Direct read-only
-    // block (the « Imprimante cuisine » section landed alongside the
-    // pre-existing 4). The lower bound stays generous (≥ 5) so a refactor
-    // that inlines one Card without the primitive still passes for the
-    // others.
+    // Sections : Identité + Coordonnées + Modes + Horaires + Imprimante +
+    // Stripe Connect + Uber Direct = 7 cards. Lower bound stays generous (≥ 5)
+    // so a refactor that inlines one Card still passes.
     expect(cardClassCount).toBeGreaterThanOrEqual(5);
-  });
-
-  it("AC5 — uses the shadcn `Separator` primitive (radix `data-orientation` marker surfaces in the tree)", () => {
-    // `Separator` from `components/ui/separator.tsx` wraps
-    // `SeparatorPrimitive.Root` from `@radix-ui/react-separator`, which
-    // serializes with a `data-orientation` attribute (the Radix contract).
-    // We pin the presence of that attribute as the canonical signal that
-    // the Separator primitive is in the tree — same approach as the
-    // `animate-pulse` marker for the Skeleton primitive in
-    // `menu-view.test.tsx`.
-    const tree = serialize(ParametresView(EMPTY));
-    const hasOrientation = flatten(tree).some((n) => {
-      if (n === null || "text" in n) return false;
-      return "data-orientation" in n.props || "orientation" in n.props;
-    });
-    expect(hasOrientation).toBe(true);
   });
 
   it("AC2 — every section card carries a stable data-slot marker (one per canonical section)", () => {
@@ -380,7 +336,7 @@ describe("ParametresView — F-PARAMETRES-01 (#193)", () => {
     expect(slots).toContain("parametres-section-imprimante");
   });
 
-  it("AC2 — loading branch (serviceHours === undefined) does NOT crash and still renders all sections + Uber Direct block", () => {
+  it("AC2 — loading branch (serviceHours === undefined) does NOT crash and still renders all sections", () => {
     const tree = serialize(ParametresView(LOADING));
     expect(tree).not.toBeNull();
     const slots = dataSlots(tree);
@@ -389,7 +345,8 @@ describe("ParametresView — F-PARAMETRES-01 (#193)", () => {
     expect(slots).toContain("parametres-section-modes");
     expect(slots).toContain("parametres-section-horaires");
     expect(slots).toContain("parametres-section-imprimante");
-    expect(slots).toContain("parametres-uber-direct-readonly");
+    expect(slots).toContain("parametres-section-stripe");
+    expect(slots).toContain("parametres-section-uber-direct");
   });
 
   it("F-PARAMETRES-02 (#229) — section Identité visuelle is WIRED (BrandingEditor) and no longer a placeholder", () => {

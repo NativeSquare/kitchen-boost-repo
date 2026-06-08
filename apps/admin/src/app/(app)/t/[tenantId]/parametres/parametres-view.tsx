@@ -17,11 +17,6 @@
  *   3. Modes acceptés     — delivery / click & collect (F-PARAMETRES-04).
  *   4. Horaires de service — grille hebdo 7j × N créneaux (F-PARAMETRES-05).
  *
- * Plus the « Zone livraison Uber Direct » READ-ONLY informational block (user
- * story 12 from EPIC #148, ADR — V1 = lecture seule; édition V2). The block
- * carries a stable `data-slot="parametres-uber-direct-readonly"` marker so
- * future surfaces (and tests) can target it without scraping copy.
- *
  * Split out of `page.tsx` (which owns `useTenantQuery`) so vitest can pin
  * every branch under `environment: "node"` — same React-tree-serializer
  * pattern as `menu-view.tsx` / `mes-clients-view.tsx`. The page hands
@@ -47,7 +42,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 
 import {
   BrandingEditor,
@@ -252,8 +246,6 @@ export function ParametresView({
         />
         <SectionStripeConnect tenantId={tenantId} />
         <SectionUberDirect tenantId={tenantId} />
-        <Separator className="my-2" />
-        <UberDirectReadOnlyBlock />
       </div>
     </div>
   );
@@ -548,9 +540,9 @@ function SectionStripeConnect({
 
 /**
  * Carte de navigation vers la page « Uber Direct a posteriori » (mirror de
- * SectionStripeConnect). Le rayon de livraison est géré par Uber lui-même
- * (cf. `UberDirectReadOnlyBlock` plus bas) ; ICI on parle des credentials
- * API qui permettent à KB de créer des courses au nom du resto.
+ * SectionStripeConnect). Configure les credentials API qui permettent à KB
+ * de créer des courses au nom du resto. La zone de livraison reste gérée
+ * directement par Uber (pas exposée ici, c'est un setting Uber-side).
  */
 function SectionUberDirect({
   tenantId,
@@ -572,30 +564,6 @@ function SectionUberDirect({
             Configurer Uber Direct →
           </Link>
         </Button>
-      </CardContent>
-    </Card>
-  );
-}
-
-/**
- * Read-only « Zone livraison Uber Direct » block (user story 12, EPIC #148).
- * V1 = informative; the rayon is managed by Uber Direct itself and cannot be
- * edited from the admin. The block makes the read-only intent explicit so the
- * gérant knows where to go (Uber) for changes.
- */
-function UberDirectReadOnlyBlock() {
-  return (
-    <Card data-slot="parametres-uber-direct-readonly">
-      <CardHeader>
-        <CardTitle>Zone livraison Uber Direct</CardTitle>
-        <CardDescription>
-          Le rayon de livraison est géré directement par Uber Direct.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <p className="text-muted-foreground text-sm">
-          Géré par Uber Direct — non modifiable depuis cette page (V1).
-        </p>
       </CardContent>
     </Card>
   );
