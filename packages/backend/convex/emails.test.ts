@@ -26,7 +26,7 @@ vi.mock("./_generated/server", () => ({
 vi.mock("./_generated/api", () => ({
   components: { resend: {} },
 }));
-vi.mock("@packages/transactional", () => ({
+vi.mock("@packages/transactional/emails/html-templates", () => ({
   renderAdminInviteHtml: () => "",
 }));
 

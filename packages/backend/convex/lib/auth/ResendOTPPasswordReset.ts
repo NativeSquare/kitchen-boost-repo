@@ -1,6 +1,6 @@
 import { Email } from "@convex-dev/auth/providers/Email";
 import { alphabet, generateRandomString } from "oslo/crypto";
-import { renderForgotPasswordHtml } from "@packages/transactional";
+import { renderForgotPasswordHtml } from "@packages/transactional/emails/html-templates";
 import { APP_ADDRESS, APP_DOMAIN, APP_NAME } from "@packages/shared/constants";
 import { Resend as ResendAPI } from "resend";
 
@@ -23,7 +23,7 @@ export const ResendOTPPasswordReset = Email({
 
     const html = renderForgotPasswordHtml(
       { code: token },
-      { appName: APP_NAME, appAddress: APP_ADDRESS }
+      { appName: APP_NAME, appAddress: APP_ADDRESS },
     );
 
     const { error } = await resend.emails.send({

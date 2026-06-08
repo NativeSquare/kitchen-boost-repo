@@ -5,7 +5,7 @@ import { internalAction } from "./_generated/server";
 import { components } from "./_generated/api";
 import { v } from "convex/values";
 import { APP_ADDRESS, APP_DOMAIN, APP_NAME } from "@packages/shared/constants";
-import { renderAdminInviteHtml } from "@packages/transactional";
+import { renderAdminInviteHtml } from "@packages/transactional/emails/html-templates";
 
 // Initialize the Resend component
 // Set testMode: false when ready for production
