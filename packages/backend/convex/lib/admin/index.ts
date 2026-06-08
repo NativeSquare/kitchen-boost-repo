@@ -76,7 +76,12 @@ export {
 // state (stripeAccountId / stripeStatus / siret / name). One query, both
 // callers (kb_manager + kb_admin via root override). Convex registers it
 // as `api.lib.admin.tenantSettings.getStripeState`.
-export { activate, getStripeState, updateSettings } from "./tenantSettings";
+export {
+  activate,
+  getStripeState,
+  getUberState,
+  updateSettings,
+} from "./tenantSettings";
 export {
   expireContract,
   generateContract,

@@ -251,6 +251,7 @@ export function ParametresView({
           onClear={onClearPrinterConfig}
         />
         <SectionStripeConnect tenantId={tenantId} />
+        <SectionUberDirect tenantId={tenantId} />
         <Separator className="my-2" />
         <UberDirectReadOnlyBlock />
       </div>
@@ -538,6 +539,37 @@ function SectionStripeConnect({
         <Button asChild variant="outline">
           <Link href={`/t/${tenantId}/parametres/stripe`}>
             Configurer Stripe Connect →
+          </Link>
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Carte de navigation vers la page « Uber Direct a posteriori » (mirror de
+ * SectionStripeConnect). Le rayon de livraison est géré par Uber lui-même
+ * (cf. `UberDirectReadOnlyBlock` plus bas) ; ICI on parle des credentials
+ * API qui permettent à KB de créer des courses au nom du resto.
+ */
+function SectionUberDirect({
+  tenantId,
+}: {
+  tenantId: Id<"tenants">;
+}): React.ReactElement {
+  return (
+    <Card data-slot="parametres-section-uber-direct">
+      <CardHeader>
+        <CardTitle>Uber Direct</CardTitle>
+        <CardDescription>
+          Configurez les credentials API Uber Direct pour que KitchenBoost
+          puisse créer des courses au nom du restaurant.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Button asChild variant="outline">
+          <Link href={`/t/${tenantId}/parametres/uber-direct`}>
+            Configurer Uber Direct →
           </Link>
         </Button>
       </CardContent>

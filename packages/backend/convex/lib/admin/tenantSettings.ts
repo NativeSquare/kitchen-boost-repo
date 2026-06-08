@@ -1,4 +1,5 @@
 import { ConvexError, v } from "convex/values";
+import { readTenantCredentialBlob } from "../crypto";
 import {
   activateTenant,
   getTenantById,
@@ -189,6 +190,64 @@ export const getStripeState = tenantQuery({ allow: ["kb_manager"] })({
       stripeAccountId: tenant.stripeAccountId ?? null,
       stripeStatus: tenant.stripeStatus ?? null,
       siret: tenant.siret,
+      name: tenant.name,
+    };
+  },
+});
+
+/**
+ * Uber Direct a posteriori (apps/admin `/t/[tenantId]/parametres/uber-direct`)
+ * — manager-accessible read of the tenant's Uber Direct configuration state.
+ *
+ * Mirror discipline of `getStripeState` : ONE query, BOTH callers (kb_manager
+ * + kb_admin via root override on `tenantQuery`, see `withTenant.ts`).
+ *
+ * Returns ONLY the three facts the Uber Direct Settings card cares about :
+ * `uberCustomerId` (the sub-account id, optional — also exposed as a
+ * non-secret on `tenants.uberCustomerId` so it's not a leak), `isConfigured`
+ * (true iff a `tenantCredentials.uber_direct` envelope exists ⇒ creds were
+ * saved at some point), `name` (header). NEVER returns the encrypted blob
+ * itself — exposure discipline same as `getStripeState`, secrets stay
+ * server-side (the action probing them is root-only).
+ *
+ * Why `isConfigured` is a boolean and not `null | "configured" | "validated"`:
+ * the « validated » judgment lives in `probeUberAccount` (live API call, not
+ * stored). The UI surfaces probe results separately so the badge stays a
+ * simple « configured yes/no » + the live probe result.
+ *
+ * Tenancy discipline (ADR 0010) : `readTenantCredentialBlob` is the sanctioned
+ * seam ; `ctx.tenantId` is auto-injected by the wrapper, so a manager cannot
+ * forge an `args.tenantId` for a different resto (cross-tenant MOAT).
+ */
+export const getUberState = tenantQuery({ allow: ["kb_manager"] })({
+  args: {},
+  returns: v.object({
+    uberCustomerId: v.union(v.null(), v.string()),
+    isConfigured: v.boolean(),
+    name: v.string(),
+  }),
+  handler: async (
+    ctx,
+  ): Promise<{
+    uberCustomerId: string | null;
+    isConfigured: boolean;
+    name: string;
+  }> => {
+    const tenant = await getTenantById(ctx, ctx.tenantId);
+    if (tenant === null) {
+      throw new ConvexError({
+        code: "NOT_FOUND",
+        message: "Tenant not found.",
+      });
+    }
+    const blob = await readTenantCredentialBlob(
+      ctx,
+      ctx.tenantId,
+      "uber_direct",
+    );
+    return {
+      uberCustomerId: tenant.uberCustomerId ?? null,
+      isConfigured: blob !== null,
       name: tenant.name,
     };
   },

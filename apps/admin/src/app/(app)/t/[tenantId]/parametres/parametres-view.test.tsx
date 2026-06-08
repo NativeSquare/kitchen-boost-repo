@@ -288,6 +288,19 @@ describe("ParametresView — F-PARAMETRES-01 (#193)", () => {
     expect(hrefs).toContain(`/t/${FIXTURE_TENANT_ID}/parametres/stripe`);
   });
 
+  it("Uber Direct entry-point card exposes a deep-link to `/t/<tenantId>/parametres/uber-direct`", () => {
+    const tree = serialize(ParametresView(EMPTY));
+    expect(dataSlots(tree)).toContain("parametres-section-uber-direct");
+    const hrefs = flatten(tree)
+      .map((x) => {
+        if (x === null || "text" in x) return null;
+        const href = x.props.href;
+        return typeof href === "string" ? href : null;
+      })
+      .filter((s): s is string => s !== null);
+    expect(hrefs).toContain(`/t/${FIXTURE_TENANT_ID}/parametres/uber-direct`);
+  });
+
   it("F-PARAMETRES-05 (#236) — all 4 sections are now WIRED — no « À implémenter » placeholder remains on the Paramètres page", () => {
     // Identité visuelle (BrandingEditor), Coordonnées (CoordonneesEditor),
     // Modes (ModesEditor), and now Horaires (ServiceHoursEditor) are all

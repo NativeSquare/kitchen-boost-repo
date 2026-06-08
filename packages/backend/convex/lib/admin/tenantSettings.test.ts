@@ -14,10 +14,13 @@ const rawModules = import.meta.glob([
   "!../../**/*.test.*",
 ]);
 const modules = Object.fromEntries(
-  Object.entries(rawModules).map(([path, loader]) => [
-    path.startsWith("./") ? `../../lib/admin/${path.slice(2)}` : path,
-    loader,
-  ]),
+  Object.entries(rawModules).map(([path, loader]) => {
+    let key = path;
+    if (key.startsWith("./")) key = `../../lib/admin/${key.slice(2)}`;
+    else if (key.startsWith("../") && !key.startsWith("../../"))
+      key = `../../lib/${key.slice(3)}`;
+    return [key, loader];
+  }),
 );
 
 /**
@@ -809,6 +812,83 @@ describe("tenant.getStripeState — Stripe Connect a posteriori read", () => {
     const asCustomer = t.withIdentity({ subject: seed.customerId });
     await expect(
       asCustomer.query(api.lib.admin.tenantSettings.getStripeState, {
+        tenantId: seed.tenantA.tenantId,
+      }),
+    ).rejects.toThrow(/forbidden/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Uber Direct a posteriori — `getUberState` read query
+// ---------------------------------------------------------------------------
+describe("tenant.getUberState — Uber Direct a posteriori read", () => {
+  let t: ReturnType<typeof convexTest>;
+  let seed: Seed;
+  beforeEach(async () => {
+    t = convexTest(schema, modules);
+    seed = await seedTwoTenantsAllRoles(t);
+  });
+
+  it("fresh tenant (no credentials, no customerId) → isConfigured:false + uberCustomerId:null", async () => {
+    const asMgr = t.withIdentity({ subject: seed.tenantA.managerId });
+    const state = await asMgr.query(api.lib.admin.tenantSettings.getUberState, {
+      tenantId: seed.tenantA.tenantId,
+    });
+    expect(state.isConfigured).toBe(false);
+    expect(state.uberCustomerId).toBeNull();
+    expect(state.name).toBe("Tenant A");
+  });
+
+  it("tenant with credentials saved → isConfigured:true + uberCustomerId returned", async () => {
+    // Use the real mutation so the encryption envelope is realistic AND the
+    // `tenants.uberCustomerId` field is stamped via `setTenantUberCustomerId`.
+    const asMgr = t.withIdentity({ subject: seed.tenantA.managerId });
+    await asMgr.mutation(api.lib.uberDirect.credentials.setUberCredentials, {
+      tenantId: seed.tenantA.tenantId,
+      credentials: {
+        clientId: "cl_test",
+        clientSecret: "sec_test",
+        customerId: "cust_test_123",
+      },
+    });
+    const state = await asMgr.query(api.lib.admin.tenantSettings.getUberState, {
+      tenantId: seed.tenantA.tenantId,
+    });
+    expect(state.isConfigured).toBe(true);
+    expect(state.uberCustomerId).toBe("cust_test_123");
+  });
+
+  it("kb_admin (root override) can read state on any tenant", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    const state = await asAdmin.query(
+      api.lib.admin.tenantSettings.getUberState,
+      { tenantId: seed.tenantB.tenantId },
+    );
+    expect(state.name).toBe("Tenant B");
+    expect(state.isConfigured).toBe(false);
+  });
+
+  it("a kb_manager from tenant B cannot read tenant A (cross-tenant MOAT)", async () => {
+    const asBManager = t.withIdentity({ subject: seed.tenantB.managerId });
+    await expect(
+      asBManager.query(api.lib.admin.tenantSettings.getUberState, {
+        tenantId: seed.tenantA.tenantId,
+      }),
+    ).rejects.toThrow(/forbidden/i);
+  });
+
+  it("anonymous caller throws UNAUTHENTICATED", async () => {
+    await expect(
+      t.query(api.lib.admin.tenantSettings.getUberState, {
+        tenantId: seed.tenantA.tenantId,
+      }),
+    ).rejects.toThrow(/unauthenticated/i);
+  });
+
+  it("plain customer caller throws FORBIDDEN", async () => {
+    const asCustomer = t.withIdentity({ subject: seed.customerId });
+    await expect(
+      asCustomer.query(api.lib.admin.tenantSettings.getUberState, {
         tenantId: seed.tenantA.tenantId,
       }),
     ).rejects.toThrow(/forbidden/i);
