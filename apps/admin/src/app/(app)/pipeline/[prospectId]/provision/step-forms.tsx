@@ -981,7 +981,7 @@ function Step6Form({
     );
   }
   if (tenantId === undefined) {
-    // Hard gate: the PWA URL is `https://<slug>.kitchen-boost.fr` — without
+    // Hard gate: the PWA URL is `https://<slug>.kitchen-boost.com` — without
     // a tenant there's no slug. Step 1 must run first. (The wizard's cursor
     // already prevents this in normal flow; defensive backstop.)
     return (
@@ -1299,7 +1299,7 @@ function Step2Form({
   }
   if (tenantDoc === undefined) {
     // Tenant query in flight — render a spinner rather than the form
-    // (we'd briefly flash a bogus bootstrap host like ".kitchen-boost.fr").
+    // (we'd briefly flash a bogus bootstrap host like ".kitchen-boost.com").
     return (
       <div
         className="flex items-center justify-center px-4 py-12 lg:px-6"
@@ -1323,7 +1323,7 @@ function Step2Form({
     );
   }
 
-  const bootstrapHost = `${tenantDoc.slug}.kitchen-boost.fr`;
+  const bootstrapHost = `${tenantDoc.slug}.kitchen-boost.com`;
 
   const handleSave = async (payload: Step2DomainPayload) => {
     if (isSubmitting) return;
@@ -1522,7 +1522,7 @@ function Step8Form({ onPrev, onStepChange }: StepFormProps): React.JSX.Element {
     slug: tenantDoc.slug,
     customDomain: tenantDoc.customDomain,
   });
-  const bootstrapHost = `${tenantDoc.slug}.kitchen-boost.fr`;
+  const bootstrapHost = `${tenantDoc.slug}.kitchen-boost.com`;
   const menuPublished = publicationStatus.lastPublishedAt !== null;
 
   const recap: Step8Recap = {

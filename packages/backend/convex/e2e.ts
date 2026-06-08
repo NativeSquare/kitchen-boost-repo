@@ -963,7 +963,7 @@ export const finalizeE2EA2A3Accounts = internalMutation({
  *
  * The QR2 parcours (`docs/tests/E2E-checklist.md` groupe QR) needs a tenant
  * with `customDomain` set so the regenerated QR PDF points at it instead of
- * the default `<slug>.kitchen-boost.fr`. In production, `customDomain` is set
+ * the default `<slug>.kitchen-boost.com`. In production, `customDomain` is set
  * via the wizard step 2 (`/pipeline/[prospectId]/provision/step2-domain-form.tsx`,
  * #358) — but driving a fresh wizard run end-to-end just to seed one field is
  * heavy for an E2E spot-check on the already-existing test-t1 / test-t2

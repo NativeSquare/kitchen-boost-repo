@@ -224,7 +224,7 @@ function defaultProps(
 ): Step8ActivationFormProps {
   return {
     slug: "le-resto",
-    pwaUrl: "https://le-resto.kitchen-boost.fr",
+    pwaUrl: "https://le-resto.kitchen-boost.com",
     recap: {
       compteResto: {
         name: "Le Resto",
@@ -235,7 +235,7 @@ function defaultProps(
       },
       domaine: {
         customDomain: undefined,
-        bootstrapHost: "le-resto.kitchen-boost.fr",
+        bootstrapHost: "le-resto.kitchen-boost.com",
       },
       stripe: {
         accountLinkGenerated: true,
@@ -294,7 +294,7 @@ describe("Step8ActivationForm — F-WIZARD [10/10] (#274)", () => {
   it("récap shows the bootstrap host when no customDomain is set", () => {
     const tree = serialize(Step8ActivationForm(defaultProps()));
     const text = allText(tree);
-    expect(text).toContain("le-resto.kitchen-boost.fr");
+    expect(text).toContain("le-resto.kitchen-boost.com");
   });
 
   it("récap shows the customDomain when set (in addition to / in place of the bootstrap host)", () => {
@@ -305,7 +305,7 @@ describe("Step8ActivationForm — F-WIZARD [10/10] (#274)", () => {
             ...defaultProps().recap,
             domaine: {
               customDomain: "leresto.fr",
-              bootstrapHost: "le-resto.kitchen-boost.fr",
+              bootstrapHost: "le-resto.kitchen-boost.com",
             },
           },
         }),
@@ -472,7 +472,7 @@ describe("Step8ActivationForm — F-WIZARD [10/10] (#274)", () => {
     const text = allText(dialog);
     // The final URL is the canonical confirmation cue (issue body: « URL PWA
     // finale » in the dialog).
-    expect(text).toContain("le-resto.kitchen-boost.fr");
+    expect(text).toContain("le-resto.kitchen-boost.com");
   });
 
   it("scope discipline: the form module does not import from `apps/web` or `apps/native`", () => {

@@ -120,7 +120,7 @@ export const tenants = defineTable({
   .index("by_stripe_account", ["stripeAccountId"])
   // PWA-S1 (#449) — resolve the tenant from the public host header on the PWA
   // edge middleware. Two possible hosts per tenant: the bootstrap sub-domain
-  // (`<slug>.kitchen-boost.fr`, resolved via `by_slug`) AND an optional
+  // (`<slug>.kitchen-boost.com`, resolved via `by_slug`) AND an optional
   // CUSTOM domain (`artisan.fr`, resolved via this index). `customDomain` is
   // unique per tenant — applicatively enforced on stamp (same discipline as
   // `slug` / `stripeAccountId`). PWA middleware reads `host` → strips port →

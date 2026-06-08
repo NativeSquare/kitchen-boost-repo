@@ -8,7 +8,7 @@ deciders: Alex
 
 ## Contexte
 
-`apps/admin` ([PRD 70](../prd/70_kb_admin.md)) est l'**unique app web** du système, servie sur un domaine mono-tenant (`admin.kitchen-boost.fr`), à ne pas confondre avec `apps/web` (PWA mangeur, multi-domaine par hostname). Le scaffold existant est **root-only** : `AdminGuard` + `api.table.admin.currentAdmin` n'admettent que `role === "kb_admin"`, le groupe `(app)` est entièrement gardé, la sidebar est figée (Users/Team). Aucune surface KB Manager n'existe.
+`apps/admin` ([PRD 70](../prd/70_kb_admin.md)) est l'**unique app web** du système, servie sur un domaine mono-tenant (`admin.kitchen-boost.com`), à ne pas confondre avec `apps/web` (PWA mangeur, multi-domaine par hostname). Le scaffold existant est **root-only** : `AdminGuard` + `api.table.admin.currentAdmin` n'admettent que `role === "kb_admin"`, le groupe `(app)` est entièrement gardé, la sidebar est figée (Users/Team). Aucune surface KB Manager n'existe.
 
 Le backend KB Admin (chantier 2.9) et les backends opérationnels 2.1–2.7 sont **mergés** : le front a une API Convex complète à brancher. Il restait à décider la **forme du shell** qui fait cohabiter, dans une seule codebase, la **vue root** (KB Admin : pipeline, CRM, contrats, monitoring, tous tenants) et la **vue KB Manager** (gérant : menu, commandes, clients, campagnes, pricing, scopée à son/ses tenants).
 

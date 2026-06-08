@@ -59,9 +59,9 @@ describe("2.9-E tenantPwaUrl — public face resolution (PRD 50 §3)", () => {
     ).toBe("https://commander.bunsbao.fr");
   });
 
-  it("falls back to the bootstrap <slug>.kitchen-boost.fr sub-domain only when no customDomain", () => {
+  it("falls back to the bootstrap <slug>.kitchen-boost.com sub-domain only when no customDomain", () => {
     expect(tenantPwaUrl({ slug: "buns-bao", customDomain: undefined })).toBe(
-      "https://buns-bao.kitchen-boost.fr",
+      "https://buns-bao.kitchen-boost.com",
     );
   });
 
@@ -70,7 +70,7 @@ describe("2.9-E tenantPwaUrl — public face resolution (PRD 50 §3)", () => {
       slug: "buns-bao",
       customDomain: "bunsbao.fr",
     });
-    expect(url).not.toContain("kitchen-boost.fr");
+    expect(url).not.toContain("kitchen-boost.com");
   });
 });
 
@@ -232,7 +232,7 @@ describe("2.9-E provisionTenant — orchestration (root, audited)", () => {
     expect(tenant?.customDomain).toBe("commander.bunsbao.fr");
     // QR / PWA url resolves to the public face, NOT hardcoded to the sub-domain.
     expect(result.qr.pwaUrl).toBe("https://commander.bunsbao.fr");
-    expect(result.qr.pwaUrl).not.toContain("kitchen-boost.fr");
+    expect(result.qr.pwaUrl).not.toContain("kitchen-boost.com");
   });
 
   it("falls back the QR data to the bootstrap sub-domain when no customDomain", async () => {
@@ -251,8 +251,8 @@ describe("2.9-E provisionTenant — orchestration (root, audited)", () => {
         manager: { email: "khan@bunsbao.fr", name: "Khan" },
       },
     );
-    expect(result.qr.pwaUrl).toBe("https://buns-bao.kitchen-boost.fr");
-    expect(result.qr.bootstrapUrl).toBe("https://buns-bao.kitchen-boost.fr");
+    expect(result.qr.pwaUrl).toBe("https://buns-bao.kitchen-boost.com");
+    expect(result.qr.bootstrapUrl).toBe("https://buns-bao.kitchen-boost.com");
   });
 
   it("Stripe account_link step is cleanly skipped (soft dep) when STRIPE_SECRET_KEY is absent — no hard failure", async () => {

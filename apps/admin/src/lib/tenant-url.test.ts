@@ -5,7 +5,7 @@
  *
  * Pinning both cases here so a future refactor that flips the precedence (or
  * drops `https://`) breaks loudly. The bootstrap sub-domain
- * `<slug>.kitchen-boost.fr` is FALLBACK ONLY — never used when a
+ * `<slug>.kitchen-boost.com` is FALLBACK ONLY — never used when a
  * `customDomain` is set (parity with backend PRD 50 §3).
  */
 import { describe, expect, it } from "vitest";
@@ -18,15 +18,15 @@ describe("tenantPwaUrl", () => {
     ).toBe("https://commander.bunsbao.fr");
   });
 
-  it("falls back to the `<slug>.kitchen-boost.fr` sub-domain when no customDomain", () => {
+  it("falls back to the `<slug>.kitchen-boost.com` sub-domain when no customDomain", () => {
     expect(tenantPwaUrl({ slug: "buns-bao", customDomain: undefined })).toBe(
-      "https://buns-bao.kitchen-boost.fr",
+      "https://buns-bao.kitchen-boost.com",
     );
   });
 
   it("falls back to the bootstrap sub-domain when customDomain is omitted", () => {
     expect(tenantPwaUrl({ slug: "lartisan" })).toBe(
-      "https://lartisan.kitchen-boost.fr",
+      "https://lartisan.kitchen-boost.com",
     );
   });
 });

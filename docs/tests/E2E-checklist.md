@@ -506,7 +506,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 
 > **Statut** : ✅ **2/2 validés manuellement le 2026-06-01** (manager `manager@kb.test`, tenant `test-t1` avec et sans `customDomain`). 4 commits pendant le run :
 >
-> - **QR2 customDomain ignoré** (`0c428ec`) — la page lisait `loadTenantForStripe` (admin-only) sur le chemin manager, donc fallback systématique sur `<slug>.kitchen-boost.fr`. Fixé en branchant sur `api.lib.admin.tenantSettings.getSettings` (manager-accessible).
+> - **QR2 customDomain ignoré** (`0c428ec`) — la page lisait `loadTenantForStripe` (admin-only) sur le chemin manager, donc fallback systématique sur `<slug>.kitchen-boost.com`. Fixé en branchant sur `api.lib.admin.tenantSettings.getSettings` (manager-accessible).
 > - **QR1 A4/A6 cropped text** (`36f441c`) — accroche centrée sans `maxWidth`, débordait sur les noms de resto longs. Wrap auto désormais.
 > - **Simplification produit SVG-only** (`000c6ee` + `972c5d2`) — voir bloc ci-dessous.
 
@@ -523,11 +523,11 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 - **Pré-requis** : tenant actif avec slug (`test-t1` sans customDomain)
 - **Étapes** :
   1. `/t/test-t1/qr`, vérifier l'aperçu inline du QR (carré ~340 px centré, noir sur blanc).
-  2. Vérifier l'URL affichée sous le QR (texte brut copiable) : `https://test-t1.kitchen-boost.fr`.
+  2. Vérifier l'URL affichée sous le QR (texte brut copiable) : `https://test-t1.kitchen-boost.com`.
   3. Cliquer « Télécharger SVG ».
 - **Attendu** :
   - Fichier téléchargé `qr-test-t1.svg`.
-  - Ouverture du SVG dans un viewer ou un scanner QR → décode vers `https://test-t1.kitchen-boost.fr`.
+  - Ouverture du SVG dans un viewer ou un scanner QR → décode vers `https://test-t1.kitchen-boost.com`.
   - Aucun titre / accroche / logo dans le SVG (uniquement le QR vectoriel).
 - **Couvre** : #198 (forme simplifiée 2026-06-01).
 
@@ -536,7 +536,7 @@ Checklist E2E manuelle, nomenclature canonique (A / MC / QR / MO / T / P / AC / 
 - **Acteur** : KB Manager
 - **Pré-requis** : tenant `test-t1` avec `customDomain = commander.test-t1.kb-e2e.local` (seedé dans cette session pour le spot-check QR2)
 - **Étapes** :
-  1. `/t/test-t1/qr`, vérifier que l'URL affichée sous le QR est `https://commander.test-t1.kb-e2e.local` (et non `https://test-t1.kitchen-boost.fr`).
+  1. `/t/test-t1/qr`, vérifier que l'URL affichée sous le QR est `https://commander.test-t1.kb-e2e.local` (et non `https://test-t1.kitchen-boost.com`).
   2. Cliquer « Télécharger SVG ».
 - **Attendu** :
   - Aperçu et SVG téléchargé encodent l'URL `https://commander.test-t1.kb-e2e.local`.

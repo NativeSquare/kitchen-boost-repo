@@ -19,7 +19,7 @@
  * The page reads `customDomain` via the manager-accessible
  * `api.lib.admin.tenantSettings.getSettings` (added 2026-06-01 for
  * B-PARAMETRES-04) so the encoded URL respects the configured custom domain.
- * Falls back to the bootstrap sub-domain `<slug>.kitchen-boost.fr` via the
+ * Falls back to the bootstrap sub-domain `<slug>.kitchen-boost.com` via the
  * existing `tenantPwaUrl` helper.
  *
  * The preview + download UI is delegated to the shared

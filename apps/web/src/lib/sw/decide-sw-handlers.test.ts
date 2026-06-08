@@ -130,15 +130,15 @@ describe("decideNotificationClickAction — deep-link to PWA window", () => {
     const action = decideNotificationClickAction({
       notificationData: { url: "/c/order_abc" },
       openClients: [
-        { url: "https://buns.kitchen-boost.fr/menu", focused: false },
+        { url: "https://buns.kitchen-boost.com/menu", focused: false },
       ],
-      origin: "https://buns.kitchen-boost.fr",
+      origin: "https://buns.kitchen-boost.com",
     });
     expect(action.kind).toBe("focus-existing");
     if (action.kind === "focus-existing") {
-      expect(action.clientUrl).toBe("https://buns.kitchen-boost.fr/menu");
+      expect(action.clientUrl).toBe("https://buns.kitchen-boost.com/menu");
       expect(action.targetUrl).toBe(
-        "https://buns.kitchen-boost.fr/c/order_abc",
+        "https://buns.kitchen-boost.com/c/order_abc",
       );
     }
   });
@@ -147,14 +147,14 @@ describe("decideNotificationClickAction — deep-link to PWA window", () => {
     const action = decideNotificationClickAction({
       notificationData: { url: "/c/order_abc" },
       openClients: [
-        { url: "https://other.kitchen-boost.fr/menu", focused: false },
+        { url: "https://other.kitchen-boost.com/menu", focused: false },
       ],
-      origin: "https://buns.kitchen-boost.fr",
+      origin: "https://buns.kitchen-boost.com",
     });
     expect(action.kind).toBe("open-window");
     if (action.kind === "open-window") {
       expect(action.targetUrl).toBe(
-        "https://buns.kitchen-boost.fr/c/order_abc",
+        "https://buns.kitchen-boost.com/c/order_abc",
       );
     }
   });
@@ -163,11 +163,11 @@ describe("decideNotificationClickAction — deep-link to PWA window", () => {
     const action = decideNotificationClickAction({
       notificationData: { url: "/menu" },
       openClients: [],
-      origin: "https://buns.kitchen-boost.fr",
+      origin: "https://buns.kitchen-boost.com",
     });
     expect(action.kind).toBe("open-window");
     if (action.kind === "open-window") {
-      expect(action.targetUrl).toBe("https://buns.kitchen-boost.fr/menu");
+      expect(action.targetUrl).toBe("https://buns.kitchen-boost.com/menu");
     }
   });
 
@@ -177,11 +177,11 @@ describe("decideNotificationClickAction — deep-link to PWA window", () => {
     const action = decideNotificationClickAction({
       notificationData: {},
       openClients: [],
-      origin: "https://buns.kitchen-boost.fr",
+      origin: "https://buns.kitchen-boost.com",
     });
     expect(action.kind).toBe("open-window");
     if (action.kind === "open-window") {
-      expect(action.targetUrl).toBe("https://buns.kitchen-boost.fr/");
+      expect(action.targetUrl).toBe("https://buns.kitchen-boost.com/");
     }
   });
 
@@ -190,14 +190,16 @@ describe("decideNotificationClickAction — deep-link to PWA window", () => {
     // an ABSOLUTE URL pointing at the OTHER tenant's PWA. The SW must NOT
     // re-anchor it to the current origin.
     const action = decideNotificationClickAction({
-      notificationData: { url: "https://pizza.kitchen-boost.fr/menu?promo=42" },
+      notificationData: {
+        url: "https://pizza.kitchen-boost.com/menu?promo=42",
+      },
       openClients: [],
-      origin: "https://buns.kitchen-boost.fr",
+      origin: "https://buns.kitchen-boost.com",
     });
     expect(action.kind).toBe("open-window");
     if (action.kind === "open-window") {
       expect(action.targetUrl).toBe(
-        "https://pizza.kitchen-boost.fr/menu?promo=42",
+        "https://pizza.kitchen-boost.com/menu?promo=42",
       );
     }
   });
@@ -208,14 +210,14 @@ describe("decideNotificationClickAction — deep-link to PWA window", () => {
     const action = decideNotificationClickAction({
       notificationData: { url: "/c/order_abc" },
       openClients: [
-        { url: "https://buns.kitchen-boost.fr/menu", focused: false },
-        { url: "https://buns.kitchen-boost.fr/panier", focused: true },
+        { url: "https://buns.kitchen-boost.com/menu", focused: false },
+        { url: "https://buns.kitchen-boost.com/panier", focused: true },
       ],
-      origin: "https://buns.kitchen-boost.fr",
+      origin: "https://buns.kitchen-boost.com",
     });
     expect(action.kind).toBe("focus-existing");
     if (action.kind === "focus-existing") {
-      expect(action.clientUrl).toBe("https://buns.kitchen-boost.fr/panier");
+      expect(action.clientUrl).toBe("https://buns.kitchen-boost.com/panier");
     }
   });
 });

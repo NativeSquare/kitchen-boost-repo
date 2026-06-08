@@ -12,7 +12,7 @@
  * --------------------------------
  * `tsc --noEmit` enforces *shape*; vitest pins *content* (le bon email,
  * pas un placeholder, pas un `mailto:` en double). Ça empêche un revert
- * silencieux vers `alex@kitchen-boost.fr` si quelqu'un réimporte l'ancienne
+ * silencieux vers `alex@kitchen-boost.com` si quelqu'un réimporte l'ancienne
  * config par mégarde.
  */
 import { describe, expect, it } from "vitest";

@@ -41,7 +41,7 @@ import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 
 export type QrDownloadCardProps = {
-  /** PWA URL the QR encodes (e.g. `https://lartisan.kitchen-boost.fr`). */
+  /** PWA URL the QR encodes (e.g. `https://lartisan.kitchen-boost.com`). */
   pwaUrl: string;
   /**
    * Tenant slug, used to build the download filename `qr-<slug>.svg`. Kept

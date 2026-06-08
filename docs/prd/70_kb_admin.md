@@ -9,7 +9,7 @@
 
 ## Vision
 
-Une seule UI web (`admin.kitchen-boost.fr` ou équivalent) pour **toutes** les opérations business du système, avec une seule logique de permissions :
+Une seule UI web (`admin.kitchen-boost.com` ou équivalent) pour **toutes** les opérations business du système, avec une seule logique de permissions :
 
 ```
 KB Admin (root)
@@ -198,7 +198,7 @@ S'appuie sur l'outillage existant — **pas de réimplémentation**.
 **Réordonné 2026-05-29 (grilling front)** : le tenant **naît au step 1** (`provisionTenant` appelé immédiatement) ; tous les steps suivants opèrent sur le tenant **`pending`** ; le step final = activation explicite (`pending → active`, dép. **D6**). L'email gérant est remonté au step 1 (sinon `provisionTenant` ne peut pas tourner — c'est un argument obligatoire). Le slug est auto-généré via `generateSlug` à partir du nom, éditable au step 1, **immuable après**.
 
 - **Step 1 — Créer le compte resto** : nom, SIRET, adresse, contact, **email gérant**, slug (auto-pré-rempli, éditable). → `api.lib.onboarding.provisioning.provisionTenant` → tenant `pending` créé + ligne `userTenants` (kb_manager) + back-link prospect.
-- **Step 2 — Domaine personnalisé** (optionnel) : `customDomain` (face publique, norme V1, modèle Owner.com) ou rester sur le sous-domaine bootstrap `<slug>.kitchen-boost.fr`.
+- **Step 2 — Domaine personnalisé** (optionnel) : `customDomain` (face publique, norme V1, modèle Owner.com) ou rester sur le sous-domaine bootstrap `<slug>.kitchen-boost.com`.
 - **Step 3 — Stripe Connect KYC** : déclenche `lib.stripe.account.createStripeAccountLink(tenantId)` (action 2.5), récupère l'URL d'onboarding à transmettre au resto. Cas SIRET partagé : cf. [50](50_multi_tenant_saas.md).
 - **Step 4 — Branding** : upload logo + couleur primaire → dép. **D5** `tenant.updateSettings` (élargie : couvre aussi adresse + téléphone + modes acceptés du §4.8).
 - **Step 5 — Menu** : saisie manuelle catégories / items / personnalisations (V1, Q70-Q5 acté ; CSV / OCR = V2) via `api.lib.menu.{categories,items,modifiers}.*`. **1ʳᵉ publication requise avant l'activation** (sinon PWA sans menu, cf. [ADR 0015](../adr/0015-edition-menu-brouillon-publication-globale-atomique.md)) → dép. **D2** `publishMenu`.
@@ -442,7 +442,7 @@ V2 :
 | 70-Q9  | ~~Stockage PDF signé Odoo vs bucket KB ?~~ **ACTÉ 2026-05-23 : V1 = lien Odoo référencé** sur page tenant (click → ouvre Odoo). **V2 = upload PDF dans storage KB** pour accès offline + archive (Odoo reste source de vérité légale).                                                        | —        | —            |
 | 70-Q10 | Pipeline phases : strict (gates obligatoires) ou indicatif (bypass loggé) ? Recommandé indicatif V1.                                                                                                                                                                                          | V1       | Alex         |
 | 70-Q11 | Source de vérité pipeline : DB admin ou `project_onboarding_process.md` ? Le doc reste narratif, l'admin reflète l'état opérationnel.                                                                                                                                                         | V1       | Alex         |
-| 70-Q12 | ~~URL admin : 1 URL pour tous ou par tenant ?~~ **ACTÉ 2026-05-23 : 1 URL unique `admin.kitchen-boost.fr`.** Le RBAC + JWT déterminent l'affichage selon le user. Cohérent avec "1 seule app". Le branding tenant vit dans la PWA cliente, pas dans l'admin.                                  | —        | —            |
+| 70-Q12 | ~~URL admin : 1 URL pour tous ou par tenant ?~~ **ACTÉ 2026-05-23 : 1 URL unique `admin.kitchen-boost.com`.** Le RBAC + JWT déterminent l'affichage selon le user. Cohérent avec "1 seule app". Le branding tenant vit dans la PWA cliente, pas dans l'admin.                                 | —        | —            |
 | 70-Q13 | ~~Logique upsell V1 : manuelle ou auto ?~~ **ACTÉ 2026-05-23 : confusion vocabulaire.** Ce que je désignais comme "upsell" = les **personnalisations (modifiers)** d'Uber Manager. Pas un système séparé. Vocab corrigé dans [contexts/kb-admin/CONTEXT.md](../contexts/kb-admin/CONTEXT.md). | —        | —            |
 | 70-Q14 | KB Admin peut-il modifier le menu d'un resto sans avertir (assistance) ou OK requis ?                                                                                                                                                                                                         | V1       | Alex + legal |
 | 70-Q15 | ~~Statistiques V1 : tableaux ou graphs ?~~ **ACTÉ 2026-05-23 : graphs simples + chiffres** (parité Uber Manager). V1 = 3 graphs basiques (CA/jour line, top items bar, heatmap heures de pointe) + chiffres bruts pour le reste (panier moyen, taux conversion, etc.).                        | —        | —            |

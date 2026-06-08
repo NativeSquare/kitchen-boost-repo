@@ -5,6 +5,7 @@
 **Objectif** : Process clair et reproductible pour onboarder chaque restaurateur signé. De "OK je signe" à "PWA live + 1ère commande réussie via Uber Direct".
 
 **Modèle économique acté (MVP)** :
+
 - **1 compte Uber Direct par restaurant** (self-signup direct.uber.com au nom du resto)
 - **1 compte Stripe Connect Express par restaurant**
 - **KitchenBoost orchestre via API** mais **n'est pas dans le flux d'argent de la livraison** (Uber facture le resto direct, KB juste 2€/commande via application_fee Stripe)
@@ -17,6 +18,7 @@
 ### Principe directeur
 
 **KB fait TOUT le travail en backoffice** grâce au mandat Article 2 bis du contrat (création/administration comptes). Le resto fait UNIQUEMENT :
+
 - Signer le contrat + envoyer 3 docs (KBIS, RIB, ID)
 - Lors du RDV install sur place : entrer sa CB sur l'interface Uber (KB ne voit pas) + vérifier son identité sur Stripe (CNI + selfie liveness + 2FA + accepter CGU — c'est régulatoire PSD2, KB ne peut pas le faire à sa place)
 - Coller les stickers QR sur les sacs
@@ -46,17 +48,17 @@ Contrat signé     KB crée tout       RDV INSTALL       Soft launch    Go-live
 
 ### Acteurs
 
-| Acteur | Rôle |
-|---|---|
-| **Alex (KB)** | Collecte docs, crée comptes Uber au nom du resto (via mandat Article 2 bis), RDV install sur place, briefing équipe resto |
-| **Dev (KB)** | Configure PWA tenant, importe menu, applique branding, génère lien Stripe Connect onboarding |
+| Acteur           | Rôle                                                                                                                                                                                                                                                |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Alex (KB)**    | Collecte docs, crée comptes Uber au nom du resto (via mandat Article 2 bis), RDV install sur place, briefing équipe resto                                                                                                                           |
+| **Dev (KB)**     | Configure PWA tenant, importe menu, applique branding, génère lien Stripe Connect onboarding                                                                                                                                                        |
 | **Restaurateur** | Signe contrat + envoie 3 docs. Au RDV install : entre lui-même sa CB sur Uber (KYC paiement) + valide son identité sur Stripe (scan CNI + selfie + 2FA + CGU, régulatoire PSD2). **Ne touche pas au RIB** (KB l'entre via API). Colle les stickers. |
 
 ### Modèle "1 login KB, N comptes resto"
 
 - **Côté Uber** : chaque resto a son propre compte (KBIS différent = entité juridique différente, contrainte légale Uber). MAIS Alex est ajouté comme **admin user** sur les N comptes → un seul login KB pour gérer tous les restos
 - **Côté Stripe** : chaque resto a son propre compte Stripe Connect Express. KB a un dashboard plateforme qui voit les N comptes connectés
-- **Email organisationnel KB** : `restos@kitchen-boost.fr` (Google Workspace) avec aliases `restos+bunsbao@kitchen-boost.fr`, `restos+caverne@kitchen-boost.fr`, etc. pour différencier les comptes Uber tout en centralisant dans une seule boîte mail
+- **Email organisationnel KB** : `restos@kitchen-boost.com` (Google Workspace) avec aliases `restos+bunsbao@kitchen-boost.com`, `restos+caverne@kitchen-boost.com`, etc. pour différencier les comptes Uber tout en centralisant dans une seule boîte mail
 
 ---
 
@@ -75,15 +77,15 @@ Le client est **closed** quand on a réuni les 4 éléments suivants. PAS AVANT.
 
 ### 2.2 Ce qu'on ne demande PAS au J0
 
-| Item | Pourquoi pas |
-|---|---|
-| ❌ **Attestation RC pro** | Article 11.1 contrat KB dit "à première demande" → on demande SI réclamation. Pas requis Uber/Stripe. Bloquer le closing pour ça serait stupide |
-| ❌ **Carte bancaire pro** | KB n'a JAMAIS le droit de collecter / stocker / transmettre une CB (PCI-DSS, risque réglementaire). Le resto entre sa CB **lui-même** sur l'interface Uber lors du RDV install sur place. KB ne voit que les 4 derniers chiffres dans le dashboard |
-| ✅ **RIB tapé par KB sur Stripe via API** | KB entre l'IBAN du resto dans le payload `POST /accounts` Stripe avec le paramètre `external_account` (cf §4.2). Le resto ne touche jamais à son RIB. Le resto ne fait que valider son identité (KYC) sur l'UI Stripe au RDV install. |
+| Item                                      | Pourquoi pas                                                                                                                                                                                                                                       |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ❌ **Attestation RC pro**                 | Article 11.1 contrat KB dit "à première demande" → on demande SI réclamation. Pas requis Uber/Stripe. Bloquer le closing pour ça serait stupide                                                                                                    |
+| ❌ **Carte bancaire pro**                 | KB n'a JAMAIS le droit de collecter / stocker / transmettre une CB (PCI-DSS, risque réglementaire). Le resto entre sa CB **lui-même** sur l'interface Uber lors du RDV install sur place. KB ne voit que les 4 derniers chiffres dans le dashboard |
+| ✅ **RIB tapé par KB sur Stripe via API** | KB entre l'IBAN du resto dans le payload `POST /accounts` Stripe avec le paramètre `external_account` (cf §4.2). Le resto ne touche jamais à son RIB. Le resto ne fait que valider son identité (KYC) sur l'UI Stripe au RDV install.              |
 
 ### 2.3 Infos opérationnelles (à récupérer en parallèle, pas bloquant pour closing)
 
-- [ ] **Email business du resto** si existant (sinon KB crée alias `restos+<slug>@kitchen-boost.fr`)
+- [ ] **Email business du resto** si existant (sinon KB crée alias `restos+<slug>@kitchen-boost.com`)
 - [ ] **Téléphone portable du patron** — pour Uber notifs + WhatsApp KB
 - [ ] **Adresse + horaires d'ouverture** par jour
 - [ ] **Type de cuisine** + signature en 1 phrase
@@ -94,7 +96,7 @@ Le client est **closed** quand on a réuni les 4 éléments suivants. PAS AVANT.
 - [ ] **Logo** (PNG transparent HD si existant — sinon KB en crée un basique)
 - [ ] **Photos plats** (existantes ou KB shoot)
 - [ ] **Couleurs marque** (hex si existant)
-- [ ] **Domaine web existant** (si oui → `commandes.restoX.fr`, sinon KB attribue `restoX.kitchen-boost.fr`)
+- [ ] **Domaine web existant** (si oui → `commandes.restoX.fr`, sinon KB attribue `restoX.kitchen-boost.com`)
 
 ### 2.5 Menu
 
@@ -123,72 +125,72 @@ Les 2 services sont **gérés depuis le même compte Uber** mais ce sont des act
 
 **Côté KB, en backoffice** :
 
-| # | Étape | Détail |
-|---|---|---|
-| 3.2.1 | Créer un alias email Google Workspace : `restos+<slug>@kitchen-boost.fr` | Ex: `restos+bunsbao@kitchen-boost.fr` |
-| 3.2.2 | Aller sur `https://direct.uber.com` → Sign up | |
-| 3.2.3 | Email = alias KB ci-dessus | Permet à KB de gérer + admin user resto ajouté ensuite |
-| 3.2.4 | Remplir infos société : raison sociale (depuis KBIS), SIRET, adresse | KB avec KBIS resto sous les yeux |
-| 3.2.5 | Upload KBIS + RIB + CNI du représentant légal | Les 3 docs collectés au closing |
-| 3.2.6 | Accepter Terms + API Terms of Use **au nom du resto** | Justifié par mandat Article 2 bis du contrat KB |
-| 3.2.7 | **NE PAS renseigner CB encore** — Uber permet finaliser ça plus tard | La CB sera entrée par le resto en personne au RDV install §5 |
-| 3.2.8 | Soumettre la demande | Uber valide en 24-72h |
-| 3.2.9 | À réception email validation : ajouter le resto comme user secondaire (Settings → Users → Add) | Email perso du patron, role "Owner" ou "Admin" |
+| #     | Étape                                                                                          | Détail                                                       |
+| ----- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| 3.2.1 | Créer un alias email Google Workspace : `restos+<slug>@kitchen-boost.com`                      | Ex: `restos+bunsbao@kitchen-boost.com`                       |
+| 3.2.2 | Aller sur `https://direct.uber.com` → Sign up                                                  |                                                              |
+| 3.2.3 | Email = alias KB ci-dessus                                                                     | Permet à KB de gérer + admin user resto ajouté ensuite       |
+| 3.2.4 | Remplir infos société : raison sociale (depuis KBIS), SIRET, adresse                           | KB avec KBIS resto sous les yeux                             |
+| 3.2.5 | Upload KBIS + RIB + CNI du représentant légal                                                  | Les 3 docs collectés au closing                              |
+| 3.2.6 | Accepter Terms + API Terms of Use **au nom du resto**                                          | Justifié par mandat Article 2 bis du contrat KB              |
+| 3.2.7 | **NE PAS renseigner CB encore** — Uber permet finaliser ça plus tard                           | La CB sera entrée par le resto en personne au RDV install §5 |
+| 3.2.8 | Soumettre la demande                                                                           | Uber valide en 24-72h                                        |
+| 3.2.9 | À réception email validation : ajouter le resto comme user secondaire (Settings → Users → Add) | Email perso du patron, role "Owner" ou "Admin"               |
 
 ### 3.3 Récupération credentials API (J2-J3, post-validation Uber)
 
-| # | Étape | Note |
-|---|---|---|
-| 3.3.1 | Login sur `direct.uber.com` avec alias KB | |
-| 3.3.2 | Developer → Management | |
-| 3.3.3 | Noter `customer_id`, `client_id`, `client_secret` | Stocker dans 1Password "Tenant [Resto]" |
-| 3.3.4 | Test auth : `POST https://auth.uber.com/oauth/v2/token` (Postman) | Doit renvoyer access_token valide |
-| 3.3.5 | Sauvegarder en Supabase : `tenants.uber_customer_id`, `uber_client_id`, `uber_client_secret` (chiffré) | |
+| #     | Étape                                                                                                  | Note                                    |
+| ----- | ------------------------------------------------------------------------------------------------------ | --------------------------------------- |
+| 3.3.1 | Login sur `direct.uber.com` avec alias KB                                                              |                                         |
+| 3.3.2 | Developer → Management                                                                                 |                                         |
+| 3.3.3 | Noter `customer_id`, `client_id`, `client_secret`                                                      | Stocker dans 1Password "Tenant [Resto]" |
+| 3.3.4 | Test auth : `POST https://auth.uber.com/oauth/v2/token` (Postman)                                      | Doit renvoyer access_token valide       |
+| 3.3.5 | Sauvegarder en Supabase : `tenants.uber_customer_id`, `uber_client_id`, `uber_client_secret` (chiffré) |                                         |
 
 ### 3.4 Configuration webhook (J2-J3)
 
-| # | Étape | Note |
-|---|---|---|
-| 3.4.1 | Developer → Webhooks → Create Webhook | |
-| 3.4.2 | URL : `https://api.kitchenboost.fr/webhooks/uber/<tenant_id>` | `tenant_id` unique pour dispatch |
-| 3.4.3 | Events : `event.delivery_status`, `event.courier_update`, `event.refund_request` | |
-| 3.4.4 | Copier Webhook Signing Key | Stocker en Supabase chiffré |
-| 3.4.5 | Test delivery sandbox → webhook reçu | Validation tech setup |
+| #     | Étape                                                                            | Note                             |
+| ----- | -------------------------------------------------------------------------------- | -------------------------------- |
+| 3.4.1 | Developer → Webhooks → Create Webhook                                            |                                  |
+| 3.4.2 | URL : `https://api.kitchenboost.fr/webhooks/uber/<tenant_id>`                    | `tenant_id` unique pour dispatch |
+| 3.4.3 | Events : `event.delivery_status`, `event.courier_update`, `event.refund_request` |                                  |
+| 3.4.4 | Copier Webhook Signing Key                                                       | Stocker en Supabase chiffré      |
+| 3.4.5 | Test delivery sandbox → webhook reçu                                             | Validation tech setup            |
 
 ### 3.5 Compte Uber Eats Manager (cas 1 : resto déjà sur marketplace)
 
 Si le resto est déjà live sur Uber Eats (cas Khan / Caverne / Crêperie / Buns & Bao) :
 
-| # | Étape | Note |
-|---|---|---|
-| 3.5.1 | Demander au resto de nous ajouter comme **admin user** sur son Uber Eats Manager | Le resto va dans Settings → Users → Invite |
-| 3.5.2 | Email à ajouter : `restos+<slug>@kitchen-boost.fr` | Même alias que pour Uber Direct → 1 login KB pour les 2 services |
-| 3.5.3 | Activer Uber Direct depuis Uber Eats Manager (option "Add Uber Direct service") | KB clique depuis son admin access |
+| #     | Étape                                                                            | Note                                                             |
+| ----- | -------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| 3.5.1 | Demander au resto de nous ajouter comme **admin user** sur son Uber Eats Manager | Le resto va dans Settings → Users → Invite                       |
+| 3.5.2 | Email à ajouter : `restos+<slug>@kitchen-boost.com`                              | Même alias que pour Uber Direct → 1 login KB pour les 2 services |
+| 3.5.3 | Activer Uber Direct depuis Uber Eats Manager (option "Add Uber Direct service")  | KB clique depuis son admin access                                |
 
 ### 3.6 Compte Uber Eats Manager (cas 2 : resto PAS encore sur marketplace)
 
 Si le resto n'est pas encore sur Uber Eats (cas Walid / Amir / Yanis si nouveaux) :
 
-| # | Étape | Note |
-|---|---|---|
-| 3.6.1 | Aller sur `https://merchants.ubereats.com/fr/fr/manager/signup/` | |
-| 3.6.2 | Sign up avec alias `restos+<slug>@kitchen-boost.fr` | KB crée le compte au nom du resto (mandat Article 2 bis) |
-| 3.6.3 | Upload KBIS + RIB + CNI | Mêmes docs |
-| 3.6.4 | Configurer fiche resto (adresse, horaires, photos) | KB depuis backoffice |
-| 3.6.5 | Activer Uber Direct comme service additionnel | |
-| 3.6.6 | Ajouter le resto comme owner/admin user | Email perso du patron |
-| 3.6.7 | Attendre validation Uber (3-7 jours en général pour marketplace) | Plus long que Direct seul |
+| #     | Étape                                                            | Note                                                     |
+| ----- | ---------------------------------------------------------------- | -------------------------------------------------------- |
+| 3.6.1 | Aller sur `https://merchants.ubereats.com/fr/fr/manager/signup/` |                                                          |
+| 3.6.2 | Sign up avec alias `restos+<slug>@kitchen-boost.com`             | KB crée le compte au nom du resto (mandat Article 2 bis) |
+| 3.6.3 | Upload KBIS + RIB + CNI                                          | Mêmes docs                                               |
+| 3.6.4 | Configurer fiche resto (adresse, horaires, photos)               | KB depuis backoffice                                     |
+| 3.6.5 | Activer Uber Direct comme service additionnel                    |                                                          |
+| 3.6.6 | Ajouter le resto comme owner/admin user                          | Email perso du patron                                    |
+| 3.6.7 | Attendre validation Uber (3-7 jours en général pour marketplace) | Plus long que Direct seul                                |
 
 ### 3.7 Synthèse — Login KB centralisé
 
 À la fin de l'étape 3, voici comment KB gère N restos :
 
 ```
-1 boîte mail KB : restos@kitchen-boost.fr
-   ├─ alias restos+bunsbao@kitchen-boost.fr     → compte Uber Khan
-   ├─ alias restos+caverne@kitchen-boost.fr     → compte Uber Caverne
-   ├─ alias restos+creperie@kitchen-boost.fr    → compte Uber Crêperie
-   ├─ alias restos+walid@kitchen-boost.fr       → compte Uber Walid (si signé)
+1 boîte mail KB : restos@kitchen-boost.com
+   ├─ alias restos+bunsbao@kitchen-boost.com     → compte Uber Khan
+   ├─ alias restos+caverne@kitchen-boost.com     → compte Uber Caverne
+   ├─ alias restos+creperie@kitchen-boost.com    → compte Uber Crêperie
+   ├─ alias restos+walid@kitchen-boost.com       → compte Uber Walid (si signé)
    └─ ...
 
 1 login KB Uber Direct par alias → 1 dashboard par resto
@@ -218,13 +220,13 @@ Ces 3 actions sont **incontournables** — c'est régulatoire, pas une limitatio
 
 ### 4.2 Création du compte Stripe Connect avec pré-remplissage MAX (J3, KB Dev backoffice)
 
-| # | Étape | Note |
-|---|---|---|
-| 4.2.1 | `POST /accounts` Stripe avec **tous** les champs possibles pré-remplis | Cf payload complet ci-dessous |
+| #     | Étape                                                                            | Note                                     |
+| ----- | -------------------------------------------------------------------------------- | ---------------------------------------- |
+| 4.2.1 | `POST /accounts` Stripe avec **tous** les champs possibles pré-remplis           | Cf payload complet ci-dessous            |
 | 4.2.2 | Inclure `external_account` avec **IBAN du resto** (depuis RIB fourni au closing) | Plus de saisie RIB à faire pour le resto |
-| 4.2.3 | Stocker `stripe_account_id` retourné dans Supabase `tenants` | KB Dev |
-| 4.2.4 | Générer lien onboarding via `POST /account_links` (`type=account_onboarding`) | URL valide 5 min |
-| 4.2.5 | Régénérer le lien **juste avant le RDV install** | Sinon expiré |
+| 4.2.3 | Stocker `stripe_account_id` retourné dans Supabase `tenants`                     | KB Dev                                   |
+| 4.2.4 | Générer lien onboarding via `POST /account_links` (`type=account_onboarding`)    | URL valide 5 min                         |
+| 4.2.5 | Régénérer le lien **juste avant le RDV install**                                 | Sinon expiré                             |
 
 #### Payload `POST /accounts` complet (pré-remplissage max)
 
@@ -252,7 +254,7 @@ Ces 3 actions sont **incontournables** — c'est régulatoire, pas une limitatio
     "product_description": "Service de restauration et livraison",
     "support_email": "<email resto>",
     "support_phone": "<tel resto>",
-    "url": "https://<slug>.kitchen-boost.fr"
+    "url": "https://<slug>.kitchen-boost.com"
   },
   "external_account": {
     "object": "bank_account",
@@ -286,20 +288,20 @@ Ces 3 actions sont **incontournables** — c'est régulatoire, pas une limitatio
 
 ### 4.3 Validation post-onboarding (J5-J6, côté KB)
 
-| # | Étape | Note |
-|---|---|---|
-| 4.3.1 | KB monitor via webhook `account.updated` | |
-| 4.3.2 | Attendre `charges_enabled: true` ET `payouts_enabled: true` | Habituellement instantané post-KYC |
-| 4.3.3 | Si `requirements.currently_due` non vide → relance WhatsApp avec lien spécifique | Rare |
-| 4.3.4 | Test PaymentIntent destination_charge 1€ → split OK → refund | Étape suivante au RDV install |
+| #     | Étape                                                                            | Note                               |
+| ----- | -------------------------------------------------------------------------------- | ---------------------------------- |
+| 4.3.1 | KB monitor via webhook `account.updated`                                         |                                    |
+| 4.3.2 | Attendre `charges_enabled: true` ET `payouts_enabled: true`                      | Habituellement instantané post-KYC |
+| 4.3.3 | Si `requirements.currently_due` non vide → relance WhatsApp avec lien spécifique | Rare                               |
+| 4.3.4 | Test PaymentIntent destination_charge 1€ → split OK → refund                     | Étape suivante au RDV install      |
 
 ### 4.4 Pourquoi Express et pas Custom
 
-| Type | Charge KB | Charge Resto | Pertinent ? |
-|---|---|---|---|
-| **Standard** | Très faible (resto fait tout) | Élevée (compte Stripe complet) | ❌ Trop de friction resto |
-| **Express** (choix KB) | Modérée (pré-remplissage API) | Minimale (3 actions obligatoires) | ✅ |
-| **Custom** | Élevée (KB devient responsable KYC) | Quasi-nulle | ❌ Charge réglementaire KB trop lourde pour Phase 1 |
+| Type                   | Charge KB                           | Charge Resto                      | Pertinent ?                                         |
+| ---------------------- | ----------------------------------- | --------------------------------- | --------------------------------------------------- |
+| **Standard**           | Très faible (resto fait tout)       | Élevée (compte Stripe complet)    | ❌ Trop de friction resto                           |
+| **Express** (choix KB) | Modérée (pré-remplissage API)       | Minimale (3 actions obligatoires) | ✅                                                  |
+| **Custom**             | Élevée (KB devient responsable KYC) | Quasi-nulle                       | ❌ Charge réglementaire KB trop lourde pour Phase 1 |
 
 Express = bon équilibre. Plus tard (à 50+ restos), on pourra migrer vers Custom si on veut absorber encore plus de friction côté resto.
 
@@ -309,16 +311,17 @@ Express = bon équilibre. Plus tard (à 50+ restos), on pourra migrer vers Custo
 
 ### 5.1 Configuration DB Supabase
 
-| # | Tâche | Owner |
-|---|---|---|
+| #     | Tâche                                                                                              | Owner  |
+| ----- | -------------------------------------------------------------------------------------------------- | ------ |
 | 5.1.1 | Créer row `tenants` avec : slug, name, address, hours, cuisine_type, brand_color, logo_url, domain | KB Dev |
-| 5.1.2 | Lier `uber_customer_id` + `uber_client_id` (chiffré) + `uber_webhook_signing_key` (chiffré) | KB Dev |
-| 5.1.3 | Lier `stripe_account_id` | KB Dev |
-| 5.1.4 | Configurer Row Level Security pour isolation tenant | KB Dev |
+| 5.1.2 | Lier `uber_customer_id` + `uber_client_id` (chiffré) + `uber_webhook_signing_key` (chiffré)        | KB Dev |
+| 5.1.3 | Lier `stripe_account_id`                                                                           | KB Dev |
+| 5.1.4 | Configurer Row Level Security pour isolation tenant                                                | KB Dev |
 
 ### 5.2 Configuration custom domain (Vercel)
 
 **Si resto a son domaine** (`restoX.fr`) :
+
 1. Dans Vercel Project → Settings → Domains → Add → `commandes.restoX.fr`
 2. KB envoie au resto par WhatsApp les instructions DNS :
    > Va chez ton registrar (OVH/Gandi/etc.), ajoute un CNAME : `commandes` → `cname.vercel-dns.com`
@@ -326,7 +329,8 @@ Express = bon équilibre. Plus tard (à 50+ restos), on pourra migrer vers Custo
 4. Une fois SSL OK, toggle `domain_status: live` en DB
 
 **Si pas de domaine** (par défaut) :
-1. Vercel ajoute automatiquement `restoX.kitchen-boost.fr` (sous-domaine KB)
+
+1. Vercel ajoute automatiquement `restoX.kitchen-boost.com` (sous-domaine KB)
 2. Pas d'action DNS resto
 
 ### 5.3 Import du menu
@@ -334,26 +338,29 @@ Express = bon équilibre. Plus tard (à 50+ restos), on pourra migrer vers Custo
 3 options par ordre de préférence :
 
 **Option A — Export Uber Eats Manager (recommandé)**
+
 1. KB demande au resto un export menu CSV/JSON depuis son Uber Eats Manager (Menu → Export)
 2. Script `tools/import_menu_ubereats.py` → convertit en format KB (cf `menu.json` schema existant)
 3. Insertion DB Supabase
 
 **Option B — Saisie manuelle** depuis photos de carte
+
 1. Si pas d'export possible, KB saisit le menu depuis photos
 2. Validation par le resto avant go-live
 
 **Option C — Visite kickoff Phase C** (cf `project_onboarding_process.md` Phase C)
+
 1. Si on est aussi en train de créer une marque virtuelle pour ce resto, le menu est déjà collecté à la Phase C du process onboarding global
 2. Réutiliser ce menu pour la PWA
 
 ### 5.4 Application branding
 
-| # | Tâche | Owner |
-|---|---|---|
-| 5.4.1 | Si logo fourni → upload Cloudinary ou Supabase Storage | KB Dev |
-| 5.4.2 | Si pas de logo → KB génère un logo basic (Canva ou Figma en 1h) | KB |
+| #     | Tâche                                                                                  | Owner  |
+| ----- | -------------------------------------------------------------------------------------- | ------ |
+| 5.4.1 | Si logo fourni → upload Cloudinary ou Supabase Storage                                 | KB Dev |
+| 5.4.2 | Si pas de logo → KB génère un logo basic (Canva ou Figma en 1h)                        | KB     |
 | 5.4.3 | Hero photo : utiliser meilleur photo plat existante (cf `feedback_hero_food_50pct.md`) | KB Dev |
-| 5.4.4 | Palette couleurs : appliquer depuis brand_color en DB | KB Dev |
+| 5.4.4 | Palette couleurs : appliquer depuis brand_color en DB                                  | KB Dev |
 
 ---
 
@@ -365,7 +372,7 @@ Express = bon équilibre. Plus tard (à 50+ restos), on pourra migrer vers Custo
 
 À avoir prêt sur l'ordi/tablette KB :
 
-- [ ] Login Uber Direct du resto (alias `restos+<slug>@kitchen-boost.fr` + mot de passe) — déjà testé
+- [ ] Login Uber Direct du resto (alias `restos+<slug>@kitchen-boost.com` + mot de passe) — déjà testé
 - [ ] Dashboard Uber Eats Manager du resto (si applicable) — déjà admin user
 - [ ] **Lien Stripe Connect onboarding** fraîchement régénéré (URL valide 5 min — régénérer juste avant le RDV via API)
 - [ ] PWA tenant déjà configurée, menu importé, branding appliqué, custom domain SSL actif
@@ -376,58 +383,58 @@ Express = bon équilibre. Plus tard (à 50+ restos), on pourra migrer vers Custo
 
 **Étape 1 — Entrée CB resto sur Uber Direct (5 min)**
 
-| # | Action | Qui |
-|---|---|---|
-| 6.2.1 | Ouvrir Uber Direct dashboard sur ordi de KB, le tendre au resto | Alex |
-| 6.2.2 | Resto va dans Billing → Add payment method | **Resto** (pas Alex) |
-| 6.2.3 | Resto tape sa CB pro lui-même | **Resto** (Alex se détourne, ne regarde pas) |
-| 6.2.4 | Confirmation : seuls les 4 derniers chiffres visibles dans le dashboard | Vérifié ensemble |
-| 6.2.5 | Status Uber Direct passe à "Active" | Vérifier après quelques minutes |
+| #     | Action                                                                  | Qui                                          |
+| ----- | ----------------------------------------------------------------------- | -------------------------------------------- |
+| 6.2.1 | Ouvrir Uber Direct dashboard sur ordi de KB, le tendre au resto         | Alex                                         |
+| 6.2.2 | Resto va dans Billing → Add payment method                              | **Resto** (pas Alex)                         |
+| 6.2.3 | Resto tape sa CB pro lui-même                                           | **Resto** (Alex se détourne, ne regarde pas) |
+| 6.2.4 | Confirmation : seuls les 4 derniers chiffres visibles dans le dashboard | Vérifié ensemble                             |
+| 6.2.5 | Status Uber Direct passe à "Active"                                     | Vérifier après quelques minutes              |
 
 **Étape 2 — Vérification d'identité Stripe Connect (5 min — KB a pré-rempli tout le reste)**
 
 KB a déjà passé l'IBAN + SIRET + raison sociale + adresse + business profile via API en backoffice (cf §4.2). Le resto fait UNIQUEMENT les 3 actions obligatoires régulatoirement :
 
-| # | Action | Qui |
-|---|---|---|
-| 6.2.6 | KB régénère le lien Stripe onboarding (URL valide 5 min) | Alex |
-| 6.2.7 | KB envoie le lien par WhatsApp au resto | Alex |
-| 6.2.8 | Resto ouvre le lien sur SON téléphone | **Resto** |
-| 6.2.9 | Resto upload CNI (recto-verso) + selfie liveness | **Resto** (KYC obligatoire PSD2) |
-| 6.2.10 | Resto reçoit SMS code 2FA + le tape | **Resto** |
-| 6.2.11 | Resto accepte CGU Stripe Connect | **Resto** |
-| 6.2.12 | KB voit dashboard Stripe → `charges_enabled` + `payouts_enabled = true` | Alex (~30 sec post-validation) |
+| #      | Action                                                                  | Qui                              |
+| ------ | ----------------------------------------------------------------------- | -------------------------------- |
+| 6.2.6  | KB régénère le lien Stripe onboarding (URL valide 5 min)                | Alex                             |
+| 6.2.7  | KB envoie le lien par WhatsApp au resto                                 | Alex                             |
+| 6.2.8  | Resto ouvre le lien sur SON téléphone                                   | **Resto**                        |
+| 6.2.9  | Resto upload CNI (recto-verso) + selfie liveness                        | **Resto** (KYC obligatoire PSD2) |
+| 6.2.10 | Resto reçoit SMS code 2FA + le tape                                     | **Resto**                        |
+| 6.2.11 | Resto accepte CGU Stripe Connect                                        | **Resto**                        |
+| 6.2.12 | KB voit dashboard Stripe → `charges_enabled` + `payouts_enabled = true` | Alex (~30 sec post-validation)   |
 
 **Étape 3 — Vérification tablette Uber (si offre Premium)**
 
 Cf [feedback_uber_pricing_tiers_fr.md](mémoire) — la tablette est entre le resto et Uber, KB ne gère pas (Article 3 bis contrat).
 
-| # | Action | Qui |
-|---|---|---|
-| 6.2.11 | Vérifier que la tablette est branchée + chargée + connectée Wi-Fi | Resto + Alex |
-| 6.2.12 | Tester réception d'une fausse commande sur la tablette | Resto |
-| 6.2.13 | Si problème tablette → support Uber direct (numéro dans la tablette) | Resto |
+| #      | Action                                                               | Qui          |
+| ------ | -------------------------------------------------------------------- | ------------ |
+| 6.2.11 | Vérifier que la tablette est branchée + chargée + connectée Wi-Fi    | Resto + Alex |
+| 6.2.12 | Tester réception d'une fausse commande sur la tablette               | Resto        |
+| 6.2.13 | Si problème tablette → support Uber direct (numéro dans la tablette) | Resto        |
 
 **Étape 4 — Test 1 commande prod réelle bout-en-bout (15-20 min)**
 
-| # | Action | Qui |
-|---|---|---|
-| 6.2.14 | Alex passe 1 commande réelle sur la PWA du resto avec sa CB perso | Alex |
-| 6.2.15 | Vérifier que la commande arrive sur la tablette du resto + dashboard KB | Vérifier ensemble |
-| 6.2.16 | Resto prépare le plat (~5-10 min) | Resto |
-| 6.2.17 | Livreur Uber Direct arrive, prend le plat, livre à Alex (qui attend dehors) | Livreur Uber |
-| 6.2.18 | Alex reçoit la commande → checks : QR sticker présent, temps total <45 min, push notif reçue | Alex |
-| 6.2.19 | Vérifier dans Stripe : Alex débité X€, resto crédité net, KB encaissé 2€ | KB Dev (Stripe dashboard) |
+| #      | Action                                                                                       | Qui                       |
+| ------ | -------------------------------------------------------------------------------------------- | ------------------------- |
+| 6.2.14 | Alex passe 1 commande réelle sur la PWA du resto avec sa CB perso                            | Alex                      |
+| 6.2.15 | Vérifier que la commande arrive sur la tablette du resto + dashboard KB                      | Vérifier ensemble         |
+| 6.2.16 | Resto prépare le plat (~5-10 min)                                                            | Resto                     |
+| 6.2.17 | Livreur Uber Direct arrive, prend le plat, livre à Alex (qui attend dehors)                  | Livreur Uber              |
+| 6.2.18 | Alex reçoit la commande → checks : QR sticker présent, temps total <45 min, push notif reçue | Alex                      |
+| 6.2.19 | Vérifier dans Stripe : Alex débité X€, resto crédité net, KB encaissé 2€                     | KB Dev (Stripe dashboard) |
 
 **Étape 5 — Briefing équipe + livraison stickers (15 min)**
 
-| # | Action | Qui |
-|---|---|---|
-| 6.2.20 | Remettre les 500 stickers en main propre | Alex |
-| 6.2.21 | Briefing équipe (cuisine + salle) : "1 sticker sur chaque sac livraison Uber Eats, côté visible client" | Alex |
-| 6.2.22 | Démonstration : 1 sticker collé sur 1 sac type | Alex + équipe |
-| 6.2.23 | Photo de validation envoyée à Alex par WhatsApp | Resto |
-| 6.2.24 | Briefing dashboard KB : où voir les commandes, les push notifs envoyées, les métriques | Alex + Resto |
+| #      | Action                                                                                                  | Qui           |
+| ------ | ------------------------------------------------------------------------------------------------------- | ------------- |
+| 6.2.20 | Remettre les 500 stickers en main propre                                                                | Alex          |
+| 6.2.21 | Briefing équipe (cuisine + salle) : "1 sticker sur chaque sac livraison Uber Eats, côté visible client" | Alex          |
+| 6.2.22 | Démonstration : 1 sticker collé sur 1 sac type                                                          | Alex + équipe |
+| 6.2.23 | Photo de validation envoyée à Alex par WhatsApp                                                         | Resto         |
+| 6.2.24 | Briefing dashboard KB : où voir les commandes, les push notifs envoyées, les métriques                  | Alex + Resto  |
 
 **Étape 6 — Check final**
 
@@ -446,7 +453,7 @@ Cf [feedback_uber_pricing_tiers_fr.md](mémoire) — la tablette est entre le re
 ### 7.1 Design + commande
 
 - **Format** : rond vinyle laminé mat, 50mm de diamètre
-- **Contenu** : QR code (URL `commandes.restoX.fr/r/<slug>` ou `<slug>.kitchen-boost.fr/r/<slug>`) + accroche "Commande directe sans commission"
+- **Contenu** : QR code (URL `commandes.restoX.fr/r/<slug>` ou `<slug>.kitchen-boost.com/r/<slug>`) + accroche "Commande directe sans commission"
 - **Fournisseur** : Stickermule ou Vistaprint
 - **Quantité initiale** : 500 stickers (~30-50€)
 - **Délai prod** : 5-7 jours ouvrés → **commander dès J1** pour être livré au bureau KB avant le RDV install J5-J6
@@ -463,13 +470,13 @@ Cf [feedback_uber_pricing_tiers_fr.md](mémoire) — la tablette est entre le re
 
 ### 8.2 Métriques pendant le soft launch
 
-| Critère | Seuil minimum |
-|---|---|
-| Commandes test réussies bout-en-bout | ≥ 8/10 |
-| Aucun incident bloquant non corrigé | 0 |
-| Taux livraison Uber Direct OK | ≥ 90% |
-| Push reçues (testeurs Android + iOS A2HS) | ≥ 80% |
-| Satisfaction resto sur le flow | Score ≥ 7/10 |
+| Critère                                   | Seuil minimum |
+| ----------------------------------------- | ------------- |
+| Commandes test réussies bout-en-bout      | ≥ 8/10        |
+| Aucun incident bloquant non corrigé       | 0             |
+| Taux livraison Uber Direct OK             | ≥ 90%         |
+| Push reçues (testeurs Android + iOS A2HS) | ≥ 80%         |
+| Satisfaction resto sur le flow            | Score ≥ 7/10  |
 
 ### 8.3 Itérations bugs
 
@@ -561,7 +568,7 @@ ONBOARDING [RESTO X] — Checklist KitchenBoost
 [ ] Canal WhatsApp testé
 
 ═══ J1-J4 — BACKOFFICE KB ═══
-[ ] Alias email créé (restos+<slug>@kitchen-boost.fr)
+[ ] Alias email créé (restos+<slug>@kitchen-boost.com)
 [ ] Compte Uber Direct créé (KB via mandat Article 2 bis)
 [ ] Compte Uber Eats Manager : KB ajouté admin user OU créé from scratch
 [ ] Credentials API récupérés (customer_id, client_id, client_secret) → 1Password

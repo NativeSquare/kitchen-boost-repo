@@ -279,11 +279,11 @@
       "locked": false,
       "fontSize": 16,
       "fontFamily": 3,
-      "text": "apps/web — PWA client\nNext.js 16 + React 19\n\n• <slug>.kitchen-boost.fr\n• Service Worker push\n• Wallet pass install\n• A2HS iOS / Android\n• Stripe Elements + Apple Pay\n• Google Places address-first\n• Suivi Lottie + realtime",
+      "text": "apps/web — PWA client\nNext.js 16 + React 19\n\n• <slug>.kitchen-boost.com\n• Service Worker push\n• Wallet pass install\n• A2HS iOS / Android\n• Stripe Elements + Apple Pay\n• Google Places address-first\n• Suivi Lottie + realtime",
       "textAlign": "left",
       "verticalAlign": "top",
       "containerId": "app-web",
-      "originalText": "apps/web — PWA client\nNext.js 16 + React 19\n\n• <slug>.kitchen-boost.fr\n• Service Worker push\n• Wallet pass install\n• A2HS iOS / Android\n• Stripe Elements + Apple Pay\n• Google Places address-first\n• Suivi Lottie + realtime",
+      "originalText": "apps/web — PWA client\nNext.js 16 + React 19\n\n• <slug>.kitchen-boost.com\n• Service Worker push\n• Wallet pass install\n• A2HS iOS / Android\n• Stripe Elements + Apple Pay\n• Google Places address-first\n• Suivi Lottie + realtime",
       "lineHeight": 1.25
     },
     {

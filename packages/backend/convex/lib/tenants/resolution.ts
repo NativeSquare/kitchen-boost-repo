@@ -5,7 +5,7 @@
  * « cookie host-only »).
  *
  * Three lookups, ALL public + unauthenticated (the middleware runs PRE-auth):
- *  - `bySlug(slug)`         — `<slug>.kitchen-boost.fr` first-hit path
+ *  - `bySlug(slug)`         — `<slug>.kitchen-boost.com` first-hit path
  *  - `byCustomDomain(domain)` — custom domain first-hit path (`bunsbao.fr`)
  *  - `byId(tenantId)`       — `__Host-kb_tenant=<id>` cookie revalidation
  *
@@ -65,7 +65,7 @@ function project(row: {
 }
 
 /**
- * Resolve a tenant from the `<slug>` of `<slug>.kitchen-boost.fr`. Called by
+ * Resolve a tenant from the `<slug>` of `<slug>.kitchen-boost.com`. Called by
  * the PWA edge middleware on the FIRST hit of a new sub-domain (before the
  * `__Host-kb_tenant` cookie is set). Returns `null` for an unknown slug so
  * the middleware routes to the « Resto non disponible » page.
@@ -91,7 +91,7 @@ export const bySlug = query({
 /**
  * Resolve a tenant from a CUSTOM domain (`bunsbao.fr`). Called by the PWA
  * edge middleware when the request `host` does NOT match the bootstrap
- * `<slug>.kitchen-boost.fr` pattern. Returns `null` for an unknown domain.
+ * `<slug>.kitchen-boost.com` pattern. Returns `null` for an unknown domain.
  */
 export const byCustomDomain = query({
   args: { customDomain: v.string() },

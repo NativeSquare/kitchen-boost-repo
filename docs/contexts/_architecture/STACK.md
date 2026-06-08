@@ -119,7 +119,7 @@ Env vars Convex globales (`STRIPE_SECRET_KEY`, `VAPID_PRIVATE_KEY`, `KMS_MASTER_
 
 ### 2.6 Adressage multi-tenant — domaine de marque custom par resto (norme V1)
 
-- **Face publique = le domaine de marque du resto** (ex. `bunsbao.fr`), apporté par le resto (registrar type OVH) + CNAME vers KB. **Norme V1** (modèle Owner.com). Un **sous-domaine `<slug>.kitchen-boost.fr`** technique sert de bootstrap/preview (URL Day-1, **jamais la face publique**).
+- **Face publique = le domaine de marque du resto** (ex. `bunsbao.fr`), apporté par le resto (registrar type OVH) + CNAME vers KB. **Norme V1** (modèle Owner.com). Un **sous-domaine `<slug>.kitchen-boost.com`** technique sert de bootstrap/preview (URL Day-1, **jamais la face publique**).
 - Wildcard DNS + cert SSL sous-domaines : Vercel (auto). Domaines custom : SSL auto (Vercel/Cloudflare for SaaS).
 - **Middleware Next.js** dans `apps/web/middleware.ts` : match le hostname complet sur `tenants.byCustomDomain(host)` → sinon fallback slug du sous-domaine bootstrap → injecte `tenant_id` dans la session. Cf. §5.6.
 - **Apple Pay domain verification** : route dynamique `apps/web/app/.well-known/apple-developer-merchantid-domain-association/route.ts` + appel Stripe `paymentMethodDomains.create()` automatique à la mise en ligne (par domaine actif du tenant).
@@ -266,7 +266,7 @@ RESEND_API_KEY=re_xxx                  # déjà géré par template via AUTH_RES
 RESEND_WEBHOOK_SECRET=xxx
 VAPID_PUBLIC_KEY=xxx                   # 2.7-C: paire VAPID web-push, 1 par env (route Node apps/web). Jamais commit.
 VAPID_PRIVATE_KEY=xxx
-VAPID_SUBJECT=mailto:ops@kitchen-boost.fr # 2.7-C: VAPID `sub` (optionnel, défaut mailto KB ops).
+VAPID_SUBJECT=mailto:ops@kitchen-boost.com # 2.7-C: VAPID `sub` (optionnel, défaut mailto KB ops).
 WEB_PUSH_INTERNAL_HMAC_SECRET=xxx      # 2.7-C: HMAC partagé canal Convex↔route Node web-push. Aussi en env Next (apps/web).
 WEB_PUSH_ROUTE_URL=xxx                 # 2.7-C: URL de la route Node apps/web/api/push/send (cible du fetch HMAC-signé).
 KMS_MASTER_KEY=xxx                     # base64, 32 bytes
@@ -283,7 +283,7 @@ IS_DEV=false
 # Déjà gérés par le template
 JWT_PRIVATE_KEY=xxx
 JWKS=xxx
-SITE_URL=https://kitchen-boost.fr
+SITE_URL=https://kitchen-boost.com
 ```
 
 ---
@@ -374,8 +374,8 @@ export async function middleware(req) {
   const host = req.headers.get("host");
   // 1. Face publique : domaine de marque du resto (norme V1)
   let tenant = await fetchTenantByCustomDomain(host); // edge-cached 60s
-  // 2. Fallback : sous-domaine bootstrap <slug>.kitchen-boost.fr
-  if (!tenant && host.endsWith(".kitchen-boost.fr")) {
+  // 2. Fallback : sous-domaine bootstrap <slug>.kitchen-boost.com
+  if (!tenant && host.endsWith(".kitchen-boost.com")) {
     tenant = await fetchTenantBySlug(host.split(".")[0]);
   }
   if (!tenant) return NextResponse.redirect("/404");

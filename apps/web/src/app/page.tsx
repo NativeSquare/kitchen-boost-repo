@@ -15,7 +15,7 @@
  *
  * Edge cases (already handled by the middleware, so they never reach here):
  *  - Unknown host / orphan cookie / inactive tenant → `/erreur?reason=...`.
- *  - Apex `kitchen-boost.fr` → `/erreur?reason=apex-host`.
+ *  - Apex `kitchen-boost.com` → `/erreur?reason=apex-host`.
  *
  * Defensive degraded state: cookie missing (= matcher mis-config in the
  * middleware) → render the generic KB shell without the form (the form

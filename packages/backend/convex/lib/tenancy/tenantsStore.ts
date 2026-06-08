@@ -19,7 +19,7 @@ import type { MutationCtx, QueryCtx } from "../../_generated/server";
  * `stripeAccountStore` / `deliveriesStore.setTenantUberCustomerId`.
  *
  * Slug uniqueness is the only INVARIANT enforced here on insert:
- * `<slug>.kitchen-boost.fr` is the bootstrap sub-domain (PRD 50 §3), so a
+ * `<slug>.kitchen-boost.com` is the bootstrap sub-domain (PRD 50 §3), so a
  * duplicate slug would collide on the sub-domain. The `by_slug` index makes
  * the existence check O(1).
  */
@@ -69,7 +69,7 @@ export async function getTenantBySlug(
  * PWA-S1 (#449) — the tenant whose `customDomain` equals `customDomain` (or
  * `null`). Keyed on `by_custom_domain`. Consumed by the PWA edge middleware
  * (`apps/web/src/proxy.ts`) when the request `host` doesn't match the
- * bootstrap `<slug>.kitchen-boost.fr` pattern (PRD §10 PWA Client, ADR 0008).
+ * bootstrap `<slug>.kitchen-boost.com` pattern (PRD §10 PWA Client, ADR 0008).
  *
  * Same exempt-path discipline as the rest of this seam (`getTenantBySlug` /
  * `getTenantById`): the CALLER is a PUBLIC resolution query exposed to the

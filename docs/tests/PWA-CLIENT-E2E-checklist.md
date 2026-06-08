@@ -33,13 +33,13 @@ Checklist E2E manuelle pour la PWA client (`apps/web`), nomenclature canonique a
 
 - **Acteur** : visiteur first-time, device mobile réel (iPhone Safari OU Android Chrome) en mode privé / cache vidé.
 - **Pré-requis** : tenant `bunsbao` actif en base (seed dev OK), DNS wildcard pointe sur Vercel dev tunnel HTTPS.
-- **URL de départ** : `https://bunsbao.kitchen-boost.fr/`
+- **URL de départ** : `https://bunsbao.kitchen-boost.com/`
 - **Étapes** :
   1. Naviguer vers l'URL en mode privé.
   2. Ouvrir DevTools mobile (Safari → Settings → Advanced → Web Inspector / Chrome → `chrome://inspect/#devices`) → onglet **Application**.
   3. Sous **Cookies** : vérifier `__Host-kb_tenant=<id_tenant_bunsbao>`, `HttpOnly=true`, `Secure=true`, `Path=/`, pas d'attribut `Domain`.
   4. Sous **Manifest** : vérifier `name = "Buns & Bao"`, `theme_color = "#1B7A3D"` (ou couleur primaire configurée), `display = "standalone"`, `orientation = "portrait"`, icons array contient 3 entrées (192/512/180).
-  5. Sous **Service Workers** : vérifier `sw.js` scope `/`, status `activated and is running`, source = `https://bunsbao.kitchen-boost.fr/sw.js`.
+  5. Sous **Service Workers** : vérifier `sw.js` scope `/`, status `activated and is running`, source = `https://bunsbao.kitchen-boost.com/sw.js`.
   6. Hard reload (Ctrl+Shift+R) + vérifier dans Network que `manifest.webmanifest` renvoie `Cache-Control: public, max-age=3600, s-maxage=3600`, content-type `application/manifest+json`.
 - **Attendu** : page « Bienvenue chez Buns & Bao » s'affiche en <2s ; cookie posé conforme `__Host-` prefix ; manifest branded ; SW actif ; aucun appel `*.convex.cloud` pour la résolution `tenants.resolution.byId` au refresh (le middleware lit le cookie sans round-trip).
 - **Couvre** : US 1, US 67 + slice #449 + #450 + modules `decideTenantResolution`, `decideManifest`.
@@ -48,10 +48,10 @@ Checklist E2E manuelle pour la PWA client (`apps/web`), nomenclature canonique a
 
 - **Acteur** : visiteur device mobile.
 - **Pré-requis** : un slug inconnu (jamais provisionné) + capacité à supprimer un tenant en base pour tester l'orphelin.
-- **URL de départ** : `https://inconnu.kitchen-boost.fr/`
+- **URL de départ** : `https://inconnu.kitchen-boost.com/`
 - **Étapes** :
-  1. Naviguer vers `https://inconnu.kitchen-boost.fr/` (slug inexistant).
-  2. Vérifier URL bar : reste `inconnu.kitchen-boost.fr/` (rewrite interne, pas redirect).
+  1. Naviguer vers `https://inconnu.kitchen-boost.com/` (slug inexistant).
+  2. Vérifier URL bar : reste `inconnu.kitchen-boost.com/` (rewrite interne, pas redirect).
   3. DevTools → Cookies : aucun `__Host-kb_tenant` posé.
   4. Re-tester avec cookie stale : poser cookie valide via FND.1 sur `bunsbao`, puis supprimer le tenant `bunsbao` en base (mutation dev), activer `revalidateCookie: true` côté middleware temporairement, recharger.
   5. DevTools → Cookies : `__Host-kb_tenant` a disparu (clearCookie).
@@ -70,7 +70,7 @@ Checklist E2E manuelle pour la PWA client (`apps/web`), nomenclature canonique a
   3. Tap la notification.
   4. Renvoyer un 2ᵉ push avec le **même** `orderId` (`order_test_abc`) mais titre différent.
   5. Vérifier le tray notif.
-- **Attendu** : titre VERBATIM affiché (pas de mutation côté SW) ; tap ouvre la PWA directement sur `https://bunsbao.kitchen-boost.fr/c/order_test_abc` (deep-link) ; le 2ᵉ push REMPLACE le 1ᵉʳ dans le tray (collapse via tag `orderId|campaignId`) au lieu de dupliquer.
+- **Attendu** : titre VERBATIM affiché (pas de mutation côté SW) ; tap ouvre la PWA directement sur `https://bunsbao.kitchen-boost.com/c/order_test_abc` (deep-link) ; le 2ᵉ push REMPLACE le 1ᵉʳ dans le tray (collapse via tag `orderId|campaignId`) au lieu de dupliquer.
 - **Couvre** : US (push deep-link) + slice #450 + modules `deriveNotificationOptions`, `decideNotificationClickAction`.
 
 ---
@@ -85,7 +85,7 @@ Checklist E2E manuelle pour la PWA client (`apps/web`), nomenclature canonique a
 
 - **Acteur** : iPhone Safari, première visite (cache + cookies vidés).
 - **Pré-requis** : `NEXT_PUBLIC_GOOGLE_PLACES_API_KEY` valide, tenant `bunsbao` seedé actif avec service hours + Uber Direct sandbox configurés, dev tunnel HTTPS.
-- **URL de départ** : `https://bunsbao.kitchen-boost.fr/`
+- **URL de départ** : `https://bunsbao.kitchen-boost.com/`
 - **Étapes** :
   1. Ouvrir l'URL en mode privé.
   2. Vérifier que le nom du resto s'affiche en titre (`Buns & Bao`) — confirme tenant resolution PWA-S1.
@@ -98,7 +98,7 @@ Checklist E2E manuelle pour la PWA client (`apps/web`), nomenclature canonique a
 
 - **Acteur** : Android Chrome, première visite.
 - **Pré-requis** : sandbox Uber Direct configuré pour refuser une adresse fixture hors zone (ex: « 1 place Bellecour, 69002 Lyon »).
-- **URL de départ** : `https://bunsbao.kitchen-boost.fr/`
+- **URL de départ** : `https://bunsbao.kitchen-boost.com/`
 - **Étapes** :
   1. Ouvrir l'URL.
   2. Taper « 1 place Bellecour Lyon » + sélectionner la suggestion.
@@ -111,7 +111,7 @@ Checklist E2E manuelle pour la PWA client (`apps/web`), nomenclature canonique a
 
 - **Acteur** : iPhone Safari ou Android Chrome.
 - **Pré-requis** : seed `service_hours` du tenant `bunsbao` configuré « fermé maintenant » (ex: window `[10:00-12:00]` seulement, test à 14:00).
-- **URL de départ** : `https://bunsbao.kitchen-boost.fr/`
+- **URL de départ** : `https://bunsbao.kitchen-boost.com/`
 - **Étapes** :
   1. Ouvrir l'URL.
   2. Taper et sélectionner « 12 rue de la Paix Paris ».
@@ -132,7 +132,7 @@ Checklist E2E manuelle pour la PWA client (`apps/web`), nomenclature canonique a
 
 - **Acteur** : iPhone Safari OU Android Chrome, cookie tenant posé.
 - **Pré-requis** : `bunsbao` seedé avec menu publié ≥ 3 catégories, ≥ 1 item « Smash Double Bao ».
-- **URL de départ** : `https://bunsbao.kitchen-boost.fr/menu`
+- **URL de départ** : `https://bunsbao.kitchen-boost.com/menu`
 - **Étapes** :
   1. Visiter l'URL avec DevTools throttling 4G.
   2. Tap sur le card item « Smash Double Bao ».
@@ -147,7 +147,7 @@ Checklist E2E manuelle pour la PWA client (`apps/web`), nomenclature canonique a
 
 - **Acteur** : iPhone Safari, PWA ouvert.
 - **Pré-requis** : `bunsbao` menu avec ≥ 1 item ayant un modifier group `minSelect=1` (ex: « Sauce ») ; accès tablette KDS admin (KB Orders) en parallèle.
-- **URL de départ** : `https://bunsbao.kitchen-boost.fr/menu`
+- **URL de départ** : `https://bunsbao.kitchen-boost.com/menu`
 - **Étapes** :
   1. Visiter `/menu` puis tap un item avec modifier group `minSelect=1` (ex: « Sauce »).
   2. Vérifier le badge « À choisir » + état du bouton.
@@ -161,7 +161,7 @@ Checklist E2E manuelle pour la PWA client (`apps/web`), nomenclature canonique a
 
 - **Acteur** : iPhone Safari OU Android Chrome.
 - **Pré-requis** : `bunsbao` menu publié, accès KB Admin tenant pour tester le republish.
-- **URL de départ** : `https://bunsbao.kitchen-boost.fr/menu?promo=<id_du_smash_burger>` puis `?item=<id_du_smash_burger>`
+- **URL de départ** : `https://bunsbao.kitchen-boost.com/menu?promo=<id_du_smash_burger>` puis `?item=<id_du_smash_burger>`
 - **Étapes** :
   1. Taper l'URL `?promo=<id>` (id récupéré côté KB Admin → Menu).
   2. Observer le scroll + animation.
@@ -184,7 +184,7 @@ Checklist E2E manuelle pour la PWA client (`apps/web`), nomenclature canonique a
 
 - **Acteur** : iPhone Safari OU Android Chrome, anonyme frais.
 - **Pré-requis** : tenant `bunsbao` seedé avec ≥ 2 items dont 1 ayant ≥ 1 modifier group multi-options (ex: Smash Burger × Sauce {Ketchup, Mayo}).
-- **URL de départ** : `https://bunsbao.kitchen-boost.fr/`
+- **URL de départ** : `https://bunsbao.kitchen-boost.com/`
 - **Étapes** :
   1. Saisir une adresse livrable via Google Places → palier 1 Wallet → « Plus tard » → arrivée `/menu`.
   2. Tap « Smash Burger » → modal Vaul → sélectionner « Sauce : Ketchup », qty=1, tap « Ajouter au panier ». Modal ferme.
@@ -201,7 +201,7 @@ Checklist E2E manuelle pour la PWA client (`apps/web`), nomenclature canonique a
 
 - **Acteur** : Device mobile, ≥ 1 ligne dans cart.
 - **Pré-requis** : C.1 OK (cart non vide).
-- **URL de départ** : `https://bunsbao.kitchen-boost.fr/panier`
+- **URL de départ** : `https://bunsbao.kitchen-boost.com/panier`
 - **Étapes** :
   1. Dans la textarea « Une note pour le resto ? — allergies, demandes spéciales », taper « sans oignon merci ».
   2. Coller un texte de 250 caractères.
@@ -213,7 +213,7 @@ Checklist E2E manuelle pour la PWA client (`apps/web`), nomenclature canonique a
 
 - **Acteur** : Device mobile, verdict address-first `deliverable` cached.
 - **Pré-requis** : adresse livrable validée (C.1 OK).
-- **URL de départ** : `https://bunsbao.kitchen-boost.fr/menu`
+- **URL de départ** : `https://bunsbao.kitchen-boost.com/menu`
 - **Étapes** :
   1. Sur `/menu`, observer header.
   2. Ajouter 1 item au cart, naviguer `/panier`.
@@ -236,11 +236,11 @@ Checklist E2E manuelle pour la PWA client (`apps/web`), nomenclature canonique a
 
 - **Acteur** : iPhone Safari, anonyme frais.
 - **Pré-requis** : seeds `bunsbao` + 1+ items publiés + cookie `__Host-kb_tenant` posé.
-- **URL de départ** : `https://bunsbao.kitchen-boost.fr/`
+- **URL de départ** : `https://bunsbao.kitchen-boost.com/`
 - **Étapes** :
   1. Adresse Places `12 Avenue de l'Opéra, Paris` → palier 1 Wallet → « Plus tard » → arrivée `/menu`.
   2. Ajouter 2 items au panier → cliquer panier → `/panier` affiche les 2 lignes → vider le panier (Supprimer × 2).
-  3. Taper directement `bunsbao.kitchen-boost.fr/checkout` dans la barre d'URL.
+  3. Taper directement `bunsbao.kitchen-boost.com/checkout` dans la barre d'URL.
   4. Re-ajouter 1 item depuis `/menu` → retourner `/checkout`.
   5. Inspecter la taille du wording CGV avec DevTools mobile.
 - **Attendu** : étape 3 : redirect immédiat vers `/panier`, affiche « Ton panier est vide » + lien « ← Retour au menu », aucun flash de form vide ; étape 4 : form affiche heading `Paiement — Commande chez Buns & Bao`, 3 inputs **vides** (firstName / email / phone — pas encore stampé en DB, S7 fait ça), wording CGV ≥ 12px exact : `« En cliquant sur Payer, tu acceptes les CGV de Buns & Bao et le service de fidélité KitchenBoost. »` ; étape 5 : `font-size: 12px` confirmé via DevTools.
@@ -250,7 +250,7 @@ Checklist E2E manuelle pour la PWA client (`apps/web`), nomenclature canonique a
 
 - **Acteur** : iPhone Safari, accès Convex dashboard (ou `npx convex run`).
 - **Pré-requis** : fiche customer existante avec firstName/email/phone vide, cart 1 item.
-- **URL de départ** : `https://bunsbao.kitchen-boost.fr/checkout`
+- **URL de départ** : `https://bunsbao.kitchen-boost.com/checkout`
 - **Étapes** :
   1. Arriver sur `/checkout` avec gate disabled (0 canal enrolled). Vérifier bouton "Payer X,XX €" **disabled** (grisé, `cursor-not-allowed`).
   2. **Sans recharger la page**, depuis Convex dashboard : `db.patch(<customerId>, { pushEnrollment: { walletStatus: "enrolled" } })`.
@@ -264,7 +264,7 @@ Checklist E2E manuelle pour la PWA client (`apps/web`), nomenclature canonique a
 
 - **Acteur** : iPhone Safari, fiche fraîche.
 - **Pré-requis** : panier non vide, fiche customer sans `pushEnrollment` actif.
-- **URL de départ** : `https://bunsbao.kitchen-boost.fr/checkout`
+- **URL de départ** : `https://bunsbao.kitchen-boost.com/checkout`
 - **Étapes** :
   1. Cliquer « Payer X € ».
   2. Tenter Esc + tap hors de la modal.
@@ -279,7 +279,7 @@ Checklist E2E manuelle pour la PWA client (`apps/web`), nomenclature canonique a
 
 - **Acteur** : iPhone Safari (≥16.4) OU Android Chrome, navigation privée.
 - **Pré-requis** : panier non vide, fiche sans `pushEnrollment` actif, accès Convex dashboard pour vérif backend.
-- **URL de départ** : `https://bunsbao.kitchen-boost.fr/checkout`
+- **URL de départ** : `https://bunsbao.kitchen-boost.com/checkout`
 - **Étapes** :
   1. Address-first → cart → `/checkout` → remplir prénom/email/tel → cliquer **Payer**.
   2. Vérifier qu'AUCUN lien « Continuer sans notifs → » n'apparaît au bas de la modal (compteur d'échecs = 0).
@@ -296,7 +296,7 @@ Checklist E2E manuelle pour la PWA client (`apps/web`), nomenclature canonique a
 
 - **Acteur** : iPhone tournant iOS 15.x ou 16.0-16.3 (Safari avant Web Push) ; ET Desktop Chrome/Safari.
 - **Pré-requis** : device iOS <16.4 disponible, OR émulateur Safari avec UA spoofé.
-- **URL de départ** : `https://bunsbao.kitchen-boost.fr/checkout`
+- **URL de départ** : `https://bunsbao.kitchen-boost.com/checkout`
 - **Étapes** :
   1. Sur iPhone iOS <16.4 : cart non vide → cliquer « Payer » → modal s'ouvre.
   2. Vérifier dans Safari DevTools l'absence de `data-testid="web-push-option"` dans le DOM.
@@ -337,7 +337,7 @@ _À remplir au merge de la slice #459 (HITL #447 doit débloquer la chain)._
 
 - **Acteur** : iPhone Safari OU Android Chrome, anonyme frais (mode privé).
 - **Pré-requis** : tenant `bunsbao` actif, customer `pushEnrollment.walletStatus` absent ou `not_enrolled`.
-- **URL de départ** : `https://bunsbao.kitchen-boost.fr/`
+- **URL de départ** : `https://bunsbao.kitchen-boost.com/`
 - **Étapes** :
   1. Mode privé, taper adresse Paris dans périmètre livraison → sélectionner suggestion.
   2. Observer la card.
@@ -346,7 +346,7 @@ _À remplir au merge de la slice #459 (HITL #447 doit débloquer la chain)._
   5. Ajouter article au panier → naviguer `/panier`.
   6. Cliquer « × » sur le bandeau /panier.
   7. Naviguer `/menu` (lien « ← Retour au menu »).
-  8. Fermer l'onglet, ré-ouvrir `https://bunsbao.kitchen-boost.fr/menu` dans un nouvel onglet.
+  8. Fermer l'onglet, ré-ouvrir `https://bunsbao.kitchen-boost.com/menu` dans un nouvel onglet.
 - **Attendu** : étape 2 : la page ne navigue PAS direct vers `/menu` — card pleine page avec emoji 🎁, titre « -10% sur ta prochaine commande », bouton primary « Ajouter à mon Wallet », lien skip « Plus tard → » ; étape 3 : navigation immédiate `/menu` ; étape 4 : bandeau fin vert clair en haut avec « 🎁 -10% offerts → ajoute la carte » + « × » à droite ; étape 5 : même bandeau sur `/panier` ; étape 6 : bandeau disparaît immédiatement ; étape 7 : bandeau reste caché (sessionStorage partagée intra-tab) ; étape 8 : bandeau RÉAPPARAÎT (sessionStorage neuve par tab).
 - **Couvre** : US 27, US 28 + slice #474 + module `decideWalletPromptVisibility`.
 
@@ -367,30 +367,30 @@ _À remplir au merge de la slice #459 (HITL #447 doit débloquer la chain)._
 
 ### WAL — Test WAL.3 : Bridge identité device B brand-new (tap pass sur autre device)
 
-- **Acteur** : device B iPhone (jamais ouvert `bunsbao.kitchen-boost.fr`, mode privé Safari) ; device A pour préparer le pass.
+- **Acteur** : device B iPhone (jamais ouvert `bunsbao.kitchen-boost.com`, mode privé Safari) ; device A pour préparer le pass.
 - **Pré-requis** : sur device A, checkout terminé jusqu'à install pass Wallet réel (fiche customer global avec `firstName + address + walletSerialNumber`) ; serial number récupéré (tap pass dans Apple Wallet → « (i) » info → champ « Serial Number » OR Convex dashboard `walletPasses.by_serial`).
-- **URL de départ** : `https://bunsbao.kitchen-boost.fr/?wallet=<serialNumber>` (simule tap pass)
+- **URL de départ** : `https://bunsbao.kitchen-boost.com/?wallet=<serialNumber>` (simule tap pass)
 - **Étapes** :
   1. Sur device B, ouvrir l'URL avec serial valide.
   2. Vérifier la URL bar.
   3. Attendre 1-2s puis refresh la page.
   4. Inspecter cookies dans DevTools Safari.
-- **Attendu** : étape 2 : redirection 307 immédiate vers `https://bunsbao.kitchen-boost.fr/` (URL propre, plus de `?wallet=` dans l'URL bar) ; étape 3 : champ adresse PRÉ-REMPLI silencieusement avec l'adresse Sophie de device A (fiche customer globale résolue via bridge) ; étape 4 : cookie `__Host-kb_wallet_bridge_pending` a DISPARU (clear API hit OK).
+- **Attendu** : étape 2 : redirection 307 immédiate vers `https://bunsbao.kitchen-boost.com/` (URL propre, plus de `?wallet=` dans l'URL bar) ; étape 3 : champ adresse PRÉ-REMPLI silencieusement avec l'adresse Sophie de device A (fiche customer globale résolue via bridge) ; étape 4 : cookie `__Host-kb_wallet_bridge_pending` a DISPARU (clear API hit OK).
 - **Couvre** : US 40 + slice #475 + module `decideWalletBridgeInterception`, `WalletBridge` ConvexCredentials provider.
 
 ### WAL — Test WAL.4 : Bridge cross-resto + serial invalide + deep-link sous-route
 
 - **Acteur** : device A iPhone (cookies device A intacts) + device B fresh.
 - **Pré-requis** : 2 tenants actifs (`bunsbao` + `latablelibanaise`), Sophie a déjà commandé sur `bunsbao` (savedPaymentMethodId stripe), serial valide récupéré.
-- **URL de départ** : `https://latablelibanaise.kitchen-boost.fr/?wallet=<serialNumber>` (cross-resto) puis 3 cas invalides.
+- **URL de départ** : `https://latablelibanaise.kitchen-boost.com/?wallet=<serialNumber>` (cross-resto) puis 3 cas invalides.
 - **Étapes** :
   1. Sur device A, ouvrir l'URL cross-resto avec serial valide. Vérifier URL bar + cookie tenant.
   2. Refresh la page.
   3. Terminer un checkout sur `latablelibanaise` (Sophie n'y a JAMAIS commandé).
-  4. Sur device B (vide cookies), ouvrir `https://bunsbao.kitchen-boost.fr/?wallet=fake-not-a-real-serial-99999`.
-  5. Sur device B, ouvrir `https://bunsbao.kitchen-boost.fr/?wallet=abc` (trop court) et `?wallet=` (vide).
-  6. Sur device B, ouvrir `https://bunsbao.kitchen-boost.fr/menu?wallet=<serialNumber>` (deep-link sous-route).
-- **Attendu** : étape 1 : redirection 307 vers `https://latablelibanaise.kitchen-boost.fr/` (URL propre), cookie `__Host-kb_tenant` = id La Table Libanaise ; étape 2 : address-first pré-rempli avec adresse Sophie (même customer global cross-tenant) ; étape 3 : checkout réutilise `savedPaymentMethodId` Sophie (clone Stripe Customer cross-tenant — chantier 2.5-D), pas de re-saisie carte ; étape 4 : 307 vers URL propre, PAS de cookie `_pending` (fail closed côté backend — `null` retourné), UI ne crash pas, address-first s'affiche normalement ; étape 5 : URL clean, pas de cookie, pas de bridge (`strip-only` côté middleware) ; étape 6 : 307 vers `https://bunsbao.kitchen-boost.fr/menu` (path préservé), `<WalletBridgeRunner>` s'active sur `/menu` aussi, refresh → menu Buns & Bao avec session Sophie bridgée.
+  4. Sur device B (vide cookies), ouvrir `https://bunsbao.kitchen-boost.com/?wallet=fake-not-a-real-serial-99999`.
+  5. Sur device B, ouvrir `https://bunsbao.kitchen-boost.com/?wallet=abc` (trop court) et `?wallet=` (vide).
+  6. Sur device B, ouvrir `https://bunsbao.kitchen-boost.com/menu?wallet=<serialNumber>` (deep-link sous-route).
+- **Attendu** : étape 1 : redirection 307 vers `https://latablelibanaise.kitchen-boost.com/` (URL propre), cookie `__Host-kb_tenant` = id La Table Libanaise ; étape 2 : address-first pré-rempli avec adresse Sophie (même customer global cross-tenant) ; étape 3 : checkout réutilise `savedPaymentMethodId` Sophie (clone Stripe Customer cross-tenant — chantier 2.5-D), pas de re-saisie carte ; étape 4 : 307 vers URL propre, PAS de cookie `_pending` (fail closed côté backend — `null` retourné), UI ne crash pas, address-first s'affiche normalement ; étape 5 : URL clean, pas de cookie, pas de bridge (`strip-only` côté middleware) ; étape 6 : 307 vers `https://bunsbao.kitchen-boost.com/menu` (path préservé), `<WalletBridgeRunner>` s'active sur `/menu` aussi, refresh → menu Buns & Bao avec session Sophie bridgée.
 - **Couvre** : US 41, US 42 + slice #475 + module `decideWalletBridgeInterception`.
 
 ---
@@ -405,7 +405,7 @@ _À remplir au merge de la slice #459 (HITL #447 doit débloquer la chain)._
 
 - **Acteur** : téléphone Android avec Chrome ET iPhone avec Safari (test en parallèle).
 - **Pré-requis** : tenant `bunsbao`, accès Convex dashboard pour vérif backend.
-- **URL de départ** : `https://bunsbao.kitchen-boost.fr/`
+- **URL de départ** : `https://bunsbao.kitchen-boost.com/`
 - **Étapes (Android)** :
   1. Sur Android Chrome, valider l'adresse address-first, attendre `/menu`.
   2. Observer absence de bouton (cart vide).
@@ -423,7 +423,7 @@ _À remplir au merge de la slice #459 (HITL #447 doit débloquer la chain)._
 
 - **Acteur** : Android Chrome, domaine resto frais (mode incognito ou autre device pour `beforeinstallprompt` non consommé).
 - **Pré-requis** : `beforeinstallprompt` disponible (mode incognito).
-- **URL de départ** : `https://bunsbao.kitchen-boost.fr/`
+- **URL de départ** : `https://bunsbao.kitchen-boost.com/`
 - **Étapes** :
   1. Mode incognito Android Chrome, address-first → add cart sur `/menu`.
   2. Observer bouton « 📲 Installer ».

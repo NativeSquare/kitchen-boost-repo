@@ -7,11 +7,13 @@
 ## Pourquoi
 
 L'erreur CRUNCH KINGS J+1 zéro vente a montré que :
+
 1. Sans reviews visibles, la fiche ne convertit pas (drop scroll → clic 97,9%)
 2. Les avis grey via comptes farming = solution court terme limitée
 3. Les vrais avis ont besoin d'être incentivés ET filtrés (avis < 5★ ne doivent pas être publiés sur Uber pour préserver le rating)
 
 Cette PWA résout les 3 problèmes en un :
+
 - **Filtre review gating** (gris légal mais pratique secteur) : les < 5★ vont vers feedback privé KB, les ≥ 5★ sont redirigés vers l'app Uber pour publier
 - **Capture push notification** : KB détient le canal direct au client après sa 1ère commande, sans payer 30% Uber ni payer SMS
 - **Passerelle SaaS** : c'est le MVP V0 du produit KitchenBoost que les restos clients consomment
@@ -21,7 +23,7 @@ Cette PWA résout les 3 problèmes en un :
 ```
 [Sticker QR dans le sac livraison]
   ↓ scan QR
-[kitchen-boost.fr/r/{slug-resto}]
+[kitchen-boost.com/r/{slug-resto}]
   ↓
 [Page claim KB]
   - "Tu as adoré ta commande ?"
@@ -34,7 +36,7 @@ Cette PWA résout les 3 problèmes en un :
   - Android : popup natif "Autoriser les notifications ?"
   - Stockage subscription en base avec tag resto + date
   ↓ selon flux
-  
+
 FLUX POSITIF (😍) :
   ↓
 [Redirection vers Uber Eats fiche resto]
@@ -65,7 +67,7 @@ Backend        : Next.js API routes
 DB             : Supabase (gratuit jusqu'à 50k users)
 Hébergement    : Vercel (gratuit)
 Admin push     : Next.js admin page protégée (auth basique env var)
-Domain         : kitchen-boost.fr/r/{slug-resto}
+Domain         : kitchen-boost.com/r/{slug-resto}
 ```
 
 ### Schema DB (Supabase)
@@ -121,21 +123,22 @@ POST /api/admin/push
 ### Service Worker (push handler)
 
 ```javascript
-self.addEventListener('push', (event) => {
+self.addEventListener("push", (event) => {
   const data = event.data.json();
   event.waitUntil(
     self.registration.showNotification(data.title, {
       body: data.body,
-      icon: data.icon || '/icon-192.png',
-      badge: '/badge-72.png',
-      data: { action_url: data.action_url }
-    })
+      icon: data.icon || "/icon-192.png",
+      badge: "/badge-72.png",
+      data: { action_url: data.action_url },
+    }),
   );
 });
 
-self.addEventListener('notificationclick', (event) => {
+self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = event.notification.data?.action_url || 'https://kitchen-boost.fr';
+  const url =
+    event.notification.data?.action_url || "https://kitchen-boost.com";
   event.waitUntil(clients.openWindow(url));
 });
 ```
@@ -161,6 +164,7 @@ self.addEventListener('notificationclick', (event) => {
 ## Roadmap V0 → V2
 
 ### V0 — MVP testable sur CRUNCH KINGS (semaine 2-3 mai)
+
 - Page claim avec slug par resto
 - Detection iOS/Android + instructions adaptées
 - Web Push subscription + storage Supabase
@@ -171,26 +175,28 @@ self.addEventListener('notificationclick', (event) => {
 - 1 push de remerciement post-subscription (test)
 
 ### V1 — Production CRUNCH KINGS + Sucrée Salé (semaine 4)
+
 - Multi-resto avec slugs
 - Tracking taux ouverture push (badge invisible PNG)
 - Dashboard analytique simple (subscribers count, sentiment ratio)
 - Désabonnement push compliant RGPD
 
 ### V2 — Self-service resto (semaine 6+)
+
 - Resto se logge sur dashboard, voit ses subscribers, envoie push custom
 - Templates de campagnes prédéfinies
 - Intégration éventuelle Stripe pour facturer KB 2€/client capté
 
 ## Coût et timeline
 
-| Poste | Estimation |
-|-------|-----------|
-| Dev V0 | 1 semaine 1 dev (avec pipeline IA NS) |
-| Dev V1 | 1 semaine supplémentaire |
-| Hébergement Vercel | 0€ (gratuit) |
-| Supabase | 0€ (gratuit 50k users) |
-| Domain kitchen-boost.fr | déjà acheté |
-| **Total V0+V1** | **2 semaines de dev, 0€ infra** |
+| Poste                    | Estimation                            |
+| ------------------------ | ------------------------------------- |
+| Dev V0                   | 1 semaine 1 dev (avec pipeline IA NS) |
+| Dev V1                   | 1 semaine supplémentaire              |
+| Hébergement Vercel       | 0€ (gratuit)                          |
+| Supabase                 | 0€ (gratuit 50k users)                |
+| Domain kitchen-boost.com | déjà acheté                           |
+| **Total V0+V1**          | **2 semaines de dev, 0€ infra**       |
 
 ## Décisions à prendre (validation Alex)
 
@@ -198,7 +204,7 @@ self.addEventListener('notificationclick', (event) => {
 - [ ] Validation du flow filter review gating (oui le risque légal est accepté)
 - [ ] Validation du wording UX précis (le wording évite-t-il le risque CGU Uber ?)
 - [ ] Récompense V0 : boisson offerte côté resto (simple) ou code promo Uber (intégration plus complexe) ?
-- [ ] Slug naming : `kitchen-boost.fr/r/crunch-kings` ou autre pattern ?
+- [ ] Slug naming : `kitchen-boost.com/r/crunch-kings` ou autre pattern ?
 
 ## Référentiel SaaS KitchenBoost
 

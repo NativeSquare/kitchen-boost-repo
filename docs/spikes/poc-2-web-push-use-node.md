@@ -22,7 +22,7 @@ export const pocWebPush = action({
   handler: async () => {
     const vapid = webpush.generateVAPIDKeys();
     webpush.setVapidDetails(
-      "mailto:ops@kitchen-boost.fr",
+      "mailto:ops@kitchen-boost.com",
       vapid.publicKey,
       vapid.privateKey,
     );

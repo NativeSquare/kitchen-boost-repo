@@ -45,26 +45,26 @@ Chaque issue publiée DOIT contenir un bloc Constraints identique à celui-ci, c
 
 ### Pré-requis HITL — infra externe (3 stories ops)
 
-#### HITL-1 — Provisionner wildcard DNS `*.kitchen-boost.fr` chez registrar
+#### HITL-1 — Provisionner wildcard DNS `*.kitchen-boost.com` chez registrar
 
 **Type** : HITL · **Blocked by** : aucun · **Decision refs** : Q1 · **User stories covered** : US 1 (foundation pour résolution tenant via hostname)
 
-**Action** : ajouter CNAME wildcard `*.kitchen-boost.fr` → Vercel chez registrar. Vérifier propagation.
+**Action** : ajouter CNAME wildcard `*.kitchen-boost.com` → Vercel chez registrar. Vérifier propagation.
 
 **Acceptance** :
 
-- [ ] `dig test.kitchen-boost.fr` retourne IP Vercel
-- [ ] `bunsbao.kitchen-boost.fr` accessible (même si la PWA n'est pas encore déployée, le DNS résout)
+- [ ] `dig test.kitchen-boost.com` retourne IP Vercel
+- [ ] `bunsbao.kitchen-boost.com` accessible (même si la PWA n'est pas encore déployée, le DNS résout)
 
 #### HITL-2 — Configurer Vercel project (region + env vars + domains)
 
 **Type** : HITL · **Blocked by** : HITL-1 · **Decision refs** : Q1, Q6, Q7 · **User stories covered** : US 1, US 46 (Stripe key) et infrastructure générale
 
-**Action** : créer project Vercel `apps/web`, pin region `cdg1` (Paris) ou `fra1` (Frankfurt), ajouter env vars (`NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `NEXT_PUBLIC_GOOGLE_PLACES_API_KEY`, `NEXT_PUBLIC_VAPID_PUBLIC_KEY`), ajouter wildcard domain `*.kitchen-boost.fr`.
+**Action** : créer project Vercel `apps/web`, pin region `cdg1` (Paris) ou `fra1` (Frankfurt), ajouter env vars (`NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `NEXT_PUBLIC_GOOGLE_PLACES_API_KEY`, `NEXT_PUBLIC_VAPID_PUBLIC_KEY`), ajouter wildcard domain `*.kitchen-boost.com`.
 
 **Acceptance** :
 
-- [ ] Vercel deploy preview accessible sur `<branch>.kitchen-boost.fr`
+- [ ] Vercel deploy preview accessible sur `<branch>.kitchen-boost.com`
 - [ ] Env vars visibles dans Vercel dashboard
 - [ ] Region pinning confirmé sur project settings
 
@@ -98,7 +98,7 @@ Chaque issue publiée DOIT contenir un bloc Constraints identique à celui-ci, c
 
 **Acceptance** :
 
-- [ ] Visite `bunsbao.kitchen-boost.fr` → cookie posé visible DevTools Application > Cookies
+- [ ] Visite `bunsbao.kitchen-boost.com` → cookie posé visible DevTools Application > Cookies
 - [ ] Visite avec cookie présent → middleware ne re-query pas Convex (check logs)
 - [ ] Visite host inconnu → page erreur "Resto non disponible"
 - [ ] Visite tenant supprimé (cookie stale) → clear cookie + page erreur
@@ -184,8 +184,8 @@ Chaque issue publiée DOIT contenir un bloc Constraints identique à celui-ci, c
 - [ ] Tap item → modal ouvre, URL `?item=...`, back button ferme modal
 - [ ] Modifier obligatoire bloque ajout panier + badge "À choisir" visible
 - [ ] Item out-of-stock grisé en temps réel sans reload (toggle KDS depuis admin → <500ms côté PWA)
-- [ ] Visite URL `bunsbao.kitchen-boost.fr/menu?promo=<smashBurgerId>` → scroll vers Smash Burger + highlight animation
-- [ ] Visite URL `bunsbao.kitchen-boost.fr/menu?item=<id>` → modal Smash Burger ouvre directement
+- [ ] Visite URL `bunsbao.kitchen-boost.com/menu?promo=<smashBurgerId>` → scroll vers Smash Burger + highlight animation
+- [ ] Visite URL `bunsbao.kitchen-boost.com/menu?item=<id>` → modal Smash Burger ouvre directement
 
 **Constraints** : cf. bloc en tête de ce fichier.
 

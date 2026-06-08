@@ -19,13 +19,13 @@
  * Acceptance ties to issue #169:
  *   - « Bouton "Se déconnecter" appelle `signOut` et redirige vers `/login` »
  *     → `handleSignOut` awaits `signOut()` then calls `navigate("/login")`.
- *   - « CTA "Contacter le support" ouvre `mailto:support@kitchen-boost.fr` »
+ *   - « CTA "Contacter le support" ouvre `mailto:support@kitchen-boost.com` »
  *     → `SUPPORT_MAILTO_HREF` is the literal `mailto:` href the component
  *     applies to the anchor / asChild link.
  */
 
 /** Canonical href for the "Contacter le support" CTA. */
-export const SUPPORT_MAILTO_HREF = "mailto:support@kitchen-boost.fr";
+export const SUPPORT_MAILTO_HREF = "mailto:support@kitchen-boost.com";
 
 /** Path the user is redirected to after sign-out. */
 export const SIGN_OUT_REDIRECT_PATH = "/login";

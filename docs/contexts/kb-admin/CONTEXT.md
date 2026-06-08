@@ -9,7 +9,7 @@ PRD : [70_kb_admin.md](../../prd/70_kb_admin.md)
 ## Language
 
 **KitchenBoost Admin** (= **KB Admin app**) :
-L'app web unique du système, accessible via `admin.kitchen-boost.fr` (ou équivalent — Q70-Q12). 1 codebase, 1 login, 1 URL. Le RBAC scope les composants et les routes API ; l'isolation des données est **applicative Convex** ([ADR 0010](../../adr/0010-isolation-multi-tenant-convex-applicative.md)), **pas de RLS Postgres**.
+L'app web unique du système, accessible via `admin.kitchen-boost.com` (ou équivalent — Q70-Q12). 1 codebase, 1 login, 1 URL. Le RBAC scope les composants et les routes API ; l'isolation des données est **applicative Convex** ([ADR 0010](../../adr/0010-isolation-multi-tenant-convex-applicative.md)), **pas de RLS Postgres**.
 _Avoid_: Backoffice (ambigu), Merchant Dashboard (terme aboli), Resto Dashboard (idem)
 
 **KB Admin** (rôle) :

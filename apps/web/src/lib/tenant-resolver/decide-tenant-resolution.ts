@@ -33,7 +33,7 @@ export type TenantResolutionInput = {
   host: string;
   /** Tenant id read from the `__Host-kb_tenant` cookie, or `null`. */
   cookieTenantId: string | null;
-  /** Marketing apex (`kitchen-boost.fr`). Everything under it is a tenant. */
+  /** Marketing apex (`kitchen-boost.com`). Everything under it is a tenant. */
   rootDomain: string;
   /** Convex `fetchQuery(api.lib.tenants.resolution.byId)` adapter. */
   fetchById: FetchResolver<string>;
@@ -87,7 +87,7 @@ function normaliseHost(host: string): string {
  * custom-domain candidate (or apex).
  *
  * The single-label depth guard prevents an accidental tenant-takeover via a
- * wildcard DNS misconfig (e.g. `weird.bunsbao.kitchen-boost.fr` must NOT
+ * wildcard DNS misconfig (e.g. `weird.bunsbao.kitchen-boost.com` must NOT
  * automatically resolve to `bunsbao`).
  */
 function deriveSlug(normalisedHost: string, rootDomain: string): string | null {

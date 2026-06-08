@@ -57,7 +57,7 @@ const modules = Object.fromEntries(
 type Seed = Awaited<ReturnType<typeof seedTwoTenantsAllRoles>>;
 
 const SECRET = "kb-internal-shared-secret";
-const PUSH_URL = "https://admin.kitchen-boost.fr/api/wallet/push";
+const PUSH_URL = "https://admin.kitchen-boost.com/api/wallet/push";
 
 /** A fetch stub that records calls and answers a fixed body / status. */
 function stubFetch(response: {

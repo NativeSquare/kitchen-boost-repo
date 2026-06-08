@@ -11,7 +11,7 @@ The PWA Client (`apps/web`) reads the following PUBLIC environment variables at 
 
 ### `NEXT_PUBLIC_GOOGLE_PLACES_API_KEY` (PWA-S3 #451)
 
-The address-first form mounts a Google Places Autocomplete widget restricted to French addresses (`componentRestrictions: { country: "fr" }`, `types: ["address"]` — decisions-log Q7). The key MUST be HTTP-referrer-restricted in the Google Cloud Console to `*.kitchen-boost.fr/*` + every custom resto domain (the key is exposed to the browser, the restriction is the security control).
+The address-first form mounts a Google Places Autocomplete widget restricted to French addresses (`componentRestrictions: { country: "fr" }`, `types: ["address"]` — decisions-log Q7). The key MUST be HTTP-referrer-restricted in the Google Cloud Console to `*.kitchen-boost.com/*` + every custom resto domain (the key is exposed to the browser, the restriction is the security control).
 
 For local development, create `apps/web/.env.local` with:
 

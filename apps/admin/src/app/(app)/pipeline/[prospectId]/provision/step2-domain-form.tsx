@@ -6,11 +6,11 @@
  *
  * Step 2 of the provisioning wizard = « domaine personnalisé optionnel »
  * (modèle Owner.com). The resto choisit soit un domaine custom, soit reste
- * sur le sous-domaine bootstrap `<slug>.kitchen-boost.fr`.
+ * sur le sous-domaine bootstrap `<slug>.kitchen-boost.com`.
  *
  * Surface (issue #268) :
  *   - Input `customDomain` (string optionnel, ex: `commander.le-petit-bistrot.fr`).
- *   - Affichage du sous-domaine bootstrap par défaut (`<slug>.kitchen-boost.fr`)
+ *   - Affichage du sous-domaine bootstrap par défaut (`<slug>.kitchen-boost.com`)
  *     en read-only à côté pour rappel.
  *   - Bouton « Enregistrer et continuer » → appelle `tenant.updateSettings({
  *     patch: { customDomain }})` côté wrapper.
@@ -64,7 +64,7 @@ export type Step2DomainFormProps = StepFormProps & {
   initialCustomDomain: string | undefined;
   /**
    * The bootstrap sub-domain rendered read-only for info next to the input.
-   * Computed by the parent as `<tenant.slug>.kitchen-boost.fr`.
+   * Computed by the parent as `<tenant.slug>.kitchen-boost.com`.
    */
   bootstrapHost: string;
   /**

@@ -9,7 +9,8 @@ deciders: Alex
 ## Contexte
 
 La surface client final V1 KitchenBoost peut prendre deux formes :
-- **PWA standalone** : `<slug>.kitchen-boost.fr` (ou domaine custom resto), site complet branded resto géré par KB
+
+- **PWA standalone** : `<slug>.kitchen-boost.com` (ou domaine custom resto), site complet branded resto géré par KB
 - **Module widget embed** : KB livre un widget JS/iframe que le resto colle dans son site existant (Wix, Wordpress, etc.) — panier/checkout en overlay
 
 Choix actait initialement vers PWA standalone, contesté en cours de session par Alex ("je voyais ça comme un module qui s'intègre à leur site"), tranché 2026-05-24.
@@ -35,7 +36,7 @@ Choix actait initialement vers PWA standalone, contesté en cours de session par
 
 ## Conséquences
 
-- **Resto avec site existant fort** doit redirect ses clients vers `<slug>.kitchen-boost.fr` (lien "Commander" sur son site host). Friction perçue par certains restos qui voulaient embed.
+- **Resto avec site existant fort** doit redirect ses clients vers `<slug>.kitchen-boost.com` (lien "Commander" sur son site host). Friction perçue par certains restos qui voulaient embed.
 - **Domain custom resto** restera supporté V1 (le resto peut configurer `commande.bunsbao.fr` qui pointe sur la PWA KB via DNS).
 - **V2 widget embed envisageable** sans push iOS, pour les restos qui ont déjà un site fort et qui acceptent la limitation (push Android uniquement + Wallet pass).
 - **Maintenance** : 1 codebase PWA + N tenants. Pas de N intégrations CMS différentes à maintenir.

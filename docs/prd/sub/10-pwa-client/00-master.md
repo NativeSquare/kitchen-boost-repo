@@ -15,7 +15,7 @@ Le client final mangeur (Sophie) arrive sur l'écosystème KitchenBoost via 4 en
 1. **QR code dans son sac de livraison Uber Eats** (scan chez elle après réception d'une cmd Uber Eats du resto Buns & Bao)
 2. **QR code sur la table du resto** (scan sur place pour consulter le menu / commander à emporter)
 3. **Lien push notification** depuis sa carte fidélité Wallet KB (transactionnel ou marketing tenant)
-4. **URL directe** (`bunsbao.kitchen-boost.fr` ou domaine custom resto, tapée manuellement ou cliquée depuis un email)
+4. **URL directe** (`bunsbao.kitchen-boost.com` ou domaine custom resto, tapée manuellement ou cliquée depuis un email)
 
 Dans tous les cas, elle doit pouvoir :
 
@@ -38,7 +38,7 @@ EN PARALLÈLE, KitchenBoost doit pouvoir **capter Sophie dans le moat consumer-s
 
 Construire la PWA client dans `apps/web` (réutiliser le scaffold après scrap legacy) : Next.js 16 + RSC + Tailwind v4 + Convex client + Stripe Elements + Apple/Google Wallet integration + Google Places autocomplete + web-push API.
 
-**Tenant resolution** : middleware Next.js Edge sur hostname (`<slug>.kitchen-boost.fr` ou domaine custom resto), résout `tenantId` via query Convex puis pose cookie HttpOnly `__Host-kb_tenant=<id>` (zéro re-query DB sur hits suivants). Wildcard DNS `*.kitchen-boost.fr` + Vercel project pinned region Paris/Frankfurt.
+**Tenant resolution** : middleware Next.js Edge sur hostname (`<slug>.kitchen-boost.com` ou domaine custom resto), résout `tenantId` via query Convex puis pose cookie HttpOnly `__Host-kb_tenant=<id>` (zéro re-query DB sur hits suivants). Wildcard DNS `*.kitchen-boost.com` + Vercel project pinned region Paris/Frankfurt.
 
 **Rendering strategy hybrid** :
 
@@ -72,7 +72,7 @@ Le modal bloquant final propose Wallet (primary) + Web Push (secondary, masqué 
 
 ### Découverte + Address-first
 
-1. As a first-time Sophie (no cookie), I want to arrive on `bunsbao.kitchen-boost.fr` and see the resto's logo + color in <2s, so that I trust I'm on a real brand and not a generic portal.
+1. As a first-time Sophie (no cookie), I want to arrive on `bunsbao.kitchen-boost.com` and see the resto's logo + color in <2s, so that I trust I'm on a real brand and not a generic portal.
 2. As a first-time Sophie, I want to be required to enter my delivery address via Google Places autocomplete (no free typing), so that the address is normalized and Uber Direct can quote reliably.
 3. As Sophie, I want my address to be validated automatically when I select a Google suggestion (no extra "Validate" button click), so I save one tap.
 4. As Sophie, I want to see in <1s whether delivery is possible from this resto to my address, so I don't waste time browsing a menu I can't order from.
@@ -180,7 +180,7 @@ _(Anciennement US 64 "offline form recovery checkout" droppée V1 — cf. Out of
 
 **Tenant resolution via middleware Edge** (Q1) :
 
-- Wildcard DNS `*.kitchen-boost.fr` + Vercel project routes to `apps/web`.
+- Wildcard DNS `*.kitchen-boost.com` + Vercel project routes to `apps/web`.
 - Middleware reads `host` header, on 1st hit queries Convex `tenants.bySlug` or `tenants.byCustomDomain`, sets cookie `__Host-kb_tenant=<tenantId>` (HttpOnly, Secure, host-only, 30j refresh).
 - Subsequent hits: middleware reads cookie, zero DB query.
 - `NextResponse.rewrite` internal (never redirect) to preserve SEO + cookie scope.
@@ -301,7 +301,7 @@ _(Anciennement US 64 "offline form recovery checkout" droppée V1 — cf. Out of
 
 **Frontend** :
 
-- Google Places `NEXT_PUBLIC_GOOGLE_PLACES_API_KEY` exposé + HTTP referrer restriction `*.kitchen-boost.fr/*` + custom domains. `componentRestrictions: { country: 'fr' }`, `types: ['address']`. Coût ~$85/mois après quota gratos $200.
+- Google Places `NEXT_PUBLIC_GOOGLE_PLACES_API_KEY` exposé + HTTP referrer restriction `*.kitchen-boost.com/*` + custom domains. `componentRestrictions: { country: 'fr' }`, `types: ['address']`. Coût ~$85/mois après quota gratos $200.
 - Address-first **auto-validate** au sélection suggestion (1 tap de moins). Chain : `signIn("anonymous")` → `getOrCreateCurrentCustomer` → `updateAddress` → `requestDeliveryQuote`.
 - Toggle Livraison/C&C header permanent, Context React (pas localStorage). **Switch sans re-quote** (2 modes cached dans verdict initial).
 - Latching au clic Payer : mutation `recaptureQuoteAtPayment` AVANT `confirmPayment`. Si fee monte → modal bloquant confirm.
@@ -371,7 +371,7 @@ Un test pertinent doit pouvoir échouer pour une vraie raison fonctionnelle (pas
 
 **Module 1 — `tenant-resolver`** :
 
-- `resolveTenantFromHost("bunsbao.kitchen-boost.fr") → "tenant_id_bunsbao"` (par slug)
+- `resolveTenantFromHost("bunsbao.kitchen-boost.com") → "tenant_id_bunsbao"` (par slug)
 - `resolveTenantFromHost("bunsbao.fr") → "tenant_id_bunsbao"` (par custom domain)
 - `resolveTenantFromHost("unknown.fr") → null` (host inconnu)
 - Cookie cache hit/miss (poser cookie au 1er hit, lire cookie au 2ème sans re-query)

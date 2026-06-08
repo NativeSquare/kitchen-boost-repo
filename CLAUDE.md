@@ -8,12 +8,14 @@ KitchenBoost est une marque exploitee par **NativeSquare** (pas d'entite juridiq
 **Stack :** React, Next.js, React Native, TypeScript
 
 **Domaines KitchenBoost :**
-- kitchen-boost.fr
+
+- kitchen-boost.com
 - kitchen-boost.com
 - kitchen-boost.store
 - kitchen-boost.org
 
 **Direction artistique :**
+
 - Palette : vert fonce (#1B7A3D), fond blanc, texte noir (#111111), accents jaune/or (#E5A100)
 - Logo : typographique, "Kitchen" en noir + "Boost" en vert, sans-serif bold (Inter, Poppins ou Montserrat)
 - Ton : pro, concret, resultats. Pas de fioritures.
@@ -51,8 +53,8 @@ On a rejoint le **Club Virtual Eats** de Yanis (formation restaurants virtuels s
 | Acteur                 | Modele                                                            | En France ?             | Notre difference                                                              |
 | ---------------------- | ----------------------------------------------------------------- | ----------------------- | ----------------------------------------------------------------------------- |
 | **Owner.com**          | Template site + commande, $499/mois, $1B valorisation             | NON (US only)           | On est le Owner.com francais                                                  |
-| **Taster / Guigny**    | Creation de marques virtuelles de A a Z (fournisseurs, packaging) | OUI                     | Modele different — ils creent la marque, nous on utilise la cuisine existante  |
-| **Virtual Eats**        | Restaurants virtuels + upsell via tiers                           | OUI (petit, 20 membres) | On construit le produit nous-memes vs revendre un tiers                       |
+| **Taster / Guigny**    | Creation de marques virtuelles de A a Z (fournisseurs, packaging) | OUI                     | Modele different — ils creent la marque, nous on utilise la cuisine existante |
+| **Virtual Eats**       | Restaurants virtuels + upsell via tiers                           | OUI (petit, 20 membres) | On construit le produit nous-memes vs revendre un tiers                       |
 | **Zelty / Innovorder** | Caisse + commande en ligne                                        | OUI                     | Pas d'app mobile native, pas de done-for-you, pas de prospection terrain      |
 | **Zenchef**            | Reservation + site                                                | OUI                     | Pas de commande/livraison                                                     |
 
@@ -61,6 +63,7 @@ On a rejoint le **Club Virtual Eats** de Yanis (formation restaurants virtuels s
 ### Philosophie
 
 Phase 1 = valider deux hypotheses :
+
 1. On arrive a acquerir des restaurateurs sur le terrain
 2. On arrive a leur ramener du business
 
@@ -83,6 +86,7 @@ QR code dans les sacs Uber Eats
 ### Vision long terme (pas pour maintenant)
 
 A terme, KitchenBoost evoluera vers une suite complete :
+
 - Site/app de commande directe + Uber Direct (livraison sans commission marketing)
 - Programme fidelite + push notifications + CRM client
 - QR code commande sur place
@@ -98,6 +102,7 @@ A terme, KitchenBoost evoluera vers une suite complete :
 Alex se deplace personnellement dans les restaurants (Essonne / sud IdF). Objectif : 5 restaurants signes.
 
 **Le pitch :**
+
 - "On met un QR code dans vos sacs de livraison. Le client le scanne, et la prochaine fois il commande directement chez vous."
 - "On se remunere 2€ par nouveau client qu'on vous ramene. Si on vous ramene rien, vous payez rien."
 

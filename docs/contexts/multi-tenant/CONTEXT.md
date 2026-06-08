@@ -7,7 +7,7 @@ PRD : [50_multi_tenant_saas.md](../../prd/50_multi_tenant_saas.md)
 ## Language
 
 **Tenant** (= **Établissement**) :
-1 location physique d'un resto. Possède un `slug` unique (→ sous-domaine `<slug>.kitchen-boost.fr` **technique de bootstrap**, jamais la face publique) et un **domaine de marque custom** (`customDomain`, ex. `bunsbao.fr` — **face publique, norme V1**), 1 compte Stripe Connect Express (potentiellement **partagé** entre tenants même SIRET — cf. ci-dessous), **1 compte Uber Direct** (toujours par tenant — adresse pickup unique), 1 menu, 1 contrat (ou avenant). Statuts : `active` / `pending` / `suspended` / `disabled`.
+1 location physique d'un resto. Possède un `slug` unique (→ sous-domaine `<slug>.kitchen-boost.com` **technique de bootstrap**, jamais la face publique) et un **domaine de marque custom** (`customDomain`, ex. `bunsbao.fr` — **face publique, norme V1**), 1 compte Stripe Connect Express (potentiellement **partagé** entre tenants même SIRET — cf. ci-dessous), **1 compte Uber Direct** (toujours par tenant — adresse pickup unique), 1 menu, 1 contrat (ou avenant). Statuts : `active` / `pending` / `suspended` / `disabled`.
 _Avoid_: Account, Workspace, Restaurant (acceptable français pour l'entité physique), Restaurateur (= terme business pour le gérant)
 
 **Restaurateur** :
@@ -19,7 +19,7 @@ Identifiant URL-friendly unique du tenant (ex: `buns-bao`). Immuable après cré
 _Avoid_: ID, Handle
 
 **Custom domain** :
-Domaine de marque acheté par le resto (ex: `bunsbao.fr` / `commander.bunsbao.fr`) pointant vers KB via CNAME. **Face publique du resto = norme V1** (modèle Owner.com). SSL auto. Le sous-domaine `<slug>.kitchen-boost.fr` reste un **bootstrap technique** (URL Day-1 / preview), jamais exposé comme face publique. Résolution tenant : match hostname sur `customDomain`, fallback slug.
+Domaine de marque acheté par le resto (ex: `bunsbao.fr` / `commander.bunsbao.fr`) pointant vers KB via CNAME. **Face publique du resto = norme V1** (modèle Owner.com). SSL auto. Le sous-domaine `<slug>.kitchen-boost.com` reste un **bootstrap technique** (URL Day-1 / preview), jamais exposé comme face publique. Résolution tenant : match hostname sur `customDomain`, fallback slug.
 _Avoid_: Vanity URL, Branded domain
 
 **users (table)** :
@@ -85,7 +85,7 @@ _Avoid_: Sudo, Login-as
 
 **Alex** : Quand un client tape `commander.bunsbao.fr`, comment on retrouve le tenant ?
 
-**Dev** : DNS → CNAME → match `customDomain` (face publique) en DB tenants → on récupère `tenant_id`. Si pas de match, fallback `<slug>.kitchen-boost.fr` (bootstrap technique). Le `tenant_id` est injecté dans le contexte de chaque requête backend, et tout WHERE métier filtre dessus. PWA client = user anonyme Convex Auth (pas de login explicite), scope tenant par domain match.
+**Dev** : DNS → CNAME → match `customDomain` (face publique) en DB tenants → on récupère `tenant_id`. Si pas de match, fallback `<slug>.kitchen-boost.com` (bootstrap technique). Le `tenant_id` est injecté dans le contexte de chaque requête backend, et tout WHERE métier filtre dessus. PWA client = user anonyme Convex Auth (pas de login explicite), scope tenant par domain match.
 
 **Alex** : Khan login KB Admin. Comment on s'assure qu'il voit que son tenant Buns & Bao ?
 

@@ -19,14 +19,14 @@ import {
  * via the Closing auto-bascule, slice C) into a live tenant:
  *
  *  1. validate a UNIQUE slug (a duplicate would collide on the bootstrap
- *     sub-domain `<slug>.kitchen-boost.fr` — rejected);
+ *     sub-domain `<slug>.kitchen-boost.com` — rejected);
  *  2. create the `tenants` row (`pending` lifecycle), stamping `customDomain`
  *     (public face, norm V1) when supplied;
  *  3. attach a KB Manager — REUSE an existing `users` row by email (cas Walid:
  *     one user, N tenants) or create a fresh one — via a `userTenants` link with
  *     resto role `kb_manager`;
  *  4. configure the tenant domain: `customDomain` is the PUBLIC FACE; the
- *     `<slug>.kitchen-boost.fr` sub-domain is a BOOTSTRAP/fallback only, never the
+ *     `<slug>.kitchen-boost.com` sub-domain is a BOOTSTRAP/fallback only, never the
  *     public face (PRD 50 §3, décision 2026-05-25);
  *  5. produce the QR data (the PWA URL the sticker encodes), resolving to the
  *     `customDomain` when set, with the bootstrap sub-domain as fallback ONLY —
@@ -54,8 +54,8 @@ import {
  * explicit richer `tenant.provision` row carrying the new tenant id.
  */
 
-/** The KB base domain the bootstrap sub-domain is built on (kitchen-boost.fr). */
-const KB_BASE_DOMAIN = "kitchen-boost.fr";
+/** The KB base domain the bootstrap sub-domain is built on (kitchen-boost.com). */
+const KB_BASE_DOMAIN = "kitchen-boost.com";
 
 /**
  * PURE: a URL-friendly, unique-candidate slug from a free-text restaurant name
@@ -76,7 +76,7 @@ export function generateSlug(name: string): string {
 /**
  * PURE: the tenant's PUBLIC PWA URL the QR sticker encodes (PRD 50 §3). Resolves
  * to the `customDomain` (public face, norm V1, modèle Owner.com) when set, with
- * the bootstrap `<slug>.kitchen-boost.fr` sub-domain as fallback ONLY — never
+ * the bootstrap `<slug>.kitchen-boost.com` sub-domain as fallback ONLY — never
  * hardcoded to the sub-domain when a custom domain exists.
  */
 export function tenantPwaUrl(tenant: {
@@ -151,7 +151,7 @@ export const provisionTenant = kbAdminMutation({
     }
 
     // 1. Unique slug FIRST, before any write — a duplicate would collide on the
-    //    bootstrap sub-domain `<slug>.kitchen-boost.fr` (PRD 50 §3, edge case
+    //    bootstrap sub-domain `<slug>.kitchen-boost.com` (PRD 50 §3, edge case
     //    "2 restos veulent le même slug" → refus).
     const slugTaken = await getTenantBySlug(ctx, args.slug);
     if (slugTaken !== null) {

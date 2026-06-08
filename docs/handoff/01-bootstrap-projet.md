@@ -15,15 +15,17 @@ Lire d'abord [CLAUDE.md](../../CLAUDE.md) à la racine pour le contexte business
 ## 2. État actuel à date
 
 ✅ **Fait** (output des sessions précédentes) :
+
 - 10 bounded contexts DDD définis avec glossaires (`docs/contexts/`)
 - 10 PRDs produit + 1 master + roadmap (`docs/prd/`)
 - 9 ADRs publiés (`docs/adr/`) — 0001 superseded par 0007
 - Gap analysis stack technique vs requirements (consolidé dans STACK.md)
 - Décision stack actée : template NativeSquare (Convex + Next.js + Expo + Resend)
 - Schéma d'architecture global ([docs/diagrams/architecture-v1.excalidraw](../diagrams/architecture-v1.excalidraw))
-- Workflow de production formalisé ([docs/contexts/_architecture/WORKFLOW.md](../contexts/_architecture/WORKFLOW.md))
+- Workflow de production formalisé ([docs/contexts/\_architecture/WORKFLOW.md](../contexts/_architecture/WORKFLOW.md))
 
 ❌ **Pas encore fait** (par ordre de priorité) :
+
 1. **Setup workflow** (§8 de WORKFLOW.md) — push GitHub + labels + CI + ESLint custom + Husky + skills custom AFK
 2. **POCs sprint 0** — 5 spikes Convex à valider (cf. STACK.md §7)
 3. **Premier PRD `/to-prd`** — chantier 1.x "Foundation multi-tenant backend"
@@ -31,15 +33,15 @@ Lire d'abord [CLAUDE.md](../../CLAUDE.md) à la racine pour le contexte business
 
 ## 3. Documents clés à lire (dans l'ordre)
 
-| Ordre | Document | Pourquoi |
-|---|---|---|
-| 1 | [CLAUDE.md](../../CLAUDE.md) | Contexte business KitchenBoost |
-| 2 | [CONTEXT-MAP.md](../../CONTEXT-MAP.md) | 10 bounded contexts + vocabulaire transverse |
-| 3 | [docs/contexts/_architecture/STACK.md](../contexts/_architecture/STACK.md) | Stack technique V1, décisions actées, mapping contexts↔code, shopping list libs, patterns clés (`withTenant`, idempotence webhooks, envelope encryption), POCs sprint 0, plan d'attaque chantiers |
-| 4 | [docs/contexts/_architecture/WORKFLOW.md](../contexts/_architecture/WORKFLOW.md) | Workflow complet : session active / coding nuit / review matin, skills utilisés, setup prérequis |
-| 5 | [docs/prd/00_master.md](../prd/00_master.md) | Vision V1/V2/V3 + personas + business model |
-| 6 | [docs/prd/roadmap.md](../prd/roadmap.md) | Roadmap exécution |
-| 7 | [docs/adr/README.md](../adr/README.md) | Liste des 9 ADRs (lire les ADRs cités quand on touche un contexte) |
+| Ordre | Document                                                                          | Pourquoi                                                                                                                                                                                          |
+| ----- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1     | [CLAUDE.md](../../CLAUDE.md)                                                      | Contexte business KitchenBoost                                                                                                                                                                    |
+| 2     | [CONTEXT-MAP.md](../../CONTEXT-MAP.md)                                            | 10 bounded contexts + vocabulaire transverse                                                                                                                                                      |
+| 3     | [docs/contexts/\_architecture/STACK.md](../contexts/_architecture/STACK.md)       | Stack technique V1, décisions actées, mapping contexts↔code, shopping list libs, patterns clés (`withTenant`, idempotence webhooks, envelope encryption), POCs sprint 0, plan d'attaque chantiers |
+| 4     | [docs/contexts/\_architecture/WORKFLOW.md](../contexts/_architecture/WORKFLOW.md) | Workflow complet : session active / coding nuit / review matin, skills utilisés, setup prérequis                                                                                                  |
+| 5     | [docs/prd/00_master.md](../prd/00_master.md)                                      | Vision V1/V2/V3 + personas + business model                                                                                                                                                       |
+| 6     | [docs/prd/roadmap.md](../prd/roadmap.md)                                          | Roadmap exécution                                                                                                                                                                                 |
+| 7     | [docs/adr/README.md](../adr/README.md)                                            | Liste des 9 ADRs (lire les ADRs cités quand on touche un contexte)                                                                                                                                |
 
 Les PRDs produit individuels (`docs/prd/10_*.md` à `90_*.md`) et les CONTEXT.md par contexte (`docs/contexts/<context>/CONTEXT.md`) sont lus à la demande quand on attaque le chantier correspondant.
 
@@ -48,6 +50,7 @@ Les PRDs produit individuels (`docs/prd/10_*.md` à `90_*.md`) et les CONTEXT.md
 ### Étape 0 — Vérifier que tout est copié
 
 Avant tout, demander à Alex de confirmer que la racine du repo `kitchen-boost-repo` contient :
+
 - `docs/` (dossier copié depuis projet KitchenBoost)
 - `CONTEXT-MAP.md` (à la racine)
 - `CLAUDE.md` (à la racine — contient le contexte business)
@@ -56,6 +59,7 @@ Avant tout, demander à Alex de confirmer que la racine du repo `kitchen-boost-r
 ### Étape 1 — Setup workflow (1 journée, en session active avec Alex)
 
 Suivre [WORKFLOW.md §8](../contexts/_architecture/WORKFLOW.md) étape par étape :
+
 1. `git remote add origin` + push initial sur GitHub privé
 2. Créer les labels GitHub (cf. WORKFLOW.md §6)
 3. Invoquer `/setup-matt-pocock-skills` pour mapper les labels canoniques
@@ -71,10 +75,11 @@ Suivre [WORKFLOW.md §8](../contexts/_architecture/WORKFLOW.md) étape par étap
 ### Étape 2 — POCs sprint 0 (2-3 jours, possiblement avec `/prototype` skill)
 
 Cf. STACK.md §7. 5 POCs à valider :
+
 1. Convex `httpAction` préserve raw body pour vérif HMAC Stripe/Uber ?
 2. Convex `"use node"` action supporte `web-push` ?
 3. Convex `"use node"` action supporte `passkit-generator` ?
-4. Convex Auth Anonymous adapter supporte cookie `Domain=.kitchen-boost.fr` cross-subdomain ?
+4. Convex Auth Anonymous adapter supporte cookie `Domain=.kitchen-boost.com` cross-subdomain ?
 5. Convex `httpRouter` supporte path params dynamiques ?
 
 Output attendu : 1 commit par POC avec README "verdict" Go/No-Go. Si un POC échoue, offload sur Next.js API route Node runtime (la stack tient quand même).
@@ -82,6 +87,7 @@ Output attendu : 1 commit par POC avec README "verdict" Go/No-Go. Si un POC éch
 ### Étape 3 — Premier chantier de production
 
 Suivre WORKFLOW.md §3 :
+
 1. `/grill-with-docs` sur le chantier 1 "Foundation multi-tenant backend" (cf. STACK.md §3 plan d'attaque Phase 1)
 2. `/to-prd` → publie issue GitHub "epic" `ready-for-agent`
 3. `/to-issues` → éclate en 3-8 tracer bullets verticaux AFK/HITL
@@ -89,23 +95,24 @@ Suivre WORKFLOW.md §3 :
 
 ## 5. Skills suggérés (dans l'ordre d'utilisation)
 
-| Skill | Quand | Où | Notes |
-|---|---|---|---|
-| `/setup-matt-pocock-skills` | Setup étape 3 | Une fois | Configure mapping labels GitHub ↔ canoniques |
-| `/write-a-skill` | Setup étapes 9-10 | Pour créer `/work-next-agent-issue` + `/work-all-agent-issues` | Skills custom AFK |
-| `/prototype` | POCs sprint 0 | Pour chaque spike | Garde le code POC isolé, ne pas polluer le repo |
-| `/grill-with-docs` | Avant chaque `/to-prd` | Chantier par chantier | Résout les open questions du PRD source |
-| `/to-prd` | Après `/grill-with-docs` | Chantier par chantier | Publie issue epic `ready-for-agent` |
-| `/to-issues` | Après `/to-prd` | Sur l'issue epic | Éclate en tracer bullets AFK/HITL |
-| `/triage` | Quotidien | Sur issues `needs-info` ou `needs-triage` | Maintient l'état du backlog |
-| `/tdd` | Si l'agent dérive du TDD | Pendant phase 2 nuit | Rappelle la discipline test-first |
-| `/improve-codebase-architecture` | Si modules deviennent shallow | Périodique | Refactor en deep modules avec API publique |
-| `/diagnose` | Issues `blocked` | Au matin | Comprendre pourquoi l'agent a bloqué |
-| `/zoom-out` | Si perte vue d'ensemble | À la demande | Re-cadrer où on en est |
+| Skill                            | Quand                         | Où                                                             | Notes                                           |
+| -------------------------------- | ----------------------------- | -------------------------------------------------------------- | ----------------------------------------------- |
+| `/setup-matt-pocock-skills`      | Setup étape 3                 | Une fois                                                       | Configure mapping labels GitHub ↔ canoniques    |
+| `/write-a-skill`                 | Setup étapes 9-10             | Pour créer `/work-next-agent-issue` + `/work-all-agent-issues` | Skills custom AFK                               |
+| `/prototype`                     | POCs sprint 0                 | Pour chaque spike                                              | Garde le code POC isolé, ne pas polluer le repo |
+| `/grill-with-docs`               | Avant chaque `/to-prd`        | Chantier par chantier                                          | Résout les open questions du PRD source         |
+| `/to-prd`                        | Après `/grill-with-docs`      | Chantier par chantier                                          | Publie issue epic `ready-for-agent`             |
+| `/to-issues`                     | Après `/to-prd`               | Sur l'issue epic                                               | Éclate en tracer bullets AFK/HITL               |
+| `/triage`                        | Quotidien                     | Sur issues `needs-info` ou `needs-triage`                      | Maintient l'état du backlog                     |
+| `/tdd`                           | Si l'agent dérive du TDD      | Pendant phase 2 nuit                                           | Rappelle la discipline test-first               |
+| `/improve-codebase-architecture` | Si modules deviennent shallow | Périodique                                                     | Refactor en deep modules avec API publique      |
+| `/diagnose`                      | Issues `blocked`              | Au matin                                                       | Comprendre pourquoi l'agent a bloqué            |
+| `/zoom-out`                      | Si perte vue d'ensemble       | À la demande                                                   | Re-cadrer où on en est                          |
 
 ## 6. Conventions et règles d'or (non-négociables)
 
 ### Stack et architecture
+
 - **Ne JAMAIS toucher à la structure du template** `kitchen-boost-repo` (apps/web, apps/admin, apps/native, packages/backend, packages/shared, packages/transactional). On étend, on ne reconstruit pas.
 - **Toute donnée métier vit dans Convex**. Pas de base externe.
 - **Multi-tenant via `tenant_id` partout + helpers applicatifs** (`withTenant` / `tenantQuery` / `tenantMutation`). RLS Postgres n'existe pas dans Convex → discipline applicative.
@@ -113,6 +120,7 @@ Suivre WORKFLOW.md §3 :
 - **API publique des modules figée** via `index.ts` par feature dans `convex/lib/<feature>/`. Pas d'import croisé hors de cette API.
 
 ### Quality
+
 - **TDD obligatoire** : tests écrits AVANT le code, commit order respecté (`test:` → `feat:` → `refactor:`)
 - **Coverage Vitest ≥ 80%** sur les modules backend
 - **`withTenant` partout** : ESLint custom rule bloque le merge sinon
@@ -120,11 +128,13 @@ Suivre WORKFLOW.md §3 :
 - **Pas de secrets en commit** : pre-commit hook git-secrets
 
 ### Produit
+
 - **Ne JAMAIS inventer** des specs resto (ingrédients, recettes, prix carte). Tout ce qui n'est pas sourcé reste open question.
 - **V1 = 1 resto pilote Buns & Bao**. Pas de Hubrise (V2), pas de SMS (V2), pas de Critical Alerts Apple (V2), pas de KMS externe (V2).
 - **MOAT** = base clients globale cross-tenant. Article 2 ter du contrat verrouille. Anti-extraction technique en V2, V1 = pas de liste individuelle côté KB Manager.
 
 ### Workflow
+
 - **Pas de GitHub Actions Anthropic API** — Claude Code tourne en local uniquement (abonnement Alex). GitHub Actions OK pour CI Node/pnpm classique (gratuit, n'utilise pas l'API Anthropic).
 - **PRs review obligatoire** avant merge sur `main`. Pas d'auto-merge.
 - **Branche `agent/<issue-number>`** pour chaque story codée par l'agent.
@@ -165,6 +175,7 @@ Contenu : modèle commission, MOAT base clients, architecture cuisine V1, DA, on
 ## 10. Question d'entrée à poser à Alex
 
 Avant de coder quoi que ce soit, vérifier avec Alex :
+
 1. Tous les docs copiés (cf. §4 étape 0) ?
 2. Repo GitHub déjà créé / à créer ?
 3. Comptes externes prêts : Apple Developer ✅ (Alex a la licence), Google Cloud, Stripe Connect, Uber Direct, Resend, Sentry ?

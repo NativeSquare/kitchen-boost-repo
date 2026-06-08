@@ -75,7 +75,7 @@ export type Step8Recap = {
   domaine: {
     /** When set, the customer-facing domain (Owner.com model). */
     customDomain: string | undefined;
-    /** The bootstrap sub-domain `<slug>.kitchen-boost.fr` (always present). */
+    /** The bootstrap sub-domain `<slug>.kitchen-boost.com` (always present). */
     bootstrapHost: string;
   };
   stripe: {
@@ -121,7 +121,7 @@ export type Step8ActivationFormProps = Omit<StepFormProps, "onNext"> & {
   slug: string;
   /**
    * The final PWA URL the customer will hit (`https://<customDomain>` or
-   * `https://<slug>.kitchen-boost.fr`). Surfaced in the confirmation dialog
+   * `https://<slug>.kitchen-boost.com`). Surfaced in the confirmation dialog
    * as the canonical « URL PWA finale » cue.
    */
   pwaUrl: string;

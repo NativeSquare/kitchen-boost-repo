@@ -190,7 +190,7 @@ function defaultProps(
 ): Step2DomainFormProps {
   return {
     initialCustomDomain: undefined,
-    bootstrapHost: "lartisan.kitchen-boost.fr",
+    bootstrapHost: "lartisan.kitchen-boost.com",
     onSave: vi.fn().mockResolvedValue(undefined),
     onSkip: vi.fn(),
     isSubmitting: false,
@@ -206,7 +206,7 @@ describe("Step2DomainForm — F-WIZARD [4/10] (#268)", () => {
     const tree = serialize(Step2DomainForm(defaultProps()));
     expect(findInputByName(tree, "customDomain")).not.toBeNull();
     // The bootstrap host is rendered somewhere in the tree for info.
-    expect(allText(tree)).toContain("lartisan.kitchen-boost.fr");
+    expect(allText(tree)).toContain("lartisan.kitchen-boost.com");
   });
 
   it("pre-fills the input from `initialCustomDomain` (re-visite après save)", () => {

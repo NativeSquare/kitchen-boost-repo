@@ -46,7 +46,7 @@ import {
 } from "@/lib/wallet-bridge";
 
 const TENANT_COOKIE = "__Host-kb_tenant";
-const ROOT_DOMAIN = "kitchen-boost.fr";
+const ROOT_DOMAIN = "kitchen-boost.com";
 /** 30-day cookie lifetime (PRD §10 — refresh on every hit). */
 const COOKIE_MAX_AGE_S = 60 * 60 * 24 * 30;
 

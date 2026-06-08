@@ -102,12 +102,12 @@ import {
  *     CTA opens the App Store / Play Store directly (same URLs the
  *     #394 `ForceUpdateGate` uses on `block-native-update`).
  *
- *  9. **Lien support KB** — `mailto:support@kitchen-boost.fr` with a
+ *  9. **Lien support KB** — `mailto:support@kitchen-boost.com` with a
  *     diagnostic-friendly subject (device + tenant id), so support can
  *     triage the message without back-and-forth.
  */
 
-const SUPPORT_EMAIL = "support@kitchen-boost.fr";
+const SUPPORT_EMAIL = "support@kitchen-boost.com";
 const KB_ADMIN_URL = "https://admin.kitchen-boost.com";
 const STORE_LINKS = {
   ios: "https://apps.apple.com/",

@@ -11,17 +11,20 @@
 KitchenBoost devient une plateforme **multi-tenant** où chaque restaurant client est un tenant isolé techniquement mais partageant une infrastructure unique.
 
 **Choix architecturaux validés** (session 2026-05-15) :
+
 - ✅ **Custom domain par resto** (`pizza-tony.fr` pointe vers infra KB via CNAME)
 - ✅ **Compte client unique cross-restos** (un compte KB fonctionne sur tous les restos du réseau)
 - ✅ **Stripe Connect Express** pour les paiements (KB ne touche jamais l'argent, le resto encaisse direct)
 
 **Valeur produit pour le resto** :
+
 - Encaisse **+28% par commande** vs Uber Eats marketplace (22,40 € net vs 17,50 € net sur 25 €)
 - Récupère le canal direct au client via push notifications (taux ouverture 50-90% vs 20% email)
 - Possède son domaine, son branding, ses clients
 - Pas de commission mensuelle, juste 2 € par nouveau client converti
 
 **Valeur produit pour le client (mangeur)** :
+
 - Commande sur le site du resto (impression d'authenticité, pas Uber Eats marketplace)
 - Reçoit push pour suivre sa commande en temps réel
 - 1 compte fonctionne pour tous les restos du réseau (friction zéro à la 2e commande)
@@ -54,6 +57,7 @@ PostgreSQL Connect  REST API    web-push lib   review URL   transactional
 ```
 
 **Principes** :
+
 - Une seule codebase Next.js 15 déployée sur Vercel
 - Le tenant est identifié à chaque requête via le `Host` header
 - Toutes les données sont isolées par `restaurant_id` (Row Level Security Supabase)
@@ -66,6 +70,7 @@ PostgreSQL Connect  REST API    web-push lib   review URL   transactional
 ### 3.1 Multi-domaine custom (par resto)
 
 **Setup côté resto** (5 min) :
+
 1. Resto possède déjà son domaine (`pizza-tony.fr`) ou en achète un (~10 €/an Gandi/OVH)
 2. KB lui envoie une instruction : "Va chez ton registrar, ajoute un CNAME : `@` → `cname.vercel-dns.com` (ou A record `76.76.21.21` si CNAME root pas supporté)"
 3. KB ajoute le domaine dans Vercel Project Settings → domains
@@ -73,47 +78,50 @@ PostgreSQL Connect  REST API    web-push lib   review URL   transactional
 5. Quand SSL OK, KB toggle le resto en `status: live` dans la DB
 
 **Setup côté code** :
+
 ```typescript
 // middleware.ts (Next.js edge middleware)
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from "next/server";
 
 export async function middleware(req: NextRequest) {
-  const host = req.headers.get('host') // ex: "pizza-tony.fr"
+  const host = req.headers.get("host"); // ex: "pizza-tony.fr"
 
   // Lookup tenant (cached via Vercel KV ou edge cache)
-  const tenant = await getTenantByHost(host)
+  const tenant = await getTenantByHost(host);
 
   if (!tenant) {
-    // Fallback : essayer subdomain kitchen-boost.fr
-    return NextResponse.redirect('https://kitchen-boost.fr/404')
+    // Fallback : essayer subdomain kitchen-boost.com
+    return NextResponse.redirect("https://kitchen-boost.com/404");
   }
 
   // Inject tenant in headers for downstream
-  const reqHeaders = new Headers(req.headers)
-  reqHeaders.set('x-tenant-id', tenant.id)
-  reqHeaders.set('x-tenant-slug', tenant.slug)
+  const reqHeaders = new Headers(req.headers);
+  reqHeaders.set("x-tenant-id", tenant.id);
+  reqHeaders.set("x-tenant-slug", tenant.slug);
 
-  return NextResponse.next({ request: { headers: reqHeaders } })
+  return NextResponse.next({ request: { headers: reqHeaders } });
 }
 
 export const config = {
-  matcher: ['/((?!api/admin|_next/static|_next/image|favicon.ico).*)']
-}
+  matcher: ["/((?!api/admin|_next/static|_next/image|favicon.ico).*)"],
+};
 ```
 
-**Fallback** : tant que le custom domain n'est pas prêt (SSL en provisioning), le resto est accessible via `<slug>.kitchen-boost.fr` (wildcard subdomain).
+**Fallback** : tant que le custom domain n'est pas prêt (SSL en provisioning), le resto est accessible via `<slug>.kitchen-boost.com` (wildcard subdomain).
 
 ### 3.2 Compte client unique cross-restos
 
 **Modèle** : un seul compte par mangeur, fonctionne sur tous les restos KB.
 
 **UI behavior** :
+
 - Le client crée son compte sur Pizza Tony (signup avec email + OTP)
 - Le lendemain, il commande chez Burger Bob via `burger-bob.fr` → déjà loggé (cookie cross-domain via 3rd party flow, ou re-login OTP éclair)
 - Côté UI, chaque resto est entièrement marqué (logo + couleurs + nom resto) — le client ne voit PAS "KitchenBoost" partout
 - Mention "Powered by KitchenBoost" discrète en footer (gérable selon les préférences resto)
 
 **Modèle data** :
+
 - Table `users` partagée (Supabase Auth)
 - Table `user_restaurants` qui track l'attribution (premier resto où le user s'est inscrit)
 - Chaque commande/push est attribuée à un resto via `restaurant_id`
@@ -121,6 +129,7 @@ export const config = {
 - KB admin a une vue cross-cut (mais ne la partage jamais avec les restos)
 
 **Considération RGPD** :
+
 - Politique de confidentialité claire : "Votre compte fonctionne sur tous les restaurants partenaires KitchenBoost"
 - Consentement explicite au signup (case à cocher pas pré-cochée)
 - DPO KitchenBoost déclaré CNIL
@@ -131,6 +140,7 @@ export const config = {
 **Architecture** : KB est la "Platform", chaque resto est un "Connected Account Express".
 
 **Onboarding resto** (one-time, 5-10 min) :
+
 1. Admin KB clique "Connecter Stripe" dans le profil resto
 2. KB appelle Stripe API : `accounts.create({ type: 'express', country: 'FR', ... })`
 3. KB génère un `account_link` Stripe : `account_links.create({ account, refresh_url, return_url, type: 'account_onboarding' })`
@@ -140,6 +150,7 @@ export const config = {
 7. Webhook `account.updated` → KB stocke `stripe_account_id` et passe le resto en `live`
 
 **Paiement d'une commande** :
+
 ```typescript
 // /api/orders/[id]/checkout
 const order = await db.orders.findFirst(...)
@@ -158,6 +169,7 @@ return { clientSecret: paymentIntent.client_secret }
 ```
 
 **Flux d'argent** :
+
 - Client paie 25 € via Stripe
 - Stripe prélève 0,60 € (1,4% + 0,25€) → reste 24,40 €
 - 2 € application_fee → compte Stripe KB
@@ -165,6 +177,7 @@ return { clientSecret: paymentIntent.client_secret }
 - Resto reçoit son payout selon son calendrier Stripe (J+2 par défaut FR, configurable)
 
 **Avantages** :
+
 - KB ne porte JAMAIS l'argent → pas de risque ACPR/PSP
 - Chargebacks gérés par Stripe (assurance plateforme via Stripe Radar)
 - Reportings comptables automatiques côté resto (export CSV/PDF dans son dashboard Stripe Express)
@@ -208,6 +221,7 @@ return { clientSecret: paymentIntent.client_secret }
 **Stratégie MVP** : chaque resto a son propre compte Uber Direct (créé via merchants.ubereats.com), KB stocke son API key et appelle l'API en son nom.
 
 **Setup resto** (one-time, 30 min) :
+
 1. Resto crée un compte Uber Direct sur merchants.ubereats.com
 2. Uber Direct fournit `customer_id` + `api_key`
 3. Resto transmet ces creds à KB (via form sécurisé dans l'admin)
@@ -216,10 +230,12 @@ return { clientSecret: paymentIntent.client_secret }
 6. Si OK → resto en `live`
 
 **Pourquoi voie marchand vs voie agrégateur** :
+
 - MVP : voie marchand = pas d'autorisation Uber préalable nécessaire, démarrage immédiat
 - Voie agrégateur (KB centralise l'auth) = nécessite contrat commercial Uber, à explorer Phase 3 quand on a 10+ restos
 
 **Webhook Uber Direct** :
+
 ```
 POST /api/webhooks/uber-direct/:restaurantId
 Body: { delivery_id, status, courier_info, ... }
@@ -232,16 +248,19 @@ KB met à jour `orders.status` + trigger push notif au client selon le status.
 ### 3.6 Google Review collection
 
 **Flow** :
+
 1. Livraison `delivered` → KB schedule push notif 1h après
 2. Push : "C'était bon chez Pizza Tony ? 😍 Bof"
 3. Si 😍 → redirect vers `https://search.google.com/local/writereview?placeid={tenant.google_place_id}`
 4. Si Bof → form privé KB (V0 flow) → notification Slack ops KB
 
 **Setup tenant** :
+
 - `restaurants.google_place_id` (récupéré via Google Places API ou manuel)
 - KB peut auto-fetch via `Places API → Find Place from Text` lors du setup
 
 **Légalité** :
+
 - Pas de "review gating" explicite (pas de "donne 5 étoiles pour avoir une surprise")
 - Wording neutre : "C'était bon ?" puis bouton vers Google sans préciser de note
 - Le client est libre de mettre la note qu'il veut une fois sur Google
@@ -249,6 +268,7 @@ KB met à jour `orders.status` + trigger push notif au client selon le status.
 ### 3.7 Push notifications (THE feature)
 
 **Stack** (réutilisé du V0 spec) :
+
 - Frontend : Service Worker `/public/sw.js`
 - Subscription via `navigator.serviceWorker.register()` + `pushManager.subscribe()`
 - Stockage subscription en DB (endpoint, p256dh, auth)
@@ -256,22 +276,24 @@ KB met à jour `orders.status` + trigger push notif au client selon le status.
 
 **Use cases push** :
 
-| Trigger | Audience | Wording |
-|---------|----------|---------|
-| Commande payée | Client de la commande | "🍕 Pizza Tony prépare ta commande ! ETA livraison : 35 min" |
-| Livreur en route | Client de la commande | "🛵 Ton livreur arrive dans ~10 min" |
-| Livraison terminée | Client de la commande | "📦 C'était bon ? Note ton expérience ⭐" |
-| Re-engagement 7j | Subscribers inactifs | "Promo flash chez Pizza Tony aujourd'hui : -20% sur la Margherita 🍕" |
-| Lancement nouveau plat | Tous subscribers d'un resto | "Nouveau au menu : Pizza Truffe 🌟" |
-| Cross-resto recommendation | User multi-restos | "Tu adores Pizza Tony, essaie Burger Bob — 5€ offerts sur ta 1ère commande" |
+| Trigger                    | Audience                    | Wording                                                                     |
+| -------------------------- | --------------------------- | --------------------------------------------------------------------------- |
+| Commande payée             | Client de la commande       | "🍕 Pizza Tony prépare ta commande ! ETA livraison : 35 min"                |
+| Livreur en route           | Client de la commande       | "🛵 Ton livreur arrive dans ~10 min"                                        |
+| Livraison terminée         | Client de la commande       | "📦 C'était bon ? Note ton expérience ⭐"                                   |
+| Re-engagement 7j           | Subscribers inactifs        | "Promo flash chez Pizza Tony aujourd'hui : -20% sur la Margherita 🍕"       |
+| Lancement nouveau plat     | Tous subscribers d'un resto | "Nouveau au menu : Pizza Truffe 🌟"                                         |
+| Cross-resto recommendation | User multi-restos           | "Tu adores Pizza Tony, essaie Burger Bob — 5€ offerts sur ta 1ère commande" |
 
 **iOS PWA push (le piège)** :
+
 - Disponible depuis iOS 16.4 (mars 2023) MAIS uniquement si PWA installée en home screen
 - Donc onboarding iOS dédié : tutorial illustré "Ajoute Pizza Tony à ton écran d'accueil pour recevoir tes updates"
 - Android : popup natif standard, zéro friction
 - Fallback iOS pour users qui refusent : option SMS (Twilio) — payant donc à activer sélectivement
 
 **Rate limiting** :
+
 - Max 3 push marketing/semaine par user (transactionnels exclus)
 - Si user clique "Désabonner" → unsubscribed_at set en DB
 - Pas de push après 22h ou avant 8h heure locale
@@ -279,6 +301,7 @@ KB met à jour `orders.status` + trigger push notif au client selon le status.
 ### 3.8 PWA native-quality UX
 
 **Checklist obligatoire** :
+
 - [x] `manifest.json` complet (icons 192/512, theme color, display: standalone, orientation: portrait)
 - [x] Service Worker offline-first via Workbox (cache menu, images, assets)
 - [x] Skeleton loaders partout (jamais d'écran blanc en chargement)
@@ -294,6 +317,7 @@ KB met à jour `orders.status` + trigger push notif au client selon le status.
 - [x] Add to Home Screen prompt contextuel (Android : popup natif après 2e visite, iOS : tutorial illustré)
 
 **Anti-patterns à éviter** :
+
 - ❌ Spinner full-screen au load
 - ❌ Bottom sheet qui se ferme accidentellement au scroll
 - ❌ Modals qui pop sans animation
@@ -313,7 +337,7 @@ Réduire l'onboarding d'un nouveau resto de **~4h de boulot manuel actuel** (cr�
 ### 4.2 Flow admin
 
 ```
-[Login admin.kitchen-boost.fr]
+[Login admin.kitchen-boost.com]
       ↓
 [Dashboard : liste restos + bouton "+ Nouveau resto"]
       ↓
@@ -369,6 +393,7 @@ Réduire l'onboarding d'un nouveau resto de **~4h de boulot manuel actuel** (cr�
 Stack : Next.js routes protégées `/admin/*`, auth Supabase avec role `kb_admin`.
 
 Routes principales :
+
 ```
 /admin                          → Dashboard (liste restos + stats globales)
 /admin/restaurants/new          → Wizard création
@@ -397,12 +422,14 @@ Routes principales :
 ### 5.1 Architecture modulaire
 
 **Principe** : chaque module est un sous-dossier `/modules/<name>/` qui contient :
+
 - Composants React (UI client + UI admin)
 - Routes Next.js
 - Schéma de config (Zod)
 - Migration DB (si nouvelle table)
 
 **Activation** :
+
 - Admin KB → resto → onglet "Modules" → toggle "Réservation : ON"
 - Update `restaurant_modules` en DB
 - Routes du module deviennent accessibles sur le tenant
@@ -413,11 +440,13 @@ Routes principales :
 **Use case** : permettre aux clients de réserver une table en salle (pas de livraison).
 
 **UI client** :
+
 - Bouton "Réserver une table" dans le menu nav du PWA
 - Form : date, heure, nb couverts, contact, message optionnel
 - Confirmation par push + email + SMS optionnel
 
 **Backend** :
+
 - Table `reservations(id, restaurant_id, user_id, date, time, party_size, contact, message, status, created_at)`
 - Webhook au resto : email + SMS Twilio (optionnel)
 - Intégration Google Calendar du resto (oauth2, optionnel)
@@ -430,10 +459,12 @@ Routes principales :
 **Use case** : générer des factures conformes Factur-X (obligation légale FR depuis septembre 2026).
 
 **UI client** :
+
 - Lien "Télécharger ma facture" dans le détail commande
 - PDF + XML embarqué (format Factur-X)
 
 **Backend** :
+
 - Génération via lib `node-factur-x` ou équivalent
 - Stockage Supabase Storage (archivage 10 ans obligatoire)
 - Email auto au client si compte avec email vérifié
@@ -446,10 +477,12 @@ Routes principales :
 **Use case** : programme fidélité simple par resto.
 
 **UI client** :
+
 - Badge progression dans le profil ("8/10 commandes → boisson offerte")
 - Notification quand reward débloqué
 
 **Backend** :
+
 - Table `loyalty_progress(user_id, restaurant_id, points, rewards_unlocked, ...)`
 - Règles configurables par resto (ex: 10e commande = -5€, 20e = boisson offerte)
 - Trigger automatique sur `orders.delivered`
@@ -461,12 +494,14 @@ Routes principales :
 **Use case** : dashboard analytique pour le restaurateur (commandes/jour, plats populaires, heures de pointe, panier moyen).
 
 **UI resto** :
+
 - `/resto/analytics` (accessible au compte resto, pas KB admin)
 - Graphes Chart.js ou Tremor
 - Compare période N vs N-1
 - Export CSV
 
 **Backend** :
+
 - Queries d'agrégation sur `orders` (group by date, item, hour, etc.)
 - Cache 1h via Vercel KV pour perf
 
@@ -477,11 +512,13 @@ Routes principales :
 **Use case** : campagnes push automatisées sur triggers comportementaux.
 
 **Exemples de triggers** :
+
 - User n'a pas commandé depuis 14 jours → push "Tu nous manques 😢 -3€ sur ta prochaine commande"
 - User a commandé 3 fois en 1 mois → push "Tu es VIP, voici un cadeau"
 - Anniversaire user → push promo
 
 **Backend** :
+
 - Cron jobs (Vercel Cron) qui scannent les triggers chaque nuit
 - Templates de campagnes par resto
 - A/B testing optionnel
@@ -492,23 +529,23 @@ Routes principales :
 
 ## 6. Stack technique consolidé
 
-| Couche | Choix | Pourquoi |
-|--------|-------|----------|
-| **Frontend** | Next.js 15 App Router + TypeScript + Tailwind | Stack NativeSquare existante, pipeline IA optimisé, edge middleware natif |
-| **PWA** | Service Worker manuel (next-pwa optionnel) | Contrôle fin requis pour push iOS et offline-first |
-| **State** | Zustand + React Query (TanStack Query) | Léger, performant, cache backend bien géré |
-| **Auth** | Supabase Auth (email OTP magique + optionnel social) | Gratuit jusqu'à 50k MAU, intégré DB, JWT compatible RLS |
-| **DB** | Supabase PostgreSQL | Validé V0, gratuit jusqu'à 500MB, Row Level Security natif |
-| **Storage** | Supabase Storage | Logos, photos plats, factures Factur-X |
-| **Hosting** | Vercel | Custom domains illimités, edge middleware, SSL auto, Vercel KV pour cache tenant |
-| **Paiement** | Stripe Connect Express | Standard marketplace, compliance gérée, KB pas custodial |
-| **Push** | web-push npm + Service Worker + VAPID keys | Validé V0, no vendor lock-in |
-| **Uber Direct** | REST API direct (voie marchand individuel) | MVP rapide, voie agrégateur à explorer Phase 3 |
-| **Email** | Resend (transactional) | 100 emails/jour free, scaling cheap |
-| **SMS optionnel** | Twilio (pay-per-use) | Fallback iOS push refus |
-| **Monitoring** | Vercel Analytics + Sentry | Free tier, suffit pour MVP |
-| **Cron jobs** | Vercel Cron | Triggers push schedule, retry orders failed, etc. |
-| **Encryption** | Supabase Vault | Stockage chiffré creds Uber Direct |
+| Couche            | Choix                                                | Pourquoi                                                                         |
+| ----------------- | ---------------------------------------------------- | -------------------------------------------------------------------------------- |
+| **Frontend**      | Next.js 15 App Router + TypeScript + Tailwind        | Stack NativeSquare existante, pipeline IA optimisé, edge middleware natif        |
+| **PWA**           | Service Worker manuel (next-pwa optionnel)           | Contrôle fin requis pour push iOS et offline-first                               |
+| **State**         | Zustand + React Query (TanStack Query)               | Léger, performant, cache backend bien géré                                       |
+| **Auth**          | Supabase Auth (email OTP magique + optionnel social) | Gratuit jusqu'à 50k MAU, intégré DB, JWT compatible RLS                          |
+| **DB**            | Supabase PostgreSQL                                  | Validé V0, gratuit jusqu'à 500MB, Row Level Security natif                       |
+| **Storage**       | Supabase Storage                                     | Logos, photos plats, factures Factur-X                                           |
+| **Hosting**       | Vercel                                               | Custom domains illimités, edge middleware, SSL auto, Vercel KV pour cache tenant |
+| **Paiement**      | Stripe Connect Express                               | Standard marketplace, compliance gérée, KB pas custodial                         |
+| **Push**          | web-push npm + Service Worker + VAPID keys           | Validé V0, no vendor lock-in                                                     |
+| **Uber Direct**   | REST API direct (voie marchand individuel)           | MVP rapide, voie agrégateur à explorer Phase 3                                   |
+| **Email**         | Resend (transactional)                               | 100 emails/jour free, scaling cheap                                              |
+| **SMS optionnel** | Twilio (pay-per-use)                                 | Fallback iOS push refus                                                          |
+| **Monitoring**    | Vercel Analytics + Sentry                            | Free tier, suffit pour MVP                                                       |
+| **Cron jobs**     | Vercel Cron                                          | Triggers push schedule, retry orders failed, etc.                                |
+| **Encryption**    | Supabase Vault                                       | Stockage chiffré creds Uber Direct                                               |
 
 **Coût infra estimé pour 10 restos pilotes** : ~0 €/mois (tout en free tier)
 **Coût infra estimé pour 100 restos en prod** : ~150 €/mois (Supabase Pro + Vercel Pro + Resend + monitoring)
@@ -654,6 +691,7 @@ CREATE TABLE admin_audit_log (
 ```
 
 **Row Level Security (RLS)** :
+
 - Tables `orders`, `reviews`, `push_subscriptions`, `menu_items` : isolation par `restaurant_id`
 - Users authentifiés voient leurs propres données (`user_id = auth.uid()`)
 - Restos voient leurs propres données (claim `restaurant_id` dans JWT)
@@ -718,18 +756,18 @@ GET    /api/resto/analytics                   → ses stats
 
 ## 9. Risques + Mitigations
 
-| Risque | Probabilité | Impact | Mitigation |
-|--------|-------------|--------|------------|
-| Uber Direct refuse l'API access aux nouveaux marchands | Faible | Bloquant Phase 1 | Validation pré-build avec sales Uber Direct (1 appel) |
-| Stripe Connect refuse un compte resto (KYC fail) | Moyen | Resto bloqué | Fallback paiement à la livraison + suivi support Stripe |
-| iOS PWA push UX trop friction (add to home screen) | Élevé | Adoption iOS basse | Onboarding illustré + A/B testing wording + fallback SMS Twilio |
-| Custom domain DNS mal configuré côté resto | Moyen | Site inaccessible | Checker DNS auto dans wizard admin + fallback subdomain |
-| Cross-resto cannibalisation push | Moyen | Réputation KB | Rate limiting 3 push/sem/user + segmentation fine |
-| RGPD : compte cross-resto = data sharing implicite | Élevé | Sanctions CNIL | PolicyConfidentialité claire + consentement explicite + DPO déclaré + droit accès/suppression |
-| Uber Direct kill l'API à terme | Faible | Pivot total | Architecture découplée : Uber Direct = 1 adapter, structure d'autres adapters (Stuart, Coursier Privé) |
-| Resto leaks ses creds Uber Direct (compromission) | Moyen | Frais frauduleux | Chiffrement at-rest + rotation périodique + alerting sur usage anormal |
-| Custom domain expire (resto oublie de renouveler) | Élevé | Site DOWN | Monitoring expiry + alerting 30j avant + fallback subdomain auto |
-| Vercel/Supabase facture surprise à scale | Moyen | Cash burn | Monitoring usage hebdo + caps configurables + migration plan vers infra dédiée si volume >100 restos |
+| Risque                                                 | Probabilité | Impact             | Mitigation                                                                                             |
+| ------------------------------------------------------ | ----------- | ------------------ | ------------------------------------------------------------------------------------------------------ |
+| Uber Direct refuse l'API access aux nouveaux marchands | Faible      | Bloquant Phase 1   | Validation pré-build avec sales Uber Direct (1 appel)                                                  |
+| Stripe Connect refuse un compte resto (KYC fail)       | Moyen       | Resto bloqué       | Fallback paiement à la livraison + suivi support Stripe                                                |
+| iOS PWA push UX trop friction (add to home screen)     | Élevé       | Adoption iOS basse | Onboarding illustré + A/B testing wording + fallback SMS Twilio                                        |
+| Custom domain DNS mal configuré côté resto             | Moyen       | Site inaccessible  | Checker DNS auto dans wizard admin + fallback subdomain                                                |
+| Cross-resto cannibalisation push                       | Moyen       | Réputation KB      | Rate limiting 3 push/sem/user + segmentation fine                                                      |
+| RGPD : compte cross-resto = data sharing implicite     | Élevé       | Sanctions CNIL     | PolicyConfidentialité claire + consentement explicite + DPO déclaré + droit accès/suppression          |
+| Uber Direct kill l'API à terme                         | Faible      | Pivot total        | Architecture découplée : Uber Direct = 1 adapter, structure d'autres adapters (Stuart, Coursier Privé) |
+| Resto leaks ses creds Uber Direct (compromission)      | Moyen       | Frais frauduleux   | Chiffrement at-rest + rotation périodique + alerting sur usage anormal                                 |
+| Custom domain expire (resto oublie de renouveler)      | Élevé       | Site DOWN          | Monitoring expiry + alerting 30j avant + fallback subdomain auto                                       |
+| Vercel/Supabase facture surprise à scale               | Moyen       | Cash burn          | Monitoring usage hebdo + caps configurables + migration plan vers infra dédiée si volume >100 restos   |
 
 ---
 

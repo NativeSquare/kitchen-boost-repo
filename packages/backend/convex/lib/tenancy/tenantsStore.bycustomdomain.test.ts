@@ -123,7 +123,7 @@ describe("PWA-S1 (#449) — getTenantByCustomDomain seam", () => {
 
   // Sanity: the existing `getTenantBySlug` still resolves the seeded tenant
   // (the new index doesn't break the old one) — covers the "PWA middleware
-  // falls back to slug on `<slug>.kitchen-boost.fr`" path.
+  // falls back to slug on `<slug>.kitchen-boost.com`" path.
   it("getTenantBySlug still resolves the seeded slug (no regression)", async () => {
     const got = await t.run((ctx) => getTenantBySlug(ctx, "fuzz-a"));
     expect(got?._id).toBe(seed.tenantA.tenantId);

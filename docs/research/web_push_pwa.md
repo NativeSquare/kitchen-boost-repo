@@ -9,9 +9,9 @@
 
 **OUI, c'est faisable sur iOS ET Android en 2026.**
 
-| Plateforme | Support | Condition |
-|---|---|---|
-| **Android** | ✅ Sans condition | Opt-in direct depuis le navigateur, pas d'installation requise |
+| Plateforme    | Support           | Condition                                                                                                                              |
+| ------------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| **Android**   | ✅ Sans condition | Opt-in direct depuis le navigateur, pas d'installation requise                                                                         |
 | **iOS 16.4+** | ✅ Avec condition | **L'utilisateur doit ajouter le site à l'écran d'accueil** (Partager → Ajouter à l'écran d'accueil) avant de pouvoir recevoir des push |
 
 **Pitch honnête à utiliser** : "Sur Android (~70% des clients FR), notifications instantanées après opt-in. Sur iPhone (~25%), le client doit ajouter ton site à son écran d'accueil — 2 taps — et ensuite c'est comme une vraie app."
@@ -76,21 +76,21 @@ Apple avait cassé les PWA en EU avec iOS 17.4 (fév 2024), puis a **fait marche
 ### Code minimal front (`sw.js`)
 
 ```js
-self.addEventListener('push', (event) => {
+self.addEventListener("push", (event) => {
   const data = event.data?.json() ?? {};
   event.waitUntil(
     self.registration.showNotification(data.title, {
       body: data.body,
-      icon: '/icon-192.png',
-      badge: '/badge.png',
+      icon: "/icon-192.png",
+      badge: "/badge.png",
       image: data.image,
       data: { url: data.url },
-      actions: data.actions
-    })
+      actions: data.actions,
+    }),
   );
 });
 
-self.addEventListener('notificationclick', (event) => {
+self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   event.waitUntil(clients.openWindow(event.notification.data.url));
 });
@@ -99,20 +99,23 @@ self.addEventListener('notificationclick', (event) => {
 ### Code minimal back (Node)
 
 ```js
-import webpush from 'web-push';
+import webpush from "web-push";
 
 webpush.setVapidDetails(
-  'mailto:contact@kitchen-boost.fr',
+  "mailto:contact@kitchen-boost.com",
   VAPID_PUBLIC,
-  VAPID_PRIVATE
+  VAPID_PRIVATE,
 );
 
-await webpush.sendNotification(subscription, JSON.stringify({
-  title: 'Nouveau plat chez Le Bistrot',
-  body: 'Pizza truffe -20% ce soir',
-  url: 'https://lebistrot.kitchen-boost.fr/menu',
-  image: 'https://.../pizza.jpg'
-}));
+await webpush.sendNotification(
+  subscription,
+  JSON.stringify({
+    title: "Nouveau plat chez Le Bistrot",
+    body: "Pizza truffe -20% ce soir",
+    url: "https://lebistrot.kitchen-boost.com/menu",
+    image: "https://.../pizza.jpg",
+  }),
+);
 ```
 
 ### VAPID
@@ -123,12 +126,12 @@ await webpush.sendNotification(subscription, JSON.stringify({
 
 ### Alternatives évaluées
 
-| Stack | Pertinence KB | Pourquoi |
-|---|---|---|
-| `web-push` self-host | ✅ **Recommandé** | Gratuit illimité, contrôle total, zero lock-in |
-| FCM Web | ⚠️ Possible | Gratuit illimité mais SDK lourd + dépendance Google |
-| OneSignal Free | ⚠️ MVP rapide | OK jusqu'à 10K subscribers, lock-in vendor, à virer ensuite |
-| Pushwoosh / Batch.com | ❌ Overkill Phase 1 | Payant, features pro inutiles |
+| Stack                 | Pertinence KB       | Pourquoi                                                    |
+| --------------------- | ------------------- | ----------------------------------------------------------- |
+| `web-push` self-host  | ✅ **Recommandé**   | Gratuit illimité, contrôle total, zero lock-in              |
+| FCM Web               | ⚠️ Possible         | Gratuit illimité mais SDK lourd + dépendance Google         |
+| OneSignal Free        | ⚠️ MVP rapide       | OK jusqu'à 10K subscribers, lock-in vendor, à virer ensuite |
+| Pushwoosh / Batch.com | ❌ Overkill Phase 1 | Payant, features pro inutiles                               |
 
 ---
 
@@ -136,12 +139,12 @@ await webpush.sendNotification(subscription, JSON.stringify({
 
 Pour **10 000 utilisateurs × 4 push/mois = 40K push/mois** :
 
-| Stack | Coût mensuel |
-|---|---|
+| Stack                          | Coût mensuel                      |
+| ------------------------------ | --------------------------------- |
 | `web-push` + VAPID self-hosted | **~0€** (juste le VPS qui envoie) |
-| FCM Web | **0€** (illimité gratuit) |
-| OneSignal Free | **0€** (jusqu'à 10K subs/envoi) |
-| OneSignal Growth (>10K subs) | ~$9-50/mois |
+| FCM Web                        | **0€** (illimité gratuit)         |
+| OneSignal Free                 | **0€** (jusqu'à 10K subs/envoi)   |
+| OneSignal Growth (>10K subs)   | ~$9-50/mois                       |
 
 **Recommandation finale : self-host avec `web-push` npm.**
 
@@ -157,6 +160,7 @@ Pour **10 000 utilisateurs × 4 push/mois = 40K push/mois** :
 - **Meilleurs créneaux resto** : 8-9h et 18-20h. Lundi/mardi top, samedi flop
 
 **Comparatif vs email** :
+
 - Email resto : ~20% open / 2% CTR
 - Push web : 0,84-8% CTR sans bataille de spam, livraison instantanée
 - → Push gagne sur conversion court terme, email reste meilleur pour relationship long terme

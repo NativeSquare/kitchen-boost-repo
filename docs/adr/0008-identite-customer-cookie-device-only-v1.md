@@ -8,7 +8,7 @@ deciders: Alex
 
 ## ⚠️ Amendement 2026-05-25 — la reconnaissance cross-resto ne passe PAS par le cookie
 
-Précision d'architecture confirmée le 2026-05-25 : **chaque resto est servi sur son PROPRE domaine de marque** (ex. `bunsbao.fr`), jamais sur un sous-domaine `*.kitchen-boost.fr` côté public (modèle Owner.com). Conséquences directes sur cet ADR :
+Précision d'architecture confirmée le 2026-05-25 : **chaque resto est servi sur son PROPRE domaine de marque** (ex. `bunsbao.fr`), jamais sur un sous-domaine `*.kitchen-boost.com` côté public (modèle Owner.com). Conséquences directes sur cet ADR :
 
 - **Le cookie device est INTRA-resto uniquement.** Deux restos = deux domaines distincts → un cookie n'est jamais partagé entre eux (cloisonnement navigateur ; aucune techno propre n'y change rien). Le « cookie partagé sur domaine parent » envisagé plus bas est **caduc**. Vérifié techniquement le 2026-05-25 : Convex Auth (intégration Next.js) pose de toute façon un cookie `__Host-` _host-only_, non élargissable à un domaine parent.
 - **La reconnaissance / unification cross-resto en V1 repose donc EXCLUSIVEMENT sur la [[Wallet pass]] commune** (surface #2 ci-dessous : `serial_number` → `customer_id`, indépendant du domaine et du device). Sans pass installé, un même device sur un autre resto = **nouveau `customer_id`** (doublon cross-resto assumé, au même titre que les doublons cross-device).

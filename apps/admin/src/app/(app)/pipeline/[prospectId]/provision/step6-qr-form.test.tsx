@@ -231,7 +231,7 @@ function defaultProps(
   overrides: Partial<Step6QrFormProps> = {},
 ): Step6QrFormProps {
   return {
-    pwaUrl: "https://lartisan.kitchen-boost.fr",
+    pwaUrl: "https://lartisan.kitchen-boost.com",
     slug: "lartisan",
     onPrev: vi.fn(),
     onNext: vi.fn(),
@@ -253,7 +253,7 @@ describe("Step6QrForm — F-WIZARD [8/10] (#272), SVG-only 2026-06-02", () => {
     const tree = serialize(
       Step6QrForm(
         defaultProps({
-          pwaUrl: "https://artisan-test.kitchen-boost.fr",
+          pwaUrl: "https://artisan-test.kitchen-boost.com",
           slug: "artisan-test",
         }),
       ),
@@ -265,7 +265,7 @@ describe("Step6QrForm — F-WIZARD [8/10] (#272), SVG-only 2026-06-02", () => {
       };
     } | null;
     expect(qr).not.toBeNull();
-    expect(qr?.props.pwaUrl).toBe("https://artisan-test.kitchen-boost.fr");
+    expect(qr?.props.pwaUrl).toBe("https://artisan-test.kitchen-boost.com");
     expect(qr?.props.slug).toBe("artisan-test");
   });
 

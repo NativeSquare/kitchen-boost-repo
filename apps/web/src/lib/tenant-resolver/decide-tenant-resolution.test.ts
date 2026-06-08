@@ -18,13 +18,13 @@
  *      the « Resto non disponible » page. (Tenant orphan, US 67.)
  *   3. Cookie present but the tenant is now `suspended` / `disabled` → clear
  *      cookie + error page. (Lifecycle off-state.)
- *   4. No cookie + host matches `<slug>.kitchen-boost.fr` → resolve via slug,
+ *   4. No cookie + host matches `<slug>.kitchen-boost.com` → resolve via slug,
  *      set cookie, rewrite. (First-hit sub-domain.)
  *   5. No cookie + host is a CUSTOM domain → resolve via customDomain, set
  *      cookie, rewrite. (First-hit custom domain.)
  *   6. No cookie + host is unknown → error page, NO cookie set. (Unknown
  *      host, no auto-provision.)
- *   7. No cookie + host is the bare apex (`kitchen-boost.fr`) → error page.
+ *   7. No cookie + host is the bare apex (`kitchen-boost.com`) → error page.
  *      (Apex is for marketing, not the PWA; an apex hit is operator-error.)
  *   8. Cookie present but malformed (not a valid Convex id) → clear cookie +
  *      treat as no-cookie, follow path 4/5/6/7.
@@ -36,7 +36,7 @@ import {
   type TenantResolutionInput,
 } from "./decide-tenant-resolution";
 
-const ROOT_DOMAIN = "kitchen-boost.fr";
+const ROOT_DOMAIN = "kitchen-boost.com";
 
 const A_ACTIVE: ResolvedTenant = {
   tenantId: "tenant_a" as ResolvedTenant["tenantId"],
@@ -56,7 +56,7 @@ function baseInput(
   overrides: Partial<TenantResolutionInput>,
 ): TenantResolutionInput {
   return {
-    host: overrides.host ?? "bunsbao.kitchen-boost.fr",
+    host: overrides.host ?? "bunsbao.kitchen-boost.com",
     cookieTenantId: overrides.cookieTenantId ?? null,
     rootDomain: overrides.rootDomain ?? ROOT_DOMAIN,
     fetchById: overrides.fetchById ?? vi.fn(async () => null),
@@ -128,14 +128,14 @@ describe("decideTenantResolution — cookie fast path", () => {
 });
 
 describe("decideTenantResolution — host → tenant lookup (no cookie)", () => {
-  it("resolves a `<slug>.kitchen-boost.fr` host via slug + sets the cookie", async () => {
+  it("resolves a `<slug>.kitchen-boost.com` host via slug + sets the cookie", async () => {
     const fetchBySlug = vi.fn(async (slug: string) =>
       slug === "bunsbao" ? A_ACTIVE : null,
     );
     const fetchByCustomDomain = vi.fn(async () => null);
     const verdict = await decideTenantResolution(
       baseInput({
-        host: "bunsbao.kitchen-boost.fr",
+        host: "bunsbao.kitchen-boost.com",
         fetchBySlug,
         fetchByCustomDomain,
       }),
@@ -168,7 +168,7 @@ describe("decideTenantResolution — host → tenant lookup (no cookie)", () => 
       expect(verdict.setCookie).toBe(true);
     }
     expect(fetchByCustomDomain).toHaveBeenCalledWith("bunsbao.fr");
-    // Slug fetch must NOT fire for a non-`<...>.kitchen-boost.fr` host.
+    // Slug fetch must NOT fire for a non-`<...>.kitchen-boost.com` host.
     expect(fetchBySlug).not.toHaveBeenCalled();
   });
 
@@ -176,7 +176,7 @@ describe("decideTenantResolution — host → tenant lookup (no cookie)", () => 
     const fetchBySlug = vi.fn(async () => null);
     const verdict = await decideTenantResolution(
       baseInput({
-        host: "unknown.kitchen-boost.fr",
+        host: "unknown.kitchen-boost.com",
         fetchBySlug,
       }),
     );
@@ -225,7 +225,7 @@ describe("decideTenantResolution — host → tenant lookup (no cookie)", () => 
     const fetchBySlug = vi.fn(async () => A_DISABLED);
     const verdict = await decideTenantResolution(
       baseInput({
-        host: "bunsbao.kitchen-boost.fr",
+        host: "bunsbao.kitchen-boost.com",
         fetchBySlug,
       }),
     );
@@ -241,7 +241,7 @@ describe("decideTenantResolution — host edge cases", () => {
     const fetchBySlug = vi.fn(async () => A_ACTIVE);
     await decideTenantResolution(
       baseInput({
-        host: "bunsbao.kitchen-boost.fr:3000",
+        host: "bunsbao.kitchen-boost.com:3000",
         fetchBySlug,
       }),
     );
@@ -253,22 +253,22 @@ describe("decideTenantResolution — host edge cases", () => {
     const fetchBySlug = vi.fn(async () => A_ACTIVE);
     await decideTenantResolution(
       baseInput({
-        host: "BunsBao.Kitchen-Boost.FR",
+        host: "BunsBao.kitchen-boost.com",
         fetchBySlug,
       }),
     );
     expect(fetchBySlug).toHaveBeenCalledWith("bunsbao");
   });
 
-  it("treats a multi-label sub-domain (`a.b.kitchen-boost.fr`) as a CUSTOM domain (no auto-slug split)", async () => {
-    // Sub-domains under `<slug>.kitchen-boost.fr` must be ONE label deep —
+  it("treats a multi-label sub-domain (`a.b.kitchen-boost.com`) as a CUSTOM domain (no auto-slug split)", async () => {
+    // Sub-domains under `<slug>.kitchen-boost.com` must be ONE label deep —
     // anything else is interpreted as a different host (custom domain). This
     // prevents an accidental tenant-takeover via wildcard mis-config.
     const fetchBySlug = vi.fn(async () => A_ACTIVE);
     const fetchByCustomDomain = vi.fn(async () => null);
     const verdict = await decideTenantResolution(
       baseInput({
-        host: "weird.bunsbao.kitchen-boost.fr",
+        host: "weird.bunsbao.kitchen-boost.com",
         fetchBySlug,
         fetchByCustomDomain,
       }),
@@ -277,7 +277,7 @@ describe("decideTenantResolution — host edge cases", () => {
     // here, so the verdict is `error`.
     expect(fetchBySlug).not.toHaveBeenCalled();
     expect(fetchByCustomDomain).toHaveBeenCalledWith(
-      "weird.bunsbao.kitchen-boost.fr",
+      "weird.bunsbao.kitchen-boost.com",
     );
     expect(verdict.kind).toBe("error");
   });
@@ -286,7 +286,7 @@ describe("decideTenantResolution — host edge cases", () => {
     const fetchBySlug = vi.fn(async () => A_ACTIVE);
     const verdict = await decideTenantResolution(
       baseInput({
-        host: "bunsbao.kitchen-boost.fr",
+        host: "bunsbao.kitchen-boost.com",
         cookieTenantId: "", // empty string = malformed
         fetchBySlug,
       }),

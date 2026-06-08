@@ -54,8 +54,8 @@ describe("getAdminBaseUrl — accept-invite magic-link base", () => {
   });
 
   it("honours SITE_URL when present (prod-shaped URL)", () => {
-    process.env.SITE_URL = "https://admin.kitchen-boost.fr";
-    expect(getAdminBaseUrl()).toBe("https://admin.kitchen-boost.fr");
+    process.env.SITE_URL = "https://admin.kitchen-boost.com";
+    expect(getAdminBaseUrl()).toBe("https://admin.kitchen-boost.com");
   });
 
   it("the produced magic-link points at /accept-invite on the admin host", () => {

@@ -37,7 +37,7 @@ Cf. ces fichiers dans le repo (read only pour cette session) :
 
 **Mécanisme** :
 
-1. Wildcard DNS `*.kitchen-boost.fr` → Vercel route vers `apps/web`.
+1. Wildcard DNS `*.kitchen-boost.com` → Vercel route vers `apps/web`.
 2. Middleware Edge lit `host` :
    - 1ʳᵉ visite : query Convex `tenants.bySlug("bunsbao")` (ou `tenants.byCustomDomain("bunsbao.fr")` si domaine custom) → résout `tenantId`.
    - Pose cookie HttpOnly `__Host-kb_tenant=<tenantId>` (long-lived 30j, refresh à chaque visite).
@@ -55,7 +55,7 @@ Cf. ces fichiers dans le repo (read only pour cette session) :
 
 **TODO infra V1** :
 
-- [ ] Provisionner wildcard DNS `*.kitchen-boost.fr` chez registrar avant launch
+- [ ] Provisionner wildcard DNS `*.kitchen-boost.com` chez registrar avant launch
 - [ ] Configurer Vercel Edge region pinning (Paris/Frankfurt) cohérent Convex EU
 - [ ] Backend Convex : exposer `tenants.bySlug` + `tenants.byCustomDomain` en query publique non-authenticated (lecture middleware Edge), retourne `{ tenantId, slug, customDomain, brandingHash }`
 
@@ -84,7 +84,7 @@ Cf. ces fichiers dans le repo (read only pour cette session) :
 - (b) **`/menu` ISR + on-demand revalidate** : `publishedMenus` change uniquement au clic "Publier" admin → mutation Convex déclenche `revalidateTag('menu:<tenantId>')` via webhook → Vercel invalide CDN cache, prochain visiteur déclenche re-render. `available` (out-of-stock) overlay LIVE via Convex subscription par-dessus HTML cached (~200ms latence toggle KDS, sans full reload).
 - (c) **Tracking URL = `/c/[orderId]`** (court, scannable SMS/push). `orderId` = Convex `Id<"orders">` brut (non-devinable cuid, pas besoin de short ID V1).
 - (d) **Manifest dynamic API route** par host (logo, color, name spécifiques tenant). Idem `/icon.png` + `/apple-touch-icon.png`.
-- (e) **Service worker unique `apps/web/public/sw.js`** scope `/`. Subscription push web naturellement origin-scoped (= `bunsbao.kitchen-boost.fr`). Pas de Workbox V1, pas d'offline cache complexe.
+- (e) **Service worker unique `apps/web/public/sw.js`** scope `/`. Subscription push web naturellement origin-scoped (= `bunsbao.kitchen-boost.com`). Pas de Workbox V1, pas d'offline cache complexe.
 
 **LCP attendu** : < 1.5s sur 4G (largement sous cible PRD 2.5s) grâce à ISR + CDN Vercel + lazy images.
 
@@ -282,7 +282,7 @@ Une fois ajoutée :
 - **Android Chrome** : `window.location.href = googleSaveLink` (URL `pay.google.com/gp/v/save/...`) → ouvre Google Wallet preview.
 - **Desktop** : bouton désactivé, message "Disponible sur mobile uniquement".
 
-**(3) URL embedded "back of pass" = host du `lastBrandTenantId`** avec `?wallet=<serialNumber>` (ex: `bunsbao.kitchen-boost.fr/?wallet=kb-xxx-yyy`). Cohérent avec branding visible (logo BB header pass) — pas de hub neutre KB intermédiaire (friction inutile).
+**(3) URL embedded "back of pass" = host du `lastBrandTenantId`** avec `?wallet=<serialNumber>` (ex: `bunsbao.kitchen-boost.com/?wallet=kb-xxx-yyy`). Cohérent avec branding visible (logo BB header pass) — pas de hub neutre KB intermédiaire (friction inutile).
 
 **(4) Mutabilité URL acté** :
 
@@ -361,7 +361,7 @@ Effet attendu : capter aussi les visiteurs low-intent (scan QR curieux) qui aura
 
 - Apple Pay nécessite chaque domaine enregistré dans Stripe Dashboard "Payment method domains".
 - Fichier `apple-developer-merchantid-domain-association` servi à `/.well-known/...` (un fichier unique partagé, dans `apps/web/public/.well-known/`).
-- **V1 manuel** : Alex tape `<slug>.kitchen-boost.fr` + domaine custom dans Stripe Dashboard à chaque Phase C onboarding (2 min/tenant). Documenté runbook.
+- **V1 manuel** : Alex tape `<slug>.kitchen-boost.com` + domaine custom dans Stripe Dashboard à chaque Phase C onboarding (2 min/tenant). Documenté runbook.
 - **V2 automatisation** : action Convex `payment_method_domains.create` API Stripe au provisionTenant + customDomainSet.
 
 **(4) Edge cases V1** :
@@ -400,7 +400,7 @@ Effet attendu : capter aussi les visiteurs low-intent (scan QR curieux) qui aura
 **(1) Google Places API** :
 
 - Stack : `@googlemaps/js-api-loader` + Places Autocomplete widget officiel.
-- Clé exposée publiquement (`NEXT_PUBLIC_GOOGLE_PLACES_API_KEY`) avec **HTTP referrer restriction** Google Cloud Console : `*.kitchen-boost.fr/*` + domaines custom resto (mise à jour à chaque nouveau custom domain).
+- Clé exposée publiquement (`NEXT_PUBLIC_GOOGLE_PLACES_API_KEY`) avec **HTTP referrer restriction** Google Cloud Console : `*.kitchen-boost.com/*` + domaines custom resto (mise à jour à chaque nouveau custom domain).
 - Restrictions : `componentRestrictions: { country: 'fr' }`, `types: ['address']`.
 - Coût estimé : ~$85/mois après quota gratos $200/mois (10k cmds × 5 searches/cmd).
 
@@ -615,10 +615,10 @@ Potentiellement à créer si Q8 introduit de la nouveauté architecturale forte 
 
 Infra DNS / Vercel / Stripe Dashboard :
 
-- [ ] Provisionner wildcard DNS `*.kitchen-boost.fr`
+- [ ] Provisionner wildcard DNS `*.kitchen-boost.com`
 - [ ] Configurer Vercel Edge region pinning Paris/Frankfurt
 - [ ] Configurer Stripe Dashboard "Payment method domains" pour chaque tenant onboardé (manual V1)
-- [ ] Configurer Google Cloud Console referrer restriction `*.kitchen-boost.fr/*` + custom domains
+- [ ] Configurer Google Cloud Console referrer restriction `*.kitchen-boost.com/*` + custom domains
 - [ ] Assets Lottie (6 delivery + 3 C&C + 1 incident) — Phase 4 design
 
 Backend Convex (queries/mutations à ajouter) :

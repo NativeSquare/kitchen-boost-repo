@@ -25,7 +25,7 @@ const modules = Object.fromEntries(
  * Written BEFORE the implementation (TDD red).
  *
  * Three queries:
- *  - `bySlug(slug)` — resolves `<slug>.kitchen-boost.fr`
+ *  - `bySlug(slug)` — resolves `<slug>.kitchen-boost.com`
  *  - `byCustomDomain(customDomain)` — resolves a custom domain like `bunsbao.fr`
  *  - `byId(tenantId)` — re-validates a stale `__Host-kb_tenant` cookie when the
  *    middleware doesn't trust the cookie blindly (post-deploy / suspected

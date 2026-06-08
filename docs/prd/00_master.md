@@ -137,7 +137,7 @@ KitchenBoost se compose de **10 blocs fonctionnels** indépendants mais inter-d�
 │ Client final                                                                 │
 │  ┌────────────────────────────────────┐  ┌────────────────────────────────┐ │
 │  │ PWA Client Commande (10)           │  │ Push web + Email + SMS (80)    │ │
-│  │ <slug>.kitchen-boost.fr            │  │ Service worker (PWA)           │ │
+│  │ <slug>.kitchen-boost.com            │  │ Service worker (PWA)           │ │
 │  │ ou domaine custom resto            │  │ Transactionnel + marketing V1  │ │
 │  └────────────────┬───────────────────┘  └────────────────────────────────┘ │
 └───────────────────┼─────────────────────────────────────────────────────────┘
@@ -167,7 +167,7 @@ KitchenBoost se compose de **10 blocs fonctionnels** indépendants mais inter-d�
    ▼                     ▼                     ▼                  ▼
                 ┌──────────────────────────┐   ┌──────────────────────────────┐
                 │ KB Orders (20)           │   │ KitchenBoost Admin (70)      │
-                │ App native iOS + Android │   │ admin.kitchen-boost.fr       │
+                │ App native iOS + Android │   │ admin.kitchen-boost.com       │
                 │ Téléphone + tablette     │   │ RBAC scoped :                │
                 │ cuisine (même build)     │   │  • KB Admin → tous tenants   │
                 │ Push APNs/FCM            │   │  • KB Manager → ses tenants  │
@@ -397,7 +397,7 @@ Pour éviter le scope creep, voici ce qui n'est pas dans le scope du produit en 
 - ❌ Comptabilité (juste export CSV des transactions pour comptable).
 - ❌ Click & collect "borne self-service" autre que via PWA KB.
 - ❌ Partenariat fidélité cross-restos (V3+).
-- ❌ Marketplace KB (où le client choisirait son resto sur kitchen-boost.fr) — chaque resto a son propre URL en V1/V2.
+- ❌ Marketplace KB (où le client choisirait son resto sur kitchen-boost.com) — chaque resto a son propre URL en V1/V2.
 
 ## 12. Index des sous-PRDs
 

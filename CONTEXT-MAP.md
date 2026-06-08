@@ -59,7 +59,7 @@ Multi-Tenant ──[tenant_id, RBAC, user_tenants]──► TOUS les autres cont
 Ces termes ont la **même définition partout** dans le système. Chaque CONTEXT.md peut s'y référer sans les redéfinir.
 
 **Tenant** (= **Établissement**) :
-1 location physique d'un resto avec 1 menu, 1 sous-domaine `<slug>.kitchen-boost.fr`, **1 compte Uber Direct** (toujours), 1 compte Stripe Connect Express (**potentiellement partagé** entre tenants même SIRET). Statuts : `active` / `pending` / `suspended` / `disabled`. Cf. [Multi-Tenant CONTEXT](docs/contexts/multi-tenant/CONTEXT.md).
+1 location physique d'un resto avec 1 menu, 1 sous-domaine `<slug>.kitchen-boost.com`, **1 compte Uber Direct** (toujours), 1 compte Stripe Connect Express (**potentiellement partagé** entre tenants même SIRET). Statuts : `active` / `pending` / `suspended` / `disabled`. Cf. [Multi-Tenant CONTEXT](docs/contexts/multi-tenant/CONTEXT.md).
 _Avoid_: Account, Client, Workspace, Organization
 
 **Restaurateur** :

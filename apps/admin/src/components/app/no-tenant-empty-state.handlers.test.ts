@@ -8,7 +8,7 @@
  * module, pin its behaviour exhaustively, keep the React layer a thin shell.
  *
  * Acceptance criteria of issue #169 pinned here:
- *   - « CTA "Contacter le support" ouvre `mailto:support@kitchen-boost.fr` »
+ *   - « CTA "Contacter le support" ouvre `mailto:support@kitchen-boost.com` »
  *   - « Bouton "Se déconnecter" appelle `signOut` et redirige vers `/login` »
  *   - « Test : clic "Se déconnecter" → `signOut` appelé »
  *
@@ -28,7 +28,7 @@ describe("NoTenantEmptyState — handlers/config", () => {
     // Pinned: the address itself + the `mailto:` scheme. If anyone ever swaps
     // it for an in-app contact form, this test will (intentionally) fail and
     // force the swap to be explicit.
-    expect(SUPPORT_MAILTO_HREF).toBe("mailto:support@kitchen-boost.fr");
+    expect(SUPPORT_MAILTO_HREF).toBe("mailto:support@kitchen-boost.com");
   });
 
   it("`SIGN_OUT_REDIRECT_PATH` lands on `/login` (matches existing `NavUser` behaviour)", () => {

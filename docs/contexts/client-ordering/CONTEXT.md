@@ -45,7 +45,7 @@ _Avoid_: Cashier, Order page
 **Branding tenant V1** (Asymétrique) :
 Niveau de personnalisation visuelle par tenant V1, **asymétrique selon la surface** (révision 2026-05-24 suite décision carte Wallet commune) :
 
-- **PWA tenant** (`bunsbao.kitchen-boost.fr`) = **Branded resto à 100%** (Medium acté Q10-Q2) : logo + 1 couleur primaire + hero photo personnalisée + police standard (Inter). UX commande = expérience resto pure.
+- **PWA tenant** (`bunsbao.kitchen-boost.com`) = **Branded resto à 100%** (Medium acté Q10-Q2) : logo + 1 couleur primaire + hero photo personnalisée + police standard (Inter). UX commande = expérience resto pure.
 - **Icône A2HS + manifest + splash screen** = **Branded resto** (cf. [[A2HS]] / [[PWA standalone]])
 - **Email transactionnel** (confirmation cmd, suivi) = **Branded resto à 100%** (vient "du resto")
 - **Carte [[Wallet pass]]** = **Branded commun "[Nom carte TBD]"** avec logo du dernier resto commandé en header + mention "Membre [Nom carte]" en bas
@@ -59,7 +59,7 @@ Capacité de pousser à un sous-ensemble de clients. **V1 = supporté nativement
 
 - **Khan (resto)** peut pousser à SES clients seulement (`WHERE tenant_id = 'buns-bao'`), filtré éventuellement par [[Segment]] (Actif/Inactif/VIP) — UI campagne dans [[KB Admin]] V1
 - **KB root** peut pousser à TOUS les clients KB cross-tenant (ex: "Nouveau resto à 5 min de chez toi", filtré par géo)
-- **Deep link par notif** : chaque notif contient son propre `app-launch-url` (Apple) / `actionUri` (Google) — tap notif → redirige vers la PWA du resto qui pousse, indépendamment de la carte Wallet courante. Ex: notif BB → `bunsbao.kitchen-boost.fr/?promo=BAO20`, notif Crêperie → `creperie.kitchen-boost.fr/?promo=CREPE1`.
+- **Deep link par notif** : chaque notif contient son propre `app-launch-url` (Apple) / `actionUri` (Google) — tap notif → redirige vers la PWA du resto qui pousse, indépendamment de la carte Wallet courante. Ex: notif BB → `bunsbao.kitchen-boost.com/?promo=BAO20`, notif Crêperie → `creperie.kitchen-boost.com/?promo=CREPE1`.
 - **Sender name notif iOS** : affiche le nom de la [[Wallet pass]] commun ("[Nom carte]") — mitigation = préfixer le titre de la notif par le nom du resto + emoji distinct (ex: "🥢 Buns & Bao : -20% bao ce soir").
 
 Limite Google Wallet : 3 push par pass par 24h (anti-spam). Spec détaillée dans le contexte [[Notifications]] et UI dans [[KB Admin]].
@@ -78,7 +78,7 @@ Bandeau accueillant `"Bonjour {firstName} 👋"` affiché au-dessus du form Goog
 _Avoid_: Welcome banner, Re-bienvenue popup, Hi banner, "On te connaît" message
 
 **PWA standalone** (Architecture surface client) :
-La surface client final V1 est une **PWA hébergée par KB sur un sous-domaine `<slug>.kitchen-boost.fr`** (ou domaine custom resto si configuré). **PAS un module/widget embedded** dans le site existant du resto. Q10-Q acté 2026-05-24. Raisons : (1) le push web V1 nécessite [[A2HS]] qui n'est possible que sur PWA standalone (pas en widget), (2) la majorité des TPE cible KB n'ont pas de site existant — KB devient leur "vitrine commande" en bonus, (3) maintenance/support sur N stacks CMS host (WP, Wix, Shopify, Webflow) irréaliste V1 micro-équipe. **V2 envisagera un mode widget overlay** pour restos avec site fort qui veulent embed le commande sur leur domaine — mais sans push iOS dans ce mode (limite architecturale).
+La surface client final V1 est une **PWA hébergée par KB sur un sous-domaine `<slug>.kitchen-boost.com`** (ou domaine custom resto si configuré). **PAS un module/widget embedded** dans le site existant du resto. Q10-Q acté 2026-05-24. Raisons : (1) le push web V1 nécessite [[A2HS]] qui n'est possible que sur PWA standalone (pas en widget), (2) la majorité des TPE cible KB n'ont pas de site existant — KB devient leur "vitrine commande" en bonus, (3) maintenance/support sur N stacks CMS host (WP, Wix, Shopify, Webflow) irréaliste V1 micro-équipe. **V2 envisagera un mode widget overlay** pour restos avec site fort qui veulent embed le commande sur leur domaine — mais sans push iOS dans ce mode (limite architecturale).
 _Avoid_: Widget, Embed, Iframe (acceptable V2 si confirmé)
 
 **A2HS** (Add To Home Screen) :

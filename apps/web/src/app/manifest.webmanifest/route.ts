@@ -14,7 +14,7 @@
  * (acceptable trade-off vs round-tripping Convex on every PWA frame).
  *
  * Falls back to a generic KitchenBoost manifest when:
- *  - no cookie is set (the user landed at the apex `kitchen-boost.fr`, or
+ *  - no cookie is set (the user landed at the apex `kitchen-boost.com`, or
  *    the middleware was bypassed for an asset request, etc.);
  *  - the cookie tenantId no longer resolves (deleted between visits — same
  *    « tenant orphan » story as #449, but the cookie clear happens server-

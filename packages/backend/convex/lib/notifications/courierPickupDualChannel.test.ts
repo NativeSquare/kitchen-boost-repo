@@ -51,9 +51,9 @@ const modules = Object.fromEntries(
 type Seed = Awaited<ReturnType<typeof seedTwoTenantsAllRoles>>;
 
 const WALLET_SECRET = "kb-wallet-internal-secret";
-const WALLET_PUSH_URL = "https://admin.kitchen-boost.fr/api/wallet/push";
+const WALLET_PUSH_URL = "https://admin.kitchen-boost.com/api/wallet/push";
 const WEB_PUSH_SECRET = "kb-webpush-internal-secret";
-const WEB_PUSH_URL = "https://buns.kitchen-boost.fr/api/push/send";
+const WEB_PUSH_URL = "https://buns.kitchen-boost.com/api/push/send";
 
 /**
  * A single `fetch` stub that serves BOTH transports (the Wallet APNs route and the

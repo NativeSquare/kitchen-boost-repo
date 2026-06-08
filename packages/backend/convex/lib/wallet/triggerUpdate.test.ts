@@ -33,7 +33,7 @@ const modules = Object.fromEntries(
  */
 
 const SECRET = "kb-internal-shared-secret";
-const PUSH_URL = "https://admin.kitchen-boost.fr/api/wallet/push";
+const PUSH_URL = "https://admin.kitchen-boost.com/api/wallet/push";
 
 /** Seed a customer + an installed pass + N active device registrations. */
 async function seedEnrolledPass(

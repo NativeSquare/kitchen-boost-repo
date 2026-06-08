@@ -89,7 +89,7 @@ Output :
 - Quand une règle réduit les frais livraison, afficher **prix barré (coût brut Uber Direct)** + **montant final** + **mention attribution au resto**.
   - Exemple offerte : `̶5̶,̶9̶0̶ ̶€̶ → 0,00 €  ·  Offert par Buns & Bao` 🎉
   - Exemple partiellement absorbée : `̶5̶,̶9̶0̶ ̶€̶ → 2,90 €  ·  3,00 € offerts par Buns & Bao`
-- **Le client ne voit jamais "KitchenBoost"** dans le wording — il est sur la plateforme du resto (sous-domaine `<slug>.kitchen-boost.fr` ou domaine custom). Toute attribution est nominative au resto.
+- **Le client ne voit jamais "KitchenBoost"** dans le wording — il est sur la plateforme du resto (sous-domaine `<slug>.kitchen-boost.com` ou domaine custom). Toute attribution est nominative au resto.
 - Au panier : déjà afficher la projection si la règle est satisfaite (« Plus que 3 € pour livraison offerte »).
 - Au checkout : récap clair « Sous-total + frais livraison = total ». Pas de surprise.
 - **Garde-fous légaux (Code Conso L121-1 sur annonces de réduction)** :
