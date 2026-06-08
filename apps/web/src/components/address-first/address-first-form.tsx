@@ -9,8 +9,11 @@
  *  - Loads `@googlemaps/js-api-loader` with the public Places API key (env
  *    `NEXT_PUBLIC_GOOGLE_PLACES_API_KEY`, HTTP-referrer-restricted in Google
  *    Cloud Console — cf. issue body « lue depuis env, pas hardcodée »).
- *  - Mounts a Places Autocomplete restricted to `componentRestrictions: {
- *    country: "fr" }` + `types: ["address"]` (Q7 (1)).
+ *  - Mounts a `PlaceAutocompleteElement` (Places API New) restricted to
+ *    `includedRegionCodes: ["fr"]` + `includedPrimaryTypes: ["street_address",
+ *    "premise"]` (Q7 (1), refactor 2026-06-08 from the legacy
+ *    `places.Autocomplete` widget — that one requires the deprecated Places
+ *    API legacy SKU which we no longer enable in Google Cloud).
  *  - On a suggestion SELECTION (= auto-validate, NOT a separate « Valider »
  *    button — US 3 saves one tap), chains:
  *       `signIn("anonymous")` (if not already authenticated)
@@ -95,7 +98,10 @@ export function AddressFirstForm({
   tenantId,
   initialAddress,
 }: AddressFirstFormProps): React.JSX.Element {
-  const inputRef = useRef<HTMLInputElement>(null);
+  // `PlaceAutocompleteElement` is a custom HTML element from Places API (New)
+  // — it owns its own input internally, so we mount it into a container div
+  // (vs the previous legacy widget that attached to our own `<input>`).
+  const containerRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const { signIn } = useAuthActions();
   const { isAuthenticated } = useConvexAuth();
@@ -190,8 +196,12 @@ export function AddressFirstForm({
     }
   };
 
-  // Mount Places Autocomplete on the input. The loader is cached internally so
-  // mounting twice (Fast Refresh / strict mode) does not re-fetch the SDK.
+  // Mount `PlaceAutocompleteElement` (Places API New) inside the container.
+  // The loader is cached internally so mounting twice (Fast Refresh / strict
+  // mode) does not re-fetch the SDK. Refactor 2026-06-08 — the previous
+  // legacy `places.Autocomplete` widget hit `LegacyApiNotActivatedMapError`
+  // unless the deprecated legacy Places API SKU was also enabled in GCP,
+  // which we explicitly do NOT enable (V1 stays on the New SKU only).
   useEffect(() => {
     const apiKey = process.env.NEXT_PUBLIC_GOOGLE_PLACES_API_KEY;
     if (!apiKey) {
@@ -205,9 +215,12 @@ export function AddressFirstForm({
       });
       return;
     }
-    if (inputRef.current === null) return;
+    if (containerRef.current === null) return;
 
+    const container = containerRef.current;
     let cancelled = false;
+    let mountedElement: google.maps.places.PlaceAutocompleteElement | null =
+      null;
     // Functional loader API (`setOptions` + `importLibrary` from
     // `@googlemaps/js-api-loader`). `setOptions` is a no-op after the first
     // call within the same session, so re-mounting (Fast Refresh / strict
@@ -216,32 +229,57 @@ export function AddressFirstForm({
 
     importLibrary("places")
       .then((places) => {
-        if (cancelled || inputRef.current === null) return;
-        // Use the (legacy) Autocomplete widget — decisions-log Q7 (1) calls out
-        // `@googlemaps/js-api-loader` + Places Autocomplete explicitly. The
-        // newer PlaceAutocompleteElement is GA but ships a custom element; the
-        // form contract here stays « select a suggestion → auto-validate »
-        // regardless of which widget Google promotes.
-        const autocomplete = new places.Autocomplete(inputRef.current, {
-          componentRestrictions: { country: "fr" },
-          types: ["address"],
-          fields: ["formatted_address", "geometry"],
+        if (cancelled) return;
+        const element = new places.PlaceAutocompleteElement({
+          includedRegionCodes: ["fr"],
+          includedPrimaryTypes: ["street_address", "premise"],
         });
-        autocomplete.addListener("place_changed", () => {
-          const place = autocomplete.getPlace();
-          const address = place.formatted_address;
-          const lat = place.geometry?.location?.lat();
-          const lng = place.geometry?.location?.lng();
-          if (address === undefined || lat === undefined || lng === undefined) {
-            // The user typed something Google could not normalise — keep the
-            // current state, do not fire the chain. V1 forbids free typing
-            // (decision 2026-05-23) so a non-suggestion submit is silently
-            // ignored: the form will only proceed when a real suggestion lands.
-            return;
-          }
-          lastSelectionRef.current = { address, lat, lng };
-          void runChain({ address, lat, lng });
+        // Silent pre-fill for returning Sophie (PWA-S12 #464). The New API
+        // exposes `value` directly on the element (vs the legacy widget that
+        // needed `<input defaultValue>`).
+        if (initialAddress !== undefined) {
+          element.value = initialAddress;
+        }
+        element.addEventListener("gmp-select", (event) => {
+          // `gmp-select` carries a `PlacePredictionSelectEvent`. We call
+          // `.toPlace()` and `fetchFields` to get the resolved address +
+          // coordinates — the session token billing is handled automatically
+          // by the SDK (same session covers query + selection).
+          void (async () => {
+            try {
+              const place = event.placePrediction.toPlace();
+              await place.fetchFields({
+                fields: ["formattedAddress", "location"],
+              });
+              const address = place.formattedAddress;
+              const lat = place.location?.lat();
+              const lng = place.location?.lng();
+              if (
+                typeof address !== "string" ||
+                lat === undefined ||
+                lng === undefined
+              ) {
+                // The user picked something Google could not resolve to a
+                // street address — keep the current state, do not fire the
+                // chain. V1 forbids free typing (decision 2026-05-23) so a
+                // non-suggestion submit is silently ignored.
+                return;
+              }
+              lastSelectionRef.current = { address, lat, lng };
+              void runChain({ address, lat, lng });
+            } catch (err) {
+              setState({
+                kind: "error",
+                message:
+                  err instanceof Error
+                    ? err.message
+                    : "Impossible de récupérer l'adresse, réessaie.",
+              });
+            }
+          })();
         });
+        container.appendChild(element);
+        mountedElement = element;
       })
       .catch(() => {
         if (cancelled) return;
@@ -254,6 +292,9 @@ export function AddressFirstForm({
 
     return () => {
       cancelled = true;
+      if (mountedElement !== null) {
+        mountedElement.remove();
+      }
     };
     // We deliberately omit `runChain` from deps — it closes over latest state
     // through `lastSelectionRef` / setState, and re-mounting Places on every
@@ -279,13 +320,13 @@ export function AddressFirstForm({
         <span className="text-sm font-medium text-zinc-700">
           Ton adresse de livraison
         </span>
-        <input
-          ref={inputRef}
-          type="text"
-          autoComplete="off"
-          defaultValue={initialAddress}
-          placeholder="Commence à taper ton adresse…"
-          className="w-full rounded-lg border border-zinc-300 px-4 py-3 text-base text-black placeholder:text-zinc-400 focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+        {/* The `<gmp-place-autocomplete>` web component is mounted here in
+            the effect above. Tailwind styles the wrapping container; the
+            element itself uses Google's default design (CSS shadow parts
+            can be tuned post-V1 if needed). */}
+        <div
+          ref={containerRef}
+          className="w-full"
           aria-label="Adresse de livraison"
         />
       </label>
