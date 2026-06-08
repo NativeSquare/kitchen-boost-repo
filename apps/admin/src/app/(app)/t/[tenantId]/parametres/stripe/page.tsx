@@ -59,7 +59,7 @@
  */
 
 import { useState } from "react";
-import { useAction } from "convex/react";
+import { useAction, useMutation } from "convex/react";
 import { toast } from "sonner";
 
 import { api } from "@packages/backend/convex/_generated/api";
@@ -93,9 +93,18 @@ export default function StripeSettingsPage() {
     api.lib.stripe.account.createStripeAccountLink,
   );
 
+  // Backup admin override (chemin de secours quand le webhook
+  // account.updated ne ramène pas le statut à ready). Backend rejette si
+  // pas de stripeAccountId + audit-log chaque flip. Root-only via
+  // kbAdminMutation.
+  const forceStripeStatusOverride = useMutation(
+    api.lib.stripe.account.forceStripeStatusOverride,
+  );
+
   const [accountLink, setAccountLink] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
+  const [isOverriding, setIsOverriding] = useState(false);
   // Email du restaurant — requis par Stripe `/v1/accounts` (champ `email`).
   // Saisi par l'opérateur ici parce qu'aucun « prospect » n'existe pour un
   // tenant créé hors wizard (a posteriori).
@@ -152,6 +161,22 @@ export default function StripeSettingsPage() {
     }
   };
 
+  const handleForceReady = async (): Promise<void> => {
+    if (isOverriding) return;
+    if (!window.confirm("Confirmer l'override : marquer le KYC comme validé ?"))
+      return;
+    setIsOverriding(true);
+    try {
+      await forceStripeStatusOverride({ tenantId, status: "ready" });
+      toast.success("Statut Stripe Connect forcé à « Prêt »");
+    } catch (error) {
+      const message = getConvexErrorMessage(error);
+      toast.error("Impossible de forcer le statut", { description: message });
+    } finally {
+      setIsOverriding(false);
+    }
+  };
+
   const handleCopy = async (url: string): Promise<void> => {
     try {
       if (
@@ -180,6 +205,8 @@ export default function StripeSettingsPage() {
       genError={genError}
       onGenerate={handleGenerate}
       onCopy={handleCopy}
+      onForceReady={handleForceReady}
+      isOverriding={isOverriding}
     />
   );
 }

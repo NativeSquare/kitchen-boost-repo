@@ -205,6 +205,8 @@ function defaultProps(
     genError: null,
     onGenerate: vi.fn(),
     onCopy: vi.fn(),
+    onForceReady: vi.fn(),
+    isOverriding: false,
     ...overrides,
   };
 }
@@ -406,6 +408,86 @@ describe("StripeSettingsView — email du restaurant (a posteriori)", () => {
       props: { disabled?: boolean };
     } | null;
     expect(btn?.props.disabled).toBe(false);
+  });
+});
+
+describe("StripeSettingsView — admin override (backup webhook)", () => {
+  it("no account yet → override block is HIDDEN (override sans compte = nonsense)", () => {
+    const tree = serialize(StripeSettingsView(defaultProps()));
+    expect(findBySlot(tree, "stripe-settings-override-block")).toBeNull();
+    expect(findBySlot(tree, "stripe-settings-force-ready")).toBeNull();
+  });
+
+  it("status `ready` → override block is HIDDEN (déjà ready, no-op)", () => {
+    const tree = serialize(
+      StripeSettingsView(
+        defaultProps({
+          stripeAccountId: ACCOUNT_ID,
+          stripeStatus: "ready",
+        }),
+      ),
+    );
+    expect(findBySlot(tree, "stripe-settings-override-block")).toBeNull();
+  });
+
+  it("status `pending` → override block is VISIBLE (chemin de secours)", () => {
+    const tree = serialize(
+      StripeSettingsView(
+        defaultProps({
+          stripeAccountId: ACCOUNT_ID,
+          stripeStatus: "pending",
+        }),
+      ),
+    );
+    const block = findBySlot(tree, "stripe-settings-override-block");
+    expect(block).not.toBeNull();
+    expect(allText(block)).toMatch(/Override admin/i);
+  });
+
+  it("status `disabled` → override block is VISIBLE (admin peut ré-activer)", () => {
+    const tree = serialize(
+      StripeSettingsView(
+        defaultProps({
+          stripeAccountId: ACCOUNT_ID,
+          stripeStatus: "disabled",
+        }),
+      ),
+    );
+    expect(findBySlot(tree, "stripe-settings-override-block")).not.toBeNull();
+  });
+
+  it("clicking « Marquer comme … » calls `onForceReady`", () => {
+    const onForceReady = vi.fn();
+    const tree = serialize(
+      StripeSettingsView(
+        defaultProps({
+          stripeAccountId: ACCOUNT_ID,
+          stripeStatus: "pending",
+          onForceReady,
+        }),
+      ),
+    );
+    const btn = findBySlot(tree, "stripe-settings-force-ready") as {
+      props: { onClick?: () => void };
+    } | null;
+    btn?.props.onClick?.();
+    expect(onForceReady).toHaveBeenCalledTimes(1);
+  });
+
+  it("override button is disabled while `isOverriding` is true", () => {
+    const tree = serialize(
+      StripeSettingsView(
+        defaultProps({
+          stripeAccountId: ACCOUNT_ID,
+          stripeStatus: "pending",
+          isOverriding: true,
+        }),
+      ),
+    );
+    const btn = findBySlot(tree, "stripe-settings-force-ready") as {
+      props: { disabled?: boolean };
+    } | null;
+    expect(btn?.props.disabled).toBe(true);
   });
 });
 

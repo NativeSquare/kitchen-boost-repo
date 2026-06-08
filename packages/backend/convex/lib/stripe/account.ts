@@ -7,6 +7,7 @@ import {
   kbAdminMutation,
   kbAdminQuery,
   setTenantStripeAccount,
+  setTenantStripeStatus,
 } from "../tenancy";
 
 /**
@@ -103,6 +104,51 @@ export const stampStripeAccount = kbAdminMutation({
       args.stripeAccountId,
       "pending",
     );
+  },
+});
+
+/**
+ * Root-only manual override of the tenant's Stripe Connect status. Backup path
+ * for when the `account.updated` webhook fails to fire / arrive (Stripe Connect
+ * webhook misconfig, sandbox flakiness, signature mismatch, network blip) — the
+ * admin completed the KYC with the resto IRL but the badge stays « En attente »
+ * forever. With this mutation, the admin can flip the status from the UI in one
+ * click instead of waiting / debugging the webhook.
+ *
+ * Auto-audited via `kbAdminMutation` so every manual override leaves a trail
+ * (who, when, from-status → to-status — the wrapper records the action + actor;
+ * we add an explicit richer `logAudit` carrying the previous status for ops
+ * reconstruction, same pattern as `tenant.activate`).
+ *
+ * Refuses if the tenant has no `stripeAccountId` yet (overriding the status of
+ * a non-existent account makes no sense — generate a Stripe Connect link first).
+ *
+ * Args:
+ *  - `tenantId` — the tenant to patch
+ *  - `status`   — `"ready" | "disabled" | "pending"` (the full union; admin can
+ *                 roll back if a misclick happened — the audit log records it).
+ */
+export const forceStripeStatusOverride = kbAdminMutation({
+  args: {
+    tenantId: v.id("tenants"),
+    status: v.union(
+      v.literal("ready"),
+      v.literal("disabled"),
+      v.literal("pending"),
+    ),
+  },
+  action: "stripe.account.forceStatusOverride",
+  handler: async (ctx, args): Promise<void> => {
+    const tenant = await getTenantById(ctx, args.tenantId);
+    if (tenant === null) throw tenantNotFound();
+    if (tenant.stripeAccountId === undefined) {
+      throw new ConvexError({
+        code: "INVALID_STATE",
+        message:
+          "Cannot force a Stripe status on a tenant with no Stripe account. Generate a Stripe Connect link first.",
+      });
+    }
+    await setTenantStripeStatus(ctx, args.tenantId, args.status);
   },
 });
 

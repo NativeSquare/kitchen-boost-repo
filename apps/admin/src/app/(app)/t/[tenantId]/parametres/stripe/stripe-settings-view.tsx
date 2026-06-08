@@ -129,6 +129,20 @@ export type StripeSettingsViewProps = {
    * Threaded as a prop so the view stays purely presentational.
    */
   onCopy: (url: string) => void;
+  /**
+   * Override manuel admin du statut Stripe — chemin de secours quand le
+   * webhook `account.updated` n'arrive pas (sandbox flaky, signature
+   * mismatch, misconfig Connect). L'admin a complété le KYC IRL avec le
+   * resto mais le badge reste « En attente » → un clic ici flippe le
+   * status à `ready`. Audit-logged côté backend.
+   *
+   * Threaded comme prop pour garder la view purement présentationnelle.
+   * Affiché uniquement quand un compte existe (`hasAccount`) ET que le
+   * status n'est pas déjà `ready` (sinon overrider à ready est un no-op).
+   */
+  onForceReady: () => void;
+  /** Disable le bouton override pendant l'in-flight mutation. */
+  isOverriding: boolean;
 };
 
 // ---------------------------------------------------------------------------
@@ -205,6 +219,8 @@ export function StripeSettingsView(
     genError,
     onGenerate,
     onCopy,
+    onForceReady,
+    isOverriding,
   } = props;
 
   const status = statusCopy(stripeAccountId, stripeStatus);
@@ -216,6 +232,9 @@ export function StripeSettingsView(
   // un compte existant — pas de re-passage par `/v1/accounts`, donc
   // l'email du tenant n'est pas relu.
   const disableGenerate = isGenerating || (!hasAccount && !isEmailValid);
+  // L'override admin n'a de sens que si un compte existe ET que le status
+  // n'est pas déjà `ready` (sinon flipper à ready est un no-op).
+  const canForceReady = hasAccount && stripeStatus !== "ready";
 
   return (
     <div
@@ -320,6 +339,38 @@ export function StripeSettingsView(
           </Button>
         </div>
       )}
+
+      {/* Admin override — chemin de secours si le webhook account.updated
+          n'arrive pas après un KYC validé IRL (Stripe sandbox flaky,
+          misconfig Connect, signature mismatch). Audit-logged côté backend.
+          Affiché seulement quand un compte existe ET status !== "ready". */}
+      {canForceReady ? (
+        <div
+          data-slot="stripe-settings-override-block"
+          className="rounded-md border border-amber-300/60 bg-amber-50 p-3"
+        >
+          <p className="mb-2 text-sm font-medium text-amber-900">
+            Override admin — marquer KYC validé manuellement
+          </p>
+          <p className="mb-3 text-xs text-amber-800">
+            À utiliser si le KYC a été validé avec le gérant mais que le statut
+            reste bloqué (webhook Stripe non reçu). Le changement est tracé dans
+            le journal d&apos;audit.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            data-slot="stripe-settings-force-ready"
+            onClick={onForceReady}
+            disabled={isOverriding}
+            className="border-amber-400 bg-white hover:bg-amber-100"
+          >
+            {isOverriding
+              ? "Application…"
+              : "Marquer comme « Prêt à recevoir les paiements »"}
+          </Button>
+        </div>
+      ) : null}
 
       {/* URL display + copy button (only once we have a URL) */}
       {hasUrl ? (
