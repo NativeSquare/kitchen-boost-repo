@@ -217,30 +217,66 @@ export function UberDirectSettingsView(
       </Card>
 
       {/* Form — toujours visible (création ET rotation). On ne pré-remplit
-          jamais les valeurs stockées : pour modifier, il faut tout re-saisir. */}
+          jamais les valeurs stockées : pour modifier, il faut tout re-saisir.
+          Labels alignés sur la nomenclature OFFICIELLE Uber Direct FR
+          (dashboard Uber → API credentials), avec le nom technique
+          (`customer_id` / `client_id` / `client_secret`) entre parenthèses
+          pour lever l'ambiguïté « Identifiant client » vs
+          « Identifiant DU client » côté Uber. */}
       <Card data-slot="uber-settings-form">
         <CardHeader>
           <CardTitle>Credentials Uber Direct</CardTitle>
           <CardDescription>
-            Récupérables sur le dashboard Uber Direct du restaurant (Settings →
-            Developer → API credentials). Les valeurs sont chiffrées côté
-            serveur (envelope encryption) — on ne les ré-affiche jamais en
-            clair.
+            Récupérables sur le dashboard Uber Direct du restaurant (section API
+            credentials). Les valeurs sont chiffrées côté serveur (envelope
+            encryption) — on ne les ré-affiche jamais en clair.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="uber-settings-client-id">client_id</Label>
+            <Label htmlFor="uber-settings-customer-id">
+              Identifiant du client{" "}
+              <span className="text-xs text-muted-foreground">
+                (customer_id)
+              </span>
+            </Label>
+            <Input
+              id="uber-settings-customer-id"
+              data-slot="uber-settings-customer-id"
+              value={form.customerId}
+              onChange={(e) => onFormChange("customerId", e.target.value)}
+              autoComplete="off"
+              placeholder="a32bdddd-6566-5028-9a83-1c48037f551b"
+            />
+            <p className="text-xs text-muted-foreground">
+              UUID du restaurant chez Uber. Visible dans l&apos;URL
+              d&apos;exemple côté Uber :{" "}
+              <code className="font-mono">
+                api.uber.com/v1/customers/&lt;ici&gt;/deliveries
+              </code>
+            </p>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="uber-settings-client-id">
+              Identifiant client{" "}
+              <span className="text-xs text-muted-foreground">(client_id)</span>
+            </Label>
             <Input
               id="uber-settings-client-id"
               data-slot="uber-settings-client-id"
               value={form.clientId}
               onChange={(e) => onFormChange("clientId", e.target.value)}
               autoComplete="off"
+              placeholder="0XgWA4ZpWH3ooTA4Ltzmo_GdOGd1MPHO"
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="uber-settings-client-secret">client_secret</Label>
+            <Label htmlFor="uber-settings-client-secret">
+              Secret client{" "}
+              <span className="text-xs text-muted-foreground">
+                (client_secret)
+              </span>
+            </Label>
             <Input
               id="uber-settings-client-secret"
               data-slot="uber-settings-client-secret"
@@ -251,19 +287,11 @@ export function UberDirectSettingsView(
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="uber-settings-customer-id">customer_id</Label>
-            <Input
-              id="uber-settings-customer-id"
-              data-slot="uber-settings-customer-id"
-              value={form.customerId}
-              onChange={(e) => onFormChange("customerId", e.target.value)}
-              autoComplete="off"
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
             <Label htmlFor="uber-settings-webhook-key">
-              webhook_signing_key{" "}
-              <span className="text-xs text-muted-foreground">(optionnel)</span>
+              Clé de signature webhook{" "}
+              <span className="text-xs text-muted-foreground">
+                (webhook_signing_key, optionnel)
+              </span>
             </Label>
             <Input
               id="uber-settings-webhook-key"
@@ -342,16 +370,16 @@ export function UberDirectSettingsView(
                 className="mt-2 flex flex-col gap-1.5 rounded border border-slate-200 bg-white p-3 text-sm"
               >
                 <ProbeLine
-                  label="OAuth client-credentials"
+                  label="Authentification OAuth (client_id + secret)"
                   ok={probeResult.tokenObtained}
                 />
                 <ProbeLine
-                  label="customer_id reconnu"
+                  label="Identifiant du client reconnu (customer_id)"
                   ok={probeResult.customerReachable}
                   detail={probeResult.customerId}
                 />
                 <ProbeLine
-                  label="Webhook signing key renseignée"
+                  label="Clé de signature webhook renseignée"
                   ok={probeResult.hasWebhookSigningKey}
                   detail={
                     probeResult.hasWebhookSigningKey ? "présente" : "absente"

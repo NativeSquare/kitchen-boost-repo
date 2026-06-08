@@ -410,9 +410,9 @@ describe("UberDirectSettingsView — probe block", () => {
     const block = findBySlot(tree, "uber-settings-probe-result");
     expect(block).not.toBeNull();
     const text = allText(block);
-    expect(text).toMatch(/OAuth client-credentials/i);
-    expect(text).toMatch(/customer_id reconnu/i);
-    expect(text).toMatch(/Webhook signing key/i);
+    expect(text).toMatch(/Authentification OAuth/i);
+    expect(text).toMatch(/Identifiant du client reconnu/i);
+    expect(text).toMatch(/Cl[ée] de signature webhook/i);
     expect(text).toContain("cust_test_123");
   });
 
