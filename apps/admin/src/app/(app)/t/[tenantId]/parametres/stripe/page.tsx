@@ -96,6 +96,10 @@ export default function StripeSettingsPage() {
   const [accountLink, setAccountLink] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
+  // Email du restaurant — requis par Stripe `/v1/accounts` (champ `email`).
+  // Saisi par l'opérateur ici parce qu'aucun « prospect » n'existe pour un
+  // tenant créé hors wizard (a posteriori).
+  const [email, setEmail] = useState("");
 
   // Loading sentinel — the view requires a tenantName + the read state.
   if (stripeState === undefined) {
@@ -127,12 +131,12 @@ export default function StripeSettingsPage() {
         returnUrl,
         prefill: {
           siret: stripeState.siret,
-          // Stripe Express collects the legal representative's email
-          // during the KYC UI itself; we forward an empty string when
-          // we don't have a manager email handy (matches the wizard
-          // `Step3Form` discipline). The `business_type: "company"`
-          // branch ignores `individual[*]` params anyway.
-          email: "",
+          // Email saisi par l'opérateur dans le formulaire (la view garde
+          // le bouton désactivé tant que la syntaxe email est invalide).
+          // Stripe `/v1/accounts` rejette un email vide ("Invalid email
+          // address: "), donc on ne se permet PAS de pousser "" comme le
+          // faisait le wizard quand `prospect.email` était null.
+          email: email.trim(),
         },
       });
       setAccountLink(result.url);
@@ -165,6 +169,8 @@ export default function StripeSettingsPage() {
   return (
     <StripeSettingsView
       tenantName={stripeState.name}
+      email={email}
+      onEmailChange={setEmail}
       stripeAccountId={stripeState.stripeAccountId ?? undefined}
       stripeStatus={
         (stripeState.stripeStatus ?? undefined) as StripeStatus | undefined

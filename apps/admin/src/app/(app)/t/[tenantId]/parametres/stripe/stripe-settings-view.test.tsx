@@ -196,6 +196,8 @@ function defaultProps(
 ): StripeSettingsViewProps {
   return {
     tenantName: "Le Petit Bistrot",
+    email: "contact@le-petit-bistrot.fr",
+    onEmailChange: vi.fn(),
     stripeAccountId: undefined,
     stripeStatus: undefined,
     accountLink: null,
@@ -324,6 +326,86 @@ describe("StripeSettingsView — generate / regenerate CTA", () => {
     const btn = regen as { props: { onClick?: () => void } } | null;
     btn?.props.onClick?.();
     expect(onGenerate).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("StripeSettingsView — email du restaurant (a posteriori)", () => {
+  it("renders the email input when no Stripe account exists yet", () => {
+    const tree = serialize(StripeSettingsView(defaultProps({ email: "" })));
+    const emailInput = findBySlot(tree, "stripe-settings-email") as {
+      props: { value?: string; type?: string };
+    } | null;
+    expect(emailInput).not.toBeNull();
+    expect(emailInput?.props.type).toBe("email");
+  });
+
+  it("hides the email input once an account exists (regenerate path)", () => {
+    const tree = serialize(
+      StripeSettingsView(
+        defaultProps({
+          stripeAccountId: ACCOUNT_ID,
+          stripeStatus: "pending",
+          email: "",
+        }),
+      ),
+    );
+    expect(findBySlot(tree, "stripe-settings-email")).toBeNull();
+  });
+
+  it("empty email → Générer button is disabled (Stripe rejects empty)", () => {
+    const tree = serialize(StripeSettingsView(defaultProps({ email: "" })));
+    const btn = findBySlot(tree, "stripe-settings-generate") as {
+      props: { disabled?: boolean };
+    } | null;
+    expect(btn?.props.disabled).toBe(true);
+  });
+
+  it("syntactically invalid email → Générer button is disabled", () => {
+    const tree = serialize(
+      StripeSettingsView(defaultProps({ email: "not-an-email" })),
+    );
+    const btn = findBySlot(tree, "stripe-settings-generate") as {
+      props: { disabled?: boolean };
+    } | null;
+    expect(btn?.props.disabled).toBe(true);
+  });
+
+  it("valid email → Générer button is enabled", () => {
+    const tree = serialize(
+      StripeSettingsView(defaultProps({ email: "alex@example.com" })),
+    );
+    const btn = findBySlot(tree, "stripe-settings-generate") as {
+      props: { disabled?: boolean };
+    } | null;
+    expect(btn?.props.disabled).toBe(false);
+  });
+
+  it("typing in the email input calls `onEmailChange` with the new value", () => {
+    const onEmailChange = vi.fn();
+    const tree = serialize(
+      StripeSettingsView(defaultProps({ email: "", onEmailChange })),
+    );
+    const emailInput = findBySlot(tree, "stripe-settings-email") as {
+      props: { onChange?: (e: { target: { value: string } }) => void };
+    } | null;
+    emailInput?.props.onChange?.({ target: { value: "new@example.com" } });
+    expect(onEmailChange).toHaveBeenCalledWith("new@example.com");
+  });
+
+  it("regenerate path: empty email still allowed (account exists, no `/v1/accounts` re-call)", () => {
+    const tree = serialize(
+      StripeSettingsView(
+        defaultProps({
+          stripeAccountId: ACCOUNT_ID,
+          stripeStatus: "pending",
+          email: "",
+        }),
+      ),
+    );
+    const btn = findBySlot(tree, "stripe-settings-regenerate") as {
+      props: { disabled?: boolean };
+    } | null;
+    expect(btn?.props.disabled).toBe(false);
   });
 });
 

@@ -71,6 +71,16 @@ export type StripeSettingsViewProps = {
   /** Tenant name for the page header. */
   tenantName: string;
   /**
+   * Email du restaurant utilisé pour pré-remplir le compte Stripe Connect
+   * Express (champ `email` requis par l'API `/v1/accounts`). Saisi par
+   * l'opérateur sur cette page parce qu'aucun « prospect » n'existe pour
+   * un tenant créé hors wizard. Le bouton « Générer » reste désactivé tant
+   * que `email` est vide ou syntaxiquement invalide.
+   */
+  email: string;
+  /** Setter contrôlé de l'email (parent owns state). */
+  onEmailChange: (value: string) => void;
+  /**
    * The Stripe Connect Express account id (`acct_xxx`) stamped on the
    * tenant once the action has been fired at least once. `undefined`
    * means no account has been created yet — the view renders the
@@ -179,11 +189,15 @@ function statusCopy(
 // Component
 // ---------------------------------------------------------------------------
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export function StripeSettingsView(
   props: StripeSettingsViewProps,
 ): React.JSX.Element {
   const {
     tenantName,
+    email,
+    onEmailChange,
     stripeAccountId,
     stripeStatus,
     accountLink,
@@ -196,6 +210,12 @@ export function StripeSettingsView(
   const status = statusCopy(stripeAccountId, stripeStatus);
   const hasAccount = stripeAccountId !== undefined;
   const hasUrl = accountLink !== null;
+  const isEmailValid = EMAIL_REGEX.test(email.trim());
+  // Email n'est requis qu'à la PREMIÈRE génération (création du compte
+  // Stripe). Une régénération ne crée qu'un nouveau `account_link` sur
+  // un compte existant — pas de re-passage par `/v1/accounts`, donc
+  // l'email du tenant n'est pas relu.
+  const disableGenerate = isGenerating || (!hasAccount && !isEmailValid);
 
   return (
     <div
@@ -251,6 +271,30 @@ export function StripeSettingsView(
         ) : null}
       </Card>
 
+      {/* Email du restaurant — requis par Stripe `/v1/accounts` (`business
+          email`). Pas de prospect ici (a posteriori), donc on demande à
+          l'opérateur. Le bouton « Générer » reste désactivé tant que la
+          syntaxe email n'est pas valide. */}
+      {!hasAccount ? (
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="stripe-settings-email">Email du restaurant</Label>
+          <Input
+            id="stripe-settings-email"
+            data-slot="stripe-settings-email"
+            type="email"
+            value={email}
+            onChange={(e) => onEmailChange(e.target.value)}
+            placeholder="contact@le-petit-bistrot.fr"
+            autoComplete="email"
+          />
+          <p className="text-xs text-muted-foreground">
+            Cet email sera attaché au compte Stripe Connect (reçus,
+            notifications Stripe). Le KYC personnel du gérant sera collecté plus
+            tard par Stripe lors de l&apos;onboarding.
+          </p>
+        </div>
+      ) : null}
+
       {/* Generate / Regenerate CTA */}
       {hasAccount ? (
         <div className="flex items-center justify-start">
@@ -259,7 +303,7 @@ export function StripeSettingsView(
             variant="outline"
             data-slot="stripe-settings-regenerate"
             onClick={onGenerate}
-            disabled={isGenerating}
+            disabled={disableGenerate}
           >
             {isGenerating ? "Génération…" : "Régénérer un lien Stripe Connect"}
           </Button>
@@ -270,7 +314,7 @@ export function StripeSettingsView(
             type="button"
             data-slot="stripe-settings-generate"
             onClick={onGenerate}
-            disabled={isGenerating}
+            disabled={disableGenerate}
           >
             {isGenerating ? "Génération…" : "Générer un lien Stripe Connect"}
           </Button>
