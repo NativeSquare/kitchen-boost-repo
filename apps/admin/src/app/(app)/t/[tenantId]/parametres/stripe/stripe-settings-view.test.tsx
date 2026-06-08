@@ -207,6 +207,9 @@ function defaultProps(
     onCopy: vi.fn(),
     onForceReady: vi.fn(),
     isOverriding: false,
+    onProbe: vi.fn(),
+    isProbing: false,
+    probeResult: null,
     ...overrides,
   };
 }
@@ -408,6 +411,148 @@ describe("StripeSettingsView — email du restaurant (a posteriori)", () => {
       props: { disabled?: boolean };
     } | null;
     expect(btn?.props.disabled).toBe(false);
+  });
+});
+
+describe("StripeSettingsView — probe live Stripe", () => {
+  it("no account → probe block is HIDDEN", () => {
+    const tree = serialize(StripeSettingsView(defaultProps()));
+    expect(findBySlot(tree, "stripe-settings-probe-block")).toBeNull();
+  });
+
+  it("account exists → probe button is rendered (any status)", () => {
+    for (const status of ["pending", "ready", "disabled"] as const) {
+      const tree = serialize(
+        StripeSettingsView(
+          defaultProps({ stripeAccountId: ACCOUNT_ID, stripeStatus: status }),
+        ),
+      );
+      expect(findBySlot(tree, "stripe-settings-probe")).not.toBeNull();
+    }
+  });
+
+  it("clicking « Tester la connexion » calls `onProbe`", () => {
+    const onProbe = vi.fn();
+    const tree = serialize(
+      StripeSettingsView(
+        defaultProps({
+          stripeAccountId: ACCOUNT_ID,
+          stripeStatus: "pending",
+          onProbe,
+        }),
+      ),
+    );
+    const btn = findBySlot(tree, "stripe-settings-probe") as {
+      props: { onClick?: () => void };
+    } | null;
+    btn?.props.onClick?.();
+    expect(onProbe).toHaveBeenCalledTimes(1);
+  });
+
+  it("probe button is disabled while `isProbing` is true", () => {
+    const tree = serialize(
+      StripeSettingsView(
+        defaultProps({
+          stripeAccountId: ACCOUNT_ID,
+          stripeStatus: "pending",
+          isProbing: true,
+        }),
+      ),
+    );
+    const btn = findBySlot(tree, "stripe-settings-probe") as {
+      props: { disabled?: boolean };
+    } | null;
+    expect(btn?.props.disabled).toBe(true);
+  });
+
+  it("probeResult ok=true → renders the success block + every fact line", () => {
+    const tree = serialize(
+      StripeSettingsView(
+        defaultProps({
+          stripeAccountId: ACCOUNT_ID,
+          stripeStatus: "pending",
+          probeResult: {
+            ok: true,
+            accountId: ACCOUNT_ID,
+            chargesEnabled: true,
+            payoutsEnabled: true,
+            detailsSubmitted: true,
+            requirementsCurrentlyDue: [],
+            disabledReason: null,
+            capabilityCardPayments: "active",
+            capabilityTransfers: "active",
+            email: "resto@test.fr",
+            country: "FR",
+            defaultCurrency: "eur",
+          },
+        }),
+      ),
+    );
+    const block = findBySlot(tree, "stripe-settings-probe-result");
+    expect(block).not.toBeNull();
+    const text = allText(block);
+    expect(text).toMatch(/Compte joignable/i);
+    expect(text).toMatch(/Encaissements/i);
+    expect(text).toMatch(/Virements/i);
+    expect(text).toMatch(/KYC compl[ée]t[ée]/i);
+    expect(text).toContain("resto@test.fr");
+    expect(text).toMatch(/FR/);
+    expect(text).toContain(ACCOUNT_ID);
+  });
+
+  it("probeResult with requirements → renders the list", () => {
+    const tree = serialize(
+      StripeSettingsView(
+        defaultProps({
+          stripeAccountId: ACCOUNT_ID,
+          stripeStatus: "pending",
+          probeResult: {
+            ok: true,
+            accountId: ACCOUNT_ID,
+            chargesEnabled: false,
+            payoutsEnabled: false,
+            detailsSubmitted: false,
+            requirementsCurrentlyDue: [
+              "tos_acceptance.date",
+              "external_account",
+            ],
+            disabledReason: "requirements.past_due",
+            capabilityCardPayments: "pending",
+            capabilityTransfers: "pending",
+            email: null,
+            country: "FR",
+            defaultCurrency: "eur",
+          },
+        }),
+      ),
+    );
+    const reqs = findBySlot(tree, "stripe-settings-probe-requirements");
+    expect(reqs).not.toBeNull();
+    const text = allText(reqs);
+    expect(text).toContain("tos_acceptance.date");
+    expect(text).toContain("external_account");
+    const reason = findBySlot(tree, "stripe-settings-probe-disabled-reason");
+    expect(reason).not.toBeNull();
+    expect(allText(reason)).toContain("requirements.past_due");
+  });
+
+  it("probeResult ok=false → renders the error block, no fact lines", () => {
+    const tree = serialize(
+      StripeSettingsView(
+        defaultProps({
+          stripeAccountId: ACCOUNT_ID,
+          stripeStatus: "pending",
+          probeResult: {
+            ok: false,
+            error: "Stripe API error: 401 unauthorized",
+          },
+        }),
+      ),
+    );
+    const err = findBySlot(tree, "stripe-settings-probe-error");
+    expect(err).not.toBeNull();
+    expect(allText(err)).toMatch(/401|unauthorized/);
+    expect(findBySlot(tree, "stripe-settings-probe-result")).toBeNull();
   });
 });
 

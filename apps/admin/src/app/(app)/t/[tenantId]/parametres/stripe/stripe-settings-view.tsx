@@ -143,7 +143,40 @@ export type StripeSettingsViewProps = {
   onForceReady: () => void;
   /** Disable le bouton override pendant l'in-flight mutation. */
   isOverriding: boolean;
+  /**
+   * Probe live de l'API Stripe (GET /v1/accounts/<id>) — sanity check qui
+   * permet à l'admin de SAVOIR ce que dit vraiment Stripe (peut-il
+   * encaisser ? virer ? que demande Stripe ?) avant de décider d'override.
+   */
+  onProbe: () => void;
+  /** Disable le bouton probe pendant l'in-flight action. */
+  isProbing: boolean;
+  /**
+   * Résultat de la dernière probe — `null` tant que l'admin n'a pas cliqué.
+   * Discriminé par `ok` :
+   *  - `ok: true`  → données réelles renvoyées par Stripe
+   *  - `ok: false` → message d'erreur (réseau, Stripe API, INVALID_STATE…)
+   */
+  probeResult: ProbeResult | null;
 };
+
+/** Shape du résultat de la probe Stripe (succès ou erreur). */
+export type ProbeResult =
+  | {
+      ok: true;
+      accountId: string;
+      chargesEnabled: boolean;
+      payoutsEnabled: boolean;
+      detailsSubmitted: boolean;
+      requirementsCurrentlyDue: string[];
+      disabledReason: string | null;
+      capabilityCardPayments: string | null;
+      capabilityTransfers: string | null;
+      email: string | null;
+      country: string | null;
+      defaultCurrency: string | null;
+    }
+  | { ok: false; error: string };
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -205,6 +238,29 @@ function statusCopy(
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+function ProbeLine(props: {
+  label: string;
+  ok: boolean;
+  detail?: string;
+}): React.JSX.Element {
+  return (
+    <div className="flex items-baseline gap-2">
+      <span
+        aria-hidden
+        className={props.ok ? "text-emerald-600" : "text-red-600"}
+      >
+        {props.ok ? "✅" : "❌"}
+      </span>
+      <span className="flex-1">{props.label}</span>
+      {props.detail !== undefined ? (
+        <span className="font-mono text-xs text-muted-foreground">
+          {props.detail}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 export function StripeSettingsView(
   props: StripeSettingsViewProps,
 ): React.JSX.Element {
@@ -221,6 +277,9 @@ export function StripeSettingsView(
     onCopy,
     onForceReady,
     isOverriding,
+    onProbe,
+    isProbing,
+    probeResult,
   } = props;
 
   const status = statusCopy(stripeAccountId, stripeStatus);
@@ -339,6 +398,110 @@ export function StripeSettingsView(
           </Button>
         </div>
       )}
+
+      {/* Probe live de l'API Stripe — sanity check « peut-on encaisser ? »
+          AVANT d'envisager un override. Read-only, pas d'audit. Affiché
+          quand un compte existe (utile aussi pour vérifier un compte
+          censément ready). */}
+      {hasAccount ? (
+        <div
+          data-slot="stripe-settings-probe-block"
+          className="flex flex-col gap-2 rounded-md border border-slate-200 bg-slate-50 p-3"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium">
+                Tester la connexion Stripe Connect
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Interroge l&apos;API Stripe en live pour voir si le compte peut
+                vraiment encaisser et recevoir des virements.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              data-slot="stripe-settings-probe"
+              onClick={onProbe}
+              disabled={isProbing}
+            >
+              {isProbing ? "Test…" : "Tester la connexion"}
+            </Button>
+          </div>
+
+          {probeResult !== null ? (
+            probeResult.ok ? (
+              <div
+                data-slot="stripe-settings-probe-result"
+                className="mt-2 flex flex-col gap-1.5 rounded border border-slate-200 bg-white p-3 text-sm"
+              >
+                <ProbeLine
+                  label="Compte joignable"
+                  ok={true}
+                  detail={probeResult.accountId}
+                />
+                <ProbeLine
+                  label="Encaissements (charges_enabled)"
+                  ok={probeResult.chargesEnabled}
+                />
+                <ProbeLine
+                  label="Virements (payouts_enabled)"
+                  ok={probeResult.payoutsEnabled}
+                />
+                <ProbeLine
+                  label="KYC complété (details_submitted)"
+                  ok={probeResult.detailsSubmitted}
+                />
+                <ProbeLine
+                  label="Capacité card_payments"
+                  ok={probeResult.capabilityCardPayments === "active"}
+                  detail={probeResult.capabilityCardPayments ?? "absent"}
+                />
+                <ProbeLine
+                  label="Capacité transfers"
+                  ok={probeResult.capabilityTransfers === "active"}
+                  detail={probeResult.capabilityTransfers ?? "absent"}
+                />
+                {probeResult.disabledReason !== null ? (
+                  <p
+                    className="mt-1 text-xs text-red-700"
+                    data-slot="stripe-settings-probe-disabled-reason"
+                  >
+                    <strong>Désactivé :</strong> {probeResult.disabledReason}
+                  </p>
+                ) : null}
+                {probeResult.requirementsCurrentlyDue.length > 0 ? (
+                  <div
+                    data-slot="stripe-settings-probe-requirements"
+                    className="mt-1 rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900"
+                  >
+                    <p className="mb-1 font-medium">Stripe demande encore :</p>
+                    <ul className="list-inside list-disc">
+                      {probeResult.requirementsCurrentlyDue.map((r) => (
+                        <li key={r}>
+                          <code className="font-mono">{r}</code>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Pays : {probeResult.country ?? "?"} · Devise :{" "}
+                  {probeResult.defaultCurrency ?? "?"} · Email Stripe :{" "}
+                  {probeResult.email ?? "—"}
+                </p>
+              </div>
+            ) : (
+              <div
+                data-slot="stripe-settings-probe-error"
+                className="mt-2 rounded border border-red-300 bg-red-50 p-2 text-sm text-red-800"
+              >
+                ❌ {probeResult.error}
+              </div>
+            )
+          ) : null}
+        </div>
+      ) : null}
 
       {/* Admin override — chemin de secours si le webhook account.updated
           n'arrive pas après un KYC validé IRL (Stripe sandbox flaky,

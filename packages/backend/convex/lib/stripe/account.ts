@@ -73,6 +73,25 @@ async function stripePost(
   return json;
 }
 
+async function stripeGet(
+  secret: string,
+  path: string,
+): Promise<Record<string, unknown>> {
+  const res = await fetch(`${STRIPE_API}${path}`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${secret}` },
+  });
+  const json = (await res.json()) as Record<string, unknown>;
+  if (!res.ok) {
+    const err = (json.error as { message?: string } | undefined)?.message;
+    throw new ConvexError({
+      code: "STRIPE_ERROR",
+      message: `Stripe API error: ${err ?? res.status}`,
+    });
+  }
+  return json;
+}
+
 // ---------------------------------------------------------------------------
 // Root-gated Convex surface (kbAdminQuery / kbAdminMutation) — root only,
 // mutations auto-audited. The action orchestrates these between Stripe calls.
@@ -223,5 +242,103 @@ export const createStripeAccountLink = action({
     });
 
     return { accountId, url: link.url as string };
+  },
+});
+
+/**
+ * Root-only READ-ONLY probe of the tenant's connected Stripe account, used
+ * by the Paramètres → Stripe Connect page as a SANITY CHECK before deciding
+ * to override the local status. Calls `GET /v1/accounts/<acct>` and surfaces
+ * the four facts an admin needs to judge « peut-on encaisser maintenant ? » :
+ *
+ *  - `chargesEnabled` / `payoutsEnabled` (Stripe's authoritative answer)
+ *  - `detailsSubmitted` (KYC complete server-side)
+ *  - `requirementsCurrentlyDue` (the blockers, if any) + `disabledReason`
+ *  - `capabilityCardPayments` / `capabilityTransfers` (per-capability status)
+ *
+ * Why read-only: the local `tenants.stripeStatus` is a derived projection of
+ * Stripe state. The probe never patches the DB — that's the explicit
+ * `forceStripeStatusOverride` mutation (which logs an audit row). This split
+ * lets the admin SEE the truth, then DECIDE whether to override (because
+ * sometimes the local DB diverged from Stripe for non-obvious reasons:
+ * webhook lost, signature mismatch, manual Stripe-side action).
+ *
+ * No audit — pure read with no side-effect, called interactively by an admin.
+ * The query is gated root-only via `loadTenantForStripe` (kbAdminQuery), so a
+ * non-root caller is refused BEFORE the network call.
+ */
+export const probeStripeAccount = action({
+  args: { tenantId: v.id("tenants") },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
+    accountId: string;
+    chargesEnabled: boolean;
+    payoutsEnabled: boolean;
+    detailsSubmitted: boolean;
+    requirementsCurrentlyDue: string[];
+    disabledReason: string | null;
+    capabilityCardPayments: string | null;
+    capabilityTransfers: string | null;
+    email: string | null;
+    country: string | null;
+    defaultCurrency: string | null;
+  }> => {
+    const tenant: Doc<"tenants"> | null = await ctx.runQuery(
+      api.lib.stripe.account.loadTenantForStripe,
+      { tenantId: args.tenantId },
+    );
+    if (tenant === null) throw tenantNotFound();
+    if (tenant.stripeAccountId === undefined) {
+      throw new ConvexError({
+        code: "INVALID_STATE",
+        message:
+          "Pas de compte Stripe à tester (générer un lien Stripe Connect d'abord).",
+      });
+    }
+    const secret = process.env.STRIPE_SECRET_KEY;
+    if (!secret) throw missingSecret();
+
+    const account = await stripeGet(
+      secret,
+      `/accounts/${encodeURIComponent(tenant.stripeAccountId)}`,
+    );
+
+    const requirements = (account.requirements as
+      | { currently_due?: unknown; disabled_reason?: unknown }
+      | undefined) ?? { currently_due: [], disabled_reason: null };
+    const currentlyDue = Array.isArray(requirements.currently_due)
+      ? (requirements.currently_due.filter(
+          (x): x is string => typeof x === "string",
+        ) ?? [])
+      : [];
+    const disabledReason =
+      typeof requirements.disabled_reason === "string"
+        ? requirements.disabled_reason
+        : null;
+
+    const caps = (account.capabilities as
+      | { card_payments?: unknown; transfers?: unknown }
+      | undefined) ?? { card_payments: null, transfers: null };
+
+    return {
+      accountId: tenant.stripeAccountId,
+      chargesEnabled: account.charges_enabled === true,
+      payoutsEnabled: account.payouts_enabled === true,
+      detailsSubmitted: account.details_submitted === true,
+      requirementsCurrentlyDue: currentlyDue,
+      disabledReason,
+      capabilityCardPayments:
+        typeof caps.card_payments === "string" ? caps.card_payments : null,
+      capabilityTransfers:
+        typeof caps.transfers === "string" ? caps.transfers : null,
+      email: typeof account.email === "string" ? account.email : null,
+      country: typeof account.country === "string" ? account.country : null,
+      defaultCurrency:
+        typeof account.default_currency === "string"
+          ? account.default_currency
+          : null,
+    };
   },
 });

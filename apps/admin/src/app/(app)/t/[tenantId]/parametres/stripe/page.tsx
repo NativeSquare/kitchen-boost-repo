@@ -69,7 +69,11 @@ import { useTenantQuery } from "@/hooks";
 import { Spinner } from "@/components/ui/spinner";
 import { getConvexErrorMessage } from "@/utils/getConvexErrorMessage";
 
-import { StripeSettingsView, type StripeStatus } from "./stripe-settings-view";
+import {
+  StripeSettingsView,
+  type ProbeResult,
+  type StripeStatus,
+} from "./stripe-settings-view";
 
 export default function StripeSettingsPage() {
   const tenantId = useCurrentTenantId();
@@ -101,10 +105,19 @@ export default function StripeSettingsPage() {
     api.lib.stripe.account.forceStripeStatusOverride,
   );
 
+  // Probe live de l'API Stripe (read-only). Read-only, pas d'audit,
+  // root-only via loadTenantForStripe re-assert. Permet à l'admin de voir
+  // ce que dit VRAIMENT Stripe avant de décider un override.
+  const probeStripeAccount = useAction(
+    api.lib.stripe.account.probeStripeAccount,
+  );
+
   const [accountLink, setAccountLink] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
   const [isOverriding, setIsOverriding] = useState(false);
+  const [isProbing, setIsProbing] = useState(false);
+  const [probeResult, setProbeResult] = useState<ProbeResult | null>(null);
   // Email du restaurant — requis par Stripe `/v1/accounts` (champ `email`).
   // Saisi par l'opérateur ici parce qu'aucun « prospect » n'existe pour un
   // tenant créé hors wizard (a posteriori).
@@ -177,6 +190,21 @@ export default function StripeSettingsPage() {
     }
   };
 
+  const handleProbe = async (): Promise<void> => {
+    if (isProbing) return;
+    setIsProbing(true);
+    setProbeResult(null);
+    try {
+      const r = await probeStripeAccount({ tenantId });
+      setProbeResult({ ok: true, ...r });
+    } catch (error) {
+      const message = getConvexErrorMessage(error);
+      setProbeResult({ ok: false, error: message });
+    } finally {
+      setIsProbing(false);
+    }
+  };
+
   const handleCopy = async (url: string): Promise<void> => {
     try {
       if (
@@ -207,6 +235,9 @@ export default function StripeSettingsPage() {
       onCopy={handleCopy}
       onForceReady={handleForceReady}
       isOverriding={isOverriding}
+      onProbe={handleProbe}
+      isProbing={isProbing}
+      probeResult={probeResult}
     />
   );
 }
