@@ -71,7 +71,12 @@ export {
 // assertLegalTenantTransition (V1 strict: only `pending → active`); double
 // audit (wrapper auto + explicit metadata.fromStatus). Convex registers it as
 // `api.lib.admin.tenantSettings.activate`.
-export { activate, updateSettings } from "./tenantSettings";
+// Stripe Connect a posteriori (apps/admin `/t/[tenantId]/parametres/stripe`):
+// `getStripeState` — manager-accessible read of the tenant's Stripe Connect
+// state (stripeAccountId / stripeStatus / siret / name). One query, both
+// callers (kb_manager + kb_admin via root override). Convex registers it
+// as `api.lib.admin.tenantSettings.getStripeState`.
+export { activate, getStripeState, updateSettings } from "./tenantSettings";
 export {
   expireContract,
   generateContract,
