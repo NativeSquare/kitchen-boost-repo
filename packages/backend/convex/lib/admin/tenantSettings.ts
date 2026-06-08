@@ -127,6 +127,73 @@ const settingsPatch = v.object({
  *    the explicit check here covers an internal race where the row was
  *    deleted between the wrapper's membership check and this read).
  */
+/**
+ * Stripe Connect a posteriori (apps/admin `/t/[tenantId]/parametres/stripe`)
+ * — manager-accessible read of the tenant's Stripe Connect Express state.
+ *
+ * Mirror discipline of `getSettings` above: ONE query, BOTH callers
+ * (kb_manager + kb_admin via the root override on `tenantQuery`, see
+ * `withTenant.ts`). Replaces the need for a dedicated root surface and
+ * keeps the Paramètres page reachable by the resto's own gérant —
+ * primary use case per the « a posteriori » spec (a manager configuring
+ * their own Stripe).
+ *
+ * Returns ONLY the four fields the Stripe Settings card cares about —
+ * `stripeAccountId` (acct_xxx, optional), `stripeStatus` (PRD 30 §2,
+ * optional), `siret` (for the action's prefill), `name` (header). NEVER
+ * leaks unrelated tenant fields (Uber customer id, printer config, audit
+ * timestamps, etc.) — same exposure discipline as `listAllTenants` /
+ * `getTenant` / `getSettings`.
+ *
+ * The action that consumes `stripeAccountId` (`api.lib.stripe.account
+ * .createStripeAccountLink`) remains root-only. A kb_manager calling
+ * « Générer » will see a Forbidden surfaced inline — the page documents
+ * this degradation (admin support can step in via tenant switcher). The
+ * KYC `account_link` URL can also be opened by the manager themselves
+ * once the admin shares it.
+ *
+ * Tenancy discipline (ADR 0010): no raw `ctx.db` — reads through the
+ * sanctioned `getTenantById` seam. `ctx.tenantId` is auto-injected by
+ * the wrapper from the session, so a manager cannot forge an `args
+ * .tenantId` for a different resto (cross-tenant MOAT).
+ */
+export const getStripeState = tenantQuery({ allow: ["kb_manager"] })({
+  args: {},
+  returns: v.object({
+    stripeAccountId: v.union(v.null(), v.string()),
+    stripeStatus: v.union(
+      v.null(),
+      v.literal("pending"),
+      v.literal("ready"),
+      v.literal("disabled"),
+    ),
+    siret: v.string(),
+    name: v.string(),
+  }),
+  handler: async (
+    ctx,
+  ): Promise<{
+    stripeAccountId: string | null;
+    stripeStatus: "pending" | "ready" | "disabled" | null;
+    siret: string;
+    name: string;
+  }> => {
+    const tenant = await getTenantById(ctx, ctx.tenantId);
+    if (tenant === null) {
+      throw new ConvexError({
+        code: "NOT_FOUND",
+        message: "Tenant not found.",
+      });
+    }
+    return {
+      stripeAccountId: tenant.stripeAccountId ?? null,
+      stripeStatus: tenant.stripeStatus ?? null,
+      siret: tenant.siret,
+      name: tenant.name,
+    };
+  },
+});
+
 export const getSettings = tenantQuery({ allow: ["kb_manager"] })({
   args: {},
   returns: v.object({

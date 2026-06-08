@@ -719,3 +719,98 @@ describe("B-TENANT-LIFECYCLE [4/4] tenant.activate — wrapper enforcement (root
     ).rejects.toThrow(/unauthenticated/i);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Stripe Connect a posteriori — `getStripeState` read query
+// ---------------------------------------------------------------------------
+describe("tenant.getStripeState — Stripe Connect a posteriori read", () => {
+  let t: ReturnType<typeof convexTest>;
+  let seed: Seed;
+  beforeEach(async () => {
+    t = convexTest(schema, modules);
+    seed = await seedTwoTenantsAllRoles(t);
+  });
+
+  it("fresh tenant (no Stripe account) → both stripe fields are null + siret/name returned", async () => {
+    const asMgr = t.withIdentity({ subject: seed.tenantA.managerId });
+    const state = await asMgr.query(
+      api.lib.admin.tenantSettings.getStripeState,
+      { tenantId: seed.tenantA.tenantId },
+    );
+    expect(state.stripeAccountId).toBeNull();
+    expect(state.stripeStatus).toBeNull();
+    expect(state.siret).toBe("fuzz-a");
+    expect(state.name).toBe("Tenant A");
+  });
+
+  it("stamped tenant (pending KYC) → reflects stripeAccountId + status", async () => {
+    // Stamp the fields directly via the convex-test runtime (bypass the
+    // cross-folder root mutation — keeps this suite self-contained).
+    await t.run((ctx) =>
+      ctx.db.patch(seed.tenantA.tenantId, {
+        stripeAccountId: "acct_1AbCdEf",
+        stripeStatus: "pending",
+      }),
+    );
+
+    const asMgr = t.withIdentity({ subject: seed.tenantA.managerId });
+    const state = await asMgr.query(
+      api.lib.admin.tenantSettings.getStripeState,
+      { tenantId: seed.tenantA.tenantId },
+    );
+    expect(state.stripeAccountId).toBe("acct_1AbCdEf");
+    expect(state.stripeStatus).toBe("pending");
+  });
+
+  it("ready KYC → status reflects ready (webhook flip simulation)", async () => {
+    await t.run((ctx) =>
+      ctx.db.patch(seed.tenantA.tenantId, {
+        stripeAccountId: "acct_ready",
+        stripeStatus: "ready",
+      }),
+    );
+
+    const asMgr = t.withIdentity({ subject: seed.tenantA.managerId });
+    const state = await asMgr.query(
+      api.lib.admin.tenantSettings.getStripeState,
+      { tenantId: seed.tenantA.tenantId },
+    );
+    expect(state.stripeStatus).toBe("ready");
+  });
+
+  it("kb_admin (root override) can read state on any tenant", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    const state = await asAdmin.query(
+      api.lib.admin.tenantSettings.getStripeState,
+      { tenantId: seed.tenantB.tenantId },
+    );
+    expect(state.name).toBe("Tenant B");
+    expect(state.stripeAccountId).toBeNull();
+  });
+
+  it("a kb_manager from tenant B cannot read tenant A (cross-tenant MOAT)", async () => {
+    const asBManager = t.withIdentity({ subject: seed.tenantB.managerId });
+    await expect(
+      asBManager.query(api.lib.admin.tenantSettings.getStripeState, {
+        tenantId: seed.tenantA.tenantId,
+      }),
+    ).rejects.toThrow(/forbidden/i);
+  });
+
+  it("anonymous caller throws UNAUTHENTICATED", async () => {
+    await expect(
+      t.query(api.lib.admin.tenantSettings.getStripeState, {
+        tenantId: seed.tenantA.tenantId,
+      }),
+    ).rejects.toThrow(/unauthenticated/i);
+  });
+
+  it("plain customer caller throws FORBIDDEN", async () => {
+    const asCustomer = t.withIdentity({ subject: seed.customerId });
+    await expect(
+      asCustomer.query(api.lib.admin.tenantSettings.getStripeState, {
+        tenantId: seed.tenantA.tenantId,
+      }),
+    ).rejects.toThrow(/forbidden/i);
+  });
+});
