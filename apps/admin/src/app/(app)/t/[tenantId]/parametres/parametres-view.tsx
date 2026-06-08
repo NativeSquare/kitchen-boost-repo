@@ -34,8 +34,12 @@
  * `packages/backend/convex/`.
  */
 
+import Link from "next/link";
+
+import type { Id } from "@packages/backend/convex/_generated/dataModel";
 import type { ServiceHours } from "@packages/backend/convex/lib/menu/serviceHours";
 
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -64,6 +68,13 @@ import { PrinterEditor, type PrinterConfigValue } from "./printer-editor";
 import { ServiceHoursEditor, type ServiceWindow } from "./service-hours-editor";
 
 export type ParametresViewProps = {
+  /**
+   * The current tenant id — used to build the deep-link to the Stripe Connect
+   * a posteriori sub-page (`/t/<tenantId>/parametres/stripe`, PR #477). Passed
+   * in so the view stays a pure function of its props (no `useCurrentTenantId`
+   * call inside).
+   */
+  tenantId: Id<"tenants">;
   /**
    * Service hours from `useTenantQuery(api.lib.menu.serviceHours.get)`.
    *   - `undefined` → query in flight (Convex's loading sentinel).
@@ -176,6 +187,7 @@ export type ParametresViewProps = {
 };
 
 export function ParametresView({
+  tenantId,
   serviceHours,
   branding,
   onSaveBranding,
@@ -238,6 +250,7 @@ export function ParametresView({
           onSave={onSavePrinterConfig}
           onClear={onClearPrinterConfig}
         />
+        <SectionStripeConnect tenantId={tenantId} />
         <Separator className="my-2" />
         <UberDirectReadOnlyBlock />
       </div>
@@ -494,6 +507,39 @@ function SectionImprimanteCuisine({
       </CardHeader>
       <CardContent>
         <PrinterEditor value={value} onSave={onSave} onClear={onClear} />
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * PR #477 — entry-point card vers la sous-page Stripe Connect a posteriori
+ * (`/t/[tenantId]/parametres/stripe`). Cette page dédiée porte le wiring
+ * complet (lecture du statut + génération / régénération du lien Stripe
+ * `account_link`) ; ici on n'expose que le lien, pour que la fonctionnalité
+ * soit découvrable depuis la page Paramètres principale sans dupliquer le
+ * statut (qui change en live via le webhook `account.updated`).
+ */
+function SectionStripeConnect({
+  tenantId,
+}: {
+  tenantId: Id<"tenants">;
+}): React.ReactElement {
+  return (
+    <Card data-slot="parametres-section-stripe">
+      <CardHeader>
+        <CardTitle>Stripe Connect</CardTitle>
+        <CardDescription>
+          Configurez le compte Stripe Connect du restaurant pour pouvoir
+          encaisser les paiements clients.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Button asChild variant="outline">
+          <Link href={`/t/${tenantId}/parametres/stripe`}>
+            Configurer Stripe Connect →
+          </Link>
+        </Button>
       </CardContent>
     </Card>
   );

@@ -185,7 +185,13 @@ const noopModes = async () => {};
 const noopServiceHours = async () => {};
 const noopPrinterSave = async () => {};
 const noopPrinterClear = async () => {};
+// PR #477 — tenantId is forwarded to the new `SectionStripeConnect` so it can
+// build the deep-link to `/t/<tenantId>/parametres/stripe`. Any stable string
+// fixture works in the React-tree serializer (no routing actually runs).
+const FIXTURE_TENANT_ID =
+  "kn7bfqjem442c1dzqdjjmcfyxx87q53j" as unknown as ParametresViewProps["tenantId"];
 const BASE_BRANDING_PROPS = {
+  tenantId: FIXTURE_TENANT_ID,
   branding: undefined,
   onSaveBranding: noopBranding,
   onUploadLogo: noopUpload,
@@ -240,7 +246,7 @@ describe("ParametresView — F-PARAMETRES-01 (#193)", () => {
     }
   });
 
-  it("AC2 — renders the canonical section titles in order: Identité visuelle / Coordonnées / Modes acceptés / Horaires de service / Imprimante cuisine (#416)", () => {
+  it("AC2 — renders the canonical section titles in order: Identité visuelle / Coordonnées / Modes acceptés / Horaires de service / Imprimante cuisine (#416) / Stripe Connect (PR #477)", () => {
     const text = allText(serialize(ParametresView(EMPTY)));
     const identiteIdx = text.search(/Identit[ée] visuelle/);
     const coordIdx = text.search(/Coordonn[ée]es/);
@@ -251,12 +257,35 @@ describe("ParametresView — F-PARAMETRES-01 (#193)", () => {
     // and explicitly distinct from the « Disponibilité » page which owns the
     // « ici et maintenant » levers).
     const imprimanteIdx = text.search(/Imprimante cuisine/);
+    // PR #477 — « Stripe Connect » entry-point card linking to the dedicated
+    // sub-page, placed AFTER Imprimante so the visual rhythm stays « toutes
+    // les sections d'édition d'abord, infos / sous-pages après ».
+    const stripeIdx = text.search(/Stripe Connect/);
 
     expect(identiteIdx).toBeGreaterThanOrEqual(0);
     expect(coordIdx).toBeGreaterThan(identiteIdx);
     expect(modesIdx).toBeGreaterThan(coordIdx);
     expect(horairesIdx).toBeGreaterThan(modesIdx);
     expect(imprimanteIdx).toBeGreaterThan(horairesIdx);
+    expect(stripeIdx).toBeGreaterThan(imprimanteIdx);
+  });
+
+  it("PR #477 — Stripe Connect entry-point card exposes a deep-link to `/t/<tenantId>/parametres/stripe`", () => {
+    const tree = serialize(ParametresView(EMPTY));
+    // The card carries its own stable data-slot marker, distinct from the
+    // sibling sections, so future surfaces / tests can target it without
+    // grepping copy.
+    expect(dataSlots(tree)).toContain("parametres-section-stripe");
+    // The CTA links to the sub-page using the prop `tenantId` — pin the
+    // computed href so a refactor of the URL shape breaks loudly here.
+    const hrefs = flatten(tree)
+      .map((x) => {
+        if (x === null || "text" in x) return null;
+        const href = x.props.href;
+        return typeof href === "string" ? href : null;
+      })
+      .filter((s): s is string => s !== null);
+    expect(hrefs).toContain(`/t/${FIXTURE_TENANT_ID}/parametres/stripe`);
   });
 
   it("F-PARAMETRES-05 (#236) — all 4 sections are now WIRED — no « À implémenter » placeholder remains on the Paramètres page", () => {

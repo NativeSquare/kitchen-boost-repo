@@ -62,6 +62,7 @@ import { toast } from "sonner";
 
 import { api } from "@packages/backend/convex/_generated/api";
 
+import { useCurrentTenantId } from "@/components/app/tenant-context";
 import { useTenantMutation, useTenantQuery } from "@/hooks";
 import { getConvexErrorMessage } from "@/utils/getConvexErrorMessage";
 
@@ -72,6 +73,12 @@ import { ParametresView } from "./parametres-view";
 import type { ServiceWindow } from "./service-hours-editor";
 
 export default function ParametresPage() {
+  // Tenant id from the same `<TenantProvider/>` the tenant-scoped hooks read
+  // (F-SHELL-04 #175). Used here to build the deep-link to the Stripe Connect
+  // a posteriori sub-page (PR #477) — the view stays a pure function of its
+  // props and receives the id rather than calling the hook itself.
+  const tenantId = useCurrentTenantId();
+
   // `useTenantQuery` reads `tenantId` from `<TenantProvider/>` (mounted by
   // the chrome-less `/t/[tenantId]` layout) and injects it into args (ADR
   // 0014 §4 / #183). `undefined` is the loading sentinel; a successful read
@@ -318,6 +325,7 @@ export default function ParametresPage() {
 
   return (
     <ParametresView
+      tenantId={tenantId}
       serviceHours={serviceHours}
       branding={branding}
       onSaveBranding={handleSaveBranding}
