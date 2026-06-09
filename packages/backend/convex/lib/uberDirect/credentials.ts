@@ -56,6 +56,21 @@ export const uberCredentials = v.object({
 
 export type UberCredentials = Infer<typeof uberCredentials>;
 
+/**
+ * Patch shape (all optional) for `patchUberCredentials` — partial update that
+ * MERGES with the existing stored blob. Lets the admin UI update ONE field
+ * (e.g. just the `webhookSigningKey` after configuring the Uber webhook)
+ * without re-typing the 3 secrets. Refused if NO credentials exist yet (the
+ * first set MUST use `setUberCredentials` with all 3 required fields, to
+ * avoid persisting a malformed envelope).
+ */
+export const uberCredentialsPatch = v.object({
+  clientId: v.optional(v.string()),
+  clientSecret: v.optional(v.string()),
+  customerId: v.optional(v.string()),
+  webhookSigningKey: v.optional(v.string()),
+});
+
 const missingCredentials = () =>
   new ConvexError({
     code: "NOT_FOUND",
@@ -82,6 +97,54 @@ export const setUberCredentials = tenantMutation()({
       ctx.tenantId,
       args.credentials.customerId,
     );
+  },
+});
+
+/**
+ * Partial update — merges `patch` with the existing decrypted blob, re-encrypts,
+ * persists. Used by the admin UI to flip ONE field (typically the webhook
+ * signing key, added after webhook setup on Uber side) without re-typing the
+ * 3 secrets (UX gripe). Refuses `NOT_FOUND` if no creds exist (first-time
+ * setup must use `setUberCredentials` to avoid persisting a partial envelope).
+ *
+ * Empty-string patch values are TREATED AS « unchanged » (the UI sends blanks
+ * for the secrets the user didn't re-type — see `uber-direct-settings-view.tsx`).
+ * To clear a field, the caller must explicitly clear it (not exposed in V1 —
+ * the only field that could legitimately be cleared is `webhookSigningKey`,
+ * which has no UI clear path today).
+ */
+export const patchUberCredentials = tenantMutation()({
+  args: { patch: uberCredentialsPatch },
+  audit: true,
+  action: "uber.credentials.patch",
+  handler: async (ctx, args): Promise<void> => {
+    const existing = await readTenantCredentialBlob(
+      ctx,
+      ctx.tenantId,
+      PROVIDER,
+    );
+    if (existing === null) throw missingCredentials();
+    const plaintext = await decryptForTenant(existing);
+    const current = JSON.parse(plaintext) as UberCredentials;
+
+    // Empty string = « don't change » (the UI never sends a deliberate empty
+    // string for a field the user wants cleared — see view comment above).
+    const nonEmpty = (s: string | undefined): string | undefined =>
+      s !== undefined && s.trim().length > 0 ? s.trim() : undefined;
+    const merged: UberCredentials = {
+      clientId: nonEmpty(args.patch.clientId) ?? current.clientId,
+      clientSecret: nonEmpty(args.patch.clientSecret) ?? current.clientSecret,
+      customerId: nonEmpty(args.patch.customerId) ?? current.customerId,
+      webhookSigningKey:
+        nonEmpty(args.patch.webhookSigningKey) ?? current.webhookSigningKey,
+    };
+
+    const newBlob = await encryptForTenant(JSON.stringify(merged));
+    await upsertTenantCredentialBlob(ctx, ctx.tenantId, PROVIDER, newBlob);
+    // Stamp customerId again only if it changed (cheap idempotent write).
+    if (merged.customerId !== current.customerId) {
+      await setTenantUberCustomerId(ctx, ctx.tenantId, merged.customerId);
+    }
   },
 });
 

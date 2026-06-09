@@ -156,14 +156,28 @@ function statusCopy(
   };
 }
 
-// Champs requis pour activer le bouton « Sauvegarder ». `webhookSigningKey`
-// reste optionnel (PRD 40 §1 — le resto le renseigne quand il a setup le
-// webhook côté Uber, ce qui peut arriver après la création des creds).
-function isFormSubmittable(form: UberCredentialsForm): boolean {
+// Activation du bouton « Sauvegarder ». Deux régimes :
+//  - Création (`!isConfigured`) : les 3 secrets sont OBLIGATOIRES (le backend
+//    setUberCredentials exige le tuple complet — refuse un envelope partiel).
+//  - Update (`isConfigured`) : AU MOINS UN champ doit être saisi (les autres
+//    gardent leur valeur stockée via patchUberCredentials côté backend).
+//    `webhookSigningKey` reste toujours optionnel sur le tuple.
+function isFormSubmittable(
+  form: UberCredentialsForm,
+  isConfigured: boolean,
+): boolean {
+  if (!isConfigured) {
+    return (
+      form.clientId.trim().length > 0 &&
+      form.clientSecret.trim().length > 0 &&
+      form.customerId.trim().length > 0
+    );
+  }
   return (
-    form.clientId.trim().length > 0 &&
-    form.clientSecret.trim().length > 0 &&
-    form.customerId.trim().length > 0
+    form.clientId.trim().length > 0 ||
+    form.clientSecret.trim().length > 0 ||
+    form.customerId.trim().length > 0 ||
+    form.webhookSigningKey.trim().length > 0
   );
 }
 
@@ -188,7 +202,7 @@ export function UberDirectSettingsView(
   } = props;
 
   const status = statusCopy(isConfigured, probeResult);
-  const canSubmit = isFormSubmittable(form) && !isSaving;
+  const canSubmit = isFormSubmittable(form, isConfigured) && !isSaving;
   const canProbe = isConfigured && !isProbing;
 
   return (
@@ -216,8 +230,13 @@ export function UberDirectSettingsView(
         </CardHeader>
       </Card>
 
-      {/* Form — toujours visible (création ET rotation). On ne pré-remplit
-          jamais les valeurs stockées : pour modifier, il faut tout re-saisir.
+      {/* Form — toujours visible. Deux régimes :
+          - !isConfigured (création initiale) : les 3 secrets sont OBLIGATOIRES.
+          - isConfigured (rotation/update) : tous les champs sont OPTIONNELS,
+            les champs vides gardent leur valeur stockée (merge backend via
+            patchUberCredentials). L'opérateur peut donc modifier 1 seul
+            champ — ex : ajouter la webhook_signing_key sans retaper les
+            secrets.
           Labels alignés sur la nomenclature OFFICIELLE Uber Direct FR
           (dashboard Uber → API credentials), avec le nom technique
           (`customer_id` / `client_id` / `client_secret`) entre parenthèses
@@ -267,7 +286,11 @@ export function UberDirectSettingsView(
               value={form.clientId}
               onChange={(e) => onFormChange("clientId", e.target.value)}
               autoComplete="off"
-              placeholder="0XgWA4ZpWH3ooTA4Ltzmo_GdOGd1MPHO"
+              placeholder={
+                isConfigured
+                  ? "•••••• (laisser vide pour ne pas changer)"
+                  : "0XgWA4ZpWH3ooTA4Ltzmo_GdOGd1MPHO"
+              }
             />
           </div>
           <div className="flex flex-col gap-1.5">
@@ -284,6 +307,11 @@ export function UberDirectSettingsView(
               value={form.clientSecret}
               onChange={(e) => onFormChange("clientSecret", e.target.value)}
               autoComplete="off"
+              placeholder={
+                isConfigured
+                  ? "•••••• (laisser vide pour ne pas changer)"
+                  : undefined
+              }
             />
           </div>
           <div className="flex flex-col gap-1.5">
@@ -302,6 +330,11 @@ export function UberDirectSettingsView(
                 onFormChange("webhookSigningKey", e.target.value)
               }
               autoComplete="off"
+              placeholder={
+                isConfigured
+                  ? "•••••• (laisser vide pour ne pas changer)"
+                  : undefined
+              }
             />
             <p className="text-xs text-muted-foreground">
               Requis pour vérifier les webhooks de statut de course. Le resto le
