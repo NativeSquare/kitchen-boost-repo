@@ -105,13 +105,14 @@ export const probeUberAccount = action({
       });
     }
 
-    // 1. OAuth client-credentials grant. On OMET volontairement le `scope` :
-    //    Uber retourne alors un token avec les scopes par défaut autorisés sur
-    //    l'app (cf. OAuth2 RFC 6749 §4.4.2). Le code précédent forçait
-    //    `eats.deliveries`, mais les nouvelles apps créées via direct.uber.com
-    //    n'ont QUE `direct.organizations` (Uber a renommé / séparé l'API Direct
-    //    de l'API Eats) → l'OAuth jetait « scope(s) are invalid ». En omettant,
-    //    on est compatible avec les deux générations d'app.
+    // 1. OAuth client-credentials grant. On envoie le scope composite
+    //    « direct.organizations eats.deliveries » — incantation officielle du
+    //    SDK Uber Direct (cf https://github.com/uber/uber-direct-sdk/blob/main/src/auth/index.ts).
+    //    Demander les deux scopes à la fois est nécessaire : certaines apps test
+    //    refusent un scope seul avec « invalid_scope » alors qu'elles acceptent
+    //    le combo (Uber retourne l'intersection des scopes demandés et attribués
+    //    sur l'app). Ne PAS revenir à un scope unique — on l'a déjà essayé en
+    //    debug, ça casse selon le type d'app sandbox.
     const tokenRes = await fetch(UBER_OAUTH_URL, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -119,6 +120,7 @@ export const probeUberAccount = action({
         grant_type: "client_credentials",
         client_id: creds.clientId,
         client_secret: creds.clientSecret,
+        scope: "direct.organizations eats.deliveries",
       }),
     });
     const tokenJson = (await tokenRes.json()) as Record<string, unknown>;
