@@ -78,15 +78,13 @@ export default function UberDirectSettingsPage(): React.JSX.Element {
   // la connaît (sinon l'opérateur doit le retaper alors qu'on le connaît).
   // Les secrets (client_id, client_secret, webhook_signing_key) restent vides
   // — jamais ré-exposés côté wire (envelope encrypted server-side).
+  const storedCustomerId =
+    uberState !== undefined ? uberState.uberCustomerId : null;
   useEffect(() => {
-    if (
-      uberState !== undefined &&
-      uberState.uberCustomerId !== null &&
-      form.customerId === ""
-    ) {
-      setForm((prev) => ({ ...prev, customerId: uberState.uberCustomerId! }));
+    if (storedCustomerId !== null && form.customerId === "") {
+      setForm((prev) => ({ ...prev, customerId: storedCustomerId }));
     }
-  }, [uberState, form.customerId]);
+  }, [storedCustomerId, form.customerId]);
 
   if (uberState === undefined) {
     return (
