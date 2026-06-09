@@ -91,6 +91,12 @@ Setter via `npx convex env set <KEY> <VALUE>` depuis `packages/backend/`.
 | `STRIPE_SECRET_KEY`     | Secret key plateforme Stripe (server-side) | `sk_test_...`        | ⚠️ `sk_live_...`         |
 | `STRIPE_WEBHOOK_SECRET` | Signing secret du webhook Stripe → Convex  | ✅ set (`whsec_...`) | ⚠️ webhook prod distinct |
 
+### Chiffrement enveloppe (tenant credentials)
+
+| Variable         | Rôle                                                                                                                                                                 | Dev    | Prod                                                                                                                                                                                                       |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `KMS_MASTER_KEY` | Master key AES-256 (base64, exactement 32 bytes) pour `lib/crypto.envelope`. Chiffre les `tenantCredentials` (Uber Direct creds aujourd'hui ; futurs PSP/POS aussi). | ✅ set | 🚨 **OBLIGATOIRE — REGÉNÉRER**. Sans elle, `setUberCredentials` jette `KMS_MASTER_KEY is not set`. Génération : `openssl rand -base64 32`. Rotation = perte des creds chiffrées (re-saisir chaque tenant). |
+
 ### Web push (VAPID)
 
 | Variable            | Rôle                                        | Dev                               | Prod                                       |
