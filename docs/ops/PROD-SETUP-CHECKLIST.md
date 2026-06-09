@@ -2,7 +2,7 @@
 
 Référentiel exhaustif de **tout ce qui doit être configuré** pour faire tourner KitchenBoost en production. Mis à jour au fur et à mesure du setup dev pour qu'au passage en prod il suffise de cocher chaque ligne.
 
-- **Dernière update** : 2026-06-08
+- **Dernière update** : 2026-06-09
 - **État** : dev en cours (E2E PWA Client en train d'être testé)
 - **Convention** : ⚠️ = secret à régénérer en prod (jamais réutiliser le secret dev) · 🔒 = secret à garder identique (cert long-lived)
 
@@ -76,13 +76,14 @@ Setter via `npx convex env set <KEY> <VALUE>` depuis `packages/backend/`.
 
 ### Auth + identity
 
-| Variable          | Rôle                                   | Dev                                                | Prod                                |
-| ----------------- | -------------------------------------- | -------------------------------------------------- | ----------------------------------- |
-| `JWT_PRIVATE_KEY` | Clé privée signature JWT (Convex Auth) | ✅ set                                             | ⚠️ régénérer                        |
-| `JWKS`            | Clés publiques JWT (Convex Auth)       | ✅ set                                             | ⚠️ régénérer                        |
-| `AUTH_RESEND_KEY` | API key Resend pour magic-link auth    | `re_LuzFTSdt_...`                                  | ⚠️ clé live Resend distincte        |
-| `SITE_URL`        | URL canonique du site (links emails)   | `http://localhost:3000` ⚠️ à corriger en dev aussi | ☐ `https://admin.kitchen-boost.com` |
-| `IS_DEV`          | Flag dev                               | `true`                                             | `false` ou absent                   |
+| Variable          | Rôle                                                                                                                                  | Dev                                                | Prod                                |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- | ----------------------------------- |
+| `JWT_PRIVATE_KEY` | Clé privée signature JWT (Convex Auth)                                                                                                | ✅ set                                             | ⚠️ régénérer                        |
+| `JWKS`            | Clés publiques JWT (Convex Auth)                                                                                                      | ✅ set                                             | ⚠️ régénérer                        |
+| `AUTH_RESEND_KEY` | API key Resend pour magic-link auth                                                                                                   | `re_LuzFTSdt_...`                                  | ⚠️ clé live Resend distincte        |
+| `SITE_URL`        | URL canonique du site (links emails)                                                                                                  | `http://localhost:3000` ⚠️ à corriger en dev aussi | ☐ `https://admin.kitchen-boost.com` |
+| `CONVEX_SITE_URL` | URL `.convex.site` (httpAction host). **Auto-set par Convex**, jamais à fournir manuellement — utilisée par `auth.config.ts` JWT iss. | ✅ auto                                            | ✅ auto                             |
+| `IS_DEV`          | Flag dev (active la branche `[DEV] console.log` dans `ResendOTP` au lieu d'envoyer l'email Resend, etc.)                              | `true`                                             | `false` ou absent                   |
 
 ### Stripe
 
@@ -107,11 +108,17 @@ Setter via `npx convex env set <KEY> <VALUE>` depuis `packages/backend/`.
 
 ### Wallet (Apple PassKit + Google Wallet)
 
-| Variable                             | Rôle                                        | Dev               | Prod                                                     |
-| ------------------------------------ | ------------------------------------------- | ----------------- | -------------------------------------------------------- |
-| `WALLET_PASS_CERT_P12_BASE64`        | Cert Apple PassKit P12 base64               | ✅ set (cert dev) | ☐ cert prod distinct (Apple Developer Pass Type ID prod) |
-| `WALLET_PASS_CERT_PASSWORD`          | Password du P12                             | ✅ set            | ☐ password prod                                          |
-| `GOOGLE_WALLET_SERVICE_ACCOUNT_JSON` | Service account Google Wallet (JSON base64) | ✅ set            | ☐ service account prod                                   |
+| Variable                             | Rôle                                                                                                                                                              | Dev               | Prod                                                     |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- | -------------------------------------------------------- |
+| `WALLET_PASS_CERT_P12_BASE64`        | Cert Apple PassKit P12 base64 (Pass Type ID)                                                                                                                      | ✅ set (cert dev) | ☐ cert prod distinct (Apple Developer Pass Type ID prod) |
+| `WALLET_PASS_CERT_PASSWORD`          | Password du P12                                                                                                                                                   | ✅ set            | ☐ password prod                                          |
+| `WALLET_WWDR_CERT_BASE64`            | Cert intermédiaire Apple WWDR (G4), base64. Requis pour signer chaque `.pkpass` (chaîne PKCS#7). Récupérable sur apple.com/certificateauthority.                  | ☐ **À set**       | ☐                                                        |
+| `WALLET_SAVE_ORIGINS`                | Whitelist d'origines (CSV) autorisées à appeler le endpoint `/wallet/save` côté Convex. Ex : `https://test-t1.kitchen-boost.com,https://admin.kitchen-boost.com`. | ☐ **À set**       | ☐                                                        |
+| `WALLET_APNS_AUTH_KEY`               | Apple APNs auth key (.p8 PEM contenu) pour push update de pass quand le pass change. Optionnel si on n'utilise pas les push Wallet.                               | ☐                 | ☐ (optionnel V1)                                         |
+| `WALLET_APNS_KEY_ID`                 | Key ID associé à l'APNs auth key (Apple Developer).                                                                                                               | ☐                 | ☐                                                        |
+| `WALLET_APNS_TEAM_ID`                | Team ID Apple Developer (pour les push APNs).                                                                                                                     | ☐                 | ☐                                                        |
+| `GOOGLE_WALLET_SERVICE_ACCOUNT_JSON` | Service account Google Wallet (JSON base64).                                                                                                                      | ✅ set            | ☐ service account prod                                   |
+| `GOOGLE_WALLET_ISSUER_ID`            | Issuer ID Google Wallet (numérique, ex `3388000000022000000`). Récupérable sur pay.google.com/business/console.                                                   | ☐ **À set**       | ☐ issuer id prod distinct                                |
 
 ### HMAC channels Convex ↔ Vercel routes
 
@@ -124,14 +131,22 @@ Setter via `npx convex env set <KEY> <VALUE>` depuis `packages/backend/`.
 | `WEB_PUSH_ROUTE_URL`            | URL Vercel web `/api/push/send`            | `https://test-t1.kitchen-boost.com/api/push/send` ⚠️ tenant-specific         | ☐ idem                                   |
 | `WALLET_PUSH_ROUTE_URL`         | URL Vercel admin `/api/wallet/push`        | `https://admin.kitchen-boost.com/api/wallet/push`                            | ✅ même URL prod                         |
 
-### Uber Direct (à venir)
+### Uber Direct (per-tenant, PAS d'env vars globales)
 
-| Variable                    | Rôle                              | Dev        | Prod                   |
-| --------------------------- | --------------------------------- | ---------- | ---------------------- |
-| `UBER_DIRECT_CLIENT_ID`     | OAuth client_id                   | ☐ (simulé) | ☐                      |
-| `UBER_DIRECT_CLIENT_SECRET` | OAuth client_secret               | ☐          | ☐                      |
-| `UBER_DIRECT_BASE_URL`      | `https://api.uber.com` ou sandbox | ☐          | `https://api.uber.com` |
-| `UBER_WEBHOOK_SIGNING_KEY`  | HMAC vérif webhook entrant        | ☐          | ☐                      |
+⚠️ **PAS d'env vars `UBER_DIRECT_*` à set.** Les credentials Uber Direct sont **per-tenant** (un compte Uber Direct par restaurant, cf. PRD 40 §1) et stockés **chiffrés** (envelope encryption AES-256-GCM via `KMS_MASTER_KEY` ci-dessus) dans la table `tenantCredentials`, provider `"uber_direct"`. La saisie se fait depuis l'admin :
+
+- **A posteriori** : sidebar tenant → Paramètres → carte « Uber Direct » → « Configurer Uber Direct → » → formulaire 4 champs (Identifiant du client, Identifiant client, Secret client, Clé de signature webhook).
+- **Probe** : bouton « Tester la connexion » sur la même page → OAuth + `GET /v1/customers/<id>/deliveries` live.
+- **Webhook par tenant** : configuré côté Uber sur `https://<deployment>.convex.site/webhooks/uber/<tenantId>` (cf. section 6 ci-dessous).
+
+Côté code, la seule URL Uber « globale » est hardcodée (`https://api.uber.com/v1` + `https://login.uber.com/oauth/v2/token`) dans `lib/uberDirect/account.ts` + `lib/delivery/*` — pas de switch sandbox/prod via env var (le sandbox Uber utilise les mêmes URLs, c'est le credential qui détermine l'environnement).
+
+### Monitoring ops (optionnel mais recommandé)
+
+| Variable                             | Rôle                                                                                                                                                                                                          | Dev     | Prod                                                         |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------------------------------------------------------------ |
+| `SLACK_OPS_WEBHOOK_URL`              | URL webhook Slack (channel ops). Le scan `runMonitoringScan` (cron 15min) y poste : webhook latency > 30s, KYC pending > 48h, commande payée sans course Uber, chargeback Stripe. Sans = warn log silencieux. | ☐       | ☐ Recommandé prod (sinon les incidents partent dans le vide) |
+| `MONITORING_PAID_NO_COURSE_GRACE_MS` | Override du délai de tolérance « commande payée sans course Uber créée » (défaut hardcodé dans `lib/admin/monitoring.ts`). En millisecondes. Optionnel — laisser unset garde le défaut.                       | ☐ unset | ☐ unset (sauf besoin de tuning ops)                          |
 
 ---
 
