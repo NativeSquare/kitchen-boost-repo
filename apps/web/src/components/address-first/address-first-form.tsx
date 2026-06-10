@@ -47,7 +47,6 @@ import { useRouter } from "next/navigation";
 import { useAction, useMutation } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useConvexAuth } from "convex/react";
-import { importLibrary, setOptions } from "@googlemaps/js-api-loader";
 import { api } from "@packages/backend/convex/_generated/api";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
 import {
@@ -225,11 +224,21 @@ export function AddressFirstForm({
     // `@googlemaps/js-api-loader`). `setOptions` is a no-op after the first
     // call within the same session, so re-mounting (Fast Refresh / strict
     // mode) does not re-fetch the SDK.
-    setOptions({ key: apiKey, v: "weekly", libraries: ["places"] });
-
-    importLibrary("places")
+    //
+    // DYNAMIC import obligatoire : `@googlemaps/js-api-loader@2.x` lit
+    // `window.trustedTypes` au top-level du module (cf `dist/index.cjs`),
+    // ce qui jette `ReferenceError: window is not defined` dès l'évaluation
+    // SSR — même en `"use client"`, Next 16 évalue le module côté serveur
+    // pour identifier ses exports. Le lazy `import()` retarde l'évaluation
+    // au mount client où `window` existe.
+    void import("@googlemaps/js-api-loader")
+      .then(({ setOptions, importLibrary }) => {
+        if (cancelled) return undefined;
+        setOptions({ key: apiKey, v: "weekly", libraries: ["places"] });
+        return importLibrary("places");
+      })
       .then((places) => {
-        if (cancelled) return;
+        if (places === undefined || cancelled) return;
         const element = new places.PlaceAutocompleteElement({
           includedRegionCodes: ["fr"],
           includedPrimaryTypes: ["street_address", "premise"],
