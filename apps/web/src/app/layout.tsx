@@ -3,11 +3,15 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { cookies } from "next/headers";
 import { ConvexAuthNextjsServerProvider } from "@convex-dev/auth/nextjs/server";
+import type { Id } from "@packages/backend/convex/_generated/dataModel";
 import { ConvexClientProvider } from "@/providers/convex-client-provider";
 import { ServiceWorkerRegistration } from "@/components/service-worker-registration";
 import { WalletBridgeRunner } from "@/components/wallet-bridge";
 import { PWAInstallProvider } from "@/components/a2hs-install";
+import { IOSStandaloneHeuristicRunner } from "@/components/a2hs-ios";
 import { WALLET_BRIDGE_PENDING_COOKIE } from "@/lib/wallet-bridge";
+
+const TENANT_COOKIE = "__Host-kb_tenant";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -77,6 +81,13 @@ export default async function RootLayout({
   const cookieStore = await cookies();
   const pendingBridgeSerial =
     cookieStore.get(WALLET_BRIDGE_PENDING_COOKIE)?.value ?? null;
+  // PWA-S11 (#463) — the iOS A2HS standalone heuristic runner needs the
+  // tenantId for the `customer.pushEnrollment.recordA2hsAccepted` mutation
+  // (self-scoped, wrapper-arg). Skipped in the degraded shell (cookie
+  // missing) — the runner mounts but the Convex query is `"skip"`d.
+  const tenantId = cookieStore.get(TENANT_COOKIE)?.value as
+    | Id<"tenants">
+    | undefined;
 
   return (
     <ConvexAuthNextjsServerProvider>
@@ -101,6 +112,15 @@ export default async function RootLayout({
                 Wrapped INSIDE the Convex provider so the button (which
                 consumes the captured prompt) has access to Convex hooks
                 in its subtree (mutation + getCurrentCustomer query). */}
+            {/* PWA-S11 (#463) — root-mounted runner that flips
+                `customer.pushEnrollment.a2hsStatus = "enrolled"` the first
+                time it detects `display-mode: standalone` on a fiche that
+                hasn't been flipped yet. Mounted at root so EVERY standalone
+                visit gets a chance to attribute the install — also covers
+                the rare Android cross-session race where the #462
+                `appinstalled` event fired after tab close. Renders nothing
+                (pure side-effect). */}
+            <IOSStandaloneHeuristicRunner tenantId={tenantId} />
             <PWAInstallProvider>{children}</PWAInstallProvider>
           </ConvexClientProvider>
         </body>
