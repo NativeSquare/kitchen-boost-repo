@@ -46,39 +46,12 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
-import { decideIosStandaloneHeuristic } from "@/lib/a2hs-ios";
-
-const STANDALONE_MEDIA_QUERY = "(display-mode: standalone)";
-
-function readIsStandalone(): boolean {
-  if (typeof window === "undefined") return false;
-  try {
-    return window.matchMedia(STANDALONE_MEDIA_QUERY).matches;
-  } catch {
-    return false;
-  }
-}
-
-function getServerIsStandalone(): boolean {
-  return false;
-}
-
-function subscribeIsStandalone(notify: () => void): () => void {
-  if (typeof window === "undefined") return () => {};
-  let mql: MediaQueryList;
-  try {
-    mql = window.matchMedia(STANDALONE_MEDIA_QUERY);
-  } catch {
-    return () => {};
-  }
-  const onChange = (): void => notify();
-  if (typeof mql.addEventListener === "function") {
-    mql.addEventListener("change", onChange);
-    return () => mql.removeEventListener("change", onChange);
-  }
-  mql.addListener(onChange);
-  return () => mql.removeListener(onChange);
-}
+import {
+  decideIosStandaloneHeuristic,
+  getServerIsStandalone,
+  readIsStandalone,
+  subscribeIsStandalone,
+} from "@/lib/a2hs-ios";
 
 export type IOSStandaloneHeuristicRunnerProps = {
   /**

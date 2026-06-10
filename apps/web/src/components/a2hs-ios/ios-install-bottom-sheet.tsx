@@ -49,8 +49,8 @@
  *   `isStandalone = true` → the decision returns `hidden / already-standalone`
  *   → the sheet unmounts without a manual close.
  */
-import { useEffect, useMemo, useSyncExternalStore } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useMemo, useSyncExternalStore } from "react";
+import { useQuery } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
 import {
@@ -65,46 +65,19 @@ import {
 import {
   A2HS_IOS_SHEET_DISMISS_KEY,
   decideIosBottomSheetVisibility,
+  getServerIsStandalone,
   isIosSafari,
+  readIsStandalone,
+  subscribeIsStandalone,
 } from "@/lib/a2hs-ios";
 
-const STANDALONE_MEDIA_QUERY = "(display-mode: standalone)";
-
 // ---------------------------------------------------------------------------
-// External-store helpers — same pattern as <AndroidInstallButton> (#462) +
+// External-store helpers for sessionStorage + UA — paired with the shared
+// standalone helpers from `lib/a2hs-ios/standalone-store` (also used by the
+// runner). Same pattern as <AndroidInstallButton> (#462) +
 // <WalletPromptBanner> (#460) to avoid hydration mismatch with browser-only
-// state (matchMedia + sessionStorage).
+// state.
 // ---------------------------------------------------------------------------
-
-function readIsStandalone(): boolean {
-  if (typeof window === "undefined") return false;
-  try {
-    return window.matchMedia(STANDALONE_MEDIA_QUERY).matches;
-  } catch {
-    return false;
-  }
-}
-
-function getServerIsStandalone(): boolean {
-  return false;
-}
-
-function subscribeIsStandalone(notify: () => void): () => void {
-  if (typeof window === "undefined") return () => {};
-  let mql: MediaQueryList;
-  try {
-    mql = window.matchMedia(STANDALONE_MEDIA_QUERY);
-  } catch {
-    return () => {};
-  }
-  const onChange = (): void => notify();
-  if (typeof mql.addEventListener === "function") {
-    mql.addEventListener("change", onChange);
-    return () => mql.removeEventListener("change", onChange);
-  }
-  mql.addListener(onChange);
-  return () => mql.removeListener(onChange);
-}
 
 function readDismissed(): boolean {
   if (typeof window === "undefined") return false;
@@ -173,20 +146,11 @@ export function IOSInstallBottomSheet({
   });
   const a2hsStatus = customer?.pushEnrollment?.a2hsStatus;
 
-  // PWA-S11 safety net : the sheet itself is iOS-only, but the user may
-  // still flip `standalone` from inside (re-tap the email link after
-  // installing). Mirror of the <AndroidInstallButton> appinstalled effect.
-  // Idempotent backend (audit row trail is intentional).
-  const recordA2hsAccepted = useMutation(
-    api.lib.customer.pushEnrollment.recordA2hsAccepted,
-  );
-  useEffect(() => {
-    if (!isStandalone) return;
-    if (a2hsStatus === "enrolled") return;
-    void recordA2hsAccepted({ tenantId }).catch(() => {
-      // Best-effort — runner at root layout will retry on the next mount.
-    });
-  }, [isStandalone, a2hsStatus, recordA2hsAccepted, tenantId]);
+  // The `recordA2hsAccepted` flip on standalone-detection is owned by the
+  // root-mounted `<IOSStandaloneHeuristicRunner>` — single source of truth
+  // for the heuristic mutation (US 59). Wiring the same effect here too
+  // would race the runner for the network call without any UX benefit;
+  // the decision below ALSO already hides the sheet on `isStandalone`.
 
   const visibility = decideIosBottomSheetVisibility({
     isIosSafari: isIos,

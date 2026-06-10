@@ -31,3 +31,8 @@ export {
   decideIosStandaloneHeuristic,
 } from "./decide-ios-standalone-heuristic";
 export { A2HS_IOS_SHEET_DISMISS_KEY } from "./session-keys";
+export {
+  readIsStandalone,
+  getServerIsStandalone,
+  subscribeIsStandalone,
+} from "./standalone-store";
