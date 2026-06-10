@@ -39,6 +39,7 @@ import type * as lib_crypto_envelope from "../lib/crypto/envelope.js";
 import type * as lib_crypto_index from "../lib/crypto/index.js";
 import type * as lib_customer_address from "../lib/customer/address.js";
 import type * as lib_customer_cgv from "../lib/customer/cgv.js";
+import type * as lib_customer_checkoutContact from "../lib/customer/checkoutContact.js";
 import type * as lib_customer_consent from "../lib/customer/consent.js";
 import type * as lib_customer_identity from "../lib/customer/identity.js";
 import type * as lib_customer_index from "../lib/customer/index.js";
@@ -149,6 +150,7 @@ import type * as lib_tenancy_webPushSubscriptionsStore from "../lib/tenancy/webP
 import type * as lib_tenancy_withTenant from "../lib/tenancy/withTenant.js";
 import type * as lib_tenants_branding from "../lib/tenants/branding.js";
 import type * as lib_tenants_index from "../lib/tenants/index.js";
+import type * as lib_tenants_payment from "../lib/tenants/payment.js";
 import type * as lib_tenants_resolution from "../lib/tenants/resolution.js";
 import type * as lib_uberDirect_account from "../lib/uberDirect/account.js";
 import type * as lib_uberDirect_createDelivery from "../lib/uberDirect/createDelivery.js";
@@ -246,6 +248,7 @@ declare const fullApi: ApiFromModules<{
   "lib/crypto/index": typeof lib_crypto_index;
   "lib/customer/address": typeof lib_customer_address;
   "lib/customer/cgv": typeof lib_customer_cgv;
+  "lib/customer/checkoutContact": typeof lib_customer_checkoutContact;
   "lib/customer/consent": typeof lib_customer_consent;
   "lib/customer/identity": typeof lib_customer_identity;
   "lib/customer/index": typeof lib_customer_index;
@@ -356,6 +359,7 @@ declare const fullApi: ApiFromModules<{
   "lib/tenancy/withTenant": typeof lib_tenancy_withTenant;
   "lib/tenants/branding": typeof lib_tenants_branding;
   "lib/tenants/index": typeof lib_tenants_index;
+  "lib/tenants/payment": typeof lib_tenants_payment;
   "lib/tenants/resolution": typeof lib_tenants_resolution;
   "lib/uberDirect/account": typeof lib_uberDirect_account;
   "lib/uberDirect/createDelivery": typeof lib_uberDirect_createDelivery;

@@ -19,3 +19,4 @@
  */
 export * as resolution from "./resolution";
 export * as branding from "./branding";
+export * as payment from "./payment";
