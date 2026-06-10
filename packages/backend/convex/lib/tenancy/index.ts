@@ -43,7 +43,12 @@ export {
   tenantQuery,
   type TenantRole,
 } from "./withTenant";
-export { customerMutation, customerQuery, publicTenantQuery } from "./customer";
+export {
+  customerMutation,
+  customerQuery,
+  customerQueryOptional,
+  publicTenantQuery,
+} from "./customer";
 export {
   type CustomerAddressPatch,
   type CustomerCheckoutContactPatch,

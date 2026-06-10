@@ -81,6 +81,40 @@ export const customerMutation = customMutation(mutation, {
   },
 });
 
+/**
+ * OPTIONAL auth — for queries that must work for both authenticated and
+ * anonymous callers (e.g. `getCurrentCustomer` consumed by root-layout
+ * components that mount BEFORE Convex Auth Anonymous signIn completes). The
+ * strict `customerQuery` throws UNAUTHENTICATED, polluting Convex logs at every
+ * 1st PWA visit; this variant returns `actor: null` instead, so the handler
+ * decides what to render for an anonymous caller (typically: return null).
+ *
+ * PRO callers (kb_admin / kb_manager / staff per-tenant, but only kb_admin is
+ * globally non-customer — see `requireCustomer`) are STILL refused with
+ * FORBIDDEN: making the wrapper anonymous-tolerant must NOT open a back door
+ * for the global root to enumerate customer-only surfaces.
+ *
+ * The handler ctx gains `{ actor: Actor | null, tenantId }`. Self-scope, when
+ * the actor is non-null, comes the same way as `customerQuery`: the handler
+ * only ever sees `ctx.actor.userId`, never another customer's id.
+ *
+ * NB: there is no `customerMutationOptional` on purpose. An anonymous caller
+ * must not write through a customer surface — the strict `customerMutation`
+ * stays the only write path, preserving the invariant that provisioning a
+ * customer fiche requires a real (anonymous-auth) session.
+ */
+export const customerQueryOptional = customQuery(query, {
+  args: { tenantId: v.id("tenants") },
+  input: async (ctx, { tenantId }) => {
+    const actor = await getCurrentActor(ctx);
+    // PRO callers refused; anonymous (actor === null) is tolerated.
+    if (actor !== null && actor.role !== "customer") {
+      throw forbidden("customer role required");
+    }
+    return { ctx: { actor, tenantId }, args: {} };
+  },
+});
+
 // ---------------------------------------------------------------------------
 // publicTenant wrapper — read-only public tenant data, NO auth, valid tenantId.
 // ctx += { tenantId, tenant }.
