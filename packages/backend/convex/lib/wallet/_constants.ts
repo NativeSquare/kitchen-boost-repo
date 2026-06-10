@@ -22,7 +22,12 @@ export const WALLET_PASS_TYPE_IDENTIFIER = "pass.com.kitchen-boost.card";
 export const WALLET_TEAM_IDENTIFIER = "NPRZX7J97G";
 
 /**
- * Visible neutral consumer-side card name — "safe-enough" V1 placeholder per
- * ADR 0003 (definitive name = Q80-Q1, non-blocking, updatable via Wallet push).
+ * Visible neutral consumer-side card name — DÉCIDÉ 2026-06-10 (Alex, résolu
+ * Q80-Q1 / Q10-Q11) : « Mes Restos » au lieu de l'ancien placeholder
+ * « Resto Paris » (qui limitait l'extension hors IDF). Concret, FR,
+ * user-friendly, scalable nationalement. Aligné Apple PassKit `organizationName`
+ * + Google Wallet Issuer name (« Mes Restos » sur pay.google.com/business/console).
+ * Reste updatable plus tard via Wallet push update sans casser les installs
+ * (ADR 0003 — le `passTypeIdentifier` technique reste fixe).
  */
-export const WALLET_CARD_NAME = "Resto Paris";
+export const WALLET_CARD_NAME = "Mes Restos";

@@ -9,6 +9,7 @@ deciders: Alex
 ## Contexte
 
 Le [Wallet pass V1](0002-push-moat-dual-stack-wallet-a2hs.md) est le canal push primary du moat KitchenBoost. Deux architectures possibles :
+
 - **Carte par resto** (N cartes visuelles, 1 par tenant — branding intégral resto, white-label total côté client)
 - **Carte commune** (1 carte multi-resto sous marque consumer-side neutre — agrège N restos KB sur 1 même channel push)
 
@@ -16,7 +17,9 @@ Le choix initial (2026-05-23) penchait vers carte par resto pour préserver l'Ar
 
 ## Décision
 
-**V1 = 1 carte Wallet commune sous marque neutre** (pas "KitchenBoost" littéral, nom acceptable-enough pour Phase 1, ex: "Resto Paris" / "Pass Resto Paris") **pour tous les restos KB participants**. Sur chaque pass, le **logo du resto principal commandé est mis en avant visuellement** (header = logo du dernier resto commandé), avec mention "Membre [Nom carte]" en bas.
+**V1 = 1 carte Wallet commune sous marque neutre** (pas "KitchenBoost" littéral) **pour tous les restos KB participants**. Sur chaque pass, le **logo du resto principal commandé est mis en avant visuellement** (header = logo du dernier resto commandé), avec mention "Membre [Nom carte]" en bas.
+
+**Naming définitif acté 2026-06-10 : « Mes Restos »** (Q80-Q1 / Q10-Q11 résolus). Aligné Apple PassKit `organizationName` (constante `WALLET_CARD_NAME`) + Google Wallet Issuer name. Concret, FR, user-friendly, scalable hors IDF (l'ancien placeholder "Resto Paris" limitait l'extension hors région parisienne — invalidant le pitch national).
 
 **Carte premium par resto = option V2** pour restos sensibles à leur autonomie de marque (paient un supplément X €/mois).
 
@@ -43,7 +46,7 @@ Le choix initial (2026-05-23) penchait vers carte par resto pour préserver l'Ar
 - **Article 2 ter contrat à reformuler** : "aucun message KB brandé" → "aucun message 'KitchenBoost' littéral brandé, marque consumer-side neutre acceptée". À coordonner avec avocat avant V1 launch. Avenant ou nouveau contrat pour les 3 restos déjà signés.
 - **Pitch commercial à retravailler** : Alex doit muter le pitch terrain de "ton moat ta marque" vers "rejoins notre réseau" pour les prochains restos signés.
 - **Risque churn resto** : un resto qui se sent "marque sous KB" peut churn. Mitigation = mise en avant systématique du logo resto principal sur la carte + option premium V2 carte propre par resto.
-- **Naming consumer-side à finaliser** : Phase 1 démarre avec un nom acceptable-enough ("Resto Paris" envisageable), optimisable plus tard sans coût grâce à l'updatabilité Wallet.
+- ~~**Naming consumer-side à finaliser**~~ → **acté 2026-06-10 : « Mes Restos »** (cf décision ci-dessus). Reste updatable plus tard via Wallet push update sans casser les installs si on veut évoluer (ADR 0003 prévoit le naming évolutif).
 - **Customer Data CONTEXT** : la formulation "white-label intégral" devient "white-label intégral resto-side (ordering) + marque consumer-side neutre (wallet + marketing cross-tenant V2)". Cohérent avec la stratégie produit révisée.
 
 ## Hard to reverse pourquoi
@@ -51,6 +54,7 @@ Le choix initial (2026-05-23) penchait vers carte par resto pour préserver l'Ar
 Une fois N clients enrôlés sur la carte commune, basculer vers cartes par resto = migration forcée (chaque client doit installer une nouvelle carte par resto) avec perte massive d'engagement (taux ré-install ~30-50%, comme la base RGPD ré-opt-in). À l'inverse, ajouter des cartes premium par resto en parallèle de la carte commune V2 est trivial. La décision contraint donc l'architecture push moat de manière asymétrique : facile à enrichir, douloureux à revenir.
 
 Conditionne aussi :
+
 - Le schéma DB `wallet_passes` (pas de `tenant_id` sur la carte elle-même, juste sur les usages)
 - Le contrat resto Article 2 ter
 - La marque consumer-side KB long terme
