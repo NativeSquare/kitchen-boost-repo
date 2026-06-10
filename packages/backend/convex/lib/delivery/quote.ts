@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { api } from "../../_generated/api";
 import { action } from "../../_generated/server";
 import { isWithinServiceHours } from "../menu/serviceHours";
-import { listTenantServiceWindows, tenantQuery } from "../tenancy";
+import { listTenantServiceWindows, publicTenantQuery } from "../tenancy";
 import type { UberQuoteResult } from "../uberDirect/quote";
 
 /**
@@ -90,14 +90,19 @@ export function crossQuoteWithServiceHours(input: {
 }
 
 /**
- * Tenant-scoped read of the [[Plage horaire de service]] (KB source of truth,
- * 2.2): `true` iff the tenant is currently within an open window (Europe/Paris).
- * This is BOTH the read 2.6 needs AND the fuzzable access gate the orchestration
- * actions dispatch to (kb_manager / kb_admin root). Reads ONLY through the
- * sanctioned `listTenantServiceWindows` seam scoped to `ctx.tenantId` — never raw
+ * PUBLIC read of the [[Plage horaire de service]] (KB source of truth, 2.2):
+ * `true` iff the tenant is currently within an open window (Europe/Paris).
+ * Wrapped by `publicTenantQuery` so an anonymous customer on the PWA can drive
+ * the address-first chain (`requestDeliveryQuote` → here → Uber Direct) without
+ * tripping a kb_manager auth gate — the chain is initiated BEFORE the customer
+ * has any session, and "is this resto open right now" is a fact every visitor
+ * is allowed to see anyway. The `requireTenant` inside `publicTenantQuery`
+ * still throws Forbidden for an unknown/dangling `tenantId`, so cross-tenant
+ * probing remains blocked. Reads ONLY through the sanctioned
+ * `listTenantServiceWindows` seam scoped to `ctx.tenantId` — never raw
  * `ctx.db` (ADR 0010 / `no-untenanted-query`).
  */
-export const readServiceOpen = tenantQuery()({
+export const readServiceOpen = publicTenantQuery({
   args: {},
   returns: v.boolean(),
   handler: async (ctx): Promise<boolean> => {

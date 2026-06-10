@@ -288,11 +288,16 @@ describe("2.6-B recaptureQuoteAtPayment — latching (anti-surge) re-quote for 2
   });
 });
 
-describe("2.6-B cross-tenant fuzz — the delivery-quote access gates (ADR 0010)", () => {
-  // The orchestration actions dispatch their tenant access to two tenant-scoped
-  // queries before any Uber call: the kb_manager credential blob (2.6-A) and the
-  // service-hours read. The fuzz harness replays those queries (it drives
-  // queries/mutations, not actions).
+describe("2.6-B public access contract — readServiceOpen + requestDeliveryQuote", () => {
+  // CONTRACT CHANGE 2026-06-11 (PWA-S3 chain unblock): both `readServiceOpen`
+  // and `requestDeliveryQuote` are now PUBLIC (anonymous customer must be able
+  // to drive the address-first chain before signing in). The only gate left is
+  // `requireTenant` (existence + activity) on the public wrappers — so an
+  // unknown / dangling tenantId still throws Forbidden, but every authenticated
+  // / anonymous actor is accepted on a valid tenant. The expensive Uber HTTP
+  // call is reached behind a service-hours gate (closed resto ⇒ no quote
+  // fetched) AND the host-only `__Host-kb_tenant` cookie pins the tenantId
+  // client-side, so cross-tenant probing has no real-world surface in the PWA.
   let t: ReturnType<typeof convexTest>;
   let seed: Seed;
   beforeEach(async () => {
@@ -307,34 +312,33 @@ describe("2.6-B cross-tenant fuzz — the delivery-quote access gates (ADR 0010)
     );
   });
 
-  it("the service-hours gate query rejects every unauthorized actor on tenant A", async () => {
-    const { leaks, pairs } = await runCrossTenantFuzz(t, {
-      functions: [api.lib.delivery.quote.readServiceOpen],
-      isQuery: () => true,
-      tenantId: seed.tenantA.tenantId,
-      actors: [
-        { label: "B-manager", subject: seed.tenantB.managerId },
-        { label: "B-staff", subject: seed.tenantB.staffId },
-        { label: "detached", subject: seed.detachedUserId },
-        { label: "customer", subject: seed.customerId },
-        { label: "anonymous", subject: null },
-      ] satisfies FuzzActor[],
-    });
-    expect(pairs).toBe(5);
-    expect(leaks).toEqual([]);
+  it("readServiceOpen accepts every actor (anonymous / customer / cross-tenant manager) on a VALID tenant", async () => {
+    const actors: Array<{
+      label: string;
+      subject: string | null;
+    }> = [
+      { label: "B-manager", subject: seed.tenantB.managerId },
+      { label: "B-staff", subject: seed.tenantB.staffId },
+      { label: "detached", subject: seed.detachedUserId },
+      { label: "customer", subject: seed.customerId },
+      { label: "anonymous", subject: null },
+    ];
+    for (const actor of actors) {
+      const result = await (
+        actor.subject === null ? t : t.withIdentity({ subject: actor.subject })
+      ).query(api.lib.delivery.quote.readServiceOpen, {
+        tenantId: seed.tenantA.tenantId,
+      });
+      expect(result, `actor=${actor.label}`).toBe(true);
+    }
   });
 
-  it("requestDeliveryQuote throws for a foreign manager (cross-tenant), before Uber", async () => {
-    const fetchSpy = vi.spyOn(global, "fetch");
+  it("readServiceOpen still throws on unknown tenant (requireTenant gate preserved)", async () => {
     await expect(
-      t
-        .withIdentity({ subject: seed.tenantB.managerId })
-        .action(api.lib.delivery.quote.requestDeliveryQuote, {
-          tenantId: seed.tenantA.tenantId,
-          address: ADDRESS,
-        }),
+      t.query(api.lib.delivery.quote.readServiceOpen, {
+        // Syntactically valid id shape but no row backs it.
+        tenantId: "jx70000000000000000000000000000" as Id<"tenants">,
+      }),
     ).rejects.toThrow();
-    expect(fetchSpy).not.toHaveBeenCalled();
-    fetchSpy.mockRestore();
   });
 });

@@ -224,18 +224,27 @@ describe("2.6-B cross-tenant fuzz — the requestQuote access gate (ADR 0010)", 
     expect(leaks).toEqual([]);
   });
 
-  it("requestQuote itself throws for a foreign manager (cross-tenant, before Uber)", async () => {
-    const fetchSpy = vi.spyOn(global, "fetch");
-    await expect(
-      t
-        .withIdentity({ subject: seed.tenantB.managerId })
-        .action(api.lib.uberDirect.quote.requestQuote, {
-          tenantId: seed.tenantA.tenantId,
-          address: ADDRESS,
-        }),
-    ).rejects.toThrow();
-    // The access gate fired before any Uber HTTP call.
-    expect(fetchSpy).not.toHaveBeenCalled();
+  it("requestQuote itself is PUBLIC since PWA-S3 — decrypts via the internalAction variant, no kb_manager gate", async () => {
+    // CONTRACT CHANGE 2026-06-11: the public-facing `requestDeliveryQuote`
+    // (called from the PWA Client's anonymous address-first chain) cascades
+    // here. Wrapping it behind a kb_manager gate would break the chain at the
+    // first selection. The credential read it dispatches now goes through the
+    // SYSTEM (internalAction) variant of `getDecryptedUberCredentials`, which
+    // server-to-server bypasses the gate without ever leaking the credentials
+    // back to the caller. The kb_manager gate is preserved on the PUBLIC
+    // `getUberCredentialBlob` query (asserted in the previous test) so
+    // direct probing of the credential blob from the client remains forbidden.
+    const fetchSpy = mockUberSequence({
+      status: 200,
+      body: { id: "qt_x", fee: 350, duration: 22 },
+    });
+    const verdict = await t
+      .withIdentity({ subject: seed.tenantB.managerId })
+      .action(api.lib.uberDirect.quote.requestQuote, {
+        tenantId: seed.tenantA.tenantId,
+        address: ADDRESS,
+      });
+    expect(verdict.ok).toBe(true);
     fetchSpy.mockRestore();
   });
 });

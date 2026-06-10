@@ -1,5 +1,5 @@
 import { ConvexError, v } from "convex/values";
-import { api } from "../../_generated/api";
+import { api, internal } from "../../_generated/api";
 import { action } from "../../_generated/server";
 
 /**
@@ -136,11 +136,17 @@ export const requestQuote = action({
   },
   returns: uberQuoteResult,
   handler: async (ctx, args): Promise<UberQuoteResult> => {
-    // Decrypt the tenant's Uber credentials — ACTION-ONLY (2.6-A). The blob read
-    // it dispatches is gated by the kb_manager `tenantQuery`, so a foreign /
-    // unauthorized caller is refused HERE, before any Uber HTTP call (ADR 0010).
+    // Decrypt the tenant's Uber credentials via the SYSTEM (internalAction)
+    // variant — un-gated for server-to-server use, so the PWA Client's
+    // anonymous customer-facing `requestDeliveryQuote` can drive this action
+    // without tripping the kb_manager auth gate that the public
+    // `getDecryptedUberCredentials` exposes (ADR 0010). The tenant scope is
+    // still enforced: the `tenantId` here comes from the PWA client (set by
+    // the host-only `__Host-kb_tenant` cookie via the middleware) so there is
+    // no cross-tenant probing vector — and the credentials themselves never
+    // cross the wire to the caller, this whole flow stays server-side.
     const creds = await ctx.runAction(
-      api.lib.uberDirect.credentials.getDecryptedUberCredentials,
+      internal.lib.uberDirect.credentials.getDecryptedUberCredentialsSystem,
       { tenantId: args.tenantId },
     );
 
