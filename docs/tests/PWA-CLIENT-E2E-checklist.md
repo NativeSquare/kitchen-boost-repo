@@ -309,11 +309,61 @@ Checklist E2E manuelle pour la PWA client (`apps/web`), nomenclature canonique a
 
 ## PAY — Stripe payment
 
-> **Slices** : #458 (S7 Stripe payment + latching surge + Apple Pay verification) · **Statut** : ⏳ EN ATTENTE — bloqué par HITL #447 (Vercel config)
+> **Slices** : #458 (S7 Stripe payment + latching surge + saved-card branch — PR #478) · **Statut** : 🟡 EN COURS — 3 scénarios prêts à tester
 >
-> Couvre : Stripe Elements lazy-loaded uniquement sur `/checkout` (vérif DevTools Network sur `/menu`), saved card cross-resto pre-selected (tile + "Utiliser autre carte"), Payment Element neuve avec Apple Pay button visible iOS + Google Pay Android, checkbox "Sauvegarder ma carte" neutre, latching `recaptureQuoteAtPayment` AVANT `stripe.confirmPayment` (modal bloquant si surge), 3DS handle par SDK transparent, retry inline max 3 échecs → 3ᵉ échec toast + Sentry log, redirect direct `/c/[orderId]` au webhook `payment_intent.succeeded`.
+> Couvre : Stripe Elements lazy-loaded uniquement sur `/checkout` (vérif DevTools Network sur `/menu`), saved card cross-resto pre-selected (tile + "Utiliser autre carte"), Payment Element neuve avec Apple Pay button visible iOS + Google Pay Android, latching `recaptureQuoteAtPayment` AVANT `stripe.confirmPayment` (modal bloquante si surge), 3DS handle par SDK transparent, retry inline ≤2 attempts → 3ᵉ échec toast + `captureException` Sentry shim, redirect direct `/c/[orderId]` post-`stripe.confirmPayment`.
+>
+> **Scope gap documenté (PR #478)** : la checkbox « Sauvegarder ma carte » côté flow new-card est **deliberately NOT rendered V1** (cross-resto save → platform-level SetupIntent flow non-collecté V1). La CONSUMPTION saved-card (tile pre-sélectionné + `payWithSavedCard`) est fully wired. Follow-up slice nécessaire pour la save side.
 
-_À remplir au merge de la slice #458 (HITL #447 doit débloquer la chain)._
+### PAY — Test PAY.1 : Paiement saved card cross-resto pre-selected → redirect tracking
+
+- **Acteur** : Sophie sur iPhone Safari, cookie session valide, fiche customer avec `savedPaymentMethodId` non-null.
+- **Pré-requis** :
+  - Tenant `test-t1` actif avec `stripeAccountId: acct_1TgBUq4DuUOJbMhp` + `stripeStatus: ready` (déjà seedé).
+  - Fiche customer `kn7…` patchée via Convex dashboard : `db.patch(<customerId>, { savedPaymentMethodId: "pm_test_visa_4242", stripeCustomerId: "cus_test_xxx" })` (créer le `pm_` + `cus_` côté Stripe Dashboard sandbox au préalable).
+  - Push enrollment active sur la fiche (Wallet OU webPush OU `noChannelPossible=true`) — sinon le bouton Payer ouvre la modal push.
+  - Cart ≥ 1 item, address-first validé (verdict `deliverable` cached).
+- **URL de départ** : `https://test-t1.kitchen-boost.com/checkout`
+- **Étapes** :
+  1. Vérifier que le tile « Payer avec ma carte enregistrée » apparaît pré-sélectionné, avec lien « Utiliser une autre carte ».
+  2. DevTools → Network : vérifier qu'AUCUN `m.stripe.com` request n'a fire au mount (saved-card branch ne charge pas `<PaymentElement>`).
+  3. Taper « Payer XX € ».
+  4. Observer le redirect automatique vers `/c/<orderId>`.
+- **Attendu** : tile saved card visible avant clic ; aucun formulaire carte Stripe rendu ; post-clic : `/c/[orderId]` rendu (page tracking S8) ; Stripe Dashboard sandbox montre la commande payée + 240 cts `application_fee` (config 2€/cmd KB).
+- **Couvre** : US 45 (saved card cross-resto), US 50 (redirect tracking), AC « Bundle Stripe lazy-loaded même sur saved-card branch » + slice #458 + modules `decidePaymentBranch`, `payWithSavedCard`.
+
+### PAY — Test PAY.2 : Nouvelle carte avec 3DS + Apple Pay button + lazy-load vérifié
+
+- **Acteur** : Sophie sur iPhone Safari, fiche SANS saved card.
+- **Pré-requis** : idem PAY.1 mais `savedPaymentMethodId: undefined` sur la fiche customer.
+- **URL de départ** : `https://test-t1.kitchen-boost.com/checkout`
+- **Étapes** :
+  1. DevTools → Network filter `stripe` : naviguer sur `/menu` puis `/panier` AVANT `/checkout` — vérifier qu'aucun request `m.stripe.com` n'a fire.
+  2. Naviguer `/checkout`. Vérifier que les requests `m.stripe.com` apparaissent UNIQUEMENT à ce mount.
+  3. Vérifier que le Payment Element Stripe s'affiche avec le bouton Apple Pay visible en haut de la modal Stripe.
+  4. Saisir la carte test 3DS Stripe `4000 0027 6000 3184`, expiration `12/34`, CVC `123`.
+  5. Taper « Payer XX € ».
+  6. Sur la sheet 3DS qui s'ouvre, taper « Complete authentication ».
+  7. Observer le redirect automatique vers `/c/<orderId>`.
+- **Attendu** : étape 1-2 : SDK Stripe absent des bundles `/menu` et `/panier` (acceptance criterion lazy-load) ; étape 3 : Payment Element rendu, Apple Pay button rendered iOS ; étape 5-6 : sheet 3DS Stripe ouverte sans code custom (handled par SDK) ; étape 7 : redirect natif `/c/<orderId>` ; Stripe Dashboard : `payment_intent.succeeded` webhook reçu.
+- **Couvre** : US 46 (Payment Element + Apple Pay), US 49 (3DS auto), AC « 3DS handle par SDK sans code custom », AC « Bundle Stripe lazy-loaded » + slice #458 + module `<StripePaymentLazy>` (`next/dynamic({ ssr: false })`).
+
+### PAY — Test PAY.3 : Latching anti-surge — modal bloquante + fresh fee adopté
+
+- **Acteur** : Sophie sur Android Chrome.
+- **Pré-requis** :
+  - Address validée → verdict cached avec `fee: 350` cts.
+  - **Mock backend manuel** : patcher la valeur retournée par `lib/uberDirect/quote.requestQuote` pour qu'elle retourne `{deliverable: true, fee: 590, eta: 1700, quoteId: "qt_surge"}` à la prochaine invocation (vitest mock OR rajout temporaire d'un short-circuit `if (e2eForceSurge) return {...}` côté backend, à retirer après le test).
+- **URL de départ** : `https://test-t1.kitchen-boost.com/checkout`
+- **Étapes** :
+  1. Taper « Payer XX € ».
+  2. Observer la modal `<LatchingConfirmModal>` qui s'ouvre avec « Le tarif livraison est passé de 3,50 € à 5,90 € ».
+  3. Tenter Esc + tap clic-outside.
+  4. Taper « Oui, payer 5,90 € de livraison ».
+  5. Observer que le flow continue (Payment Element neuve OR redirect direct saved-card branch selon la fiche).
+  6. **Bonus** : refaire le test mais à étape 4 taper « Non » (ou bouton secondaire de retour).
+- **Attendu** : étape 2 : modal bloquante affichée, fee old vs new explicit ; étape 3 : Esc / click-outside ne ferment pas la modal (non-skippable) ; étape 4 : flow paiement reprend avec FRESH fee dans le `pricingSnapshot` (Stripe Dashboard : amount = items + 590 cts livraison) ; étape 6 : retour à idle, AUCUNE commande créée côté `orders` Convex.
+- **Couvre** : US 47 (latching surge), AC « Latching : surge artificiel → modal confirm bloquant apparaît » + slice #458 + module `decideLatchingOutcome`.
 
 ---
 
