@@ -2,8 +2,8 @@
 
 Checklist E2E manuelle pour la PWA client (`apps/web`), nomenclature canonique alignée sur le PRD section Testing Decisions (FND / A / M / C / CHK / PAY / TRK / WAL / A2H / REC). Chaque parcours est à exécuter à la main contre `apps/web` en dev (Convex live + seeds e2e + Stripe test + Uber sandbox + device réel iPhone Safari OU Android Chrome).
 
-- **Date** : 2026-06-04 (enrichi post-drain AFK PWA)
-- **Statut global** : 🟡 **EN CONSTRUCTION** — 12 PRs mergées cette nuit (#465-#476). Les 4 groupes encore vides (PAY/TRK/A2H iOS/REC) attendent le déblocage HITL #447 (Vercel config) qui débloquera la chain `#458 → #459 → #463 → #464`.
+- **Date** : 2026-06-04 (drain initial 12 PRs) + 2026-06-10 (chain `#458 → #459 → #463 → #464` débloquée et drainée → 4 PRs supplémentaires #478, #479, #480, #481)
+- **Statut global** : 🟢 **PRÊT À TESTER** — **16 PRs PWA Client mergées au total** (#465-#476 le 06-04 + #478-#481 le 06-10). **Les 11 groupes sont peuplés** : FND (3) + A (3) + M (3) + C (3) + CHK (5) + PAY (3) + TRK (3) + WAL (4) + A2H Android (2) + A2H iOS (3) + REC (2) = **34 scénarios E2E** prêts à tester sur devices physiques iPhone Safari + Android Chrome. Aucun blocker.
 - **Pré-requis transverses** : seeds `e2e` chargées (≥ 1 tenant `test-t1` slug + custom domain, menu publié ≥ 3 catégories ≥ 15 items dont 2 avec modifiers obligatoires + 1 item out-of-stock toggleable depuis admin), Convex deployment dev (`impartial-goshawk-798` ou équivalent), Stripe en mode test avec `acct_resto` rattaché au tenant, Uber Direct sandbox creds, VAPID keys valides (`NEXT_PUBLIC_VAPID_PUBLIC_KEY`), Apple PassKit cert + Google Wallet issuer ID valides, Resend test pour emails transactionnels, `NEXT_PUBLIC_GOOGLE_PLACES_API_KEY` set dans `apps/web/.env.local`. Pour les tests Wallet/push, device physique iPhone 15+ Safari et device physique Android Chrome récent.
 - **Convention** : format strict aligné sur la campagne admin (cf. [`E2E-checklist.md`](E2E-checklist.md) validée 12/12 groupes 2026-06-03) — **Acteur / Pré-requis / URL de départ / Étapes / Attendu / Couvre**. La colonne "Couvre" référence : les US du PRD master + les issues `#N` mergées + les modules deep extraits.
 - **Slices de référence** : voir [00-issues-breakdown.md](../prd/sub/10-pwa-client/00-issues-breakdown.md) pour le DAG des 19 slices (3 HITL + 16 AFK) et le mapping US ↔ slice.
@@ -20,6 +20,18 @@ Checklist E2E manuelle pour la PWA client (`apps/web`), nomenclature canonique a
   - Scénario CHK-4 fusionne le chemin critique « 0 canal → palier 3 Wallet refusé + Web Push denied → fallback 3 niveaux → flag `noChannelPossible` → Payer débloqué » à partir de S6a + S6b + S6c (state machine complète du module `push-enrollment-orchestrator`).
   - Groupe FND consolide les vérifs transverses manifest + SW + tenant cookie + push deep-link en 3 scénarios DevTools-driven (S1 + S2).
   - Le scénario WAL « install Wallet effectif → 3 paliers cachés » fusionne le Convex sub veto de S9a avec le flow install de S6a.
+
+## Bilan drain 2026-06-10 — chain Stripe/tracking/A2HS iOS/recognition débloquée
+
+- **4 PRs mergées** par sub-agents AFK séquentiels : #478 (S7 Stripe payment), #479 (S8 tracking realtime), #480 (S11 A2HS iOS), #481 (S12 recognition retour). HITL #447 (Vercel config) résolu en pratique en amont, plus de chain blocker.
+- **11 scénarios E2E supplémentaires** agrégés sur **4 groupes complétés** : PAY (3) + TRK (3) + A2H iOS (3) + REC (2). Total cumulé : **34 scénarios sur 11 groupes**.
+- **0 hygiène gaps détectés** — les 4 PRs ont toutes une section « Plan de test E2E » conforme (3 scénarios proposés par défaut, 1 trivial agrégé à 2 sur REC pour éliminer la redondance avec les 7 unit tests vitest sur la branche `none`).
+- Agrégations notables :
+  - **REC** : 3 scénarios PR → 2 publiés. La branche `none` (1ère visite, aucun cookie) éliminée comme test E2E dédié (trivial : « ouvrir l'URL, rien à voir ») et remontée en **baseline implicite** documentée en préambule du groupe — déjà couverte par 7 unit tests `decideReturnGreeting` + visuellement attestée en début des autres scénarios.
+  - **A2H iOS** : `A2H.5` test « bottom-sheet jamais visible sur Android » conservé (négatif critique d'iOS-only), mais la **matrice in-app browsers iOS** (Instagram/Facebook/TikTok/Snapchat/Pinterest WebViews) explicitement **non dédupliquée** en E2E manuel — couverte par 34 unit tests `is-ios-safari` UA matrix dans la PR.
+  - **TRK** : aucune fusion entre les 3 trajectoires (redirect+timeline / Convex sub realtime / share URL+incident) car contextes mutuellement exclusifs (anonymous → realtime owner → cross-device share). Garder distincts maximise la lisibilité.
+  - **PAY** : 3 scénarios distincts (saved card / new card 3DS / latching surge) — pas d'agrégation possible car branches mutuellement exclusives (presence/absence `savedPaymentMethodId` + mock backend surge).
+- **Scope gap documenté côté PAY** : checkbox « Sauvegarder ma carte » new-card branch deliberately deferred V1 (requiert platform-level SetupIntent flow non collecté V1). Consumption side (tile saved card pre-sélectionné) fully wired.
 
 ---
 
@@ -583,11 +595,45 @@ Checklist E2E manuelle pour la PWA client (`apps/web`), nomenclature canonique a
 
 ## REC — Recognition retour
 
-> **Slices** : #464 (S12 Bandeau "Bonjour firstName" + "Ce n'est pas moi") · **Statut** : ⏳ EN ATTENTE — bloqué par HITL #447 (chain `#458 → #459 → #463 → #464`)
+> **Slices** : #464 (S12 Bandeau « Bonjour firstName » + « Ce n'est pas moi » — PR #481) · **Statut** : 🟡 EN COURS — 2 scénarios prêts à tester
 >
-> Couvre : 2ᵉ visite après checkout terminé → bandeau "Bonjour {firstName} 👋" visible au-dessus form Google Places, form pré-rempli avec address cached + bouton "Confirmer" (au lieu de "Valider"), click "Ce n'est pas moi →" clear cookie Convex Auth (route handler `/api/signout`) + page reload → form vide + bandeau absent (cookie tenant inchangé), cas cookie présent mais `firstName === null` → AUCUN bandeau juste pré-rempli silencieux, **audit visuel garde-fou** : aucun texte "On a ton adresse" / "Voici tes 4 dernières cmds" / mention historique explicite (anxiogène = surveillance vs hospitalité).
+> Couvre : 3 branches `decideReturnGreeting` (`banner` / `silent` / `none`). Branche `banner` (fiche avec firstName) → bandeau « Bonjour {firstName} 👋 » au-dessus du form + subtitle « Confirme ton adresse de livraison, ou modifie-la. » + form Google Places pré-rempli + lien discret « Ce n'est pas moi → ». Branche `silent` (fiche avec adresse mais sans firstName) → AUCUN bandeau, juste prefill silencieux + lien désaveu. Branche `none` (1ère visite, pas de cookie) → form vide, subtitle « Indique-nous ton adresse, on vérifie si on peut te livrer. », aucun lien. Click « Ce n'est pas moi → » → `signOut()` SDK + POST `/api/signout` (HttpOnly cookies SDK) + `window.location.reload()` → retour état branche `none`. **Garde-fou Q3 « hospitality vs surveillance » enforced by type** : `decideReturnGreeting` ne surface QUE `firstName` (whitelist pinned par test sur `Object.keys`) — aucune adresse, aucun historique, aucun `lastCheckoutAt`.
+>
+> **Baseline implicite (branche `none`)** : 1ère visite mode privé → bandeau absent, lien absent, form vide, subtitle « Indique-nous ton adresse… ». Couverte par 7 unit tests vitest dans la PR + visuellement vérifiable en début de chaque autre test E2E quand l'environnement est reset (pas dédupliquée en scénario E2E dédié).
 
-_À remplir au merge de la slice #464 (HITL #447 doit débloquer la chain)._
+### REC — Test REC.1 : 2ᵉ visite avec firstName → bandeau + prefill + « Ce n'est pas moi → » reset
+
+- **Acteur** : iPhone Safari OU Android Chrome, session normale (PAS mode privé — cookies persistants).
+- **Pré-requis** : avoir fait un checkout complet sur ce device + ce resto (fiche `customers` a `firstName` + `address` stampés via S7). Sinon seed manuel Convex : `db.patch(<customerId>, { firstName: "Sophie", address: "10 rue de la Paix, Paris" })` sur la fiche du `userId` correspondant au cookie présent.
+- **URL de départ** : `https://test-t1.kitchen-boost.com/`
+- **Étapes** :
+  1. Ouvrir l'URL.
+  2. Observer le bandeau au-dessus du form + le subtitle + le contenu du champ Google Places.
+  3. DevTools → DOM : vérifier l'absence de toute mention « adresse », « dernière commande », « historique », etc. dans le bandeau (audit visuel garde-fou anti-surveillance).
+  4. Cliquer le lien « Ce n'est pas moi → » sous le form.
+  5. Attendre le reload auto.
+  6. DevTools → Cookies : vérifier les cookies après reload.
+- **Attendu** :
+  - Étape 2 : bandeau **« Bonjour Sophie 👋 »** visible au-dessus du form ; subtitle = **« Confirme ton adresse de livraison, ou modifie-la. »** ; champ Google Places pré-rempli avec « 10 rue de la Paix, Paris » ; lien discret « Ce n'est pas moi → » visible sous le form (font-size petit, gris).
+  - Étape 3 : aucun texte « On a ton adresse » / « Voici tes X dernières commandes » / mention historique — UNIQUEMENT le firstName apparaît côté bandeau (Q3 hospitality vs surveillance).
+  - Étape 5 : bandeau **disparu**, form **vide**, subtitle = « Indique-nous ton adresse, on vérifie si on peut te livrer. » (état branche `none`).
+  - Étape 6 : cookie `__Host-kb_tenant` toujours présent (le resto résolu n'a pas changé — Q3 cohabitation rule) ; cookies `__Host-` SDK Convex Auth SUPPRIMÉS.
+- **Couvre** : US 9 (banner), US 10, 11, 12, 13 + slice #464 + modules `decideReturnGreeting`, `<GreetingBanner>`, `<NotMeLink>`, `makeNotMeHandlers`, `/api/signout` route handler.
+
+### REC — Test REC.2 : Cookie présent + adresse SANS firstName → branche `silent` (prefill sans bandeau)
+
+- **Acteur** : iPhone Safari OU Android Chrome.
+- **Pré-requis** : avoir validé une adresse en S3 (`requestDeliveryQuote` OK) mais **JAMAIS** finalisé un checkout S7 (fiche `customers` a `address` stampée mais `firstName` undefined/null). Sinon seed manuel Convex : `db.patch(<customerId>, { firstName: undefined, address: "20 rue Cler, Paris" })`.
+- **URL de départ** : `https://test-t1.kitchen-boost.com/`
+- **Étapes** :
+  1. Ouvrir l'URL.
+  2. Observer le haut de page + le champ Google Places + le lien sous le form.
+- **Attendu** :
+  - **AUCUN bandeau** « Bonjour … » (firstName absent → branche `silent`).
+  - Subtitle = « Confirme ton adresse de livraison, ou modifie-la. » (prefill détecté quand même).
+  - Form Google Places pré-rempli avec « 20 rue Cler, Paris ».
+  - Lien « Ce n'est pas moi → » **visible** (la fiche est désavouable même sans nom).
+- **Couvre** : US 9 (cas silent) + slice #464 + module `decideReturnGreeting` (branche `silent`).
 
 ---
 
