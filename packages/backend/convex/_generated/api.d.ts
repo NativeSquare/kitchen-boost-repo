@@ -92,6 +92,7 @@ import type * as lib_onboarding_seedData from "../lib/onboarding/seedData.js";
 import type * as lib_orders_index from "../lib/orders/index.js";
 import type * as lib_orders_orders from "../lib/orders/orders.js";
 import type * as lib_orders_status from "../lib/orders/status.js";
+import type * as lib_orders_tracking from "../lib/orders/tracking.js";
 import type * as lib_orders_workflow from "../lib/orders/workflow.js";
 import type * as lib_pricing_contradictions from "../lib/pricing/contradictions.js";
 import type * as lib_pricing_defaultRule from "../lib/pricing/defaultRule.js";
@@ -301,6 +302,7 @@ declare const fullApi: ApiFromModules<{
   "lib/orders/index": typeof lib_orders_index;
   "lib/orders/orders": typeof lib_orders_orders;
   "lib/orders/status": typeof lib_orders_status;
+  "lib/orders/tracking": typeof lib_orders_tracking;
   "lib/orders/workflow": typeof lib_orders_workflow;
   "lib/pricing/contradictions": typeof lib_pricing_contradictions;
   "lib/pricing/defaultRule": typeof lib_pricing_defaultRule;

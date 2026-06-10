@@ -233,6 +233,7 @@ describe("PWA-S8 (#459) — getOrderTracking (public, shareable URL)", () => {
       const id = await ctx.db.insert("tenants", {
         slug: "ghost",
         name: "Ghost",
+        siret: "00000000000000",
         status: "active",
         createdAt: Date.now(),
       });
