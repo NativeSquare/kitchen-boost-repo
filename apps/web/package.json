@@ -21,6 +21,8 @@
     "@googlemaps/js-api-loader": "^2.1.0",
     "@hookform/resolvers": "^5.2.2",
     "@packages/backend": "workspace:*",
+    "@stripe/react-stripe-js": "^6.6.0",
+    "@stripe/stripe-js": "^9.8.0",
     "@tabler/icons-react": "^3.36.1",
     "@tanstack/react-table": "^8.21.3",
     "class-variance-authority": "^0.7.1",
