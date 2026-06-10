@@ -95,6 +95,7 @@
  */
 export { getCurrentCustomer, getOrCreateCurrentCustomer } from "./identity";
 export { updateAddress } from "./address";
+export { recordCheckoutContact } from "./checkoutContact";
 export {
   marketingEligible,
   type MarketingEligibilityInput,

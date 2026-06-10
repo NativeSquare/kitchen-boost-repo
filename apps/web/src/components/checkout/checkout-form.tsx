@@ -1,35 +1,35 @@
 "use client";
 
 /**
- * PWA-S6 (#454) — `<CheckoutForm>` : the body of `/checkout` (US 44, PRD
- * §10 PWA Client + decisions-log Q3/Q8).
+ * PWA-S6 / S7 (#454 / #458) — `<CheckoutForm>` : the body of `/checkout`
+ * (US 44-49, PRD §10 PWA Client + decisions-log Q3/Q6/Q7/Q8).
  *
- * Owns the React IO around the pure decisions of `lib/checkout-gate`:
+ * Owns the React IO around the pure decisions of `lib/checkout-gate`
+ * (S6) and `lib/stripe-payment` (S7):
  *  - `usePreloadedQuery(preloadedCustomer)` → reactive Convex sub on
  *    `customers.pushEnrollment` so a Wallet install / Web Push subscribe
- *    happening in another tab / from the address-first soft prompt 5 min
- *    earlier unlocks the "Payer X €" button without ANY reload (acceptance
- *    criterion #454 « install Wallet pendant client sur page → bouton se
- *    débloque sans reload »). The RSC parent (`app/checkout/page.tsx`)
- *    seeds this sub via `preloadQuery` so the gate is evaluated on the SSR
- *    pass too (no FOUC, no "active → disabled" flash on mount).
+ *    happening in another tab unlocks the "Payer X €" CTA without ANY
+ *    reload (S6 #454).
  *  - `useCart()` → reads the localStorage-backed cart (S5). Empty cart
- *    on /checkout has no business case → redirect to /panier where the
- *    « Ton panier est vide » empty state lives (decided by
- *    `decideCheckoutRedirect`).
- *  - Form `<input>` controls pre-filled via `decideCheckoutPrefill`.
- *  - "Payer X €" CTA is the pure decision `decidePaymentGate` reading the
- *    live `pushEnrollment` snapshot. S6 stub : click logs to console and
- *    surfaces a "Coming next: modal push enrollment (S6a)" placeholder —
- *    the actual modal lives in #455 / #456 / #457 and the Stripe payment
- *    in #458 / S7.
+ *    on /checkout redirects back to /panier.
+ *  - Form `<input>` controls pre-filled via `decideCheckoutPrefill`. The
+ *    refs let the lazy-loaded `<StripePaymentLazy>` snapshot the live
+ *    values at click-Payer (so a user editing post-render is reflected).
+ *  - Two payment surfaces depending on the gate state:
+ *    - gate DISABLED → render the « Payer » CTA that opens
+ *      `<PushEnrollmentModal>` (S6a-c) — no Stripe code is loaded.
+ *    - gate ACTIVE   → render `<StripePaymentLazy>` (next/dynamic) which
+ *      mounts Stripe Elements + the saved-card / new-card branch (S7).
  *
  * Consent at click-Payer (ADR 0007) : the CGV/loyalty wording lives ABOVE
  * the button, ≥ 12 px (acceptance criterion #454 « Wording CGV visible et
  * lisible (≥ 12px) »). The button text IS the consent action — no
- * checkbox, no separate « J'accepte » step.
+ * checkbox, no separate « J'accepte » step. The actual `recordConsentAtCheckout`
+ * mutation is fired by `<StripePaymentSection>` (S7) at click-Payer, so
+ * each successful payment re-stamps the then-active CGV hash (re-consent
+ * par achat, ADR 0005).
  */
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePreloadedQuery, type Preloaded } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
@@ -37,6 +37,10 @@ import type { Id } from "@packages/backend/convex/_generated/dataModel";
 import { useCart } from "@/components/cart/cart-context";
 import { useDeliveryMode } from "@/components/delivery-mode/delivery-mode-context";
 import { PushEnrollmentModal } from "@/components/checkout/push-enrollment-modal";
+import {
+  StripePaymentLazy,
+  type CheckoutContactValues,
+} from "@/components/checkout/stripe-payment";
 import { decideCartTotals } from "@/lib/delivery-mode";
 import {
   decideCheckoutPrefill,
@@ -116,6 +120,21 @@ export function CheckoutForm({
     }
   }, [gate.kind, modalRequested]);
 
+  // Refs to the three contact `<input>` so `<StripePaymentLazy>` can
+  // snapshot the live values at click-Payer time (without forcing the
+  // parent to lift state out of the uncontrolled inputs).
+  const firstNameRef = useRef<HTMLInputElement>(null);
+  const emailRef = useRef<HTMLInputElement>(null);
+  const phoneRef = useRef<HTMLInputElement>(null);
+  const getContactValues = useCallback(
+    (): CheckoutContactValues => ({
+      firstName: firstNameRef.current?.value ?? "",
+      email: emailRef.current?.value ?? "",
+      phone: phoneRef.current?.value ?? "",
+    }),
+    [],
+  );
+
   if (redirect.kind === "redirect") {
     // Render nothing while the navigation is en route — avoids a flash of
     // the empty checkout form before the redirect lands.
@@ -131,24 +150,12 @@ export function CheckoutForm({
 
   const modalOpen = modalRequested && gate.kind !== "active";
 
-  const onPayClick = (): void => {
-    if (gate.kind !== "active") {
-      // Gate closed → open the enrollment modal (S6a). The CTA `disabled`
-      // attribute keeps a keyboard user from reaching here on a `disabled`
-      // gate, but we double-check defensively so a future ref-driven click
-      // still routes correctly.
-      setModalRequested(true);
-      return;
-    }
-    // S6 stub — the actual Stripe payment lands in S7 (#458). Logging here
-    // makes it easy to confirm in the E2E plan that the gate enabled the
-    // click (vs the button being disabled — onClick wouldn't fire then).
-    console.log("[PWA-S6] Payer clicked", {
-      tenantId,
-      subtotalCentimes: totals.subtotalCentimes,
-      totalCentimes: totalsRow.totalCentimes,
-      enrolledChannels: gate.enrolledChannels,
-    });
+  const onGateDisabledClick = (): void => {
+    // Gate closed → open the enrollment modal (S6a). When the modal lands
+    // and the user enrolls, the Convex sub re-runs `decidePaymentGate`
+    // → `gate.kind` flips to "active" → the form switches to the
+    // `<StripePaymentLazy>` branch automatically (US 27-38).
+    setModalRequested(true);
   };
 
   return (
@@ -168,6 +175,7 @@ export function CheckoutForm({
         <label className="flex flex-col gap-1">
           <span className="text-xs text-zinc-600">Prénom</span>
           <input
+            ref={firstNameRef}
             type="text"
             name="firstName"
             autoComplete="given-name"
@@ -179,6 +187,7 @@ export function CheckoutForm({
         <label className="flex flex-col gap-1">
           <span className="text-xs text-zinc-600">Email</span>
           <input
+            ref={emailRef}
             type="email"
             name="email"
             autoComplete="email"
@@ -191,6 +200,7 @@ export function CheckoutForm({
         <label className="flex flex-col gap-1">
           <span className="text-xs text-zinc-600">Téléphone</span>
           <input
+            ref={phoneRef}
             type="tel"
             name="phone"
             autoComplete="tel"
@@ -212,11 +222,30 @@ export function CheckoutForm({
         fidélité <strong className="text-zinc-700">KitchenBoost</strong>.
       </p>
 
-      <PayButton
-        gate={gate}
-        totalCentimes={totalsRow.totalCentimes}
-        onPayClick={onPayClick}
-      />
+      {gate.kind === "active" ? (
+        // S7 (#458) — gate open → mount the lazy Stripe payment surface.
+        // The acceptance criterion « Bundle Stripe lazy-loaded sur /checkout »
+        // is satisfied because `<StripePaymentLazy>` is the ONLY entry
+        // chain that imports `@stripe/*`, hidden behind `next/dynamic`
+        // (`ssr: false`) — a customer who never reaches gate=active
+        // (e.g. exits at /panier) never downloads the Stripe SDK.
+        <StripePaymentLazy
+          tenantId={tenantId}
+          fiche={customer}
+          customerAddress={customer?.address}
+          customerLat={customer?.lat}
+          customerLng={customer?.lng}
+          getContactValues={getContactValues}
+        />
+      ) : (
+        // S6 — gate disabled : surface the « Payer » CTA that opens the
+        // enrollment modal. NO Stripe code is loaded in this branch (the
+        // import lives inside `<StripePaymentLazy>`).
+        <PayButton
+          totalCentimes={totalsRow.totalCentimes}
+          onPayClick={onGateDisabledClick}
+        />
+      )}
 
       <PushEnrollmentModal
         open={modalOpen}
@@ -228,33 +257,27 @@ export function CheckoutForm({
 }
 
 /**
- * The actual "Payer X €" CTA. Extracted so the gate narrowing happens once
- * per render, in one place, and so a future test can mount the button in
- * isolation if needed (no jsdom in apps/web V1 → not done here, but the
- * boundary is clean).
+ * The « Payer X € » CTA rendered in the GATE-DISABLED branch (S6a). A
+ * click opens the `<PushEnrollmentModal>`; once the user enrolls a push
+ * channel, the parent's Convex sub re-runs `decidePaymentGate`, the
+ * branch switches to `<StripePaymentLazy>` (S7), and the CTA inside
+ * `<StripePaymentSection>` takes over.
  *
- * S6a (#455) — the button is ALWAYS clickable now: a gate-disabled click opens
- * the `<PushEnrollmentModal>` (per the parent's `onPayClick`), a gate-active
- * click triggers the Stripe payment (S7). The visual styling still
- * differentiates the two states so the user sees the gate, but `disabled` is
- * deliberately dropped to keep the modal opening on click.
+ * Extracted so the JSX stays readable; `data-gate="disabled"` is kept as
+ * a stable selector for the S6a/b/c E2E plan.
  */
 function PayButton({
-  gate,
   totalCentimes,
   onPayClick,
 }: {
-  gate: ReturnType<typeof decidePaymentGate>;
   totalCentimes: number;
   onPayClick: () => void;
 }): React.JSX.Element {
-  const isActive = gate.kind === "active";
   return (
     <button
       type="button"
       onClick={onPayClick}
-      aria-disabled={!isActive}
-      data-gate={isActive ? "active" : "disabled"}
+      data-gate="disabled"
       className="rounded-lg bg-emerald-700 px-4 py-3 text-base font-semibold text-white hover:bg-emerald-800"
     >
       Payer {formatEur(totalCentimes)}

@@ -119,6 +119,42 @@ export async function patchCustomerAddress(
   await ctx.db.patch(customerId, patch);
 }
 
+/** The checkout PII fields the PWA captures at `/checkout` submit (PWA-S7 #458). */
+export type CustomerCheckoutContactPatch = {
+  firstName: string;
+  email: string;
+  phone: string;
+};
+
+/**
+ * PWA-S7 (#458) — stamp the firstName/email/phone the customer submits at the
+ * `/checkout` form on a fiche the caller already resolved as its OWN (the
+ * `customerId` MUST come from `getOrCreateCustomerFiche` / a self-scoped read
+ * keyed on `ctx.actor.userId`). Captures the trio at the FIRST checkout, so the
+ * NEXT `/checkout` visit hydrates the form from the fiche (US 44 prefill,
+ * decisions-log Q3 « Recognition UX »).
+ *
+ * Re-submit OVERWRITES the previous PII (the customer may correct a typo at a
+ * later checkout — the fiche always reflects the latest submit). The fields are
+ * non-optional in the patch shape because the form forbids empty submission
+ * (`required` on every `<input>`); a caller cannot smuggle a partial-undefined
+ * patch through this seam.
+ *
+ * The single sanctioned `ctx.db.patch` site for these fields on the GLOBAL
+ * `customers` table; the business module `lib/customer/checkoutContact` (NOT
+ * exempt) calls THIS instead of raw `ctx.db` (ADR 0010). The narrow patch type
+ * keeps it confined to the checkout-contact surface — it cannot overwrite
+ * identity (`userId`), consent fields, the address, the saved-card link, or
+ * `pushEnrollment`.
+ */
+export async function patchCustomerCheckoutContact(
+  ctx: MutationCtx,
+  customerId: Id<"customers">,
+  patch: CustomerCheckoutContactPatch,
+): Promise<void> {
+  await ctx.db.patch(customerId, patch);
+}
+
 /**
  * 2.5-D — stamp the saved-card link (the platform Stripe `Customer` + the
  * PaymentMethod saved on it) onto a fiche the caller already resolved as its OWN

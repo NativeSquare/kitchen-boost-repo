@@ -46,11 +46,13 @@ export {
 export { customerMutation, customerQuery, publicTenantQuery } from "./customer";
 export {
   type CustomerAddressPatch,
+  type CustomerCheckoutContactPatch,
   type CustomerConsentPatch,
   anonymizeCustomerFiche,
   getOrCreateCustomerFiche,
   insertCustomerFiche,
   patchCustomerAddress,
+  patchCustomerCheckoutContact,
   patchCustomerConsent,
   readCustomerFicheById,
   readCustomerFicheByUser,
