@@ -369,11 +369,62 @@ Checklist E2E manuelle pour la PWA client (`apps/web`), nomenclature canonique a
 
 ## TRK — Tracking realtime + incidents
 
-> **Slices** : #459 (S8 tracking page realtime + incidents) · **Statut** : ⏳ EN ATTENTE — bloqué par HITL #447 (Vercel config) → chain HITL
+> **Slices** : #459 (S8 tracking page realtime + incidents — PR #479) · **Statut** : 🟡 EN COURS — 3 scénarios prêts à tester
 >
-> Couvre : `/c/[orderId]` redirect direct post-paiement (état T+0 "Cmd reçue"), placeholders SVG simples 6 étapes delivery + 3 C&C (Lottie swap V1.1 post HITL-3), ETA texte live dérivé webhook Uber, Convex subscription realtime <500ms sans polling, récap items collapsible `<details>` natif, card "Incident livraison, tu as été remboursé" si `delivery.status ∈ {incident_after_pickup, refused_post_payment}`, URL `/c/[orderId]` non-protégée partageable (orderId Convex Id brut non-devinable).
+> Couvre : `/c/[orderId]` redirect direct post-paiement (état T+0 « Cmd reçue »), placeholders SVG simples 6 étapes delivery + 3 C&C (Lottie swap V1.1 post HITL-3, non-bloquant), ETA texte live dérivé webhook Uber (`setInterval 30s` countdown entre webhooks), Convex subscription realtime <500ms sans polling, récap items collapsible `<details>` natif (US 53), card « Incident livraison, tu as été remboursé » si `delivery.status ∈ {incident_after_pickup, refused_post_payment}`, URL `/c/[orderId]` non-protégée partageable (orderId Convex Id brut non-devinable + projection minimale sans `customerId`/`customerPhone`/`restaurantNote` pour MOAT ADR 0010).
 
-_À remplir au merge de la slice #459 (HITL #447 doit débloquer la chain)._
+### TRK — Test TRK.1 : Redirect post-paiement → timeline 6 étapes + collapsible items
+
+- **Acteur** : iPhone Safari OU Android Chrome, anonyme (1ère visite).
+- **Pré-requis** : tenant `test-t1` seedé actif, `stripeAccountId: acct_1TgBUq4DuUOJbMhp` + `stripeStatus: ready` (déjà OK), push enrollment active OR `noChannelPossible=true` sur fiche customer (sinon Payer ouvre modal CHK).
+- **URL de départ** : `https://test-t1.kitchen-boost.com/`
+- **Étapes** :
+  1. Renseigner adresse Google Places → sélectionner une suggestion livrable.
+  2. Choisir 1 item du menu → Ajouter au panier → naviguer `/panier` → tap « Paiement ».
+  3. Remplir Prénom + Email + Téléphone (ou prefill si déjà fait au checkout précédent).
+  4. Taper « Payer X € » avec carte test `4242 4242 4242 4242`, expiry future, CVC `123`.
+  5. Tap « Voir le détail de ma commande » sur la page tracking.
+- **Attendu** :
+  - Après paiement réussi : redirect AUTO vers `/c/<orderId>` (URL avec id Convex long `j5…` non-devinable).
+  - Page « Suivi de commande » rendered, nom du resto en sous-titre.
+  - Timeline 6 étapes : « Cmd reçue » en `current` (rond plein vert animé), 5 autres en `pending` (rond vide gris).
+  - Bouton « Voir le détail de ma commande » présent → cliquable → déplie items + adresse + total.
+  - URL bar = `/c/<orderId>` (pas de `?param` polluant).
+- **Couvre** : US 50 (redirect direct), US 51 (timeline + animations), US 53 (collapsible `<details>` natif) + slice #459 + module `decideTrackingSteps`.
+
+### TRK — Test TRK.2 : Convex sub realtime <500ms entre changements KB Orders (US 52)
+
+- **Acteur** : iPhone Safari avec PWA ouverte sur `/c/<orderId>` (laisser l'onglet visible) + tablette KB Orders côté `kb_manager`.
+- **Pré-requis** : TRK.1 effectué, commande en statut `nouvelle`, accès `/orders` apps/admin connecté `kb_manager` du tenant `test-t1`.
+- **URL de départ** : `https://test-t1.kitchen-boost.com/c/<orderId>` (déjà ouverte sur iPhone).
+- **Étapes** :
+  1. Sur la tablette KB Orders, trouver la nouvelle commande → tap « Accepter » → status `en préparation`.
+  2. **Observer l'iPhone en parallèle, chronomètre en main.**
+  3. Sur KB Orders, tap « Prête » → status `prête`.
+  4. **Observer l'iPhone à nouveau.**
+- **Attendu** :
+  - L'iPhone met à jour la timeline EN MOINS DE 500ms après chaque action KB Orders (sans recharger la page, sans polling visible Network).
+  - Étape 1 : « En préparation » passe `current`, « Cmd reçue » passe `done`.
+  - Étape 3 : « Prête » passe `current`, « En préparation » passe `done`.
+  - AUCUN reload visuel (pas de flash blanc).
+- **Couvre** : US 52 (Convex sub realtime), AC #459 « Webhook simulé → re-render <500ms » + slice #459 + Convex live query.
+
+### TRK — Test TRK.3 : URL partageable cross-device + card incident remboursé (US 54, 55)
+
+- **Acteur** : 2 devices physiques distincts — téléphone A iOS Safari (proprio commande) + téléphone B Android Chrome (jamais visité ce tenant).
+- **Pré-requis** : TRK.1 effectué sur téléphone A → copier l'URL `/c/<orderId>` complète. Accès Convex dashboard pour patch DB.
+- **URL de départ** : URL `/c/<orderId>` du téléphone A → coller dans Android Chrome incognito du téléphone B.
+- **Étapes** :
+  1. Sur téléphone B (Android Chrome incognito), coller l'URL et charger.
+  2. Vérifier que la page tracking s'affiche normalement (PAS de mur d'auth, PAS de « connecte-toi »).
+  3. Vérifier que les champs MOAT-protégés NE sont PAS affichés : pas de prénom client, pas de téléphone, pas de Note resto (projection minimale ADR 0010).
+  4. Depuis Convex dashboard : patcher le doc `deliveries` correspondant à l'orderId — `db.patch(<deliveryId>, { incidentType: "incident_after_pickup", status: "failed" })`.
+  5. Observer téléphone A (toujours sur la page, ne pas recharger) ET refresh téléphone B.
+- **Attendu** :
+  - Étape 2 : timeline rendered identique au téléphone A (URL publique fonctionne sans cookie auth ni session).
+  - Étape 3 : aucune fuite PII vérifiable dans le DOM.
+  - Étape 5 : les 2 téléphones affichent une card rouge « Incident livraison » avec icône SVG + message « Ta commande n'a pas pu être livrée. Tu as été remboursé automatiquement. » ; téléphone A reçoit le changement <500ms sans refresh (Convex sub).
+- **Couvre** : US 54 (incident card), US 55 (URL partageable non-protégée), MOAT ADR 0010 (projection minimale) + slice #459 + modules `decideIncident`, `getOrderTracking` (publicTenantQuery).
 
 ---
 
