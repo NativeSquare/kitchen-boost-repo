@@ -51,7 +51,7 @@ import { api } from "@packages/backend/convex/_generated/api";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
 import { useCart } from "@/components/cart/cart-context";
 import { useDeliveryMode } from "@/components/delivery-mode/delivery-mode-context";
-import { decideCartTotals, type DeliveryMode } from "@/lib/delivery-mode";
+import { decideCartTotals } from "@/lib/delivery-mode";
 import {
   captureException,
   decideLatchingOutcome,
