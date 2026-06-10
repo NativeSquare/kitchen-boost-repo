@@ -1,7 +1,7 @@
 import type { Doc, Id } from "../../_generated/dataModel";
 import {
   customerMutation,
-  customerQuery,
+  customerQueryOptional,
   insertCustomerFiche,
   readCustomerFicheByUser,
 } from "../tenancy";
@@ -48,12 +48,25 @@ export const getOrCreateCurrentCustomer = customerMutation({
 });
 
 /**
- * Read the current customer's OWN fiche, or `null` if not provisioned yet.
- * Self-scoped (keyed on `ctx.actor.userId`) — no other customer's fiche is
- * reachable.
+ * Read the current customer's OWN fiche, or `null` if not provisioned yet OR
+ * if the caller is not authenticated yet.
+ *
+ * Built on `customerQueryOptional` (NOT the strict `customerQuery`) because
+ * this query is consumed by root-layout PWA components
+ * (`<IOSStandaloneHeuristicRunner>`, install prompts, wallet banners, …) that
+ * mount the moment the `__Host-kb_tenant` cookie is posted — BEFORE the Convex
+ * Auth Anonymous sign-in completes. Throwing UNAUTHENTICATED there used to
+ * pollute Convex logs at every 1st PWA visit; returning `null` for an
+ * anonymous caller is the contract those consumers actually want. PRO callers
+ * are still refused with FORBIDDEN by the wrapper.
+ *
+ * Self-scoped when authenticated (keyed on `ctx.actor.userId`) — no other
+ * customer's fiche is reachable.
  */
-export const getCurrentCustomer = customerQuery({
+export const getCurrentCustomer = customerQueryOptional({
   args: {},
-  handler: async (ctx): Promise<Doc<"customers"> | null> =>
-    readCustomerFicheByUser(ctx, ctx.actor.userId),
+  handler: async (ctx): Promise<Doc<"customers"> | null> => {
+    if (ctx.actor === null) return null;
+    return readCustomerFicheByUser(ctx, ctx.actor.userId);
+  },
 });
