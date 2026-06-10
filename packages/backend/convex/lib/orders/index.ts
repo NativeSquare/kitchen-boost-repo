@@ -61,6 +61,15 @@
  *    The pure combiners (`isPauseActive`, `acceptsOrders`) + the shared resolver
  *    (`tenantAcceptsOrderNow`) are surfaced here; the registered query is reached by
  *    its module path, so it is NOT re-exported.
+ *  - tracking (PWA-S8, #459): `getOrderTracking` (api.lib.orders.tracking.getOrderTracking)
+ *    — PUBLIC, unauthenticated read consumed by the customer-facing /c/[orderId]
+ *    page (PRD 10 §11 « Page Tracking », US 50-55). The un-guessable order id IS
+ *    the access token (shareable URL — decisions-log Q7), tenant-scoped by the
+ *    `__Host-kb_tenant` cookie resolved at the edge. Minimal projection (no
+ *    customerId, no restaurantNote — ADR 0010 MOAT preserved); returns null for
+ *    a cross-tenant id (no oracle). The projection TYPE
+ *    (`OrderTrackingProjection`) is the stable wire contract; the registered
+ *    query is reached by its module path, so NOT re-exported.
  *
  * The row shapes (status workflow, mode, source, frozen modifier, pricing
  * snapshot) live in the table validators, surfaced here as the module's typed
