@@ -121,27 +121,35 @@ export function AddressFirstForm({
   } | null>(null);
 
   const [state, setState] = useState<FormState>({ kind: "idle" });
+  /**
+   * Set when a Places suggestion is selected — the chain (mutations + action)
+   * cannot fire until `isAuthenticated` is `true`. The useEffect below watches
+   * both and runs the chain when they line up. Why a state and not a ref:
+   * we need a React-reactive trigger to re-run the effect when the auth state
+   * flips after `signIn("anonymous")`. The Convex Auth SDK v0.0.90's
+   * `await signIn()` resolves BEFORE the ReactClient has propagated the new
+   * session, so the « await signIn → await mutation » pattern races and the
+   * mutation hits the backend without auth (UNAUTHENTICATED). This effect-based
+   * pattern is the canonical fix.
+   */
+  const [pendingSelection, setPendingSelection] = useState<{
+    address: string;
+    lat: number;
+    lng: number;
+  } | null>(null);
 
   /**
-   * Run the address-first chain for an explicit Places selection. Called by:
-   *  - the Autocomplete `place_changed` listener (initial submit), and
-   *  - the Retry button on the `surge` branch (re-fires from `requestQuote`
-   *    only — signIn / provisioning / updateAddress are already done).
+   * Once `isAuthenticated` is `true` AND a Places selection is pending, run
+   * the rest of the chain (mutations + action) and surface the verdict. The
+   * pending selection is cleared SYNCHRONOUSLY before the IO so a re-render
+   * (auth state flip) does not re-fire the chain.
    */
-  const runChain = async (
-    selection: { address: string; lat: number; lng: number },
-    options: { skipPersist?: boolean } = {},
-  ): Promise<void> => {
-    setState({ kind: "loading" });
-    try {
-      if (!options.skipPersist) {
-        if (!isAuthenticated) {
-          // Anonymous provider — no params (the profile callback ignores
-          // them anyway, cf. anonymousProfile in `packages/backend/convex/
-          // auth.ts`). Stamps the Convex Auth session cookie (HttpOnly,
-          // Secure, host-only — ADR 0008).
-          await signIn("anonymous", {});
-        }
+  useEffect(() => {
+    if (!isAuthenticated || pendingSelection === null) return;
+    const selection = pendingSelection;
+    setPendingSelection(null);
+    void (async () => {
+      try {
         // Provision the fiche idempotently, then persist the Places selection.
         // The mutations are tenant-scoped via the `customerMutation` wrapper.
         await getOrCreateCurrentCustomer({ tenantId });
@@ -151,17 +159,102 @@ export function AddressFirstForm({
           lat: selection.lat,
           lng: selection.lng,
         });
+        const verdict = await requestDeliveryQuote({
+          tenantId,
+          address: selection.address,
+        });
+        // PWA-S5 (#453) : cache the verdict in localStorage so
+        // `<DeliveryModeProvider>` on /menu and /panier can derive the
+        // initial toggle state + switch modes without re-quoting Uber
+        // (decisions-log Q7 « verdict cache 2 modes »). Swallow quota /
+        // privacy-mode errors — the cart already handles « no verdict »
+        // as the C&C-default branch.
+        try {
+          if (typeof window !== "undefined") {
+            window.localStorage.setItem(
+              VERDICT_STORAGE_KEY,
+              encodeVerdict(verdict),
+            );
+          }
+        } catch {
+          // Quota / privacy mode — non-fatal; the cart degrades gracefully.
+        }
+        const action = decideAddressFirstAction(verdict);
+        setState({ kind: "result", action });
+        // PWA-S9a (#460) : `kind === "redirect"` no longer navigates immediately
+        // — the form renders `<WalletPromptCard>` (palier 1 of the 3-paliers
+        // Wallet install moat, decisions-log Q5 + US 27) and only navigates to
+        // `action.path` when the user clicks « Plus tard » OR the Convex sub
+        // flips `walletStatus = "enrolled"`. Both exits route through the
+        // card's `onSkip` handler, which calls `router.push(action.path)`.
+      } catch (err) {
+        setState({
+          kind: "error",
+          message:
+            err instanceof Error
+              ? err.message
+              : "Erreur inattendue, réessaie dans un moment.",
+        });
       }
+    })();
+  }, [
+    isAuthenticated,
+    pendingSelection,
+    tenantId,
+    getOrCreateCurrentCustomer,
+    updateAddress,
+    requestDeliveryQuote,
+  ]);
+
+  /**
+   * Fire the address-first chain for an explicit Places selection. Sets the
+   * pending selection + triggers `signIn("anonymous")` (fire-and-forget — the
+   * useEffect above picks up when `isAuthenticated` flips). For an
+   * already-authenticated caller (returning Sophie editing her address), the
+   * effect fires immediately since `isAuthenticated` is already `true`.
+   */
+  const onSelectionPicked = (selection: {
+    address: string;
+    lat: number;
+    lng: number;
+  }): void => {
+    lastSelectionRef.current = selection;
+    setState({ kind: "loading" });
+    setPendingSelection(selection);
+    if (!isAuthenticated) {
+      // Anonymous provider — no params (the profile callback ignores
+      // them anyway, cf. anonymousProfile in `packages/backend/convex/
+      // auth.ts`). Stamps the Convex Auth session cookie (HttpOnly,
+      // Secure, host-only — ADR 0008). Fire-and-forget: the effect above
+      // re-runs when `isAuthenticated` flips to `true`.
+      void signIn("anonymous", {}).catch((err) => {
+        setState({
+          kind: "error",
+          message:
+            err instanceof Error
+              ? err.message
+              : "Impossible de démarrer la session, réessaie.",
+        });
+        setPendingSelection(null);
+      });
+    }
+  };
+
+  /**
+   * Re-fire `requestDeliveryQuote` only — signIn / provisioning / persist were
+   * already done on the first attempt (Retry surge branch, US 7).
+   */
+  const runRetryQuote = async (selection: {
+    address: string;
+    lat: number;
+    lng: number;
+  }): Promise<void> => {
+    setState({ kind: "loading" });
+    try {
       const verdict = await requestDeliveryQuote({
         tenantId,
         address: selection.address,
       });
-      // PWA-S5 (#453) : cache the verdict in localStorage so
-      // `<DeliveryModeProvider>` on /menu and /panier can derive the
-      // initial toggle state + switch modes without re-quoting Uber
-      // (decisions-log Q7 « verdict cache 2 modes »). Swallow quota /
-      // privacy-mode errors — the cart already handles « no verdict »
-      // as the C&C-default branch.
       try {
         if (typeof window !== "undefined") {
           window.localStorage.setItem(
@@ -170,20 +263,10 @@ export function AddressFirstForm({
           );
         }
       } catch {
-        // Quota / privacy mode — non-fatal; the cart degrades gracefully.
+        // Quota / privacy mode — non-fatal.
       }
       const action = decideAddressFirstAction(verdict);
       setState({ kind: "result", action });
-      // PWA-S9a (#460) : `kind === "redirect"` no longer navigates immediately
-      // — the form renders `<WalletPromptCard>` (palier 1 of the 3-paliers
-      // Wallet install moat, decisions-log Q5 + US 27) and only navigates to
-      // `action.path` when the user clicks « Plus tard » OR the Convex sub
-      // flips `walletStatus = "enrolled"`. Both exits route through the
-      // card's `onSkip` handler, which calls `router.push(action.path)`.
-      // Returning Sophie with `walletStatus = "enrolled"` already gets a
-      // no-op card (decideWalletPromptVisibility → hidden, useEffect fires
-      // onSkip immediately) — preserves the « zero-friction redirect » UX
-      // of returning customers who already converted.
     } catch (err) {
       setState({
         kind: "error",
@@ -274,8 +357,7 @@ export function AddressFirstForm({
                 // non-suggestion submit is silently ignored.
                 return;
               }
-              lastSelectionRef.current = { address, lat, lng };
-              void runChain({ address, lat, lng });
+              onSelectionPicked({ address, lat, lng });
             } catch (err) {
               setState({
                 kind: "error",
@@ -316,7 +398,7 @@ export function AddressFirstForm({
     if (lastSelectionRef.current === null) return;
     // Retry only re-fires `requestDeliveryQuote` for the SAME address — signIn
     // + provisioning + persist were already done on the first attempt.
-    void runChain(lastSelectionRef.current, { skipPersist: true });
+    void runRetryQuote(lastSelectionRef.current);
   };
 
   const onCtaClick = (path: string): void => {
