@@ -3888,6 +3888,125 @@ export const seedE2EMenuT1 = internalMutation({
       createdAt: now,
     });
 
+    // --- Items supplémentaires pour atteindre les ≥15 items du pré-requis E2E
+    // (cf docs/tests/PWA-CLIENT-E2E-checklist.md). On ajoute 10 items après les 5
+    // canoniques (Salade, Smash Burger, Pizza, Tartare, Tiramisu) que les scénarios
+    // E2E nomment explicitement — donc on ne touche PAS aux 5 existants.
+    const bruschettaId = await ctx.db.insert("menuItems", {
+      tenantId,
+      categoryId: entreesId,
+      name: "Bruschetta tomate basilic",
+      description: "Pain grillé, tomate, mozzarella di bufala",
+      basePrice: 750,
+      allergens: ["gluten", "lait"],
+      available: true,
+      order: 2,
+      createdAt: now,
+    });
+    const houmousId = await ctx.db.insert("menuItems", {
+      tenantId,
+      categoryId: entreesId,
+      name: "Houmous & pita",
+      description: "Houmous maison, pita tiède, huile d'olive",
+      basePrice: 700,
+      allergens: ["gluten", "graines de sésame"],
+      available: true,
+      order: 3,
+      createdAt: now,
+    });
+    const velouteId = await ctx.db.insert("menuItems", {
+      tenantId,
+      categoryId: entreesId,
+      name: "Velouté de saison",
+      description: "Selon arrivage, lait de coco",
+      basePrice: 650,
+      allergens: [],
+      available: true,
+      order: 4,
+      createdAt: now,
+    });
+    // Poke bowl — modifier OBLIGATOIRE (minSelect=1) pour le test M.2 « badge
+    // À choisir + bouton disabled tant que l'option n'est pas pickée ».
+    const pokeBowlId = await ctx.db.insert("menuItems", {
+      tenantId,
+      categoryId: platsId,
+      name: "Poke bowl",
+      description: "Riz vinaigré, avocat, edamame, sauce",
+      basePrice: 1400,
+      allergens: ["soja"],
+      available: true,
+      order: 4,
+      createdAt: now,
+    });
+    const baoId = await ctx.db.insert("menuItems", {
+      tenantId,
+      categoryId: platsId,
+      name: "Smash Double Bao",
+      description: "2 bao buns, smash beef, sauce miso-gingembre",
+      basePrice: 1390,
+      allergens: ["gluten", "soja", "graines de sésame"],
+      available: true,
+      order: 5,
+      createdAt: now,
+    });
+    const carbonaraId = await ctx.db.insert("menuItems", {
+      tenantId,
+      categoryId: platsId,
+      name: "Pasta Carbonara",
+      description: "Spaghetti, guanciale, pecorino, jaune d'œuf",
+      basePrice: 1250,
+      allergens: ["gluten", "lait", "œufs"],
+      available: true,
+      order: 6,
+      createdAt: now,
+    });
+    // Item DÉLIBÉRÉMENT flagged out-of-stock pour le test M.2 overlay LIVE
+    // (« item indisponible ce soir → card grisée »).
+    const tofuId = await ctx.db.insert("menuItems", {
+      tenantId,
+      categoryId: platsId,
+      name: "Tofu thaï curry vert",
+      description: "Tofu, lait de coco, basilic thaï, riz parfumé",
+      basePrice: 1190,
+      allergens: ["soja"],
+      available: false,
+      order: 7,
+      createdAt: now,
+    });
+    const cremeBruleeId = await ctx.db.insert("menuItems", {
+      tenantId,
+      categoryId: dessertsId,
+      name: "Crème brûlée",
+      description: "Vanille de Madagascar, sucre caramélisé",
+      basePrice: 600,
+      allergens: ["lait", "œufs"],
+      available: true,
+      order: 2,
+      createdAt: now,
+    });
+    const cafeGourmandId = await ctx.db.insert("menuItems", {
+      tenantId,
+      categoryId: dessertsId,
+      name: "Café gourmand",
+      description: "Espresso, 3 mignardises chef",
+      basePrice: 750,
+      allergens: ["gluten", "lait", "œufs"],
+      available: true,
+      order: 3,
+      createdAt: now,
+    });
+    const brownieId = await ctx.db.insert("menuItems", {
+      tenantId,
+      categoryId: dessertsId,
+      name: "Brownie tiède",
+      description: "Brownie chocolat, glace vanille, sauce caramel",
+      basePrice: 700,
+      allergens: ["gluten", "lait", "œufs", "fruits à coque"],
+      available: true,
+      order: 4,
+      createdAt: now,
+    });
+
     const supplementsId = await ctx.db.insert("modifierGroups", {
       tenantId,
       name: "Suppléments",
@@ -3900,6 +4019,20 @@ export const seedE2EMenuT1 = internalMutation({
       ],
       createdAt: now,
     });
+    // Modifier obligatoire pour le Poke (minSelect=1, maxSelect=1) — requis pour
+    // le scénario E2E M.2 « badge À choisir + bouton Ajouter au panier disabled ».
+    const baseId = await ctx.db.insert("modifierGroups", {
+      tenantId,
+      name: "Base",
+      minSelect: 1,
+      maxSelect: 1,
+      options: [
+        { label: "Riz blanc", priceDelta: 0 },
+        { label: "Riz vinaigré", priceDelta: 0 },
+        { label: "Quinoa", priceDelta: 100 },
+      ],
+      createdAt: now,
+    });
 
     await ctx.db.insert("menuItemModifierGroups", {
       tenantId,
@@ -3907,9 +4040,16 @@ export const seedE2EMenuT1 = internalMutation({
       modifierGroupId: supplementsId,
       order: 1,
     });
+    await ctx.db.insert("menuItemModifierGroups", {
+      tenantId,
+      itemId: pokeBowlId,
+      modifierGroupId: baseId,
+      order: 1,
+    });
 
     // Snapshot publié aligné sur le brouillon — ainsi le badge « modifications
     // non publiées » n'apparaît que QUAND Alex modifiera quelque chose (M9).
+    // Contient TOUS les 15 items (5 canoniques + 10 ajoutés pour pré-requis E2E).
     await ctx.db.insert("publishedMenus", {
       tenantId,
       publishedAt: now,
@@ -3924,6 +4064,30 @@ export const seedE2EMenuT1 = internalMutation({
                 name: "Salade verte",
                 description: "Mesclun, vinaigrette maison",
                 basePrice: 800,
+                allergens: [],
+                modifierGroups: [],
+              },
+              {
+                _id: bruschettaId,
+                name: "Bruschetta tomate basilic",
+                description: "Pain grillé, tomate, mozzarella di bufala",
+                basePrice: 750,
+                allergens: ["gluten", "lait"],
+                modifierGroups: [],
+              },
+              {
+                _id: houmousId,
+                name: "Houmous & pita",
+                description: "Houmous maison, pita tiède, huile d'olive",
+                basePrice: 700,
+                allergens: ["gluten", "graines de sésame"],
+                modifierGroups: [],
+              },
+              {
+                _id: velouteId,
+                name: "Velouté de saison",
+                description: "Selon arrivage, lait de coco",
+                basePrice: 650,
                 allergens: [],
                 modifierGroups: [],
               },
@@ -3970,6 +4134,50 @@ export const seedE2EMenuT1 = internalMutation({
                 allergens: ["œufs"],
                 modifierGroups: [],
               },
+              {
+                _id: pokeBowlId,
+                name: "Poke bowl",
+                description: "Riz vinaigré, avocat, edamame, sauce",
+                basePrice: 1400,
+                allergens: ["soja"],
+                modifierGroups: [
+                  {
+                    _id: baseId,
+                    name: "Base",
+                    minSelect: 1,
+                    maxSelect: 1,
+                    options: [
+                      { label: "Riz blanc", priceDelta: 0 },
+                      { label: "Riz vinaigré", priceDelta: 0 },
+                      { label: "Quinoa", priceDelta: 100 },
+                    ],
+                  },
+                ],
+              },
+              {
+                _id: baoId,
+                name: "Smash Double Bao",
+                description: "2 bao buns, smash beef, sauce miso-gingembre",
+                basePrice: 1390,
+                allergens: ["gluten", "soja", "graines de sésame"],
+                modifierGroups: [],
+              },
+              {
+                _id: carbonaraId,
+                name: "Pasta Carbonara",
+                description: "Spaghetti, guanciale, pecorino, jaune d'œuf",
+                basePrice: 1250,
+                allergens: ["gluten", "lait", "œufs"],
+                modifierGroups: [],
+              },
+              {
+                _id: tofuId,
+                name: "Tofu thaï curry vert",
+                description: "Tofu, lait de coco, basilic thaï, riz parfumé",
+                basePrice: 1190,
+                allergens: ["soja"],
+                modifierGroups: [],
+              },
             ],
           },
           {
@@ -3984,6 +4192,30 @@ export const seedE2EMenuT1 = internalMutation({
                 allergens: ["gluten", "lait", "œufs"],
                 modifierGroups: [],
               },
+              {
+                _id: cremeBruleeId,
+                name: "Crème brûlée",
+                description: "Vanille de Madagascar, sucre caramélisé",
+                basePrice: 600,
+                allergens: ["lait", "œufs"],
+                modifierGroups: [],
+              },
+              {
+                _id: cafeGourmandId,
+                name: "Café gourmand",
+                description: "Espresso, 3 mignardises chef",
+                basePrice: 750,
+                allergens: ["gluten", "lait", "œufs"],
+                modifierGroups: [],
+              },
+              {
+                _id: brownieId,
+                name: "Brownie tiède",
+                description: "Brownie chocolat, glace vanille, sauce caramel",
+                basePrice: 700,
+                allergens: ["gluten", "lait", "œufs", "fruits à coque"],
+                modifierGroups: [],
+              },
             ],
           },
         ],
@@ -3995,11 +4227,63 @@ export const seedE2EMenuT1 = internalMutation({
       mode,
       wiped,
       categoriesCreated: 3,
-      itemsCreated: 5,
-      groupsCreated: 1,
-      linksCreated: 1,
+      itemsCreated: 15,
+      groupsCreated: 2,
+      linksCreated: 2,
       publishedCreated: true,
     };
+  },
+});
+
+/**
+ * Seed les plages horaires pour `test-t1` — 7j/7 large (08:00-23:30 lundi-dimanche)
+ * pour qu'`isOpenNow` retourne true quelle que soit l'heure du test E2E (sauf nuit
+ * profonde 23:30-08:00). Schéma : UNE row par tenant contenant l'array de 7
+ * windows (cf table/serviceHours.ts — modèle « atomic read/replace »). Idempotent :
+ * supprime puis ré-insère. NE PAS utiliser pour tester le scénario A.3
+ * « hors_horaire » — pour ça, il faut un seed restrictif.
+ */
+export const seedE2EServiceHoursT1 = internalMutation({
+  args: {},
+  returns: v.object({
+    tenantId: v.id("tenants"),
+    windowsCount: v.number(),
+  }),
+  handler: async (ctx) => {
+    const tenant = await ctx.db
+      .query("tenants")
+      .withIndex("by_slug", (q) => q.eq("slug", E2E_M_TENANT_SLUG))
+      .unique();
+    if (tenant === null) {
+      throw new ConvexError({
+        message: `Tenant "${E2E_M_TENANT_SLUG}" not found — run bootstrapE2EInvites first.`,
+      });
+    }
+    const tenantId = tenant._id;
+    // 7 jours, 00:00 → 23:59 = « toujours ouvert » (1 minute morte/jour
+    // négligeable). Volontairement large pour qu'`isOpenNow` retourne true
+    // à n'importe quelle heure du test E2E (le V1 interdit le cross-midnight,
+    // donc 0 → 1440 n'est pas valide ; 1439 est le maximum sûr).
+    const windows = [0, 1, 2, 3, 4, 5, 6].map((d) => ({
+      dayOfWeek: d,
+      startMinute: 0,
+      endMinute: 1439,
+    }));
+    // Wipe existing row(s) puis upsert (la table est modélisée « one row per
+    // tenant », on évite tout résidu en cas de seed antérieur cassé).
+    const existing = await ctx.db
+      .query("serviceHours")
+      .withIndex("by_tenant", (q) => q.eq("tenantId", tenantId))
+      .collect();
+    for (const row of existing) {
+      await ctx.db.delete(row._id);
+    }
+    await ctx.db.insert("serviceHours", {
+      tenantId,
+      windows,
+      updatedAt: Date.now(),
+    });
+    return { tenantId, windowsCount: windows.length };
   },
 });
 
