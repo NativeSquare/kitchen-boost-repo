@@ -2,8 +2,8 @@
 
 **Référentiel canonique** de tout ce qui doit être configuré pour faire tourner KitchenBoost — en dev, en prod, et lors de l'ajout d'un nouveau restaurant partenaire.
 
-- **Dernière update** : 2026-06-10
-- **État dev** : tenant `test-t1` actif, E2E PWA Client exécutables (17/23 scénarios débloqués, 6 bloqués sur 3 env vars Wallet à set — cf §3.1 + Annexe A)
+- **Dernière update** : 2026-06-10 (soir)
+- **État dev** : tenant `test-t1` actif, **23/23 scénarios E2E PWA Client débloqués côté setup**. Bloqueurs restants = code (4 slices PRD #458/#459/#463/#464 pas codées) — pas le setup.
 - **Convention** :
   - ⚠️ = secret à **régénérer en prod** (jamais réutiliser le secret dev)
   - 🔒 = secret à **garder identique** dev↔prod (cert long-lived, paire VAPID)
@@ -14,15 +14,17 @@
 
 ## TL;DR — Cheatsheet
 
-### 3 env vars Wallet manquantes (priorité immédiate)
+### Setup Wallet complet ✅ (debloqué 2026-06-10 soir)
 
-| Var                       | Qui set        | Bloque                                                        |
-| ------------------------- | -------------- | ------------------------------------------------------------- |
-| `WALLET_WWDR_CERT_BASE64` | 🤖 moi         | Install Apple Wallet (groupe E2E WAL + branche Wallet de CHK) |
-| `GOOGLE_WALLET_ISSUER_ID` | 👤 toi (1 min) | Install Google Wallet (groupe WAL Android)                    |
-| `WALLET_SAVE_ORIGINS`     | 🤖 moi         | Save link Google rejeté si vide                               |
+| Var                       | État | Valeur (dev)                                                             |
+| ------------------------- | ---- | ------------------------------------------------------------------------ |
+| `WALLET_WWDR_CERT_BASE64` | ✅   | Cert public Apple WWDR G4 base64 (2118 chars)                            |
+| `GOOGLE_WALLET_ISSUER_ID` | ✅   | `3388000000023143401` (demo mode actif, `[TEST ONLY]` prefix sur passes) |
+| `WALLET_SAVE_ORIGINS`     | ✅   | `https://test-t1.kitchen-boost.com,https://admin.kitchen-boost.com`      |
 
-➡️ Tuto pas-à-pas en **Annexe A**.
+Plus constante code `WALLET_CARD_NAME = "Mes Restos"` (anciennement « Resto Paris ») — cf commit `9435d90` + ADR 0003.
+
+**Google Wallet demo mode** : les passes en dev sont préfixés `[TEST ONLY]` et installables UNIQUEMENT sur les comptes Gmail whitelistés (Google Pay & Wallet Console → Google Wallet API → « Set up test accounts »). Le passage en prod = `Create a class` + `Request publishing access` côté console (sans changer l'Issuer ID, sans changer le code). Tuto Annexe A inchangé pour la régénération prod.
 
 ### 4 cibles distinctes pour les env vars
 
@@ -100,17 +102,17 @@ Même paire à mettre des 2 côtés (Convex pour dispatch, Vercel apps/web pour 
 
 ### 2.5 Wallet — Apple PassKit + Google Wallet
 
-| Variable                             | Rôle                                                                                  | État dev          | Prod                   | Comment l'obtenir                                                                                           |
-| ------------------------------------ | ------------------------------------------------------------------------------------- | ----------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `WALLET_PASS_CERT_P12_BASE64`        | Cert Apple Pass Type ID en P12 base64 (ta signature)                                  | ✅ set (dev cert) | ☐ cert prod distinct   | https://developer.apple.com → Certificates → Pass Type IDs → créer + télécharger P12 → `base64 -i cert.p12` |
-| `WALLET_PASS_CERT_PASSWORD`          | Password qui déchiffre le P12                                                         | ✅ set            | ☐ password prod        | choisi lors de la création du P12                                                                           |
-| **`WALLET_WWDR_CERT_BASE64`**        | Cert intermédiaire Apple WWDR G4 (chaîne de confiance). Sans lui iOS rejette le pass. | ❌ **À set**      | ☐ même cert            | Cert PUBLIC, voir **Annexe A.1**                                                                            |
-| `GOOGLE_WALLET_SERVICE_ACCOUNT_JSON` | Service account Google Cloud (clé RS256) en JSON base64                               | ✅ set            | ☐ SA prod distinct     | https://console.cloud.google.com → IAM → Service Accounts → créer + télécharger JSON → `base64 -i sa.json`  |
-| **`GOOGLE_WALLET_ISSUER_ID`**        | Issuer ID numérique Google Wallet (≠ `client_id` du SA)                               | ❌ **À set**      | ☐ issuer prod distinct | https://pay.google.com/business/console, voir **Annexe A.2**                                                |
-| **`WALLET_SAVE_ORIGINS`**            | Whitelist CSV d'origines autorisées à appeler le save link Google (anti-CSRF)         | ❌ **À set**      | ☐ origines prod        | Voir **Annexe A.3**                                                                                         |
-| `WALLET_APNS_AUTH_KEY`               | Apple APNs auth key (.p8) pour push update pass                                       | ☐ optionnel V1    | ☐ optionnel V1         | https://developer.apple.com → Keys → Apple Push Notification service                                        |
-| `WALLET_APNS_KEY_ID`                 | Key ID associé à l'APNs auth key                                                      | ☐ optionnel V1    | ☐ optionnel V1         | dashboard Apple lors de la création                                                                         |
-| `WALLET_APNS_TEAM_ID`                | Team ID Apple Developer                                                               | ☐ optionnel V1    | ☐ optionnel V1         | https://developer.apple.com → Membership                                                                    |
+| Variable                             | Rôle                                                                                  | État dev                                 | Prod                                                          | Comment l'obtenir                                                                                           |
+| ------------------------------------ | ------------------------------------------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `WALLET_PASS_CERT_P12_BASE64`        | Cert Apple Pass Type ID en P12 base64 (ta signature)                                  | ✅ set (dev cert)                        | ☐ cert prod distinct                                          | https://developer.apple.com → Certificates → Pass Type IDs → créer + télécharger P12 → `base64 -i cert.p12` |
+| `WALLET_PASS_CERT_PASSWORD`          | Password qui déchiffre le P12                                                         | ✅ set                                   | ☐ password prod                                               | choisi lors de la création du P12                                                                           |
+| `WALLET_WWDR_CERT_BASE64`            | Cert intermédiaire Apple WWDR G4 (chaîne de confiance). Sans lui iOS rejette le pass. | ✅ set                                   | ✅ même cert (publique, valide jusqu'en 2030)                 | Cert PUBLIC — Annexe A.1                                                                                    |
+| `GOOGLE_WALLET_SERVICE_ACCOUNT_JSON` | Service account Google Cloud (clé RS256) en JSON base64                               | ✅ set                                   | ☐ SA prod distinct                                            | https://console.cloud.google.com → IAM → Service Accounts → créer + télécharger JSON → `base64 -i sa.json`  |
+| `GOOGLE_WALLET_ISSUER_ID`            | Issuer ID numérique Google Wallet (≠ `client_id` du SA)                               | ✅ set `3388000000023143401` (demo mode) | ☐ même issuer après request publishing access (ne change pas) | https://pay.google.com/business/console → Google Wallet API — Annexe A.2                                    |
+| `WALLET_SAVE_ORIGINS`                | Whitelist CSV d'origines autorisées à appeler le save link Google (anti-CSRF)         | ✅ set (`test-t1` + `admin`)             | ☐ ajouter chaque domaine tenant prod                          | Annexe A.3                                                                                                  |
+| `WALLET_APNS_AUTH_KEY`               | Apple APNs auth key (.p8) pour push update pass                                       | ☐ optionnel V1                           | ☐ optionnel V1                                                | https://developer.apple.com → Keys → Apple Push Notification service                                        |
+| `WALLET_APNS_KEY_ID`                 | Key ID associé à l'APNs auth key                                                      | ☐ optionnel V1                           | ☐ optionnel V1                                                | dashboard Apple lors de la création                                                                         |
+| `WALLET_APNS_TEAM_ID`                | Team ID Apple Developer                                                               | ☐ optionnel V1                           | ☐ optionnel V1                                                | https://developer.apple.com → Membership                                                                    |
 
 ### 2.6 HMAC channels Convex ↔ Vercel
 
