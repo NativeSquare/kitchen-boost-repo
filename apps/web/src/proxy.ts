@@ -31,7 +31,8 @@
  * BACKEND (`tenantQuery` / `publicTenantQuery` / `customerQuery` wrappers,
  * ADR 0010) — never this surface.
  */
-import { type NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
+import { convexAuthNextjsMiddleware } from "@convex-dev/auth/nextjs/server";
 import { fetchQuery } from "convex/nextjs";
 import { api } from "@packages/backend/convex/_generated/api";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
@@ -81,9 +82,24 @@ async function fetchById(tenantId: string): Promise<ResolvedTenant | null> {
   }
 }
 
-export default async function proxy(
-  request: NextRequest,
-): Promise<NextResponse> {
+/**
+ * Wrapped by `convexAuthNextjsMiddleware` so the Convex Auth SDK can serve the
+ * `/api/auth` endpoint that the client `ConvexAuthNextjsProvider` POSTs to
+ * (anonymous `signIn` in the address-first chain). Without this wrap the
+ * endpoint 404s and the chain dies at the first `signIn()` call. The
+ * tenant-resolution logic below runs for every NON-`/api/*` request; we
+ * short-circuit early on `/api/*` so the SDK gets to handle `/api/auth` and
+ * the other route handlers (`/api/push/send`, `/api/revalidate`,
+ * `/api/wallet-bridge/clear`, `/api/signout`) keep doing their own thing.
+ */
+export default convexAuthNextjsMiddleware(async (request) => {
+  if (request.nextUrl.pathname.startsWith("/api/")) {
+    // Let the Convex Auth wrapper handle `/api/auth` and let the other API
+    // route handlers serve themselves. Returning `undefined` (void) tells
+    // the wrapper to fall through.
+    return;
+  }
+
   const host = request.headers.get("host") ?? "";
   const cookieTenantId = request.cookies.get(TENANT_COOKIE)?.value ?? null;
 
@@ -195,11 +211,13 @@ export default async function proxy(
     response.cookies.delete(TENANT_COOKIE);
   }
   return response;
-}
+});
 
 export const config = {
-  // Run middleware on every page route but skip static assets + Next internals.
-  // The /api/* routes are excluded — the web-push send route does its own
-  // HMAC verification and is not tenant-scoped at the edge.
-  matcher: ["/((?!_next|api|.*\\..*).*)"],
+  // Run middleware on every page route AND on `/api/*` so the wrapping
+  // `convexAuthNextjsMiddleware` can serve `/api/auth`. The callback above
+  // short-circuits on `/api/*` so tenant-resolution stays untouched for the
+  // other API route handlers (push/send, revalidate, wallet-bridge/clear,
+  // signout). Static assets + Next internals are still skipped.
+  matcher: ["/((?!_next|.*\\..*).*)", "/(api|trpc)(.*)"],
 };
