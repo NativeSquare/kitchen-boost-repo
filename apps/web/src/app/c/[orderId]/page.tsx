@@ -28,6 +28,7 @@ import { fetchQuery } from "convex/nextjs";
 import { api } from "@packages/backend/convex/_generated/api";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
 import { TrackingView } from "@/components/tracking/tracking-view";
+import { IOSInstallBottomSheet } from "@/components/a2hs-ios";
 
 const TENANT_COOKIE = "__Host-kb_tenant";
 
@@ -82,6 +83,13 @@ export default async function TrackingPage(props: {
           orderId={orderId as Id<"orders">}
           restoName={restoName}
         />
+
+        {/* PWA-S11 (#463) — iOS A2HS instructional bottom-sheet, rendered
+            on the tracking page T+0 (« Cmd reçue ») state per decisions-log
+            Q4 + US 58. Self-gates on iOS Safari + not standalone + not
+            enrolled + not dismissed — renders nothing on Android (#462
+            handles that platform) / desktop / non-Safari iOS browsers. */}
+        <IOSInstallBottomSheet tenantId={tenantId} />
 
         <footer>
           <Link
