@@ -3,7 +3,12 @@ import type { Id } from "../../_generated/dataModel";
 import { contractPrestation } from "../../table/contracts";
 import { acquisitionSource } from "../../table/prospects";
 import { logAudit } from "./audit";
-import { customerMutation, customerQuery, publicTenantQuery } from "./customer";
+import {
+  customerMutation,
+  customerQuery,
+  customerQueryOptional,
+  publicTenantQuery,
+} from "./customer";
 import {
   kbAdminMutation,
   kbAdminQuery,
@@ -84,6 +89,22 @@ export const customerProbeMutation = customerMutation({
   handler: async (ctx) => ({
     userId: ctx.actor.userId,
     role: ctx.actor.role,
+    tenantId: ctx.tenantId,
+  }),
+});
+
+/**
+ * customer OPTIONAL-auth read: echoes the actor when present, or returns null
+ * for an anonymous caller (NO throw). PRO callers are still rejected upstream.
+ * Exercises the `customerQueryOptional` wrapper (option B canonical fix).
+ */
+export const customerProbeQueryOptional = customerQueryOptional({
+  args: {},
+  handler: async (ctx) => ({
+    actor:
+      ctx.actor === null
+        ? null
+        : { userId: ctx.actor.userId, role: ctx.actor.role },
     tenantId: ctx.tenantId,
   }),
 });

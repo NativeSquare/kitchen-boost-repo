@@ -252,6 +252,64 @@ describe("2.1-B auth gate — customer wrapper (Unauthenticated / Forbidden)", (
   });
 });
 
+describe("getCurrentCustomer — optional-auth read (anonymous → null, no log spam)", () => {
+  let t: ReturnType<typeof convexTest>;
+  let seed: Seed;
+  beforeEach(async () => {
+    t = convexTest(schema, modules);
+    seed = await seedTwoTenantsAllRoles(t);
+  });
+
+  // THE PIN OF THE FIX. Before the migration, getCurrentCustomer threw
+  // UNAUTHENTICATED for every anonymous PWA visit, polluting Convex logs from
+  // root-layout consumers (e.g. <IOSStandaloneHeuristicRunner>) that mount
+  // BEFORE the Convex Auth Anonymous sign-in completes. The migrated version
+  // builds on customerQueryOptional and returns null instead.
+  it("returns null (NOT throws) for an anonymous caller (the log-spam fix)", async () => {
+    const res = await t.query(api.lib.customer.identity.getCurrentCustomer, {
+      tenantId: seed.tenantA.tenantId,
+    });
+    expect(res).toBeNull();
+  });
+
+  it("regression: authenticated customer WITHOUT a fiche still returns null", async () => {
+    const userId = await seedAnonymousCustomer(t);
+    const res = await t
+      .withIdentity({ subject: userId })
+      .query(api.lib.customer.identity.getCurrentCustomer, {
+        tenantId: seed.tenantA.tenantId,
+      });
+    expect(res).toBeNull();
+  });
+
+  it("regression: authenticated customer WITH a fiche returns the fiche", async () => {
+    const userId = await seedAnonymousCustomer(t);
+    const as = t.withIdentity({ subject: userId });
+    const customerId = await as.mutation(
+      api.lib.customer.identity.getOrCreateCurrentCustomer,
+      { tenantId: seed.tenantA.tenantId },
+    );
+    const res = await as.query(api.lib.customer.identity.getCurrentCustomer, {
+      tenantId: seed.tenantA.tenantId,
+    });
+    expect(res?._id).toBe(customerId);
+    expect(res?.userId).toBe(userId);
+  });
+
+  it("a PRO (kb_admin) is STILL refused (no bypass of customer-only contract)", async () => {
+    // Optional-auth means anonymous OK; it does NOT mean "everyone OK". The
+    // PRO refusal stays in place — otherwise getCurrentCustomer would become a
+    // leak surface for kb_admin to enumerate customer fiches.
+    await expect(
+      t
+        .withIdentity({ subject: seed.adminId })
+        .query(api.lib.customer.identity.getCurrentCustomer, {
+          tenantId: seed.tenantA.tenantId,
+        }),
+    ).rejects.toThrow(/forbidden/i);
+  });
+});
+
 describe("2.1-B cross-tenant fuzz — getOrCreateCurrentCustomer rejects unauthorized actors", () => {
   let t: ReturnType<typeof convexTest>;
   let seed: Seed;
@@ -278,15 +336,18 @@ describe("2.1-B cross-tenant fuzz — getOrCreateCurrentCustomer rejects unautho
     expect(leaks).toEqual([]);
   });
 
-  it("the read surface (getCurrentCustomer) also rejects the global root", async () => {
+  it("the read surface (getCurrentCustomer) still rejects the global root (PRO)", async () => {
+    // The read surface uses customerQueryOptional → anonymous callers return
+    // null instead of throwing (the log-spam fix). PRO callers (kb_admin) are
+    // STILL refused — that contract is asserted in the dedicated
+    // "no bypass of customer-only contract" test above. The harness counts a
+    // non-throwing call as a leak, so we exclude anonymous from this fuzz: an
+    // anonymous-returning-null is the FEATURE, not a leak.
     const { leaks } = await runCrossTenantFuzz(t, {
       functions: [api.lib.customer.identity.getCurrentCustomer],
       isQuery: () => true,
       tenantId: seed.tenantA.tenantId,
-      actors: [
-        { label: "kb_admin", subject: seed.adminId },
-        { label: "anonymous", subject: null },
-      ],
+      actors: [{ label: "kb_admin", subject: seed.adminId }],
     });
     expect(leaks).toEqual([]);
   });

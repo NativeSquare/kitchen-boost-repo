@@ -141,6 +141,75 @@ describe("1.x-D customer* wrappers — customer actor + self-scope", () => {
   });
 });
 
+describe("customerQueryOptional — optional-auth variant (anonymous → actor null)", () => {
+  let t: ReturnType<typeof convexTest>;
+  let seed: Seed;
+  beforeEach(async () => {
+    t = convexTest(schema, modules);
+    seed = await seedTwoTenantsAllRoles(t);
+  });
+
+  it("authenticated customer → actor non-null with caller's own userId", async () => {
+    // Same gate behaviour as the strict customerQuery: a real customer is
+    // allowed in and the handler sees their own actor.
+    const res = await t
+      .withIdentity({ subject: seed.customerId })
+      .query(api.lib.tenancy._probes.customerProbeQueryOptional, {
+        tenantId: seed.tenantA.tenantId,
+      });
+    expect(res.actor).not.toBeNull();
+    expect(res.actor?.userId).toBe(seed.customerId);
+    expect(res.actor?.role).toBe("customer");
+    expect(res.tenantId).toBe(seed.tenantA.tenantId);
+  });
+
+  it("anonymous caller → actor NULL (no UNAUTHENTICATED throw)", async () => {
+    // The fix's reason for being: a root-layout consumer (e.g. iOS standalone
+    // heuristic) firing this query BEFORE signIn must NOT pollute the logs with
+    // UNAUTHENTICATED — it gets a null actor and decides what to render.
+    const res = await t.query(
+      api.lib.tenancy._probes.customerProbeQueryOptional,
+      { tenantId: seed.tenantA.tenantId },
+    );
+    expect(res.actor).toBeNull();
+    expect(res.tenantId).toBe(seed.tenantA.tenantId);
+  });
+
+  it("PRO caller (kb_admin) → still FORBIDDEN (no bypass of customer-only contract)", async () => {
+    // Critical invariant: making the wrapper anonymous-tolerant must NOT open a
+    // back door for the global root. PRO callers remain refused so the surface
+    // stays customer-only.
+    await expect(
+      t
+        .withIdentity({ subject: seed.adminId })
+        .query(api.lib.tenancy._probes.customerProbeQueryOptional, {
+          tenantId: seed.tenantA.tenantId,
+        }),
+    ).rejects.toThrow(/forbidden/i);
+  });
+
+  it("requires an explicit tenantId argument (rejects when missing)", async () => {
+    await expect(
+      t
+        .withIdentity({ subject: seed.customerId })
+        // @ts-expect-error tenantId is a required explicit argument
+        .query(api.lib.tenancy._probes.customerProbeQueryOptional, {}),
+    ).rejects.toThrow();
+  });
+
+  it("a customer may call it against ANY tenant (tenantId is an arg, not a scope guarantee)", async () => {
+    // Same as customerQuery: self-scope comes from the handler reading via
+    // actor.userId, not from a structural tenant check on the wrapper.
+    const res = await t
+      .withIdentity({ subject: seed.customerId })
+      .query(api.lib.tenancy._probes.customerProbeQueryOptional, {
+        tenantId: seed.tenantB.tenantId,
+      });
+    expect(res.actor?.userId).toBe(seed.customerId);
+    expect(res.tenantId).toBe(seed.tenantB.tenantId);
+  });
+});
+
 describe("1.x-D customer ⇎ pro: a customer cannot call a pro wrapper", () => {
   let t: ReturnType<typeof convexTest>;
   let seed: Seed;
