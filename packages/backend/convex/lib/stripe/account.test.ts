@@ -1,5 +1,5 @@
 import { convexTest } from "convex-test";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../../_generated/api";
 import schema from "../../schema";
 import {
@@ -93,6 +93,133 @@ describe("2.5-A stripe account root surface — kb_admin only + audited", () => 
         },
       }),
     ).rejects.toThrow(/Forbidden/);
+  });
+});
+
+/**
+ * Defence-in-depth — `createStripeAccountLink` MUST validate
+ * `prefill.email` server-side before calling `POST /v1/accounts`. The
+ * client UI already disables the submit button on an invalid syntax
+ * (commit `e5e6b18`), but the regex is bypassable (curl direct, another
+ * client, bot…) and Stripe answers a cryptic 400 « Invalid email
+ * address: » that surfaces poorly in the admin Network tab. We therefore
+ * mirror the same email regex on the server (defence-in-depth pattern).
+ *
+ * The validation only fires when we'd actually create a fresh connected
+ * account (`accountId === undefined`). On a regen (`account_links` only,
+ * no `/accounts` re-write), Stripe doesn't re-read the email — skipping
+ * the gate preserves the « Régénérer » UX pinned by `e5e6b18`.
+ *
+ * The Stripe wire calls are mocked via `global.fetch`: we assert that
+ * an invalid email throws BEFORE any fetch fires (the regression we're
+ * pinning), and that a valid email lets the flow continue.
+ */
+describe("2.5-A createStripeAccountLink — server-side email validation", () => {
+  let t: ReturnType<typeof convexTest>;
+  let seed: Seed;
+  let fetchSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(async () => {
+    process.env.STRIPE_SECRET_KEY = "sk_test_dummy";
+    t = convexTest(schema, modules);
+    seed = await seedTwoTenantsAllRoles(t);
+  });
+
+  afterEach(() => {
+    fetchSpy?.mockRestore();
+  });
+
+  it("throws INVALID_EMAIL on an empty email + does not hit Stripe", async () => {
+    fetchSpy = vi.spyOn(global, "fetch");
+    const asRoot = t.withIdentity({ subject: seed.adminId });
+    await expect(
+      asRoot.action(api.lib.stripe.account.createStripeAccountLink, {
+        tenantId: seed.tenantA.tenantId,
+        refreshUrl: "https://x/refresh",
+        returnUrl: "https://x/return",
+        prefill: { siret: "12345678900011", email: "" },
+      }),
+    ).rejects.toThrow(/INVALID_EMAIL|Email invalide/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("throws INVALID_EMAIL on a syntactically invalid email + does not hit Stripe", async () => {
+    fetchSpy = vi.spyOn(global, "fetch");
+    const asRoot = t.withIdentity({ subject: seed.adminId });
+    await expect(
+      asRoot.action(api.lib.stripe.account.createStripeAccountLink, {
+        tenantId: seed.tenantA.tenantId,
+        refreshUrl: "https://x/refresh",
+        returnUrl: "https://x/return",
+        prefill: { siret: "12345678900011", email: "abc" },
+      }),
+    ).rejects.toThrow(/INVALID_EMAIL|Email invalide/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("lets a valid email through — Stripe is called and the account stamped", async () => {
+    fetchSpy = vi
+      .spyOn(global, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: "acct_valid_email" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ url: "https://stripe/onboard" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+
+    const asRoot = t.withIdentity({ subject: seed.adminId });
+    const res = await asRoot.action(
+      api.lib.stripe.account.createStripeAccountLink,
+      {
+        tenantId: seed.tenantA.tenantId,
+        refreshUrl: "https://x/refresh",
+        returnUrl: "https://x/return",
+        prefill: { siret: "12345678900011", email: "resto@example.com" },
+      },
+    );
+    expect(res.accountId).toBe("acct_valid_email");
+    expect(res.url).toBe("https://stripe/onboard");
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("regenerate (account already stamped) skips email validation — Stripe is called", async () => {
+    // Pre-stamp the tenant so `accountId !== undefined` (regen path).
+    await t.run(async (ctx) => {
+      await ctx.db.patch(seed.tenantA.tenantId, {
+        stripeAccountId: "acct_already_here",
+        stripeStatus: "pending",
+      });
+    });
+    // Only /account_links should fire (no /accounts re-create).
+    fetchSpy = vi.spyOn(global, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ url: "https://stripe/regen" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const asRoot = t.withIdentity({ subject: seed.adminId });
+    const res = await asRoot.action(
+      api.lib.stripe.account.createStripeAccountLink,
+      {
+        tenantId: seed.tenantA.tenantId,
+        refreshUrl: "https://x/refresh",
+        returnUrl: "https://x/return",
+        // Empty email — must NOT throw on regen (Stripe doesn't re-read it).
+        prefill: { siret: "12345678900011", email: "" },
+      },
+    );
+    expect(res.accountId).toBe("acct_already_here");
+    expect(res.url).toBe("https://stripe/regen");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [url] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain("/account_links");
   });
 });
 

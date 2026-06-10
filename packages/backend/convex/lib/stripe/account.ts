@@ -42,6 +42,24 @@ const missingSecret = () =>
 const tenantNotFound = () =>
   new ConvexError({ code: "NOT_FOUND", message: "Tenant not found." });
 
+/**
+ * Server-side mirror of the client email regex (cf.
+ * `apps/admin/.../stripe-settings-view.tsx` → `EMAIL_REGEX`). Defence-in-
+ * depth: the admin UI already disables the submit button on an invalid
+ * syntax (commit e5e6b18), but that gate is bypassable (curl direct, another
+ * client, bot…). Stripe's own answer on an invalid email is a cryptic 400
+ * « Invalid email address: » that surfaces poorly in the Network tab —
+ * gating here lets us throw a clear typed `INVALID_EMAIL` before any
+ * Stripe call.
+ */
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const invalidEmail = (email: string) =>
+  new ConvexError({
+    code: "INVALID_EMAIL",
+    message: `Email invalide : ${email}`,
+  });
+
 /** Encode a flat record as application/x-www-form-urlencoded (Stripe wire format). */
 function form(params: Record<string, string>): string {
   const usp = new URLSearchParams();
@@ -214,11 +232,18 @@ export const createStripeAccountLink = action({
     //    with the `company` branch).
     let accountId = tenant.stripeAccountId;
     if (accountId === undefined) {
+      // Defence-in-depth: validate the prefilled email server-side BEFORE
+      // any Stripe call. The check only fires on the create branch — on a
+      // regen (`accountId !== undefined`, `POST /v1/account_links` only),
+      // Stripe doesn't re-read the email, so skipping the gate preserves
+      // the « Régénérer » UX pinned by client commit e5e6b18.
+      const email = args.prefill.email.trim();
+      if (!EMAIL_REGEX.test(email)) throw invalidEmail(args.prefill.email);
       const account = await stripePost(secret, "/accounts", {
         type: "express",
         country: "FR",
         business_type: "company",
-        email: args.prefill.email,
+        email,
         "company[tax_id]": args.prefill.siret,
         "capabilities[card_payments][requested]": "true",
         "capabilities[transfers][requested]": "true",
