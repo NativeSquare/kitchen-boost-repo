@@ -498,7 +498,7 @@ Checklist E2E manuelle pour la PWA client (`apps/web`), nomenclature canonique a
 
 ## A2H — A2HS install (Android + iOS)
 
-> **Slices** : #462 (S10 A2HS Android post-cart) + #463 (S11 A2HS iOS post-tracking) · **Statut** : 🟡 EN COURS — 2 scénarios Android prêts à tester · iOS ⏳ EN ATTENTE bloqué par HITL #447 (chain #459 → #463)
+> **Slices** : #462 (S10 A2HS Android post-cart) + #463 (S11 A2HS iOS post-tracking — PR #480) · **Statut** : 🟡 EN COURS — 5 scénarios prêts à tester (2 Android + 3 iOS)
 >
 > Couvre : Android `beforeinstallprompt` capturé en `<PWAInstallContext>`, bouton install bottom-right rendered après 1er add cart, click → prompt natif Android, accept → `appinstalled` event → `recordA2hsAccepted` flip `a2hsStatus = "enrolled"`, masquage bouton à la visite suivante via Convex sub. iOS bottom-sheet Vaul sur `/c/[orderId]` état T+0 (GIF 8s loop Share→"Sur l'écran d'accueil"→"Ajouter"), heuristique standalone à la visite suivante (`matchMedia('(display-mode: standalone)').matches` + flip enrolled).
 
@@ -533,6 +533,51 @@ Checklist E2E manuelle pour la PWA client (`apps/web`), nomenclature canonique a
   5. Recharger la page (pull-to-refresh).
 - **Attendu** : étape 2 : bouton « 📲 Installer » apparaît ; étape 4 : bouton **disparaît** (event single-use spec → `clearPrompt()` dans le `finally`), mais doc `customers` n'a **pas** de `pushEnrollment.a2hsStatus` posé, **aucun** auditLog `recordA2hsAccepted` (le `userChoice.outcome === "dismissed"` n'a pas trigger la mutation) ; étape 5 : Chrome PEUT re-firer un nouveau `beforeinstallprompt` (heuristique propriétaire) — si oui, bouton ré-apparaît post-cart ; si non, OK (palier soft, pas blocker).
 - **Couvre** : US 56 (event single-use) + slice #462 + module `decideA2hsButtonVisibility`.
+
+### A2H — Test A2H.3 : iOS Safari sur tracking T+0 → bottom-sheet visible + dismiss session-scoped
+
+- **Acteur** : iPhone Safari (cookie + cache vidés), mode privé. Tester aussi iPad Safari si dispo.
+- **Pré-requis** : tenant `test-t1` actif (seeds e2e OK), customer `pushEnrollment.a2hsStatus` absent ou `not_enrolled`, Stripe sandbox + Uber Direct sandbox configurés.
+- **URL de départ** : `https://test-t1.kitchen-boost.com/`
+- **Étapes** :
+  1. Address-first → menu → add cart → `/checkout` → push enrollment (Wallet OR `noChannelPossible=true` pour débloquer) → payer carte test `4242 4242 4242 4242`.
+  2. Observer la page `/c/<orderId>` directement après redirect post-paiement.
+  3. Toucher « OK plus tard » dans la bottom-sheet.
+  4. Recharger `/c/<orderId>`.
+  5. Naviguer `/menu` puis revenir `/c/<orderId>`.
+  6. Fermer Safari complètement (swipe-up app switcher → close tab), ré-ouvrir `https://test-t1.kitchen-boost.com/c/<orderId>` dans un nouvel onglet.
+- **Attendu** : étape 2 : bottom-sheet Vaul s'ouvre depuis le bas avec titre « Ajoute ce resto à ton écran d'accueil », illustration 3 étapes inline SVG (1. Touche l'icône Partager + icône share / 2. Choisis Sur l'écran d'accueil / 3. Confirme avec Ajouter — animation pulse sur l'icône finale) + bouton « OK plus tard » ; étape 3 : drawer se ferme ; étape 4-5 : bottom-sheet **ne réapparaît PAS** (sessionStorage `kb_a2hs_ios_sheet_dismissed = "1"`) ; étape 6 : bottom-sheet **réapparaît** (nouvelle session = nouveau sessionStorage).
+- **Couvre** : US 58 + slice #463 + modules `decideIosBottomSheetVisibility`, `isIosSafari`, `A2HS_IOS_SHEET_DISMISS_KEY`.
+
+### A2H — Test A2H.4 : Install A2HS iOS → revisit standalone → `a2hsStatus = "enrolled"` flip + sheet disparaît
+
+- **Acteur** : iPhone Safari (suite de A2H.3).
+- **Pré-requis** : A2H.3 effectué (au moins étape 2 OK pour avoir le orderId), accès Convex dashboard pour vérif backend.
+- **URL de départ** : `https://test-t1.kitchen-boost.com/c/<orderId>` (sheet ouverte ou dismissed peu importe).
+- **Étapes** :
+  1. Dans Safari, tap l'icône Partager (rectangle avec flèche vers le haut, en bas de l'écran).
+  2. Faire défiler la liste, taper « Sur l'écran d'accueil ».
+  3. Confirmer le nom du raccourci, taper « Ajouter ».
+  4. Sortir de Safari (Home button / swipe up) → lancer la PWA depuis l'icône fraîchement ajoutée à l'écran d'accueil.
+  5. Naviguer une page quelconque (`/`, `/menu`, ou re-ouvrir `/c/<orderId>` via partage SMS).
+  6. Vérifier la doc `customers` correspondante dans Convex dashboard.
+- **Attendu** :
+  - Étape 4 : la PWA s'ouvre sans barre d'URL Safari (`display-mode: standalone`).
+  - Étape 5 : bottom-sheet **n'apparaît PAS** sur `/c/<orderId>` (déjà standalone → décision retourne `hidden / already-standalone` + `<IOSStandaloneHeuristicRunner>` fire la mutation).
+  - Étape 6 : doc `customers` a `pushEnrollment.a2hsStatus = "enrolled"` ; nouveau row `auditLog` avec `action: "customer.pushEnrollment.recordA2hsAccepted"`, `actorRole: "customer"`, `targetType: "customer"`, `targetId: <customerId>`. **Un seul row** par installation (single-fire ref + idempotence pure decision).
+- **Couvre** : US 59 + slice #463 + modules `decideIosStandaloneHeuristic`, `<IOSStandaloneHeuristicRunner>`, `recordA2hsAccepted` mutation.
+
+### A2H — Test A2H.5 : Android Chrome → bottom-sheet iOS jamais visible (iOS-only assertion)
+
+- **Acteur** : Android Chrome (incognito).
+- **Pré-requis** : tenant `test-t1` actif, flow checkout complet possible.
+- **URL de départ** : `https://test-t1.kitchen-boost.com/c/<orderId>` (atteindre via checkout normal).
+- **Étapes** :
+  1. Sur Android Chrome incognito, compléter un flow checkout normal jusqu'à `/c/<orderId>` (cf. TRK.1 étapes 1-4).
+  2. Observer la page tracking attentivement (timeline + détail commande).
+  3. Naviguer `/menu` puis revenir `/c/<orderId>`.
+- **Attendu** : **aucune bottom-sheet iOS** ne s'affiche à AUCUNE étape (UA gate `isIosSafari` rejette Android). Le bouton flottant `<AndroidInstallButton>` (#462) reste fonctionnel par contre sur `/menu` ET `/panier` — c'est sa branche dédiée. (Note : la matrice complète des in-app browsers iOS — Instagram/Facebook/TikTok/etc. — est couverte par 34 unit tests `is-ios-safari` dans la PR, pas nécessaire de retester en E2E manuel.)
+- **Couvre** : US 58 AC 4 « Android → bottom sheet n'apparaît jamais » + slice #463 + module `isIosSafari` (rejection matrix).
 
 ---
 
