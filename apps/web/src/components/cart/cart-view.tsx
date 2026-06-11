@@ -20,6 +20,7 @@ import { useCart } from "./cart-context";
 import { useDeliveryMode } from "@/components/delivery-mode/delivery-mode-context";
 import { decideCartTotals, type DeliveryFeeView } from "@/lib/delivery-mode";
 import type { CartLine } from "@/lib/cart-store";
+import { cartLineModifierLabels } from "@/lib/cart-store/cart-line-modifiers-label";
 
 /** Note resto max length — kept in sync with the reducer truncation (200ch). */
 const NOTE_MAX_LENGTH = 200;
@@ -120,17 +121,30 @@ function CartLineRow({
   );
   const linePrice = line.qty * (line.basePriceCentimes + modifierSum);
 
+  // Selected supplements rendered as one chip per option (option label only)
+  // so two same-item / different-modifier lines stay unmistakable at a glance
+  // — replaces the previous discreet grey ` · `-joined run.
+  const modifierLabels = cartLineModifierLabels(line.modifiers);
+
   return (
     <li className="flex flex-col gap-2 rounded-lg border border-zinc-200 bg-white p-3">
       <div className="flex items-start justify-between gap-3">
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1.5">
           <span className="text-base font-medium text-black">{line.name}</span>
-          {line.modifiers.length > 0 && (
-            <span className="text-xs text-zinc-600">
-              {line.modifiers
-                .map((m) => `${m.groupName} : ${m.optionLabel}`)
-                .join(" · ")}
-            </span>
+          {modifierLabels.length > 0 && (
+            <ul
+              aria-label={`Suppléments — ${line.name}`}
+              className="flex flex-wrap gap-1.5"
+            >
+              {modifierLabels.map((label, i) => (
+                <li
+                  key={`${i}-${label}`}
+                  className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800 ring-1 ring-inset ring-emerald-200"
+                >
+                  {label}
+                </li>
+              ))}
+            </ul>
           )}
         </div>
         <span className="text-base font-medium text-black">
