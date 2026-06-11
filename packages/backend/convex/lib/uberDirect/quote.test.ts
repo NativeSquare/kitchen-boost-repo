@@ -114,6 +114,12 @@ describe("2.6-B requestQuote — action: decrypt creds, OAuth, call Uber, map re
   beforeEach(async () => {
     t = convexTest(schema, modules);
     seed = await seedTwoTenantsAllRoles(t);
+    // Pickup address required by Uber Direct on the quote endpoint.
+    await t.run(async (ctx) => {
+      await ctx.db.patch(seed.tenantA.tenantId, {
+        address: "1 Rue de Rivoli, 75001 Paris",
+      });
+    });
     await t
       .withIdentity({ subject: seed.tenantA.managerId })
       .mutation(api.lib.uberDirect.credentials.setUberCredentials, {
@@ -198,6 +204,13 @@ describe("2.6-B cross-tenant fuzz — the requestQuote access gate (ADR 0010)", 
   beforeEach(async () => {
     t = convexTest(schema, modules);
     seed = await seedTwoTenantsAllRoles(t);
+    // Pickup address is REQUIRED by Uber Direct on the quote endpoint — seed
+    // it server-side so `requestQuote` doesn't throw TENANT_PICKUP_MISSING.
+    await t.run(async (ctx) => {
+      await ctx.db.patch(seed.tenantA.tenantId, {
+        address: "1 Rue de Rivoli, 75001 Paris",
+      });
+    });
     await t
       .withIdentity({ subject: seed.tenantA.managerId })
       .mutation(api.lib.uberDirect.credentials.setUberCredentials, {

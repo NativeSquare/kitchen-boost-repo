@@ -4243,6 +4243,34 @@ export const seedE2EMenuT1 = internalMutation({
  * supprime puis ré-insère. NE PAS utiliser pour tester le scénario A.3
  * « hors_horaire » — pour ça, il faut un seed restrictif.
  */
+/**
+ * Seed the pickup address on the E2E test-t1 tenant — required by Uber Direct
+ * `requestQuote` (the `pickup_address` field is mandatory server-side, surfaced
+ * 2026-06-11 during the address-first E2E A.1). Idempotent: re-patches on every
+ * run.
+ */
+export const seedE2EPickupAddressT1 = internalMutation({
+  args: {},
+  returns: v.object({
+    tenantId: v.id("tenants"),
+    address: v.string(),
+  }),
+  handler: async (ctx) => {
+    const tenant = await ctx.db
+      .query("tenants")
+      .withIndex("by_slug", (q) => q.eq("slug", E2E_M_TENANT_SLUG))
+      .unique();
+    if (tenant === null) {
+      throw new ConvexError({
+        message: `Tenant "${E2E_M_TENANT_SLUG}" not found — run bootstrapE2EInvites first.`,
+      });
+    }
+    const address = "1 Rue de Rivoli, 75001 Paris";
+    await ctx.db.patch(tenant._id, { address });
+    return { tenantId: tenant._id, address };
+  },
+});
+
 export const seedE2EServiceHoursT1 = internalMutation({
   args: {},
   returns: v.object({

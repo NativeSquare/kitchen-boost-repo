@@ -153,6 +153,12 @@ describe("2.6-B requestDeliveryQuote — orchestration action", () => {
   beforeEach(async () => {
     t = convexTest(schema, modules);
     seed = await seedTwoTenantsAllRoles(t);
+    // Pickup address required by Uber Direct on the quote endpoint.
+    await t.run(async (ctx) => {
+      await ctx.db.patch(seed.tenantA.tenantId, {
+        address: "1 Rue de Rivoli, 75001 Paris",
+      });
+    });
     await setCreds(t, seed.tenantA.managerId, seed.tenantA.tenantId);
     await setHours(
       t,
@@ -238,6 +244,12 @@ describe("2.6-B recaptureQuoteAtPayment — latching (anti-surge) re-quote for 2
   beforeEach(async () => {
     t = convexTest(schema, modules);
     seed = await seedTwoTenantsAllRoles(t);
+    // Pickup address required by Uber Direct on the quote endpoint.
+    await t.run(async (ctx) => {
+      await ctx.db.patch(seed.tenantA.tenantId, {
+        address: "1 Rue de Rivoli, 75001 Paris",
+      });
+    });
     await setCreds(t, seed.tenantA.managerId, seed.tenantA.tenantId);
     await setHours(
       t,

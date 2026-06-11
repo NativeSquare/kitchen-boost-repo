@@ -1,6 +1,23 @@
 import { ConvexError, v } from "convex/values";
 import { api, internal } from "../../_generated/api";
-import { action } from "../../_generated/server";
+import { action, internalQuery } from "../../_generated/server";
+import { getTenantById } from "../tenancy/tenantsStore";
+
+/**
+ * Server-only read of the tenant's PICKUP address — consumed by `requestQuote`
+ * to fill the Uber Direct `pickup_address` field. Server-to-server only (no
+ * client API exposure) so a customer cannot probe `tenants.address` via the
+ * Convex client directly; the address still leaves the backend wrapped in the
+ * Uber request, which is the legitimate use.
+ */
+export const _readTenantPickupAddressSystem = internalQuery({
+  args: { tenantId: v.id("tenants") },
+  returns: v.union(v.string(), v.null()),
+  handler: async (ctx, args): Promise<string | null> => {
+    const tenant = await getTenantById(ctx, args.tenantId);
+    return tenant?.address ?? null;
+  },
+});
 
 /**
  * 2.6-B — `requestQuote(tenantId, address)`: the address-first Uber Direct
@@ -150,6 +167,25 @@ export const requestQuote = action({
       { tenantId: args.tenantId },
     );
 
+    // Uber Direct REQUIRES both pickup_address and dropoff_address on the quote
+    // endpoint — sending just `dropoff_address` returns HTTP 400 `invalid_params`
+    // with `metadata.pickup_address: "This field is required."`. The pickup is
+    // the tenant's own address (`tenants.address`, set on the wizard step 4 /
+    // Paramètres tenant). A tenant created without an address would never get a
+    // quote — surface a clear ConvexError instead of forwarding a malformed
+    // request to Uber.
+    const pickupAddress = await ctx.runQuery(
+      internal.lib.uberDirect.quote._readTenantPickupAddressSystem,
+      { tenantId: args.tenantId },
+    );
+    if (pickupAddress === null) {
+      throw new ConvexError({
+        code: "TENANT_PICKUP_MISSING",
+        message:
+          "Adresse du restaurant non configurée — impossible d'obtenir un quote de livraison.",
+      });
+    }
+
     const token = await fetchUberToken(creds.clientId, creds.clientSecret);
 
     // Quote on the tenant's OWN Uber sub-account (customer_id), Bearer token. The
@@ -162,7 +198,10 @@ export const requestQuote = action({
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ dropoff_address: args.address }),
+        body: JSON.stringify({
+          pickup_address: pickupAddress,
+          dropoff_address: args.address,
+        }),
       },
     );
     const json = (await res.json()) as Record<string, unknown>;
