@@ -134,3 +134,18 @@ export {
   runMonitoringScan,
   scanIncidents,
 } from "./monitoring";
+// Address-first slice 4 (2026-06-11) — audit existing already-`active` tenants
+// whose address 4-tuple is incomplete (legacy pre-slice-3 rows). Slices 1-3
+// (#484/#485/#486) gate every NEW activation on the full 4-tuple; slice 4 is
+// the migration-tracking surface for the legacy ones. NO migration-by-code
+// (re-geocoding a free-text string needs Google Places browser SDK) — just
+// audit + tracking. Public surface `listTenantsWithMissingAddress` is
+// root-only (kbAdminQuery); `auditTenantsWithMissingAddress` is an
+// internal-only twin for cron / ops scripts. The pure aggregator
+// `findTenantsMissingAddress` is unit-testable in isolation.
+export {
+  type TenantMissingAddressRow,
+  auditTenantsWithMissingAddress,
+  findTenantsMissingAddress,
+  listTenantsWithMissingAddress,
+} from "./addressAudit";
