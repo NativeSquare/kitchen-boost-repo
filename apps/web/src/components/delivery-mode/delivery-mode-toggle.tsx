@@ -25,6 +25,7 @@ import { useQuery } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
 import { decideDisabledDeliveryTap } from "@/lib/availability";
+import { decideEditAddressRow } from "@/lib/delivery-mode/decide-edit-address-row";
 import { useServiceStatus } from "@/components/availability/service-status-context";
 import { useDeliveryMode } from "./delivery-mode-context";
 import {
@@ -86,6 +87,12 @@ export function DeliveryModeToggle({
     // "none" → unreachable here (button enabled handled above).
   };
 
+  // Uber-Eats parity: when delivery is already deliverable and we know the
+  // address, surface it with a « Modifier » link that re-opens the SAME sheet in
+  // `edit` mode. Hidden while the fiche loads / out of zone / address unknown —
+  // those non-deliverable cases keep the disabled-button-opens-sheet path.
+  const editRow = decideEditAddressRow({ verdict, currentAddress });
+
   return (
     <>
       <div
@@ -112,6 +119,13 @@ export function DeliveryModeToggle({
           ariaLabel="Retrait sur place · Gratuit"
         />
       </div>
+
+      {editRow.show && (
+        <EditAddressRow
+          address={editRow.address}
+          onEdit={() => setSheet("edit")}
+        />
+      )}
 
       {sheet !== null && (
         <DeliveryAddressSheet
@@ -166,5 +180,43 @@ function ModeButton({
       <span>{label}</span>
       <span className="text-xs text-zinc-600">· {priceLabel}</span>
     </button>
+  );
+}
+
+/**
+ * Always-available « Modifier l'adresse » row, shown only when delivery is
+ * already deliverable (decided by `decideEditAddressRow`). Mobile-first, single
+ * line: pin + truncated current address on the left, an emerald « Modifier »
+ * text-button on the right that re-opens the reusable address sheet in `edit`
+ * mode. KitchenBoost palette (emerald #1B7A3D / zinc neutrals).
+ */
+function EditAddressRow({
+  address,
+  onEdit,
+}: {
+  address: string;
+  onEdit: () => void;
+}): React.JSX.Element {
+  return (
+    <div className="mt-2 flex w-full items-center gap-2 text-sm">
+      <span aria-hidden="true" className="shrink-0 text-zinc-500">
+        📍
+      </span>
+      <span
+        className="min-w-0 flex-1 truncate text-zinc-700"
+        title={address}
+        data-testid="delivery-current-address"
+      >
+        Livraison à {address}
+      </span>
+      <button
+        type="button"
+        onClick={onEdit}
+        className="shrink-0 rounded font-medium text-emerald-700 underline-offset-2 hover:underline focus-visible:underline"
+        aria-label="Modifier l'adresse de livraison"
+      >
+        Modifier
+      </button>
+    </div>
   );
 }
