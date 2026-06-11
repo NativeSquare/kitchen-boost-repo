@@ -4304,9 +4304,18 @@ export const seedE2EToggleItemAvailabilityT1 = internalMutation({
 export const seedE2EServiceHoursT1 = internalMutation({
   args: {
     // `open` (défaut) = 7j/7 toujours ouvert ; `closed` = aucune fenêtre →
-    // `isOpenNow` retourne false quelle que soit l'heure du test (scénario E2E
-    // A.3 « hors_horaire »). Repasser `open` restaure l'état nominal après.
-    mode: v.optional(v.union(v.literal("open"), v.literal("closed"))),
+    // `isOpenNow` false quelle que soit l'heure (test « horaires non
+    // communiqués ») ; `lunch_dinner` = 7j/7 [11:00-14:30] + [19:00-22:30] →
+    // fermé en dehors de ces plages AVEC une vraie prochaine ouverture (test du
+    // label « Réouverture <aujourd'hui|demain> à 11h00 », closed-resto sheet).
+    // Repasser `open` restaure l'état nominal après.
+    mode: v.optional(
+      v.union(
+        v.literal("open"),
+        v.literal("closed"),
+        v.literal("lunch_dinner"),
+      ),
+    ),
   },
   returns: v.object({
     tenantId: v.id("tenants"),
@@ -4329,14 +4338,21 @@ export const seedE2EServiceHoursT1 = internalMutation({
     // à n'importe quelle heure du test E2E (le V1 interdit le cross-midnight,
     // donc 0 → 1440 n'est pas valide ; 1439 est le maximum sûr).
     // `closed` : aucune fenêtre → toujours fermé, indépendant de l'heure (A.3).
+    // `lunch_dinner` : 2 services/jour, fermé entre/avant/après → vraie prochaine
+    // ouverture pour tester le label « Réouverture … » du closed-resto sheet.
     const windows =
       mode === "closed"
         ? []
-        : [0, 1, 2, 3, 4, 5, 6].map((d) => ({
-            dayOfWeek: d,
-            startMinute: 0,
-            endMinute: 1439,
-          }));
+        : mode === "lunch_dinner"
+          ? [0, 1, 2, 3, 4, 5, 6].flatMap((d) => [
+              { dayOfWeek: d, startMinute: 11 * 60, endMinute: 14 * 60 + 30 },
+              { dayOfWeek: d, startMinute: 19 * 60, endMinute: 22 * 60 + 30 },
+            ])
+          : [0, 1, 2, 3, 4, 5, 6].map((d) => ({
+              dayOfWeek: d,
+              startMinute: 0,
+              endMinute: 1439,
+            }));
     // Wipe existing row(s) puis upsert (la table est modélisée « one row per
     // tenant », on évite tout résidu en cas de seed antérieur cassé).
     const existing = await ctx.db
