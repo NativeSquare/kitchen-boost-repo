@@ -15,14 +15,21 @@
  *  - flip closed→open → the sheet dismisses on its own.
  *
  * Dismiss discipline: a manual dismiss only suppresses the CURRENT closed
- * period. When the state flips back to open the suppression resets, so a LATER
- * closing re-shows the sheet (the customer is not permanently muted).
+ * period, persisted in sessionStorage so it survives the home→/menu navigation
+ * triggered by « Voir la carte » (otherwise the sheet would immediately re-show
+ * on the destination page). When the state flips back to open the suppression
+ * resets (sessionStorage cleared), so a LATER closing re-shows the sheet (the
+ * customer is not permanently muted).
+ *
+ * « Voir la carte » navigates PROGRAMMATICALLY (`router.push`) for the home page
+ * (`browseHref`): a plain `<Link onClick={dismiss}>` aborted its own navigation,
+ * because `dismiss()` unmounts the sheet (and the link) in the same tick before
+ * Next's client nav fires.
  */
-import { useEffect, useState } from "react";
-import Link from "next/link";
+import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Drawer,
-  DrawerClose,
   DrawerContent,
   DrawerDescription,
   DrawerFooter,
@@ -40,6 +47,34 @@ import {
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useServiceStatus } from "./service-status-context";
 
+/**
+ * sessionStorage flag for « dismissed for the current closed period ». Persisted
+ * (not just component state) so it survives the home→/menu navigation triggered
+ * by « Voir la carte » — otherwise the sheet would re-show on the destination
+ * page. Cleared when the resto flips back open. sessionStorage is per-tab, so a
+ * fresh tab/session re-shows the sheet (intended).
+ */
+const CLOSED_DISMISS_KEY = "kb_closed_resto_dismissed_v1";
+
+function readClosedDismissed(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.sessionStorage.getItem(CLOSED_DISMISS_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeClosedDismissed(value: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (value) window.sessionStorage.setItem(CLOSED_DISMISS_KEY, "1");
+    else window.sessionStorage.removeItem(CLOSED_DISMISS_KEY);
+  } catch {
+    // Private mode / quota — non-fatal (degrades to per-render state).
+  }
+}
+
 export type ClosedRestoSheetProps = {
   /**
    * Where « Voir la carte » should take the customer. On the address-first home
@@ -54,21 +89,47 @@ export function ClosedRestoSheet({
   browseHref,
 }: ClosedRestoSheetProps = {}): React.JSX.Element | null {
   const isMobile = useIsMobile();
+  const router = useRouter();
   const { isOpen, nextOpeningLabel, showClosedSheetNonce } = useServiceStatus();
-  // Suppress the sheet for the CURRENT closed period only.
+  // Suppress the sheet for the CURRENT closed period only, persisted in
+  // sessionStorage so it survives the home→/menu navigation (« Voir la carte »).
   const [dismissed, setDismissed] = useState(false);
+
+  // Hydrate the dismissal from sessionStorage on mount (covers the destination
+  // page after « Voir la carte » navigated here within the same closed period).
+  useEffect(() => {
+    setDismissed(readClosedDismissed());
+  }, []);
+
+  const dismiss = useCallback(() => {
+    writeClosedDismissed(true);
+    setDismissed(true);
+  }, []);
 
   // Reset the suppression whenever the resto is open — a later closing re-shows
   // the sheet (one dismiss does not mute the customer forever).
   useEffect(() => {
-    if (isOpen === true && dismissed) setDismissed(false);
-  }, [isOpen, dismissed]);
+    if (isOpen === true) {
+      writeClosedDismissed(false);
+      setDismissed((prev) => (prev ? false : prev));
+    }
+  }, [isOpen]);
 
   // A disabled-Livraison tap while closed bumps the nonce → un-dismiss so the
   // closed sheet re-opens (Feature B defers to the closed UX, never a dead tap).
   useEffect(() => {
-    if (showClosedSheetNonce > 0) setDismissed(false);
+    if (showClosedSheetNonce > 0) {
+      writeClosedDismissed(false);
+      setDismissed(false);
+    }
   }, [showClosedSheetNonce]);
+
+  // « Voir la carte »: navigate to the menu (home page) or just reveal it
+  // (already on /menu). Dismiss first so the destination page does not re-show.
+  const onBrowse = useCallback(() => {
+    dismiss();
+    if (browseHref !== undefined) router.push(browseHref);
+  }, [dismiss, browseHref, router]);
 
   // Render only when we KNOW the resto is closed (isOpen === false, not null/
   // loading) and the customer has not dismissed this closed period.
@@ -80,28 +141,26 @@ export function ClosedRestoSheet({
       réouverture du resto.
     </p>
   );
-  // « Voir la carte » CTA — navigates (home → /menu) or just dismisses (already
-  // on /menu). Dismissing unmounts the sheet (setDismissed → returns null), so
-  // no Drawer/Dialog Close primitive is required on the desktop path.
-  const browseCta =
-    browseHref !== undefined ? (
-      <Link
-        href={browseHref}
-        onClick={() => setDismissed(true)}
-        className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2 text-center text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-        data-testid="closed-resto-browse"
-      >
-        Voir la carte
-      </Link>
-    ) : null;
+  // Single « Voir la carte » CTA wired to onBrowse (navigate from home → /menu,
+  // or just reveal the menu already underneath). Same button on both platforms.
+  const browseButton = (
+    <button
+      type="button"
+      onClick={onBrowse}
+      className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2 text-center text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+      data-testid="closed-resto-browse"
+    >
+      Voir la carte
+    </button>
+  );
 
-  // MOBILE — Vaul bottom sheet (unchanged: this works, do not touch it).
+  // MOBILE — Vaul bottom sheet.
   if (isMobile) {
     return (
       <Drawer
         open
         onOpenChange={(next) => {
-          if (!next) setDismissed(true);
+          if (!next) dismiss();
         }}
       >
         <DrawerContent data-testid="closed-resto-sheet" className="px-0">
@@ -112,20 +171,7 @@ export function ClosedRestoSheet({
 
           <div className="flex flex-col gap-3 px-4 pb-4">{body}</div>
 
-          <DrawerFooter>
-            {browseCta ?? (
-              <DrawerClose asChild>
-                <button
-                  type="button"
-                  onClick={() => setDismissed(true)}
-                  className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-                  data-testid="closed-resto-dismiss"
-                >
-                  Voir la carte
-                </button>
-              </DrawerClose>
-            )}
-          </DrawerFooter>
+          <DrawerFooter>{browseButton}</DrawerFooter>
         </DrawerContent>
       </Drawer>
     );
@@ -137,7 +183,7 @@ export function ClosedRestoSheet({
     <Dialog
       open
       onOpenChange={(next) => {
-        if (!next) setDismissed(true);
+        if (!next) dismiss();
       }}
     >
       <DialogContent data-testid="closed-resto-sheet">
@@ -148,18 +194,7 @@ export function ClosedRestoSheet({
 
         {body}
 
-        <DialogFooter>
-          {browseCta ?? (
-            <button
-              type="button"
-              onClick={() => setDismissed(true)}
-              className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-              data-testid="closed-resto-dismiss"
-            >
-              Voir la carte
-            </button>
-          )}
-        </DialogFooter>
+        <DialogFooter>{browseButton}</DialogFooter>
       </DialogContent>
     </Dialog>
   );
