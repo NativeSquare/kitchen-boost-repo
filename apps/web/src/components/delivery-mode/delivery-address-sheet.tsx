@@ -115,8 +115,16 @@ export function DeliveryAddressSheet({
             <span className="text-sm font-medium text-zinc-700">
               Ton adresse de livraison
             </span>
+            {/* `data-vaul-no-drag`: the Google `PlaceAutocompleteElement` is a
+                custom web component, NOT a native <input>, so Vaul's drag-to-
+                dismiss does not recognise it and swallows the touch — the field
+                never focuses on mobile. Marking the container makes Vaul skip
+                drag for touches starting here (it walks `closest('[data-vaul-no-
+                drag]')` from the shadow-retargeted host), so the field is tappable
+                while the rest of the sheet can still be swiped to dismiss. */}
             <div
               ref={containerRef}
+              data-vaul-no-drag
               className="w-full"
               aria-label="Adresse de livraison"
             />
