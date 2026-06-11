@@ -359,15 +359,19 @@ describe("ParametresView — F-PARAMETRES-01 (#193)", () => {
     expect(dataSlots(tree)).toContain("parametres-section-identite");
   });
 
-  it("F-PARAMETRES-03 (#231) — section Coordonnées is WIRED (CoordonneesEditor) and no longer a placeholder", () => {
+  it("F-PARAMETRES-03 (#231) + address-first slice 2 — section Coordonnées is WIRED (CoordonneesEditor) and no longer a placeholder", () => {
     // The wired section surfaces the save button + the two inputs slots
     // exposed by `CoordonneesEditor`. The section card's data-slot from
     // slice 1 is preserved so downstream consumers don't need to know
     // whether it's a placeholder or a live editor.
+    //
+    // Slice 2 — the address `<Input>` was replaced by a Google Places
+    // autocomplete container (`parametres-coordonnees-places-container`).
+    // The phone `<Input>` and Save button slots are unchanged.
     const tree = serialize(ParametresView(EMPTY));
     const slots = dataSlots(tree);
     expect(slots).toContain("parametres-coordonnees-save");
-    expect(slots).toContain("parametres-coordonnees-address-input");
+    expect(slots).toContain("parametres-coordonnees-places-container");
     expect(slots).toContain("parametres-coordonnees-phone-input");
     expect(slots).toContain("parametres-section-coordonnees");
   });

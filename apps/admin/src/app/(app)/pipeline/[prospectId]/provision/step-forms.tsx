@@ -572,7 +572,18 @@ function Step4Form({ onPrev, onNext }: StepFormProps): React.JSX.Element {
       branding={tenantDoc?.branding}
       coordonnees={
         tenantDoc !== undefined && tenantDoc !== null
-          ? { address: tenantDoc.address, phone: tenantDoc.phone }
+          ? {
+              address: tenantDoc.address,
+              // Slice 2 (address-first) — the four address slots travel
+              // together (backend mutation is all-or-nothing). If the tenant
+              // is pre-slice-1 these are all `undefined`, which makes the
+              // editor surface the legacy warning banner ("re-saisir via la
+              // recherche") and gate Save until the user picks via Places.
+              addressLat: tenantDoc.addressLat,
+              addressLng: tenantDoc.addressLng,
+              addressComponents: tenantDoc.addressComponents,
+              phone: tenantDoc.phone,
+            }
           : undefined
       }
       acceptedModes={
