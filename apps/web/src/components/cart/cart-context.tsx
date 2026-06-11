@@ -31,6 +31,7 @@ import {
   useContext,
   useEffect,
   useReducer,
+  useState,
   type Dispatch,
   type ReactNode,
 } from "react";
@@ -51,6 +52,16 @@ type CartContextValue = {
   state: CartState;
   totals: CartTotals;
   dispatch: Dispatch<CartAction>;
+  /**
+   * `false` on the server + the very first client render, flipped to `true`
+   * once the mount effect has read `localStorage` (whether the stored cart
+   * was empty or not — hydration means « we've read storage », NOT « the cart
+   * is non-empty »). Consumers that gate navigation on the cart contents
+   * (e.g. `<CheckoutForm>`'s empty-cart → /panier redirect) MUST wait for
+   * `hydrated === true` before deciding, otherwise they race the rehydration
+   * effect and bounce a non-empty persisted cart back to /panier.
+   */
+  hydrated: boolean;
   /** Sugar: dispatch ADD_LINE; the most common cart action. */
   addLine: (
     item: CartItemView,
@@ -61,8 +72,15 @@ type CartContextValue = {
 
 const CartCtx = createContext<CartContextValue | null>(null);
 
-/** Defensive rehydrate: shape-check the JSON before trusting it. */
-function safeReadFromStorage(): CartState {
+/**
+ * Defensive rehydrate: shape-check the JSON before trusting it.
+ *
+ * Exported (not just an internal helper) so the rehydration contract — « a
+ * persisted non-empty cart is read back as non-empty » — is vitest-pinnable
+ * in node env alongside the rest of the cart decisions. This is the source
+ * the mount effect replays into the reducer.
+ */
+export function safeReadFromStorage(): CartState {
   if (typeof window === "undefined") return EMPTY_CART;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -95,9 +113,21 @@ export function CartProvider({
   // throw a warning if we initialised from a non-deterministic source).
   const [state, dispatch] = useReducer(cartReducer, EMPTY_CART);
 
+  // `false` until the mount effect has read localStorage. Stays `false` on the
+  // server + first client render so SSR markup matches (localStorage isn't
+  // readable server-side) — no hydration mismatch. Consumers gate navigation
+  // on this so they never decide the empty-cart redirect against the
+  // pre-rehydration EMPTY state (the false /panier-bounce race).
+  const [hydrated, setHydrated] = useState(false);
+
   // Rehydrate once on mount.
   useEffect(() => {
     const stored = safeReadFromStorage();
+    // Flag hydration as DONE regardless of whether the stored cart had items —
+    // « hydrated » means « we've read storage », not « the cart is non-empty ».
+    // Set it even on the empty-cart early-return below so a genuinely empty
+    // cart still unblocks the consumer's (correct) redirect to /panier.
+    setHydrated(true);
     if (stored.lines.length === 0 && stored.note === "") return;
     // Replace state with the persisted one — we don't have a REPLACE action
     // in the reducer (deliberately minimal); we re-add each line in order
@@ -145,7 +175,7 @@ export function CartProvider({
   );
 
   return (
-    <CartCtx.Provider value={{ state, totals, dispatch, addLine }}>
+    <CartCtx.Provider value={{ state, totals, dispatch, addLine, hydrated }}>
       {children}
     </CartCtx.Provider>
   );

@@ -84,14 +84,21 @@ export function CheckoutForm({
   // from another tab / from an earlier modal.
   const customer = usePreloadedQuery(preloadedCustomer);
 
-  const { state: cartState, totals } = useCart();
+  const { state: cartState, totals, hydrated } = useCart();
   const { verdict, mode } = useDeliveryMode();
 
   // Decide redirect on every render (the cart can be emptied from another
   // tab in private mode → we react). `useEffect` so the navigation happens
   // post-commit (Next 16 will scream if router.push runs during render).
+  //
+  // `hydrated` is the race guard: the cart rehydrates from localStorage in
+  // `<CartProvider>`'s mount effect, which React commits AFTER this child's
+  // redirect effect. Without the guard a fresh /checkout load reads 0 lines
+  // (the pre-rehydration EMPTY state) and bounces a non-empty persisted cart
+  // to /panier. Until hydrated, the decision is `wait` → no redirect, no form.
   const redirect = decideCheckoutRedirect({
     cartLineCount: cartState.lines.length,
+    hydrated,
   });
   useEffect(() => {
     if (redirect.kind === "redirect") {
@@ -135,9 +142,11 @@ export function CheckoutForm({
     [],
   );
 
-  if (redirect.kind === "redirect") {
-    // Render nothing while the navigation is en route — avoids a flash of
-    // the empty checkout form before the redirect lands.
+  if (redirect.kind !== "stay") {
+    // `wait`     → cart hasn't hydrated from localStorage yet: render nothing
+    //              so we neither flash the form nor bounce a persisted cart.
+    // `redirect` → empty cart confirmed post-hydration: render nothing while
+    //              the navigation to /panier is en route (no empty-form flash).
     return null;
   }
 
