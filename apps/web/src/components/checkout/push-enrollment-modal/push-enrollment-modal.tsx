@@ -76,14 +76,25 @@ import { WebPushSubscribeButton } from "./web-push-subscribe-button";
  * gate the call on `typeof window` via `useSyncExternalStore`'s
  * `getServerSnapshot`). The browser doesn't ship Push mid-session so we
  * don't subscribe to anything — the « store » never changes after mount.
+ *
+ * STABLE SNAPSHOT (React #185): `useSyncExternalStore` compares snapshots with
+ * `Object.is` on EVERY render. `decideWebPushCapability(...)` builds a fresh
+ * object each call, so returning it directly made every render look like a store
+ * change → infinite re-render loop (« Maximum update depth exceeded ») the moment
+ * the modal mounted on /checkout. The capability is constant for the page's
+ * lifetime (the `window` globals never change), so we compute it ONCE and cache
+ * the reference — every subsequent `getSnapshot` returns the same object.
  */
+let cachedClientCapability: WebPushCapability | null = null;
 function readClientCapability(): WebPushCapability {
-  return decideWebPushCapability({
+  if (cachedClientCapability !== null) return cachedClientCapability;
+  cachedClientCapability = decideWebPushCapability({
     hasPushManager: "PushManager" in window,
     hasServiceWorker:
       typeof navigator !== "undefined" && "serviceWorker" in navigator,
     hasNotification: "Notification" in window,
   });
+  return cachedClientCapability;
 }
 
 /**
