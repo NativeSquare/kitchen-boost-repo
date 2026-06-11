@@ -284,6 +284,25 @@ export const getSettings = tenantQuery({ allow: ["kb_manager"] })({
       }),
     ),
     address: v.union(v.null(), v.string()),
+    // Address-first slice 3 (2026-06-11) — expose the 3 structured siblings
+    // alongside the display string so the Paramètres page can detect a
+    // legacy / partial tenant and surface the « Adresse incomplète » banner.
+    // Each `null` mirrors « not yet set » (a legacy pre-slice-1 row has
+    // `address` set but lat/lng/components `null`). The slice-2 editor
+    // already persists the full 4-tuple together via
+    // `tenant.updateSettings` (which throws `INVALID_ADDRESS_PAYLOAD` on a
+    // half-patch), so the 4 slots are consistent post-save.
+    addressLat: v.union(v.null(), v.number()),
+    addressLng: v.union(v.null(), v.number()),
+    addressComponents: v.union(
+      v.null(),
+      v.object({
+        streetAddress: v.string(),
+        city: v.string(),
+        zipCode: v.string(),
+        country: v.string(),
+      }),
+    ),
     phone: v.union(v.null(), v.string()),
     acceptedModes: v.union(
       v.null(),
@@ -299,6 +318,14 @@ export const getSettings = tenantQuery({ allow: ["kb_manager"] })({
   ): Promise<{
     branding: { logoUrl?: string; primaryColor?: string } | null;
     address: string | null;
+    addressLat: number | null;
+    addressLng: number | null;
+    addressComponents: {
+      streetAddress: string;
+      city: string;
+      zipCode: string;
+      country: string;
+    } | null;
     phone: string | null;
     acceptedModes: { delivery: boolean; clickAndCollect: boolean } | null;
     customDomain: string | null;
@@ -313,6 +340,9 @@ export const getSettings = tenantQuery({ allow: ["kb_manager"] })({
     return {
       branding: tenant.branding ?? null,
       address: tenant.address ?? null,
+      addressLat: tenant.addressLat ?? null,
+      addressLng: tenant.addressLng ?? null,
+      addressComponents: tenant.addressComponents ?? null,
       phone: tenant.phone ?? null,
       acceptedModes: tenant.acceptedModes ?? null,
       customDomain: tenant.customDomain ?? null,
