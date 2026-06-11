@@ -229,6 +229,47 @@ const WITH_PRINTER: ParametresViewProps = {
   },
 };
 
+// Address-first slice 3 (2026-06-11) — fixtures that drive the « Adresse non
+// configurée » banner branch. The banner shows ONLY when `coordonnees` is
+// defined (i.e. the query has resolved) and the 4-tuple `address` /
+// `addressLat` / `addressLng` / `addressComponents` is incomplete.
+const COORDONNEES_COMPLETE = {
+  address: "12 rue de Paris, 75001 Paris",
+  addressLat: 48.8566,
+  addressLng: 2.3522,
+  addressComponents: {
+    streetAddress: "12 rue de Paris",
+    city: "Paris",
+    zipCode: "75001",
+    country: "FR",
+  },
+  phone: undefined,
+};
+const ADDRESS_COMPLETE: ParametresViewProps = {
+  ...EMPTY,
+  coordonnees: COORDONNEES_COMPLETE,
+};
+const ADDRESS_MISSING_ALL: ParametresViewProps = {
+  ...EMPTY,
+  coordonnees: {
+    address: undefined,
+    addressLat: undefined,
+    addressLng: undefined,
+    addressComponents: undefined,
+    phone: undefined,
+  },
+};
+const ADDRESS_LEGACY_DISPLAY_ONLY: ParametresViewProps = {
+  ...EMPTY,
+  coordonnees: {
+    address: "12 rue de Paris, 75001 Paris",
+    addressLat: undefined,
+    addressLng: undefined,
+    addressComponents: undefined,
+    phone: undefined,
+  },
+};
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -436,5 +477,69 @@ describe("ParametresView — F-PARAMETRES-01 (#193)", () => {
     const slots = dataSlots(serialize(ParametresView(LOADING)));
     expect(slots).toContain("parametres-section-imprimante");
     expect(slots).toContain("parametres-printer-url-input");
+  });
+
+  // ── Address-first slice 3 (2026-06-11) — top banner for missing 4-tuple ──
+  //
+  // Symmetric of the backend `ACTIVATION_BLOCKED_NO_ADDRESS` gate (slice 3
+  // backend) and the wizard step 8 checklist (slice 3 frontend wizard). The
+  // banner surfaces a strong VISUAL signal when an active tenant's address
+  // is incomplete — the page stays editable (PAS de blocage hard), but the
+  // gérant sees the risk and clicks straight to the CoordonneesEditor below.
+  describe("address-first slice 3 — adresse incomplète banner", () => {
+    it("banner is NOT rendered on the LOADING branch (coordonnees === undefined ⇒ no signal yet)", () => {
+      // We do NOT want to flash a false-positive banner while the Convex
+      // query is in flight — the banner reflects PERSISTED state only.
+      const slots = dataSlots(serialize(ParametresView(LOADING)));
+      expect(slots).not.toContain("parametres-address-missing-banner");
+    });
+
+    it("banner is NOT rendered when the 4-tuple is complete", () => {
+      const slots = dataSlots(serialize(ParametresView(ADDRESS_COMPLETE)));
+      expect(slots).not.toContain("parametres-address-missing-banner");
+    });
+
+    it("banner IS rendered when the address is entirely missing (fresh tenant)", () => {
+      const tree = serialize(ParametresView(ADDRESS_MISSING_ALL));
+      const slots = dataSlots(tree);
+      expect(slots).toContain("parametres-address-missing-banner");
+      const text = allText(tree);
+      // Wording: explicit risk (« service interrompu sur la livraison »).
+      expect(text).toMatch(
+        /Adresse du restaurant non configur[ée]e|risque de service interrompu/i,
+      );
+    });
+
+    it("banner IS rendered for a legacy tenant (display string only, no lat/lng/components)", () => {
+      // Legacy pre-slice-1 rows survived migration with `address` only —
+      // the banner fires until the gérant re-saisit via Places (slice 2).
+      const slots = dataSlots(
+        serialize(ParametresView(ADDRESS_LEGACY_DISPLAY_ONLY)),
+      );
+      expect(slots).toContain("parametres-address-missing-banner");
+    });
+
+    it("banner sits ABOVE the editor sections so the gérant sees it first", () => {
+      // The banner is meant as a top-of-page signal. We pin its position
+      // relative to the Coordonnées section card.
+      const tree = serialize(ParametresView(ADDRESS_MISSING_ALL));
+      const all = flatten(tree);
+      const bannerIdx = all.findIndex(
+        (n) =>
+          n !== null &&
+          !("text" in n) &&
+          (n.props as { "data-slot"?: string })["data-slot"] ===
+            "parametres-address-missing-banner",
+      );
+      const coordonneesIdx = all.findIndex(
+        (n) =>
+          n !== null &&
+          !("text" in n) &&
+          (n.props as { "data-slot"?: string })["data-slot"] ===
+            "parametres-section-coordonnees",
+      );
+      expect(bannerIdx).toBeGreaterThanOrEqual(0);
+      expect(coordonneesIdx).toBeGreaterThan(bannerIdx);
+    });
   });
 });
