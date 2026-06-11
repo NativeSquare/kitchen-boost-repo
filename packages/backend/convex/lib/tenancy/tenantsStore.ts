@@ -48,6 +48,20 @@ export type NewTenant = {
  */
 export type TenantSettingsPatch = {
   address?: string;
+  // Address-first slice 1 (2026-06-11) — the structured siblings of the
+  // display `address`. The wizard step 4 / Paramètres editor patches the
+  // 4-tuple together (cf. `isValidAddressPayload` in `lib/admin`), so when
+  // any of these are present the mutation guarantees all four are present.
+  // The store stays dumb: it shallow-merges each field present in the patch
+  // via `ctx.db.patch`, the all-or-nothing rule lives upstream.
+  addressLat?: number;
+  addressLng?: number;
+  addressComponents?: {
+    streetAddress: string;
+    city: string;
+    zipCode: string;
+    country: string;
+  };
   phone?: string;
   acceptedModes?: { delivery: boolean; clickAndCollect: boolean };
   branding?: { logoUrl?: string; primaryColor?: string };
@@ -173,6 +187,14 @@ export async function updateTenantSettings(
   // so a partial patch never erases a field it didn't mention.
   const next: {
     address?: string;
+    addressLat?: number;
+    addressLng?: number;
+    addressComponents?: {
+      streetAddress: string;
+      city: string;
+      zipCode: string;
+      country: string;
+    };
     phone?: string;
     acceptedModes?: { delivery: boolean; clickAndCollect: boolean };
     branding?: { logoUrl?: string; primaryColor?: string };
@@ -180,6 +202,13 @@ export async function updateTenantSettings(
   } = {};
 
   if (patch.address !== undefined) next.address = patch.address;
+  // Address-first slice 1 (2026-06-11) — shallow merge each sibling. The
+  // upstream mutation enforces the 4-tuple all-or-nothing rule, so once any of
+  // these is present they all are.
+  if (patch.addressLat !== undefined) next.addressLat = patch.addressLat;
+  if (patch.addressLng !== undefined) next.addressLng = patch.addressLng;
+  if (patch.addressComponents !== undefined)
+    next.addressComponents = patch.addressComponents;
   if (patch.phone !== undefined) next.phone = patch.phone;
   if (patch.acceptedModes !== undefined)
     next.acceptedModes = patch.acceptedModes;

@@ -4,20 +4,98 @@ import { action, internalQuery } from "../../_generated/server";
 import { getTenantById } from "../tenancy/tenantsStore";
 
 /**
- * Server-only read of the tenant's PICKUP address — consumed by `requestQuote`
- * to fill the Uber Direct `pickup_address` field. Server-to-server only (no
- * client API exposure) so a customer cannot probe `tenants.address` via the
- * Convex client directly; the address still leaves the backend wrapped in the
- * Uber request, which is the legitimate use.
+ * Server-only read of the tenant's PICKUP info — consumed by `requestQuote` to
+ * fill the Uber Direct `pickup_*` fields. Server-to-server only (no client API
+ * exposure) so a customer cannot probe `tenants.address` via the Convex client
+ * directly; the address still leaves the backend wrapped in the Uber request,
+ * which is the legitimate use.
+ *
+ * Address-first slice 1 (2026-06-11) — extended to return the full structured
+ * payload (display string + lat/lng + 4-component object) + the optional
+ * pickup `phone`. All fields are OPTIONAL: a legacy tenant created pre-slice 1
+ * carries only `address` and the action falls back to the raw display string.
  */
+const pickupReturn = v.union(
+  v.null(),
+  v.object({
+    address: v.string(),
+    addressLat: v.optional(v.number()),
+    addressLng: v.optional(v.number()),
+    addressComponents: v.optional(
+      v.object({
+        streetAddress: v.string(),
+        city: v.string(),
+        zipCode: v.string(),
+        country: v.string(),
+      }),
+    ),
+    phone: v.optional(v.string()),
+  }),
+);
+
+export type TenantPickupInfo = {
+  address: string;
+  addressLat?: number;
+  addressLng?: number;
+  addressComponents?: {
+    streetAddress: string;
+    city: string;
+    zipCode: string;
+    country: string;
+  };
+  phone?: string;
+};
+
 export const _readTenantPickupAddressSystem = internalQuery({
   args: { tenantId: v.id("tenants") },
-  returns: v.union(v.string(), v.null()),
-  handler: async (ctx, args): Promise<string | null> => {
+  returns: pickupReturn,
+  handler: async (ctx, args): Promise<TenantPickupInfo | null> => {
     const tenant = await getTenantById(ctx, args.tenantId);
-    return tenant?.address ?? null;
+    if (tenant?.address === undefined) return null;
+    return {
+      address: tenant.address,
+      addressLat: tenant.addressLat,
+      addressLng: tenant.addressLng,
+      addressComponents: tenant.addressComponents,
+      phone: tenant.phone,
+    };
   },
 });
+
+/**
+ * Address-first slice 1 (2026-06-11) — build the Uber-recommended structured
+ * `pickup_address` JSON shape from the `addressComponents` 4-tuple. Uber's
+ * Direct OpenAPI accepts a JSON-encoded STRING with this exact shape:
+ *
+ *   { "street_address": ["..."], "city": "...", "state": "",
+ *     "zip_code": "...", "country": "FR" }
+ *
+ * Using this shape (vs the raw display string) lets Uber's geocoder converge
+ * faster and avoids the 400 `invalid_params` failure surfaced on the first PWA
+ * E2E run. `state` is forced to `""` (FR has no state notion); `country` is
+ * verbatim from the components (validated to `"FR"` upstream, slice 1
+ * `isValidAddressPayload`).
+ */
+export function uberPickupFromComponents(components: {
+  streetAddress: string;
+  city: string;
+  zipCode: string;
+  country: string;
+}): {
+  street_address: string[];
+  city: string;
+  state: string;
+  zip_code: string;
+  country: string;
+} {
+  return {
+    street_address: [components.streetAddress],
+    city: components.city,
+    state: "",
+    zip_code: components.zipCode,
+    country: components.country,
+  };
+}
 
 /**
  * 2.6-B — `requestQuote(tenantId, address)`: the address-first Uber Direct
@@ -174,11 +252,11 @@ export const requestQuote = action({
     // Paramètres tenant). A tenant created without an address would never get a
     // quote — surface a clear ConvexError instead of forwarding a malformed
     // request to Uber.
-    const pickupAddress = await ctx.runQuery(
+    const pickup = await ctx.runQuery(
       internal.lib.uberDirect.quote._readTenantPickupAddressSystem,
       { tenantId: args.tenantId },
     );
-    if (pickupAddress === null) {
+    if (pickup === null) {
       throw new ConvexError({
         code: "TENANT_PICKUP_MISSING",
         message:
@@ -187,6 +265,33 @@ export const requestQuote = action({
     }
 
     const token = await fetchUberToken(creds.clientId, creds.clientSecret);
+
+    // Address-first slice 1 (2026-06-11) — build the Uber pickup payload from
+    // the FULL structured 4-tuple when available, falling back to the raw
+    // display string for legacy tenants (only `tenants.address` set, no
+    // lat/lng/components). The structured shape is JSON-encoded as a STRING
+    // (Uber Direct's documented contract for `pickup_address`); lat/lng go on
+    // their own top-level fields; the pickup phone is included so the courier
+    // can call the resto.
+    const quoteBody: Record<string, unknown> = {
+      dropoff_address: args.address,
+    };
+    if (pickup.addressComponents !== undefined) {
+      quoteBody.pickup_address = JSON.stringify(
+        uberPickupFromComponents(pickup.addressComponents),
+      );
+    } else {
+      quoteBody.pickup_address = pickup.address;
+    }
+    if (pickup.addressLat !== undefined) {
+      quoteBody.pickup_latitude = pickup.addressLat;
+    }
+    if (pickup.addressLng !== undefined) {
+      quoteBody.pickup_longitude = pickup.addressLng;
+    }
+    if (pickup.phone !== undefined) {
+      quoteBody.pickup_phone_number = pickup.phone;
+    }
 
     // Quote on the tenant's OWN Uber sub-account (customer_id), Bearer token. The
     // secret is never placed on the URL.
@@ -198,10 +303,7 @@ export const requestQuote = action({
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          pickup_address: pickupAddress,
-          dropoff_address: args.address,
-        }),
+        body: JSON.stringify(quoteBody),
       },
     );
     const json = (await res.json()) as Record<string, unknown>;
