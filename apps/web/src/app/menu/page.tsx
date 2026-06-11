@@ -100,7 +100,7 @@ export default async function MenuPage({
   return (
     <main className="min-h-screen bg-white">
       <CartProvider>
-        <DeliveryModeProvider>
+        <DeliveryModeProvider tenantId={tenantId}>
           <MenuView
             tenantId={tenantId}
             tenantName={tenant?.name ?? "Menu"}

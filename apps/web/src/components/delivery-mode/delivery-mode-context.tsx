@@ -35,6 +35,7 @@
  */
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -42,10 +43,12 @@ import {
   type Dispatch,
   type ReactNode,
 } from "react";
+import type { Id } from "@packages/backend/convex/_generated/dataModel";
 import type { DeliveryQuoteVerdict } from "@/lib/address-first";
 import {
   decideInitialMode,
   decodeVerdict,
+  encodeVerdict,
   VERDICT_STORAGE_KEY,
   type DeliveryMode,
   type InitialModeDecision,
@@ -62,6 +65,19 @@ type DeliveryModeContextValue = {
   deliveryDisabled: boolean;
   /** True iff the « Retrait » button should render disabled. */
   pickupDisabled: boolean;
+  /**
+   * The resto id, threaded through so the `<DeliveryAddressSheet>` (opened from
+   * the toggle on a null verdict) can run the address→quote chain. `undefined`
+   * in the degraded state (cookie missing) — the toggle then keeps the inert
+   * disabled button rather than opening a sheet it cannot drive.
+   */
+  tenantId: Id<"tenants"> | undefined;
+  /**
+   * Adopt a fresh verdict at runtime (the address sheet pushes the new verdict
+   * in after a successful re-quote) — re-derives the toggle enablement + default
+   * mode and persists the verdict to localStorage, all WITHOUT a page reload.
+   */
+  adoptVerdict: (verdict: DeliveryQuoteVerdict) => void;
 };
 
 const DeliveryModeCtx = createContext<DeliveryModeContextValue | null>(null);
@@ -76,38 +92,56 @@ function safeReadVerdict(): DeliveryQuoteVerdict | null {
   }
 }
 
-/** Internal state shape consumed by the reducer. */
-type State = {
+/** Internal state shape consumed by the reducer. Exported for the reducer test. */
+export type DeliveryModeState = {
   verdict: DeliveryQuoteVerdict | null;
   decision: InitialModeDecision;
   mode: DeliveryMode;
 };
 
-/** Reducer actions — narrow on purpose (rehydration + user toggle only). */
-type Action =
+/**
+ * Reducer actions.
+ *  - `REHYDRATE`     — one-shot localStorage read on mount.
+ *  - `SET_MODE`      — user toggle (instant, no re-quote).
+ *  - `ADOPT_VERDICT` — a NEW verdict obtained at runtime (the address sheet
+ *    after a successful re-quote). Same transition as REHYDRATE but semantically
+ *    distinct: it's a live adoption, not a page-load rehydration.
+ */
+export type DeliveryModeAction =
   | { kind: "REHYDRATE"; verdict: DeliveryQuoteVerdict }
-  | { kind: "SET_MODE"; mode: DeliveryMode };
+  | { kind: "SET_MODE"; mode: DeliveryMode }
+  | { kind: "ADOPT_VERDICT"; verdict: DeliveryQuoteVerdict };
 
 /** SSR-safe default — used at first paint until `useEffect` rehydrates. */
 const INITIAL_DECISION_NO_VERDICT = decideInitialMode(null);
-const INITIAL_STATE: State = {
+export const INITIAL_STATE: DeliveryModeState = {
   verdict: null,
   decision: INITIAL_DECISION_NO_VERDICT,
   mode: INITIAL_DECISION_NO_VERDICT.initialMode,
 };
 
-function reducer(state: State, action: Action): State {
+/** Re-derive state from a verdict — shared by REHYDRATE + ADOPT_VERDICT. */
+function stateFromVerdict(verdict: DeliveryQuoteVerdict): DeliveryModeState {
+  const decision = decideInitialMode(verdict);
+  return {
+    verdict,
+    decision,
+    // Pick the verdict-implied default mode — for a freshly-adopted deliverable
+    // verdict this flips `mode` to "delivery" so Livraison becomes selected, no
+    // reload (the whole point of ADOPT_VERDICT from the sheet).
+    mode: decision.initialMode,
+  };
+}
+
+export function deliveryModeReducer(
+  state: DeliveryModeState,
+  action: DeliveryModeAction,
+): DeliveryModeState {
   switch (action.kind) {
-    case "REHYDRATE": {
-      const decision = decideInitialMode(action.verdict);
-      return {
-        verdict: action.verdict,
-        decision,
-        // Pick the verdict-implied default mode at rehydration time —
-        // the user has not interacted with the toggle yet.
-        mode: decision.initialMode,
-      };
-    }
+    case "REHYDRATE":
+      return stateFromVerdict(action.verdict);
+    case "ADOPT_VERDICT":
+      return stateFromVerdict(action.verdict);
     case "SET_MODE":
       return { ...state, mode: action.mode };
     default: {
@@ -123,10 +157,17 @@ function reducer(state: State, action: Action): State {
 
 export function DeliveryModeProvider({
   children,
+  tenantId,
 }: {
   children: ReactNode;
+  /**
+   * Resto id — threaded down so the `<DeliveryAddressSheet>` opened from the
+   * toggle can run the address→quote chain. `undefined` in the degraded state
+   * (cookie missing); the toggle then keeps the inert disabled button.
+   */
+  tenantId?: Id<"tenants">;
 }): React.JSX.Element {
-  const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
+  const [state, dispatch] = useReducer(deliveryModeReducer, INITIAL_STATE);
 
   // Rehydrate the verdict once on mount (idem `<CartProvider>` localStorage
   // rehydration). Same pattern: `dispatch(...)` is one state transition,
@@ -140,6 +181,25 @@ export function DeliveryModeProvider({
   const setMode: Dispatch<DeliveryMode> = (mode) =>
     dispatch({ kind: "SET_MODE", mode });
 
+  // Adopt a fresh verdict pushed by the address sheet: persist it to
+  // localStorage (so a reload keeps it + cross-route consistency, same key the
+  // address-first chain writes) THEN dispatch so the toggle flips without a
+  // reload. Persist-then-dispatch mirrors the S3 chain's own ordering.
+  const adoptVerdict = useCallback((verdict: DeliveryQuoteVerdict): void => {
+    try {
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(
+          VERDICT_STORAGE_KEY,
+          encodeVerdict(verdict),
+        );
+      }
+    } catch {
+      // Quota / privacy mode — non-fatal; the in-memory dispatch below still
+      // flips the toggle for this session.
+    }
+    dispatch({ kind: "ADOPT_VERDICT", verdict });
+  }, []);
+
   const value = useMemo<DeliveryModeContextValue>(
     () => ({
       verdict: state.verdict,
@@ -147,8 +207,10 @@ export function DeliveryModeProvider({
       setMode,
       deliveryDisabled: state.decision.deliveryDisabled,
       pickupDisabled: state.decision.pickupDisabled,
+      tenantId,
+      adoptVerdict,
     }),
-    [state],
+    [state, tenantId, adoptVerdict],
   );
 
   return (

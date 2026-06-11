@@ -35,7 +35,7 @@ export function PanierBody({
 }: PanierBodyProps): React.JSX.Element {
   return (
     <CartProvider>
-      <DeliveryModeProvider>
+      <DeliveryModeProvider tenantId={tenantId}>
         <div className="mx-auto flex max-w-2xl flex-col gap-6 px-4 pb-32 pt-8 md:px-8">
           {/* PWA-S9a (#460) — palier 2 of the 3-paliers Wallet install moat
               (decisions-log Q5, US 28). Same component as on /menu — the
