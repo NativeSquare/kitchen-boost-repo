@@ -35,6 +35,7 @@
  */
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -44,12 +45,12 @@ import {
 } from "react";
 import type { DeliveryQuoteVerdict } from "@/lib/address-first";
 import {
-  decideInitialMode,
   decodeVerdict,
+  encodeVerdict,
   VERDICT_STORAGE_KEY,
   type DeliveryMode,
-  type InitialModeDecision,
 } from "@/lib/delivery-mode";
+import { INITIAL_STATE, reducer } from "./delivery-mode-reducer";
 
 type DeliveryModeContextValue = {
   /** The cached verdict from S3, `null` if no S3 happened yet on this device. */
@@ -62,6 +63,14 @@ type DeliveryModeContextValue = {
   deliveryDisabled: boolean;
   /** True iff the « Retrait » button should render disabled. */
   pickupDisabled: boolean;
+  /**
+   * FEATURE B — adopt a FRESH verdict from the reusable address sheet (when the
+   * customer re-enters a deliverable address on a disabled-Livraison tap):
+   * recompute enablement, select Livraison, and persist the verdict to
+   * localStorage so a later navigation rehydrates the same enabled state. No
+   * page reload.
+   */
+  adoptVerdict: (verdict: DeliveryQuoteVerdict) => void;
 };
 
 const DeliveryModeCtx = createContext<DeliveryModeContextValue | null>(null);
@@ -76,48 +85,13 @@ function safeReadVerdict(): DeliveryQuoteVerdict | null {
   }
 }
 
-/** Internal state shape consumed by the reducer. */
-type State = {
-  verdict: DeliveryQuoteVerdict | null;
-  decision: InitialModeDecision;
-  mode: DeliveryMode;
-};
-
-/** Reducer actions — narrow on purpose (rehydration + user toggle only). */
-type Action =
-  | { kind: "REHYDRATE"; verdict: DeliveryQuoteVerdict }
-  | { kind: "SET_MODE"; mode: DeliveryMode };
-
-/** SSR-safe default — used at first paint until `useEffect` rehydrates. */
-const INITIAL_DECISION_NO_VERDICT = decideInitialMode(null);
-const INITIAL_STATE: State = {
-  verdict: null,
-  decision: INITIAL_DECISION_NO_VERDICT,
-  mode: INITIAL_DECISION_NO_VERDICT.initialMode,
-};
-
-function reducer(state: State, action: Action): State {
-  switch (action.kind) {
-    case "REHYDRATE": {
-      const decision = decideInitialMode(action.verdict);
-      return {
-        verdict: action.verdict,
-        decision,
-        // Pick the verdict-implied default mode at rehydration time —
-        // the user has not interacted with the toggle yet.
-        mode: decision.initialMode,
-      };
-    }
-    case "SET_MODE":
-      return { ...state, mode: action.mode };
-    default: {
-      const _exhaustive: never = action;
-      throw new Error(
-        `Unhandled delivery-mode action: ${String(
-          (_exhaustive as { kind: string }).kind,
-        )}`,
-      );
-    }
+/** Best-effort persist — mirrors the write `<AddressFirstForm>` does at S3. */
+function safeWriteVerdict(verdict: DeliveryQuoteVerdict): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(VERDICT_STORAGE_KEY, encodeVerdict(verdict));
+  } catch {
+    // Quota / privacy mode — non-fatal; the in-memory state still updates.
   }
 }
 
@@ -140,6 +114,13 @@ export function DeliveryModeProvider({
   const setMode: Dispatch<DeliveryMode> = (mode) =>
     dispatch({ kind: "SET_MODE", mode });
 
+  const adoptVerdict = useCallback((verdict: DeliveryQuoteVerdict) => {
+    // Persist BEFORE/AND dispatch so a navigation right after adoption sees the
+    // enabled state on rehydrate.
+    safeWriteVerdict(verdict);
+    dispatch({ kind: "ADOPT_VERDICT", verdict });
+  }, []);
+
   const value = useMemo<DeliveryModeContextValue>(
     () => ({
       verdict: state.verdict,
@@ -147,8 +128,9 @@ export function DeliveryModeProvider({
       setMode,
       deliveryDisabled: state.decision.deliveryDisabled,
       pickupDisabled: state.decision.pickupDisabled,
+      adoptVerdict,
     }),
-    [state],
+    [state, adoptVerdict],
   );
 
   return (
