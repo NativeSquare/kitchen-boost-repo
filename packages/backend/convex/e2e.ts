@@ -4302,12 +4302,18 @@ export const seedE2EToggleItemAvailabilityT1 = internalMutation({
 });
 
 export const seedE2EServiceHoursT1 = internalMutation({
-  args: {},
+  args: {
+    // `open` (défaut) = 7j/7 toujours ouvert ; `closed` = aucune fenêtre →
+    // `isOpenNow` retourne false quelle que soit l'heure du test (scénario E2E
+    // A.3 « hors_horaire »). Repasser `open` restaure l'état nominal après.
+    mode: v.optional(v.union(v.literal("open"), v.literal("closed"))),
+  },
   returns: v.object({
     tenantId: v.id("tenants"),
     windowsCount: v.number(),
   }),
-  handler: async (ctx) => {
+  handler: async (ctx, args) => {
+    const mode = args.mode ?? "open";
     const tenant = await ctx.db
       .query("tenants")
       .withIndex("by_slug", (q) => q.eq("slug", E2E_M_TENANT_SLUG))
@@ -4318,15 +4324,19 @@ export const seedE2EServiceHoursT1 = internalMutation({
       });
     }
     const tenantId = tenant._id;
-    // 7 jours, 00:00 → 23:59 = « toujours ouvert » (1 minute morte/jour
+    // `open` : 7 jours, 00:00 → 23:59 = « toujours ouvert » (1 minute morte/jour
     // négligeable). Volontairement large pour qu'`isOpenNow` retourne true
     // à n'importe quelle heure du test E2E (le V1 interdit le cross-midnight,
     // donc 0 → 1440 n'est pas valide ; 1439 est le maximum sûr).
-    const windows = [0, 1, 2, 3, 4, 5, 6].map((d) => ({
-      dayOfWeek: d,
-      startMinute: 0,
-      endMinute: 1439,
-    }));
+    // `closed` : aucune fenêtre → toujours fermé, indépendant de l'heure (A.3).
+    const windows =
+      mode === "closed"
+        ? []
+        : [0, 1, 2, 3, 4, 5, 6].map((d) => ({
+            dayOfWeek: d,
+            startMinute: 0,
+            endMinute: 1439,
+          }));
     // Wipe existing row(s) puis upsert (la table est modélisée « one row per
     // tenant », on évite tout résidu en cas de seed antérieur cassé).
     const existing = await ctx.db
