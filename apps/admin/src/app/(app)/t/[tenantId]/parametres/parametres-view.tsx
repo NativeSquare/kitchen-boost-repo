@@ -195,10 +195,24 @@ export function ParametresView({
   onSavePrinterConfig,
   onClearPrinterConfig,
 }: ParametresViewProps): React.ReactElement {
+  // Address-first slice 3 (2026-06-11) — top banner mirror of the backend
+  // `ACTIVATION_BLOCKED_NO_ADDRESS` gate. Shows ONLY when the coordonnees
+  // query has resolved AND any of the 4-tuple slots is missing. A legacy
+  // tenant (`address` set but lat/lng/components missing) AND a fresh tenant
+  // (everything missing) both surface the same banner. The page stays fully
+  // editable (no hard block) — the banner is a strong VISUAL signal so the
+  // gérant clicks straight to the CoordonneesEditor card.
+  const addressIncomplete =
+    coordonnees !== undefined &&
+    (coordonnees.address === undefined ||
+      coordonnees.addressLat === undefined ||
+      coordonnees.addressLng === undefined ||
+      coordonnees.addressComponents === undefined);
   return (
     <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
       <ParametresHeader />
       <div className="flex flex-col gap-4 px-4 md:gap-6 lg:px-6">
+        {addressIncomplete ? <AddressMissingBanner /> : null}
         {/*
          * `key` on each editor — fix 2026-06-01 (P1/P2/P3/P4 spot-check).
          *
@@ -314,6 +328,40 @@ function ParametresHeader() {
 }
 
 /**
+ * Address-first slice 3 (2026-06-11) — top banner that fires when the tenant
+ * misses the FULL 4-tuple address payload (`address` + `addressLat` +
+ * `addressLng` + `addressComponents`). The banner is a strong visual signal
+ * with the SAME wording as the backend `ACTIVATION_BLOCKED_NO_ADDRESS`
+ * ConvexError + the wizard step 8 récap card, so the gérant sees a coherent
+ * message across surfaces.
+ *
+ * The page is NOT hard-blocked — the gérant can still edit the other
+ * sections. The banner steers them to the CoordonneesEditor card below
+ * (which already mounts the Google Places autocomplete from slice 2).
+ *
+ * Stable handle: `data-slot="parametres-address-missing-banner"`.
+ */
+function AddressMissingBanner() {
+  return (
+    <a
+      href="#parametres-section-coordonnees"
+      data-slot="parametres-address-missing-banner"
+      role="alert"
+      className="block rounded-md border border-destructive bg-red-50 p-4 text-sm text-destructive transition hover:bg-red-100 dark:bg-red-950 dark:hover:bg-red-900"
+    >
+      <p className="font-medium">
+        ⚠️ Adresse du restaurant non configurée — risque de service interrompu
+        sur la livraison.
+      </p>
+      <p className="mt-1">
+        Configurez l&apos;adresse via la section <strong>Coordonnées</strong>{" "}
+        ci-dessous (recherche Google Places requise pour Uber Direct).
+      </p>
+    </a>
+  );
+}
+
+/**
  * Internal section primitive — keeps the 4 section cards visually consistent
  * AND makes the "this is a slice-1 placeholder" intent obvious. The
  * `data-slot` marker is the stable handle for tests and downstream surfaces;
@@ -396,7 +444,13 @@ function SectionCoordonnees({
   onSave: (patch: CoordonneesPatch) => Promise<void>;
 }) {
   return (
-    <Card data-slot="parametres-section-coordonnees">
+    <Card
+      data-slot="parametres-section-coordonnees"
+      // Address-first slice 3 (2026-06-11) — anchor target for the top
+      // banner's `href="#parametres-section-coordonnees"` so clicking the
+      // banner scrolls / focuses this section.
+      id="parametres-section-coordonnees"
+    >
       <CardHeader>
         <CardTitle>Coordonnées</CardTitle>
         <CardDescription>Adresse et téléphone du restaurant.</CardDescription>

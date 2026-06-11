@@ -284,6 +284,25 @@ export const getSettings = tenantQuery({ allow: ["kb_manager"] })({
       }),
     ),
     address: v.union(v.null(), v.string()),
+    // Address-first slice 3 (2026-06-11) — expose the 3 structured siblings
+    // alongside the display string so the Paramètres page can detect a
+    // legacy / partial tenant and surface the « Adresse incomplète » banner.
+    // Each `null` mirrors « not yet set » (a legacy pre-slice-1 row has
+    // `address` set but lat/lng/components `null`). The slice-2 editor
+    // already persists the full 4-tuple together via
+    // `tenant.updateSettings` (which throws `INVALID_ADDRESS_PAYLOAD` on a
+    // half-patch), so the 4 slots are consistent post-save.
+    addressLat: v.union(v.null(), v.number()),
+    addressLng: v.union(v.null(), v.number()),
+    addressComponents: v.union(
+      v.null(),
+      v.object({
+        streetAddress: v.string(),
+        city: v.string(),
+        zipCode: v.string(),
+        country: v.string(),
+      }),
+    ),
     phone: v.union(v.null(), v.string()),
     acceptedModes: v.union(
       v.null(),
@@ -299,6 +318,14 @@ export const getSettings = tenantQuery({ allow: ["kb_manager"] })({
   ): Promise<{
     branding: { logoUrl?: string; primaryColor?: string } | null;
     address: string | null;
+    addressLat: number | null;
+    addressLng: number | null;
+    addressComponents: {
+      streetAddress: string;
+      city: string;
+      zipCode: string;
+      country: string;
+    } | null;
     phone: string | null;
     acceptedModes: { delivery: boolean; clickAndCollect: boolean } | null;
     customDomain: string | null;
@@ -313,6 +340,9 @@ export const getSettings = tenantQuery({ allow: ["kb_manager"] })({
     return {
       branding: tenant.branding ?? null,
       address: tenant.address ?? null,
+      addressLat: tenant.addressLat ?? null,
+      addressLng: tenant.addressLng ?? null,
+      addressComponents: tenant.addressComponents ?? null,
       phone: tenant.phone ?? null,
       acceptedModes: tenant.acceptedModes ?? null,
       customDomain: tenant.customDomain ?? null,
@@ -472,6 +502,11 @@ export const updateSettings = tenantMutation({ allow: ["kb_manager"] })({
  * Error codes the frontend can branch on:
  *  - `FORBIDDEN` / `UNAUTHENTICATED` (from the wrapper)
  *  - `NOT_FOUND` (tenant id syntactically valid but no row)
+ *  - `ACTIVATION_BLOCKED_NO_ADDRESS` (address-first slice 3) — the tenant is
+ *    missing the FULL 4-tuple `address` + `addressLat` + `addressLng` +
+ *    `addressComponents`. Runs BEFORE the lifecycle gate so the operator
+ *    sees the actionable error first (fix the address via wizard step 4 or
+ *    the Paramètres editor, retry).
  *  - `INVALID_STATE` (source status is not `pending`)
  *
  * Convex registers this by module PATH, so callers invoke
@@ -494,7 +529,35 @@ export const activate = kbAdminMutation({
       });
     }
 
-    // 2. Defer to the pure state machine — only `pending → active` legal V1.
+    // 2. Address-first slice 3 (2026-06-11) — REQUIRE the FULL 4-tuple address
+    //    payload BEFORE the lifecycle gate. A tenant can NOT be activated
+    //    without a Places-validated address (display string + lat/lng + 4
+    //    structured components), because:
+    //      - the PWA delivery quote chain (`lib/uberDirect/quote.ts`) refuses
+    //        every order with `pickup_address` missing the structured body
+    //        (slice 1 fix, PR #484);
+    //      - Stripe / branding / menu / QR / manager checks BELOW only matter
+    //        once the resto is reachable end-to-end. An unreachable resto must
+    //        not flip to `active`.
+    //    Runs BEFORE `assertLegalTenantTransition` so the operator sees the
+    //    actionable error first (fix the address, retry; the transition error
+    //    only ever surfaces once the address is fixed). The `INVALID_STATE`
+    //    branch downstream still owns the V1 non-idempotence path (active →
+    //    active on a complete-address tenant).
+    if (
+      current.address === undefined ||
+      current.address.trim() === "" ||
+      current.addressLat === undefined ||
+      current.addressLng === undefined ||
+      current.addressComponents === undefined
+    ) {
+      throw new ConvexError({
+        code: "ACTIVATION_BLOCKED_NO_ADDRESS",
+        message: "Adresse du restaurant requise pour l'activation.",
+      });
+    }
+
+    // 3. Defer to the pure state machine — only `pending → active` legal V1.
     //    Any other source status (`active`, `suspended`, `disabled`) is
     //    rejected with INVALID_STATE; covers both the illegal-source case
     //    AND the V1 non-idempotence (active → active is illegal).

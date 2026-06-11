@@ -69,6 +69,18 @@ export type Step8Recap = {
     name: string;
     slug: string;
     address: string | undefined;
+    /**
+     * Address-first slice 3 (2026-06-11) — `true` iff the tenant has the FULL
+     * 4-tuple `address` + `addressLat` + `addressLng` + `addressComponents`
+     * persisted. Derived by the wrapper from the tenant query. Mirrors the
+     * backend `ACTIVATION_BLOCKED_NO_ADDRESS` gate inside `tenant.activate`
+     * so the operator sees the missing-address state BEFORE they click
+     * « Mettre en production » (instead of through a backend round-trip
+     * error). Drives the « Adresse » récap card (data-slot
+     * `wizard-step8-recap-address`) AND disables the « Mettre en
+     * production » CTA when false (independent of the menu gate).
+     */
+    addressConfigured: boolean;
     phone: string | undefined;
     emailManager: string | undefined;
   };
@@ -153,6 +165,15 @@ export type Step8ActivationFormProps = Omit<StepFormProps, "onNext"> & {
    */
   onBackToMenuStep: () => void;
   /**
+   * Address-first slice 3 (2026-06-11) — navigation back to step 4
+   * (« Coordonnées / Branding ») when the address recap card surfaces the
+   * missing-address state. Owned by the wrapper, wired to
+   * `onStepChange?.(4)`. When the gérant clicks the « Aller au step 4 »
+   * CTA on the récap card the wizard jumps to the step that lets them
+   * select a Google Places suggestion (slice 2 frontend).
+   */
+  onGoToAddressStep: () => void;
+  /**
    * TEST-ONLY override: lets the test suite drive the slug-typing gate via
    * a public prop (the form's internal `useState` is unobservable under the
    * lean React hooks shim). When `undefined` (production), the form uses
@@ -199,8 +220,15 @@ export function Step8ActivationForm({
   activateError,
   onPrev,
   onBackToMenuStep,
+  onGoToAddressStep,
   confirmTypedSlug,
 }: Step8ActivationFormProps): React.JSX.Element {
+  // Address-first slice 3 (2026-06-11) — frontend mirror of the backend gate
+  // `ACTIVATION_BLOCKED_NO_ADDRESS`. Disables « Mettre en production » when
+  // the address is missing (independent of `menuPublished`), so the operator
+  // never sends a request the backend will refuse.
+  const addressConfigured = recap.compteResto.addressConfigured;
+  const activationBlocked = !menuPublished || !addressConfigured;
   // Dialog open state — local to the form. Clicking « Mettre en production »
   // opens it; the dialog's « Annuler » or confirm path close it.
   const [dialogOpen, setDialogOpen] = useState<boolean>(false);
@@ -212,7 +240,7 @@ export function Step8ActivationForm({
   const slugMatches = effectiveTyped === slug && slug.length > 0;
 
   const handleOpenDialog = () => {
-    if (!menuPublished) return;
+    if (activationBlocked) return;
     setDialogOpen(true);
   };
 
@@ -298,6 +326,65 @@ export function Step8ActivationForm({
               <span className="text-muted-foreground">Statut :</span>{" "}
               {recap.stripe.status ?? "non renseigné"}
             </p>
+          </CardContent>
+        </Card>
+
+        {/*
+         * Address-first slice 3 (2026-06-11) — Adresse récap card.
+         * Surfaces the FULL 4-tuple state (configured / non configurée) the
+         * backend `tenant.activate` gates on with
+         * `ACTIVATION_BLOCKED_NO_ADDRESS`. Placed alongside Branding so the
+         * operator scans the « 7th block » without scrolling. When the
+         * address is missing, surfaces an « Aller au step 4 » CTA wired
+         * to `onGoToAddressStep` (the wizard wrapper jumps to step 4 where
+         * the Google Places editor lives — slice 2 frontend).
+         */}
+        <Card data-slot="wizard-step8-recap-address">
+          <CardHeader>
+            <CardTitle>Adresse</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-2 text-sm">
+            {addressConfigured ? (
+              <>
+                <p
+                  className="text-emerald-700 dark:text-emerald-300"
+                  data-slot="wizard-step8-address-ok"
+                >
+                  ✅ Adresse du restaurant configurée.
+                </p>
+                <p>
+                  <span className="text-muted-foreground">Adresse :</span>{" "}
+                  {recap.compteResto.address ?? "—"}
+                </p>
+              </>
+            ) : (
+              <>
+                <p
+                  className="font-medium text-destructive"
+                  data-slot="wizard-step8-address-missing"
+                  role="alert"
+                >
+                  ❌ Adresse du restaurant non configurée — requise pour
+                  l&apos;activation.
+                </p>
+                <p className="text-muted-foreground">
+                  Une adresse Places (avec coordonnées GPS) est obligatoire pour
+                  que la livraison Uber Direct fonctionne. Configurez-la via le
+                  step 4 du wizard.
+                </p>
+                <div className="pt-1">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={onGoToAddressStep}
+                    data-slot="wizard-step8-go-to-address-step-button"
+                  >
+                    Aller au step 4 — configurer l&apos;adresse
+                  </Button>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -422,7 +509,7 @@ export function Step8ActivationForm({
         <Button
           type="button"
           onClick={handleOpenDialog}
-          disabled={!menuPublished}
+          disabled={activationBlocked}
           className="min-w-64 bg-emerald-700 text-white hover:bg-emerald-800"
           size="lg"
           data-slot="wizard-step8-mep-button"

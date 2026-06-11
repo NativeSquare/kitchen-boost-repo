@@ -230,6 +230,10 @@ function defaultProps(
         name: "Le Resto",
         slug: "le-resto",
         address: "12 rue de Paris, 75001 Paris",
+        // Address-first slice 3 (2026-06-11) — checklist flag derived by the
+        // wrapper from `tenantDoc.address && addressLat && addressLng &&
+        // addressComponents`. Default fixture has the FULL 4-tuple ⇒ true.
+        addressConfigured: true,
         phone: "+33 1 23 45 67 89",
         emailManager: "gerant@le-resto.fr",
       },
@@ -261,6 +265,10 @@ function defaultProps(
     activateError: null,
     onPrev: vi.fn(),
     onBackToMenuStep: vi.fn(),
+    // Address-first slice 3 (2026-06-11) — the new « Aller au step 4 »
+    // CTA inside the address-missing branch is wired by the wrapper to
+    // `onStepChange(4)`. Default fixture stubs it.
+    onGoToAddressStep: vi.fn(),
     ...overrides,
   };
 }
@@ -499,5 +507,114 @@ describe("Step8ActivationForm — F-WIZARD [10/10] (#274)", () => {
     expect(code).not.toMatch(/useAction/);
     expect(code).not.toMatch(/useQuery/);
     expect(code).not.toMatch(/convex\/react/);
+  });
+
+  // ── Address-first slice 3 (2026-06-11) — activation checklist row ────────
+  //
+  // Mirrors the backend `ACTIVATION_BLOCKED_NO_ADDRESS` gate (slice 3 backend):
+  // the operator sees the address status BEFORE they hit « Mettre en
+  // production », so a missing address surfaces visually first instead of
+  // through a backend round-trip error toast. The check is rendered in a
+  // dedicated card alongside the existing récap blocks, addressed by the
+  // stable data-slot `wizard-step8-recap-address`.
+  describe("address-first slice 3 — adresse récap card", () => {
+    it("renders a card with a stable data-slot `wizard-step8-recap-address`", () => {
+      const tree = serialize(Step8ActivationForm(defaultProps()));
+      expect(findBySlot(tree, "wizard-step8-recap-address")).not.toBeNull();
+    });
+
+    it("when `addressConfigured === true`: shows the address as configured (✅) and the display string", () => {
+      const tree = serialize(Step8ActivationForm(defaultProps()));
+      const card = findBySlot(tree, "wizard-step8-recap-address");
+      const text = allText(card);
+      // The card surfaces an explicit positive state.
+      expect(text).toMatch(/configur[ée]e/i);
+      // AND the display string from the recap is rendered.
+      expect(text).toContain("12 rue de Paris, 75001 Paris");
+      // No « Aller au step 4 » CTA when the address is OK (only the missing
+      // branch surfaces the link).
+      const cta = findButtonByText(
+        card,
+        /aller au step 4|configurer l.adresse/i,
+      );
+      expect(cta).toBeNull();
+    });
+
+    it("when `addressConfigured === false`: shows the address as missing (❌) + an « Aller au step 4 » CTA wired to `onGoToAddressStep`", () => {
+      const onGoToAddressStep = vi.fn();
+      const tree = serialize(
+        Step8ActivationForm(
+          defaultProps({
+            recap: {
+              ...defaultProps().recap,
+              compteResto: {
+                ...defaultProps().recap.compteResto,
+                addressConfigured: false,
+              },
+            },
+            onGoToAddressStep,
+          }),
+        ),
+      );
+      const card = findBySlot(tree, "wizard-step8-recap-address");
+      const text = allText(card);
+      // The card explicitly signals the missing state — wording shared with
+      // the backend ConvexError message so the gérant sees a coherent surface.
+      expect(text).toMatch(/non configur[ée]e|adresse.*requise/i);
+      // « Aller au step 4 » CTA is wired to the navigation callback.
+      const cta = findButtonByText(
+        card,
+        /aller au step 4|configurer l.adresse/i,
+      );
+      expect(cta).not.toBeNull();
+      (cta as { props: { onClick?: () => void } }).props.onClick?.();
+      expect(onGoToAddressStep).toHaveBeenCalledTimes(1);
+    });
+
+    it("when `addressConfigured === false`: « Mettre en production » CTA is DISABLED (mirror of the menuPublished gate)", () => {
+      // Symmetric to the menu-non-publié branch: a frontend gate that
+      // matches the backend `ACTIVATION_BLOCKED_NO_ADDRESS` keeps the
+      // operator from ever sending a doomed request.
+      const tree = serialize(
+        Step8ActivationForm(
+          defaultProps({
+            recap: {
+              ...defaultProps().recap,
+              compteResto: {
+                ...defaultProps().recap.compteResto,
+                addressConfigured: false,
+              },
+            },
+          }),
+        ),
+      );
+      const cta = findButtonByText(tree, /^Mettre en production$/i) as {
+        props: { disabled?: boolean };
+      } | null;
+      expect(cta?.props.disabled).toBe(true);
+    });
+
+    it("when `addressConfigured === false` AND menu is published: the « Mettre en production » is still DISABLED (address gate is independent)", () => {
+      // Pre-existing menuPublished gate stays at `true` (default fixture);
+      // the address gate alone is enough to disable the CTA.
+      const tree = serialize(
+        Step8ActivationForm(
+          defaultProps({
+            menuPublished: true,
+            recap: {
+              ...defaultProps().recap,
+              compteResto: {
+                ...defaultProps().recap.compteResto,
+                addressConfigured: false,
+              },
+            },
+          }),
+        ),
+      );
+      const cta = findButtonByText(tree, /^Mettre en production$/i) as {
+        props: { disabled?: boolean };
+      } | null;
+      expect(cta?.props.disabled).toBe(true);
+    });
   });
 });

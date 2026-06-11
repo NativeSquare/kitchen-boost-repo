@@ -678,21 +678,95 @@ describe("B-TENANT-LIFECYCLE [3/4] tenant.updateSettings — cross-tenant fuzz",
  * Helper — insert a fresh tenant in the requested lifecycle status, returning
  * its id. The fuzz seed creates `active` tenants only; `activate` tests need
  * `pending` / `suspended` / `disabled` source statuses.
+ *
+ * Address-first slice 3 (2026-06-11) — `tenant.activate` now gates on the FULL
+ * 4-tuple address payload (`address` + `addressLat` + `addressLng` +
+ * `addressComponents`). The default seed therefore pre-fills a sane Paris
+ * address so the lifecycle / wrapper-enforcement tests below — which test
+ * lifecycle / role gates, NOT the address gate — keep passing unchanged. The
+ * dedicated address-gate tests below override `opts.address = "none"` /
+ * `"display-only"` / `"missing-lat"` / `"missing-lng"` / `"missing-components"`
+ * to exercise the new rejection branches.
  */
+type AddressSeed =
+  | "complete"
+  | "none"
+  | "display-only"
+  | "missing-lat"
+  | "missing-lng"
+  | "missing-components";
+
 async function insertTenantWithStatus(
   t: ReturnType<typeof convexTest>,
   slug: string,
   status: "pending" | "active" | "suspended" | "disabled",
+  opts: { address?: AddressSeed } = {},
 ) {
-  return t.run((ctx) =>
-    ctx.db.insert("tenants", {
-      slug,
-      name: `Tenant ${slug}`,
-      siret: `siret-${slug}`,
-      status,
-      createdAt: Date.now(),
-    }),
-  );
+  const addressSeed: AddressSeed = opts.address ?? "complete";
+  const base = {
+    slug,
+    name: `Tenant ${slug}`,
+    siret: `siret-${slug}`,
+    status,
+    createdAt: Date.now(),
+  };
+  return t.run((ctx) => {
+    switch (addressSeed) {
+      case "none":
+        return ctx.db.insert("tenants", base);
+      case "display-only":
+        // Legacy pre-slice-1 row: display string only, no structured siblings.
+        return ctx.db.insert("tenants", {
+          ...base,
+          address: "12 rue de Paris, 75001 Paris",
+        });
+      case "missing-lat":
+        return ctx.db.insert("tenants", {
+          ...base,
+          address: "12 rue de Paris, 75001 Paris",
+          addressLng: 2.3522,
+          addressComponents: {
+            streetAddress: "12 rue de Paris",
+            city: "Paris",
+            zipCode: "75001",
+            country: "FR",
+          },
+        });
+      case "missing-lng":
+        return ctx.db.insert("tenants", {
+          ...base,
+          address: "12 rue de Paris, 75001 Paris",
+          addressLat: 48.8566,
+          addressComponents: {
+            streetAddress: "12 rue de Paris",
+            city: "Paris",
+            zipCode: "75001",
+            country: "FR",
+          },
+        });
+      case "missing-components":
+        return ctx.db.insert("tenants", {
+          ...base,
+          address: "12 rue de Paris, 75001 Paris",
+          addressLat: 48.8566,
+          addressLng: 2.3522,
+        });
+      case "complete":
+      default:
+        return ctx.db.insert("tenants", {
+          ...base,
+          address: "12 rue de Paris, 75001 Paris",
+          addressLat: 48.8566,
+          addressLng: 2.3522,
+          addressComponents: {
+            streetAddress: "12 rue de Paris",
+            city: "Paris",
+            zipCode: "75001",
+            country: "FR",
+          },
+        });
+    }
+  });
 }
 
 describe("B-TENANT-LIFECYCLE [4/4] tenant.activate — happy path", () => {
@@ -902,6 +976,170 @@ describe("B-TENANT-LIFECYCLE [4/4] tenant.activate — wrapper enforcement (root
         tenantId: pendingId,
       }),
     ).rejects.toThrow(/unauthenticated/i);
+  });
+});
+
+// ===========================================================================
+// Address-first slice 3 (2026-06-11) — `tenant.activate` address gate.
+//
+// PRD address-first « slice 3 » : a tenant CANNOT be activated without the
+// FULL 4-tuple address payload (`address` + `addressLat` + `addressLng` +
+// `addressComponents`). The PWA quote chain breaks on a `pickup_address`
+// missing structured body — landing on `hors_zone` for every order — and the
+// Wizard step 4 + Paramètres editor (slice 2) are already wired to force the
+// 4-tuple on every write via the `INVALID_ADDRESS_PAYLOAD` guard. Slice 3
+// extends the lifecycle gate so a legacy pre-slice-1 tenant (display string
+// only) cannot be flipped to `active` either.
+//
+// The gate runs BEFORE `assertLegalTenantTransition` so the operator sees the
+// address error FIRST (it's the actionable one — fix the address, retry; the
+// transition is fixed by Convex on success). On a tenant that's also in an
+// illegal source status (`active` / `suspended` / `disabled`) AND missing an
+// address, the address error wins because it is the user-facing-actionable
+// one. The transition check still runs once the address gate passes.
+//
+// Error code: `ConvexError({ code: "ACTIVATION_BLOCKED_NO_ADDRESS", message: ... })`.
+// ===========================================================================
+describe("B-TENANT-LIFECYCLE [4/4] + address-first slice 3 — activate address gate", () => {
+  let t: ReturnType<typeof convexTest>;
+  let seed: Seed;
+  beforeEach(async () => {
+    t = convexTest(schema, modules);
+    seed = await seedTwoTenantsAllRoles(t);
+  });
+
+  it("tenant with NO address at all → throws ACTIVATION_BLOCKED_NO_ADDRESS", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    const pendingId = await insertTenantWithStatus(t, "noaddr-1", "pending", {
+      address: "none",
+    });
+
+    await expect(
+      asAdmin.mutation(api.lib.admin.tenantSettings.activate, {
+        tenantId: pendingId,
+      }),
+    ).rejects.toThrow(/ACTIVATION_BLOCKED_NO_ADDRESS/);
+
+    // Side-effect check: status stayed `pending` (the gate runs BEFORE
+    // `activateTenant`, so no partial flip leaks through).
+    const tenant = await t.run((ctx) => ctx.db.get(pendingId));
+    expect(tenant?.status).toBe("pending");
+  });
+
+  it("LEGACY tenant (display string only, no lat/lng/components) → throws ACTIVATION_BLOCKED_NO_ADDRESS", async () => {
+    // Pre-slice-1 row that survived migration: display address only, structured
+    // siblings absent. The PWA quote chain would refuse this; the lifecycle
+    // gate refuses too so the gérant fixes it via the Paramètres editor BEFORE
+    // the resto goes live.
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    const pendingId = await insertTenantWithStatus(t, "legacy-1", "pending", {
+      address: "display-only",
+    });
+
+    await expect(
+      asAdmin.mutation(api.lib.admin.tenantSettings.activate, {
+        tenantId: pendingId,
+      }),
+    ).rejects.toThrow(/ACTIVATION_BLOCKED_NO_ADDRESS/);
+    const tenant = await t.run((ctx) => ctx.db.get(pendingId));
+    expect(tenant?.status).toBe("pending");
+  });
+
+  it("missing `addressLat` only → throws ACTIVATION_BLOCKED_NO_ADDRESS", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    const pendingId = await insertTenantWithStatus(t, "no-lat-1", "pending", {
+      address: "missing-lat",
+    });
+
+    await expect(
+      asAdmin.mutation(api.lib.admin.tenantSettings.activate, {
+        tenantId: pendingId,
+      }),
+    ).rejects.toThrow(/ACTIVATION_BLOCKED_NO_ADDRESS/);
+  });
+
+  it("missing `addressLng` only → throws ACTIVATION_BLOCKED_NO_ADDRESS", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    const pendingId = await insertTenantWithStatus(t, "no-lng-1", "pending", {
+      address: "missing-lng",
+    });
+
+    await expect(
+      asAdmin.mutation(api.lib.admin.tenantSettings.activate, {
+        tenantId: pendingId,
+      }),
+    ).rejects.toThrow(/ACTIVATION_BLOCKED_NO_ADDRESS/);
+  });
+
+  it("missing `addressComponents` only → throws ACTIVATION_BLOCKED_NO_ADDRESS", async () => {
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    const pendingId = await insertTenantWithStatus(
+      t,
+      "no-components-1",
+      "pending",
+      { address: "missing-components" },
+    );
+
+    await expect(
+      asAdmin.mutation(api.lib.admin.tenantSettings.activate, {
+        tenantId: pendingId,
+      }),
+    ).rejects.toThrow(/ACTIVATION_BLOCKED_NO_ADDRESS/);
+  });
+
+  it("complete 4-tuple address → activation succeeds (status flips to active)", async () => {
+    // Regression cover: the new gate must NOT reject a fully-configured tenant.
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    const pendingId = await insertTenantWithStatus(t, "full-addr-1", "pending");
+
+    await asAdmin.mutation(api.lib.admin.tenantSettings.activate, {
+      tenantId: pendingId,
+    });
+
+    const tenant = await t.run((ctx) => ctx.db.get(pendingId));
+    expect(tenant?.status).toBe("active");
+  });
+
+  it("address gate runs BEFORE the lifecycle gate — illegal source AND missing address surfaces the address error first", async () => {
+    // A tenant that is BOTH already active (illegal `active → active` move)
+    // AND missing the address shows the address error first — it's the
+    // actionable one and the gate runs early.
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    const activeNoAddr = await insertTenantWithStatus(
+      t,
+      "active-noaddr-1",
+      "active",
+      { address: "none" },
+    );
+
+    await expect(
+      asAdmin.mutation(api.lib.admin.tenantSettings.activate, {
+        tenantId: activeNoAddr,
+      }),
+    ).rejects.toThrow(/ACTIVATION_BLOCKED_NO_ADDRESS/);
+  });
+
+  it("address gate does NOT short-circuit NOT_FOUND — a ghost tenant id still throws NOT_FOUND", async () => {
+    // The address gate reads from the tenant row, so it can only run AFTER
+    // the row is found. A ghost id still surfaces NOT_FOUND.
+    const asAdmin = t.withIdentity({ subject: seed.adminId });
+    const ghost = await t.run(async (ctx) => {
+      const id = await ctx.db.insert("tenants", {
+        slug: "ghost-noaddr",
+        name: "Ghost",
+        siret: "00000000000000",
+        status: "pending",
+        createdAt: Date.now(),
+      });
+      await ctx.db.delete(id);
+      return id;
+    });
+
+    await expect(
+      asAdmin.mutation(api.lib.admin.tenantSettings.activate, {
+        tenantId: ghost,
+      }),
+    ).rejects.toThrow(/NOT_FOUND/);
   });
 });
 

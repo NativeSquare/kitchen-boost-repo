@@ -1536,11 +1536,23 @@ function Step8Form({ onPrev, onStepChange }: StepFormProps): React.JSX.Element {
   const bootstrapHost = `${tenantDoc.slug}.kitchen-boost.com`;
   const menuPublished = publicationStatus.lastPublishedAt !== null;
 
+  // Address-first slice 3 (2026-06-11) — mirror of the backend
+  // `ACTIVATION_BLOCKED_NO_ADDRESS` gate. The recap surfaces the FULL 4-tuple
+  // state so the operator sees the missing-address path BEFORE clicking
+  // « Mettre en production » (instead of through a backend error toast).
+  const addressConfigured =
+    tenantDoc.address !== undefined &&
+    tenantDoc.address.trim() !== "" &&
+    tenantDoc.addressLat !== undefined &&
+    tenantDoc.addressLng !== undefined &&
+    tenantDoc.addressComponents !== undefined;
+
   const recap: Step8Recap = {
     compteResto: {
       name: tenantDoc.name,
       slug: tenantDoc.slug,
       address: tenantDoc.address,
+      addressConfigured,
       phone: tenantDoc.phone,
       emailManager: latestInvite?.email ?? prospect.email,
     },
@@ -1600,6 +1612,16 @@ function Step8Form({ onPrev, onStepChange }: StepFormProps): React.JSX.Element {
     }
   };
 
+  // Address-first slice 3 (2026-06-11) — wires the « Aller au step 4 » CTA
+  // surfaced on the new address récap card to the wizard's step-change
+  // callback. Step 4 hosts the Google Places autocomplete editor (slice 2),
+  // i.e. the canonical surface where the operator fixes a missing address.
+  const handleGoToAddressStep = () => {
+    if (onStepChange !== undefined) {
+      onStepChange(4);
+    }
+  };
+
   return (
     <Step8ActivationForm
       slug={tenantDoc.slug}
@@ -1611,6 +1633,7 @@ function Step8Form({ onPrev, onStepChange }: StepFormProps): React.JSX.Element {
       activateError={activateError}
       onPrev={onPrev}
       onBackToMenuStep={handleBackToMenuStep}
+      onGoToAddressStep={handleGoToAddressStep}
     />
   );
 }
