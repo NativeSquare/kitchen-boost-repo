@@ -12,16 +12,35 @@
  * loader MUST be brought in via a DYNAMIC `import()` INSIDE the effect (never a
  * static top-level import) — this hook preserves exactly that pattern.
  *
+ * MOUNT TIMING (callback ref, NOT an object ref): the widget is mounted by an
+ * effect keyed on the container NODE, set through a callback ref. The earlier
+ * object-ref + `useEffect([])` version read `containerRef.current` ONCE and
+ * bailed when it was `null` — which is exactly what happens inside a Vaul Drawer,
+ * whose portal content mounts in a LATER commit (open animation) than the
+ * consuming component. The effect bailed and never retried, so the field never
+ * appeared in the bottom sheet (on the full-page form the div is present
+ * immediately, so it happened to work). A callback ref re-runs the mount effect
+ * the moment the node actually attaches — late attach included — and tears the
+ * widget down when it detaches (drawer close), then re-mounts on re-open.
+ *
  * Contract:
- *  - `containerRef` — attach to the `<div>` the widget mounts into.
+ *  - `containerRef` — a callback ref to attach to the `<div>` the widget mounts
+ *    into (`ref={containerRef}`).
  *  - `initialAddress` — optional silent pre-fill (returning Sophie / EDIT mode
- *    of the sheet pre-filled with the current address).
+ *    of the sheet pre-filled with the current address). Read at mount time via a
+ *    ref, so a later change does not thrash-remount the widget.
  *  - `onSelectionPicked` — called with `{ address, lat, lng }` once the user
  *    selects a resolvable Places suggestion (the caller fires its quote chain).
  *  - `onError` — surfaced to the caller's own state (missing API key = deploy
  *    misconfig, SDK load failure, unresolvable selection).
  */
-import { useEffect, useLayoutEffect, useRef } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 export type PlacesSelection = { address: string; lat: number; lng: number };
 
@@ -36,22 +55,32 @@ export function usePlacesAutocomplete({
   onSelectionPicked,
   onError,
 }: UsePlacesAutocompleteArgs): {
-  containerRef: React.RefObject<HTMLDivElement | null>;
+  containerRef: (node: HTMLDivElement | null) => void;
 } {
-  const containerRef = useRef<HTMLDivElement>(null);
-  // Keep the latest callbacks in refs so the mount effect runs ONCE (re-mounting
-  // Places on every render would thrash the SDK) while still calling the freshest
-  // closures — same trade-off the original form documented. The refs are written
-  // in a layout effect (NOT during render) to satisfy the React Compiler's
-  // « no ref access during render » rule.
+  // The container NODE, set via a callback ref so the mount effect fires when it
+  // actually attaches (robust to Vaul's deferred portal mount — see file docs).
+  const [container, setContainer] = useState<HTMLDivElement | null>(null);
+  const containerRef = useCallback((node: HTMLDivElement | null) => {
+    setContainer(node);
+  }, []);
+
+  // Keep the latest callbacks + initial pre-fill in refs so the mount effect is
+  // keyed ONLY on the container node (re-mounting Places on every render would
+  // thrash the SDK) while still reading the freshest closures. Written in a
+  // layout effect (NOT during render) to satisfy the React Compiler's « no ref
+  // access during render » rule.
   const onSelectionPickedRef = useRef(onSelectionPicked);
   const onErrorRef = useRef(onError);
+  const initialAddressRef = useRef(initialAddress);
   useLayoutEffect(() => {
     onSelectionPickedRef.current = onSelectionPicked;
     onErrorRef.current = onError;
+    initialAddressRef.current = initialAddress;
   });
 
   useEffect(() => {
+    if (container === null) return;
+
     const apiKey = process.env.NEXT_PUBLIC_GOOGLE_PLACES_API_KEY;
     if (!apiKey) {
       onErrorRef.current(
@@ -59,9 +88,7 @@ export function usePlacesAutocomplete({
       );
       return;
     }
-    if (containerRef.current === null) return;
 
-    const container = containerRef.current;
     let cancelled = false;
     let mountedElement: google.maps.places.PlaceAutocompleteElement | null =
       null;
@@ -82,8 +109,9 @@ export function usePlacesAutocomplete({
           includedRegionCodes: ["fr"],
           includedPrimaryTypes: ["street_address", "premise"],
         });
-        if (initialAddress !== undefined) {
-          element.value = initialAddress;
+        const prefill = initialAddressRef.current;
+        if (prefill !== undefined) {
+          element.value = prefill;
         }
         element.addEventListener("gmp-select", (event) => {
           void (async () => {
@@ -128,11 +156,10 @@ export function usePlacesAutocomplete({
       cancelled = true;
       if (mountedElement !== null) mountedElement.remove();
     };
-    // Mount once: callbacks are read through refs, the api key is stable.
-    // `initialAddress` is the silent pre-fill captured at first mount (a later
-    // change does not re-mount the widget — same as the original form).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    // Keyed on the container node: mounts when it attaches (incl. late, inside a
+    // Vaul Drawer), tears down + re-mounts on detach/re-attach. Callbacks +
+    // pre-fill are read through refs, the api key is stable.
+  }, [container]);
 
   return { containerRef };
 }
