@@ -4271,6 +4271,36 @@ export const seedE2EPickupAddressT1 = internalMutation({
   },
 });
 
+/**
+ * Toggle live de la disponibilité d'un item du menu de `test-t1` — sert à la
+ * démo realtime du scénario E2E M.2 (« overlay LIVE item out-of-stock »). En
+ * prod ce flip passe par `setItemAvailability` (un `tenantMutation` gated
+ * kb_manager/staff) ; ici on patche directement `menuItems.available` côté
+ * système pour pouvoir déclencher le flip sans acteur authentifié (le test
+ * observe la propagation Convex sub `getPublicMenu` < 500ms sur la PWA).
+ */
+export const seedE2EToggleItemAvailabilityT1 = internalMutation({
+  args: {
+    itemId: v.id("menuItems"),
+    available: v.boolean(),
+  },
+  returns: v.object({
+    itemId: v.id("menuItems"),
+    name: v.string(),
+    available: v.boolean(),
+  }),
+  handler: async (ctx, args) => {
+    const item = await ctx.db.get(args.itemId);
+    if (item === null) {
+      throw new ConvexError({
+        message: `menuItem "${args.itemId}" not found.`,
+      });
+    }
+    await ctx.db.patch(args.itemId, { available: args.available });
+    return { itemId: args.itemId, name: item.name, available: args.available };
+  },
+});
+
 export const seedE2EServiceHoursT1 = internalMutation({
   args: {},
   returns: v.object({

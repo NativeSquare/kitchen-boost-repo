@@ -33,6 +33,18 @@ Checklist E2E manuelle pour la PWA client (`apps/web`), nomenclature canonique a
   - **PAY** : 3 scénarios distincts (saved card / new card 3DS / latching surge) — pas d'agrégation possible car branches mutuellement exclusives (presence/absence `savedPaymentMethodId` + mock backend surge).
 - **Scope gap documenté côté PAY** : checkbox « Sauvegarder ma carte » new-card branch deliberately deferred V1 (requiert platform-level SetupIntent flow non collecté V1). Consumption side (tile saved card pre-sélectionné) fully wired.
 
+## Bilan exécution vague 1 (2026-06-11) — Menu + Cart sur device réel
+
+Première campagne d'exécution réelle (les bilans précédents = drains de code, 0 test passé). Device unique, session continue.
+
+- **Tests passés** : FND.1 ✅, FND.2 ✅, A.1 ✅ (validés la veille après les 4 bug fixes address-first) ; M.1 ✅, M.2a/b/c ✅, M.3 ✅, C.1 ⚠️, C.2 ✅, C.3 ✅.
+- **Adaptations seed** : la checklist nommait des items/modifiers périmés (« Sauce {Ketchup, Mayo} »). Vrai seed `seedE2EMenuT1(full)` : **Smash Burger → Suppléments {Bacon +1€, Fromage +0,50€, Œuf +0,80€} (minSelect 0)** et **Poke bowl → Base {Riz blanc, Riz vinaigré, Quinoa +1€} (minSelect 1)**. Item rupture = **Tofu thaï curry vert** (`available:false`). Helper realtime ajouté : `e2e:seedE2EToggleItemAvailabilityT1` (toggle `menuItems.available` sans acteur authentifié, pour démo Convex sub M.2c).
+- **3 fixes UX remontés** (3 sous-agents parallèles, worktrees, → PR) :
+  1. `agent/fix-item-price` — bouton « Ajouter au panier » affichait `base × qty` en ignorant les suppléments → prix live (extraction `decideItemPrice`).
+  2. `agent/fix-cart-modifier-clarity` — suppléments par ligne panier trop discrets (texte gris) → affichage clair (chips) pour distinguer 2 variantes d'un même plat.
+  3. `agent/fix-delivery-address-sheet` — sur deep-link en onglet frais (verdict null), le bouton Livraison était mort/désactivé → **bottom sheet adresse réutilisable** : taper Livraison ouvre la saisie d'adresse, rejoue le quote, active la livraison sans reload. Chaîne address→quote extraite (DRY avec address-first-form).
+- **À refaire après merge** : re-valider C.1 (prix bouton + lisibilité lignes) + tester le nouveau flow bottom sheet livraison (cas verdict null).
+
 ---
 
 ## FND — Foundation transverse (tenant resolution + PWA shell)
@@ -136,7 +148,7 @@ Checklist E2E manuelle pour la PWA client (`apps/web`), nomenclature canonique a
 
 ## M — Menu browsing
 
-> **Slices** : #452 (S4 menu ISR + item modal Vaul + overlay LIVE) · **Statut** : 🟡 EN COURS — 3 scénarios prêts à tester
+> **Slices** : #452 (S4 menu ISR + item modal Vaul + overlay LIVE) · **Statut** : 🟢 **VALIDÉ 2026-06-11** (vague 1) — M.1 ✅ / M.2a ✅ (badge À choisir + bouton bloqué) / M.2b ✅ (carte rupture grisée) / M.2c ✅ (flip realtime < 500 ms via toggle serveur) / M.3 ✅ (promo scroll+highlight+cleanup, item ouvre modal direct). Bonus publish-revalidate reporté (admin requis). **Finding annexe** remonté pendant M.3 : le toggle Livraison désactivé sur deep-link frais → bottom sheet adresse réutilisable (fix `agent/fix-delivery-address-sheet`, voir bilan vague 1).
 >
 > Couvre : LCP <1.5s 4G, catégories scrollables + ancres latérales, badges + filtres allergènes (14 UE 1169/2011), item modal bottom-sheet Vaul `?item=<id>` URL-stateful (back button ferme), modifiers required/optional (badge "À choisir"), overlay LIVE `available` Convex sub par-dessus HTML cached ISR, deep-link `?promo=<itemId>` scroll + highlight.
 
@@ -188,7 +200,7 @@ Checklist E2E manuelle pour la PWA client (`apps/web`), nomenclature canonique a
 
 ## C — Cart + delivery mode toggle
 
-> **Slices** : #453 (S5 cart + Note resto + Delivery mode toggle) · **Statut** : 🟡 EN COURS — 3 scénarios prêts à tester
+> **Slices** : #453 (S5 cart + Note resto + Delivery mode toggle) · **Statut** : 🟡 **TESTÉ 2026-06-11** (vague 1) — C.1 ⚠️ 2 fix en cours / C.2 ✅ (note 200 chars + persistance) / C.3 ✅ (toggle Livraison↔Retrait instant, aucun appel réseau, retour au mode delivery par défaut). **C.1** : dédup + qty + suppression + persistance OK, MAIS 2 défauts UX → fix : (1) prix du bouton « Ajouter au panier » ignorait les suppléments → live price `agent/fix-item-price` ; (2) suppléments par ligne trop discrets → affichage clarifié `agent/fix-cart-modifier-clarity`. À re-valider après merge des 3 PRs.
 >
 > Couvre : lignes panier dédupées par config item × modifiers, edit qty + suppression, Note resto 200 chars max, sous-total + frais livraison (prix barré "Offert par X" si pricing rule) + total, toggle Livraison/C&C header permanent switch sans re-quote (verdict initial cache 2 modes), mode initial cohérent avec verdict S3.
 
