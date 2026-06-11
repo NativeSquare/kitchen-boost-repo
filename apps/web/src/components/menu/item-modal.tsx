@@ -40,6 +40,7 @@ import {
   type ModifierSelectionMap,
 } from "@/lib/menu-filters";
 import type { CartModifierSelection } from "@/lib/cart-store";
+import { decideItemPrice } from "@/lib/cart-store/decide-item-price";
 import { useCart } from "@/components/cart/cart-context";
 
 export type ItemModalProps = {
@@ -149,8 +150,10 @@ function ItemModalBody({
     [],
   );
 
-  const onAddToCart = useCallback(() => {
-    // Flatten selections into the `CartModifierSelection[]` the cart expects.
+  // Flatten the current selections into the `CartModifierSelection[]` the cart
+  // expects. Reused both to add the line AND to compute the LIVE button price
+  // (so the label reflects selected supplements, not just the base price).
+  const selectedModifiers = useMemo<CartModifierSelection[]>(() => {
     const flat: CartModifierSelection[] = [];
     for (const group of item.modifierGroups) {
       const selectedLabels = selections[group._id] ?? [];
@@ -165,6 +168,18 @@ function ItemModalBody({
         }
       }
     }
+    return flat;
+  }, [item, selections]);
+
+  // Live price for the « Ajouter au panier » label: qty × (base + Σ deltas),
+  // matching exactly what the cart will charge for this line.
+  const livePriceCentimes = decideItemPrice(
+    item.basePrice,
+    selectedModifiers,
+    qty,
+  );
+
+  const onAddToCart = useCallback(() => {
     addLine(
       {
         itemId: item._id,
@@ -172,11 +187,11 @@ function ItemModalBody({
         basePriceCentimes: item.basePrice,
         photoUrl: item.photoUrl,
       },
-      flat,
+      selectedModifiers,
       qty,
     );
     onClose();
-  }, [item, selections, qty, addLine, onClose]);
+  }, [item, selectedModifiers, qty, addLine, onClose]);
 
   return (
     <>
@@ -261,7 +276,7 @@ function ItemModalBody({
           }
         >
           {validation.canAddToCart
-            ? `Ajouter au panier · ${formatEur(item.basePrice * qty)}`
+            ? `Ajouter au panier · ${formatEur(livePriceCentimes)}`
             : "Sélectionne les options obligatoires"}
         </button>
         <DrawerClose
