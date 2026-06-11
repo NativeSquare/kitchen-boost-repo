@@ -354,3 +354,77 @@ describe("2.6-B public access contract — readServiceOpen + requestDeliveryQuot
     ).rejects.toThrow();
   });
 });
+
+describe("FEATURE A — readServiceStatus (public closed-resto surface)", () => {
+  // Exposes what the PWA needs to render the closed UX at LOAD (not behind the
+  // address-first quote chain): `{ isOpen, windows }`. The windows let the
+  // client compute the next-opening label + re-evaluate `isOpen` on its own
+  // interval (stale-tab), and the Convex reactivity propagates an admin edit.
+  let t: ReturnType<typeof convexTest>;
+  let seed: Seed;
+  beforeEach(async () => {
+    t = convexTest(schema, modules);
+    seed = await seedTwoTenantsAllRoles(t);
+  });
+
+  it("is PUBLIC (anonymous) and returns { isOpen: boolean, windows: [] } when no hours configured", async () => {
+    const status = await t.query(api.lib.delivery.quote.readServiceStatus, {
+      tenantId: seed.tenantA.tenantId,
+    });
+    expect(status.isOpen).toBe(false);
+    expect(status.windows).toEqual([]);
+  });
+
+  it("returns the persisted windows and isOpen=true under an always-open schedule", async () => {
+    await setHours(
+      t,
+      seed.tenantA.managerId,
+      seed.tenantA.tenantId,
+      ALWAYS_OPEN,
+    );
+    const status = await t.query(api.lib.delivery.quote.readServiceStatus, {
+      tenantId: seed.tenantA.tenantId,
+    });
+    expect(status.isOpen).toBe(true);
+    expect(status.windows).toEqual(ALWAYS_OPEN);
+  });
+
+  it("accepts every actor on a VALID tenant (anonymous / customer / cross-tenant manager)", async () => {
+    const actors: Array<{ label: string; subject: string | null }> = [
+      { label: "B-manager", subject: seed.tenantB.managerId },
+      { label: "customer", subject: seed.customerId },
+      { label: "anonymous", subject: null },
+    ];
+    for (const actor of actors) {
+      const status = await (
+        actor.subject === null ? t : t.withIdentity({ subject: actor.subject })
+      ).query(api.lib.delivery.quote.readServiceStatus, {
+        tenantId: seed.tenantA.tenantId,
+      });
+      expect(typeof status.isOpen, `actor=${actor.label}`).toBe("boolean");
+      expect(Array.isArray(status.windows), `actor=${actor.label}`).toBe(true);
+    }
+  });
+
+  it("throws on an unknown tenant (requireTenant gate preserved)", async () => {
+    await expect(
+      t.query(api.lib.delivery.quote.readServiceStatus, {
+        tenantId: "jx70000000000000000000000000000" as Id<"tenants">,
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("is tenant-isolated — A's windows never leak through B's status (ADR 0010)", async () => {
+    await setHours(
+      t,
+      seed.tenantB.managerId,
+      seed.tenantB.tenantId,
+      ALWAYS_OPEN,
+    );
+    const statusA = await t.query(api.lib.delivery.quote.readServiceStatus, {
+      tenantId: seed.tenantA.tenantId,
+    });
+    expect(statusA.windows).toEqual([]);
+    expect(statusA.isOpen).toBe(false);
+  });
+});

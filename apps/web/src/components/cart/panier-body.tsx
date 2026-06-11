@@ -19,6 +19,8 @@ import { CartProvider } from "@/components/cart/cart-context";
 import { CartView } from "@/components/cart/cart-view";
 import { DeliveryModeProvider } from "@/components/delivery-mode/delivery-mode-context";
 import { DeliveryModeToggle } from "@/components/delivery-mode/delivery-mode-toggle";
+import { ServiceStatusProvider } from "@/components/availability/service-status-context";
+import { ClosedRestoSheet } from "@/components/availability/closed-resto-sheet";
 import { WalletPromptBanner } from "@/components/wallet-prompt";
 import { AndroidInstallButton } from "@/components/a2hs-install";
 
@@ -44,7 +46,17 @@ export function PanierBody({
           {tenantId !== undefined && <WalletPromptBanner tenantId={tenantId} />}
           <header className="flex flex-col gap-3">
             <h1 className="text-3xl font-bold text-black">Ton panier</h1>
-            <DeliveryModeToggle />
+            {/* The toggle needs the live open/closed state (Feature A) + a
+                tenantId for the reusable address sheet (Feature B), so it is
+                mounted inside <ServiceStatusProvider>. In the degraded state
+                (no cookie → no tenantId), the toggle is skipped entirely —
+                same fallback discipline as the rest of this body. */}
+            {tenantId !== undefined && (
+              <ServiceStatusProvider tenantId={tenantId}>
+                <DeliveryModeToggle tenantId={tenantId} />
+                <ClosedRestoSheet />
+              </ServiceStatusProvider>
+            )}
           </header>
 
           <CartView />

@@ -41,7 +41,7 @@ import { fetchQuery, preloadQuery, preloadedQueryResult } from "convex/nextjs";
 import { convexAuthNextjsToken } from "@convex-dev/auth/nextjs/server";
 import { api } from "@packages/backend/convex/_generated/api";
 import type { Id } from "@packages/backend/convex/_generated/dataModel";
-import { AddressFirstForm } from "@/components/address-first/address-first-form";
+import { AddressFirstHome } from "@/components/address-first/address-first-home";
 import { GreetingBanner, NotMeLink } from "@/components/return-greeting";
 import { decideReturnGreeting } from "@/lib/return-greeting";
 
@@ -127,7 +127,7 @@ export default async function Home() {
           <GreetingBanner firstName={greeting.firstName} />
         )}
         <p className="text-base text-zinc-600">{subtitle}</p>
-        <AddressFirstForm tenantId={tenantId} initialAddress={initialAddress} />
+        <AddressFirstHome tenantId={tenantId} initialAddress={initialAddress} />
         {isRecognised && <NotMeLink />}
       </div>
     </main>

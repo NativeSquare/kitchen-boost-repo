@@ -44,6 +44,8 @@ import type {
 import { decideVisibleItems, type DietaryFilter } from "@/lib/menu-filters";
 import { decideMenuDeepLink } from "@/lib/menu-deep-link";
 import { DeliveryModeToggle } from "@/components/delivery-mode/delivery-mode-toggle";
+import { ServiceStatusProvider } from "@/components/availability/service-status-context";
+import { ClosedRestoSheet } from "@/components/availability/closed-resto-sheet";
 import { WalletPromptBanner } from "@/components/wallet-prompt";
 import { ItemModal } from "./item-modal";
 
@@ -181,112 +183,119 @@ export function MenuView({
   }, [deepLink, menu]);
 
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-6 px-4 pb-32 pt-8 md:px-8">
-      {/* PWA-S9a (#460) — palier 2 of the 3-paliers Wallet install moat
+    // FEATURE A (#closed-resto UX) — <ServiceStatusProvider> drives the live
+    // open/closed state (Convex sub + ~30s wall-clock tick) consumed by the
+    // <ClosedRestoSheet> (shown at LOAD when closed, dismissable to browse) and
+    // by the toggle's disabled-Livraison tap (Feature B).
+    <ServiceStatusProvider tenantId={tenantId}>
+      <ClosedRestoSheet />
+      <div className="mx-auto flex max-w-5xl flex-col gap-6 px-4 pb-32 pt-8 md:px-8">
+        {/* PWA-S9a (#460) — palier 2 of the 3-paliers Wallet install moat
           (decisions-log Q5, US 28). Permanent top banner — auto-hides when
           `walletStatus = "enrolled"` (Convex sub) OR when the user
           dismissed it in this session (sessionStorage). Rendered at the
           very top so it's the first thing Sophie sees on /menu. */}
-      <WalletPromptBanner tenantId={tenantId} />
-      <header className="flex flex-col gap-3">
-        <h1 className="text-3xl font-bold text-black">{tenantName}</h1>
-        <p className="text-sm text-zinc-600">
-          Choisis tes plats — la livraison part dès que tu valides.
-        </p>
-        {/* Permanent delivery mode toggle (PWA-S5 #453, US 24). */}
-        <DeliveryModeToggle />
-        <Link
-          href="/panier"
-          className="self-start text-sm font-medium text-emerald-700 underline-offset-2 hover:underline"
-        >
-          Voir le panier →
-        </Link>
-      </header>
+        <WalletPromptBanner tenantId={tenantId} />
+        <header className="flex flex-col gap-3">
+          <h1 className="text-3xl font-bold text-black">{tenantName}</h1>
+          <p className="text-sm text-zinc-600">
+            Choisis tes plats — la livraison part dès que tu valides.
+          </p>
+          {/* Permanent delivery mode toggle (PWA-S5 #453, US 24). */}
+          <DeliveryModeToggle tenantId={tenantId} />
+          <Link
+            href="/panier"
+            className="self-start text-sm font-medium text-emerald-700 underline-offset-2 hover:underline"
+          >
+            Voir le panier →
+          </Link>
+        </header>
 
-      {/* Filters (US 16) */}
-      <FilterBar active={activeFilters} onToggle={toggleFilter} />
+        {/* Filters (US 16) */}
+        <FilterBar active={activeFilters} onToggle={toggleFilter} />
 
-      <div className="flex gap-6 md:gap-10">
-        {/* Anchor sidebar (US 14) — sticky on desktop, hidden on mobile. */}
-        <nav
-          aria-label="Catégories"
-          className="sticky top-4 hidden h-[fit-content] w-44 shrink-0 self-start md:block"
-        >
-          <ul className="flex flex-col gap-2">
-            {menu.categories.map((category) => (
-              <li key={category._id}>
-                <a
-                  href={`#menu-cat-${category._id}`}
-                  className="block rounded-md px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-100"
-                >
-                  {category.name}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </nav>
-
-        {/* Items list */}
-        <div className="flex-1">
-          {menu.categories.length === 0 ? (
-            <p className="text-base text-zinc-600">
-              La carte est en cours de préparation, reviens dans un instant.
-            </p>
-          ) : (
-            <div className="flex flex-col gap-10">
-              {menu.categories.map((category, catIndex) => {
-                const visibleItems = decideVisibleItems(
-                  category.items,
-                  activeFilters,
-                );
-                return (
-                  <section
-                    key={category._id}
-                    id={`menu-cat-${category._id}`}
-                    aria-labelledby={`menu-cat-h-${category._id}`}
+        <div className="flex gap-6 md:gap-10">
+          {/* Anchor sidebar (US 14) — sticky on desktop, hidden on mobile. */}
+          <nav
+            aria-label="Catégories"
+            className="sticky top-4 hidden h-[fit-content] w-44 shrink-0 self-start md:block"
+          >
+            <ul className="flex flex-col gap-2">
+              {menu.categories.map((category) => (
+                <li key={category._id}>
+                  <a
+                    href={`#menu-cat-${category._id}`}
+                    className="block rounded-md px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-100"
                   >
-                    <h2
-                      id={`menu-cat-h-${category._id}`}
-                      className="mb-3 text-xl font-semibold text-black"
-                    >
-                      {category.name}
-                    </h2>
-                    {visibleItems.length === 0 ? (
-                      <p className="text-sm text-zinc-500">
-                        Aucun plat ne correspond à tes filtres dans cette
-                        catégorie.
-                      </p>
-                    ) : (
-                      <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        {visibleItems.map((item, itemIndex) => (
-                          <ItemCard
-                            key={item._id}
-                            item={item}
-                            pulse={pulseItemId === item._id}
-                            // Priority-load the hero category's first 4 items
-                            // for LCP <1.5s (decisions-log Q2 b).
-                            priority={catIndex === 0 && itemIndex < 4}
-                            onOpen={() => openItem(item._id)}
-                          />
-                        ))}
-                      </ul>
-                    )}
-                  </section>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
+                    {category.name}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </nav>
 
-      {/* Vaul modal — bottom-sheet mobile / side-drawer desktop (decisions Q2 a) */}
-      <ItemModal
-        item={openedItem}
-        open={deepLink.kind === "open-item-modal" && openedItem !== null}
-        onClose={closeItem}
-        formatEur={formatEur}
-      />
-    </div>
+          {/* Items list */}
+          <div className="flex-1">
+            {menu.categories.length === 0 ? (
+              <p className="text-base text-zinc-600">
+                La carte est en cours de préparation, reviens dans un instant.
+              </p>
+            ) : (
+              <div className="flex flex-col gap-10">
+                {menu.categories.map((category, catIndex) => {
+                  const visibleItems = decideVisibleItems(
+                    category.items,
+                    activeFilters,
+                  );
+                  return (
+                    <section
+                      key={category._id}
+                      id={`menu-cat-${category._id}`}
+                      aria-labelledby={`menu-cat-h-${category._id}`}
+                    >
+                      <h2
+                        id={`menu-cat-h-${category._id}`}
+                        className="mb-3 text-xl font-semibold text-black"
+                      >
+                        {category.name}
+                      </h2>
+                      {visibleItems.length === 0 ? (
+                        <p className="text-sm text-zinc-500">
+                          Aucun plat ne correspond à tes filtres dans cette
+                          catégorie.
+                        </p>
+                      ) : (
+                        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          {visibleItems.map((item, itemIndex) => (
+                            <ItemCard
+                              key={item._id}
+                              item={item}
+                              pulse={pulseItemId === item._id}
+                              // Priority-load the hero category's first 4 items
+                              // for LCP <1.5s (decisions-log Q2 b).
+                              priority={catIndex === 0 && itemIndex < 4}
+                              onOpen={() => openItem(item._id)}
+                            />
+                          ))}
+                        </ul>
+                      )}
+                    </section>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Vaul modal — bottom-sheet mobile / side-drawer desktop (decisions Q2 a) */}
+        <ItemModal
+          item={openedItem}
+          open={deepLink.kind === "open-item-modal" && openedItem !== null}
+          onClose={closeItem}
+          formatEur={formatEur}
+        />
+      </div>
+    </ServiceStatusProvider>
   );
 }
 
