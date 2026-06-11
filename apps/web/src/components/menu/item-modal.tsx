@@ -42,6 +42,7 @@ import {
 import type { CartModifierSelection } from "@/lib/cart-store";
 import { decideItemPrice } from "@/lib/cart-store/decide-item-price";
 import { useCart } from "@/components/cart/cart-context";
+import { useServiceStatus } from "@/components/availability/service-status-context";
 
 export type ItemModalProps = {
   /** The item the URL `?item=<id>` resolved to, or null when none / not found. */
@@ -93,6 +94,13 @@ function ItemModalBody({
   formatEur: (centimes: number) => string;
 }): React.JSX.Element {
   const { addLine } = useCart();
+  // Closed-resto UX (consultation seule): when the resto is closed the menu is
+  // still browsable, but « Ajouter au panier » is disabled — V1 has no
+  // pre-ordering and checkout is gated by `isOpenNow` anyway, so letting the
+  // customer build a cart they cannot pay would be a dead-end. `isOpen === null`
+  // (still loading) is treated as open (optimistic, no flicker).
+  const { isOpen } = useServiceStatus();
+  const isClosed = isOpen === false;
   const [selections, setSelections] = useState<ModifierSelectionMap>({});
   const [qty, setQty] = useState(1);
 
@@ -268,16 +276,18 @@ function ItemModalBody({
         <button
           type="button"
           onClick={onAddToCart}
-          disabled={!validation.canAddToCart}
+          disabled={isClosed || !validation.canAddToCart}
           className={
-            validation.canAddToCart
+            !isClosed && validation.canAddToCart
               ? "rounded-lg bg-emerald-700 px-4 py-3 text-base font-medium text-white hover:bg-emerald-800"
               : "cursor-not-allowed rounded-lg bg-zinc-300 px-4 py-3 text-base font-medium text-zinc-600"
           }
         >
-          {validation.canAddToCart
-            ? `Ajouter au panier · ${formatEur(livePriceCentimes)}`
-            : "Sélectionne les options obligatoires"}
+          {isClosed
+            ? "Resto fermé — commande à la réouverture"
+            : validation.canAddToCart
+              ? `Ajouter au panier · ${formatEur(livePriceCentimes)}`
+              : "Sélectionne les options obligatoires"}
         </button>
         <DrawerClose
           className="rounded-lg border border-zinc-300 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-100"
