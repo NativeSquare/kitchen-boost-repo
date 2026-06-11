@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   assertNonEmptyString,
+  isValidAddressPayload,
   isValidCustomDomain,
   isValidHexColor,
   normalisePhone,
@@ -265,5 +266,141 @@ describe("isValidCustomDomain — F-WIZARD [4/10] (#268)", () => {
     expect(isValidCustomDomain("https://artisan.fr")).toBe(false);
     expect(isValidCustomDomain("artisan.fr/path")).toBe(false);
     expect(isValidCustomDomain("artisan.fr:443")).toBe(false);
+  });
+});
+
+/**
+ * Address-first slice 1 (2026-06-11) — `isValidAddressPayload` shape check.
+ *
+ * The PWA `requestDeliveryQuote` chain (commit 69699b3) revealed that Uber
+ * Direct refuses a quote without `pickup_address` (HTTP 400 `invalid_params`
+ * with `metadata.pickup_address: "This field is required."`). The quick-fix
+ * forwarded `tenants.address` (string brute), but Uber recommends the
+ * structured JSON shape with explicit components + lat/lng for accurate
+ * geocoding. This validator enforces the FULL 4-tuple shape the wizard /
+ * Paramètres editor must persist together:
+ *
+ *  - `address` — non-empty display string (the line the gérant typed)
+ *  - `addressLat`/`addressLng` — finite numbers (`Number.isFinite`)
+ *  - `addressComponents` — `{ streetAddress, city, zipCode, country }` with
+ *    streetAddress + city non-empty, FR zipCode `^\d{5}$`, country `"FR"`
+ *
+ * The 4 fields TRAVEL TOGETHER on every patch — slice 3 will gate
+ * `tenant.activate` on them. Throws `ConvexError({ code:
+ * "INVALID_ADDRESS_PAYLOAD" })` with an explicit message on any defect.
+ */
+describe("isValidAddressPayload — address-first slice 1 (2026-06-11)", () => {
+  const validPayload = {
+    address: "1 Rue de Rivoli, 75001 Paris",
+    addressLat: 48.8606,
+    addressLng: 2.3376,
+    addressComponents: {
+      streetAddress: "1 Rue de Rivoli",
+      city: "Paris",
+      zipCode: "75001",
+      country: "FR",
+    },
+  };
+
+  it("accepts a fully-structured FR address payload", () => {
+    expect(() => isValidAddressPayload(validPayload)).not.toThrow();
+  });
+
+  it("throws INVALID_ADDRESS_PAYLOAD on an empty / whitespace-only display address", () => {
+    for (const bad of ["", "   "]) {
+      try {
+        isValidAddressPayload({ ...validPayload, address: bad });
+        expect.unreachable(`should have thrown on display address "${bad}"`);
+      } catch (err) {
+        const data = (err as { data?: { code?: string } }).data;
+        expect(data?.code).toBe("INVALID_ADDRESS_PAYLOAD");
+      }
+    }
+  });
+
+  it("throws INVALID_ADDRESS_PAYLOAD on a non-finite latitude (NaN)", () => {
+    try {
+      isValidAddressPayload({ ...validPayload, addressLat: Number.NaN });
+      expect.unreachable("should have thrown on NaN latitude");
+    } catch (err) {
+      const data = (err as { data?: { code?: string } }).data;
+      expect(data?.code).toBe("INVALID_ADDRESS_PAYLOAD");
+    }
+  });
+
+  it("throws INVALID_ADDRESS_PAYLOAD on a non-finite longitude (Infinity)", () => {
+    try {
+      isValidAddressPayload({
+        ...validPayload,
+        addressLng: Number.POSITIVE_INFINITY,
+      });
+      expect.unreachable("should have thrown on Infinity longitude");
+    } catch (err) {
+      const data = (err as { data?: { code?: string } }).data;
+      expect(data?.code).toBe("INVALID_ADDRESS_PAYLOAD");
+    }
+  });
+
+  it("throws INVALID_ADDRESS_PAYLOAD on a malformed FR zipCode (not 5 digits)", () => {
+    for (const bad of ["7500", "750010", "7500A", "ABCDE", ""]) {
+      try {
+        isValidAddressPayload({
+          ...validPayload,
+          addressComponents: {
+            ...validPayload.addressComponents,
+            zipCode: bad,
+          },
+        });
+        expect.unreachable(`should have thrown on zipCode "${bad}"`);
+      } catch (err) {
+        const data = (err as { data?: { code?: string } }).data;
+        expect(data?.code).toBe("INVALID_ADDRESS_PAYLOAD");
+      }
+    }
+  });
+
+  it("throws INVALID_ADDRESS_PAYLOAD on a country code that is not FR (V1 FR-only)", () => {
+    for (const bad of ["US", "BE", "fr", ""]) {
+      try {
+        isValidAddressPayload({
+          ...validPayload,
+          addressComponents: {
+            ...validPayload.addressComponents,
+            country: bad,
+          },
+        });
+        expect.unreachable(`should have thrown on country "${bad}"`);
+      } catch (err) {
+        const data = (err as { data?: { code?: string } }).data;
+        expect(data?.code).toBe("INVALID_ADDRESS_PAYLOAD");
+      }
+    }
+  });
+
+  it("throws INVALID_ADDRESS_PAYLOAD when a required component is empty (streetAddress or city)", () => {
+    try {
+      isValidAddressPayload({
+        ...validPayload,
+        addressComponents: {
+          ...validPayload.addressComponents,
+          streetAddress: "",
+        },
+      });
+      expect.unreachable("should have thrown on empty streetAddress");
+    } catch (err) {
+      const data = (err as { data?: { code?: string } }).data;
+      expect(data?.code).toBe("INVALID_ADDRESS_PAYLOAD");
+    }
+
+    try {
+      isValidAddressPayload({
+        ...validPayload,
+        addressComponents: { ...validPayload.addressComponents, city: "   " },
+      });
+      expect.unreachable("should have thrown on whitespace-only city");
+    } catch (err) {
+      const data = (err as { data?: { code?: string } }).data;
+      expect(data?.code).toBe("INVALID_ADDRESS_PAYLOAD");
+    }
   });
 });

@@ -132,7 +132,7 @@ describe("2.6-B requestQuote — action: decrypt creds, OAuth, call Uber, map re
     fetchSpy?.mockRestore();
   });
 
-  it("returns fee + eta on a deliverable address, hitting auth then quote", async () => {
+  it("returns fee + eta on a deliverable address, hitting auth then quote (legacy address-only fallback)", async () => {
     fetchSpy = mockUberSequence({
       status: 200,
       body: { id: "dqt_OK", fee: 590, duration: 22 },
@@ -166,6 +166,77 @@ describe("2.6-B requestQuote — action: decrypt creds, OAuth, call Uber, map re
     const headers = new Headers(quoteInit.headers);
     expect(headers.get("Authorization")).toBe("Bearer ub_token_abc");
     expect(quoteUrl).not.toContain("sk_live_uber_secret_777");
+
+    // Address-first slice 1 (2026-06-11): a tenant with only the legacy
+    // `tenants.address` (no lat/lng/components) falls back to sending the
+    // raw display string as `pickup_address` — backward-compat with the
+    // 69699b3 quick-fix. No `pickup_latitude` / `pickup_longitude` / phone.
+    const body = JSON.parse(String(quoteInit.body)) as Record<string, unknown>;
+    expect(body.pickup_address).toBe("1 Rue de Rivoli, 75001 Paris");
+    expect(body.dropoff_address).toBe(ADDRESS);
+    expect(body.pickup_latitude).toBeUndefined();
+    expect(body.pickup_longitude).toBeUndefined();
+    expect(body.pickup_phone_number).toBeUndefined();
+  });
+
+  // -------------------------------------------------------------------------
+  // Address-first slice 1 (2026-06-11) — when the tenant carries the FULL
+  // 4-tuple (display string + lat/lng + 4-component object) AND a phone, the
+  // backend MUST send the Uber-recommended structured `pickup_address` JSON
+  // string (`{street_address:[...],city,state:"",zip_code,country}`) along
+  // with `pickup_latitude` / `pickup_longitude` / `pickup_phone_number`. The
+  // structured shape (vs raw display string) lets Uber's geocoder converge
+  // faster and avoids the 400 `invalid_params` failure that surfaced on the
+  // first PWA E2E run (cause root of slice 1).
+  // -------------------------------------------------------------------------
+  it("structured address: sends Uber-recommended pickup_address JSON + lat/lng + phone", async () => {
+    fetchSpy = mockUberSequence({
+      status: 200,
+      body: { id: "dqt_struct", fee: 450, duration: 19 },
+    });
+
+    // Patch the tenant with the FULL structured address payload + phone.
+    await t.run(async (ctx) => {
+      await ctx.db.patch(seed.tenantA.tenantId, {
+        address: "1 Rue de Rivoli, 75001 Paris",
+        addressLat: 48.8606,
+        addressLng: 2.3376,
+        addressComponents: {
+          streetAddress: "1 Rue de Rivoli",
+          city: "Paris",
+          zipCode: "75001",
+          country: "FR",
+        },
+        phone: "+33612345678",
+      });
+    });
+
+    const res = await t
+      .withIdentity({ subject: seed.tenantA.managerId })
+      .action(api.lib.uberDirect.quote.requestQuote, {
+        tenantId: seed.tenantA.tenantId,
+        address: ADDRESS,
+      });
+    expect(res.ok).toBe(true);
+
+    const [, quoteInit] = fetchSpy.mock.calls[1] as [string, RequestInit];
+    const body = JSON.parse(String(quoteInit.body)) as Record<string, unknown>;
+
+    // pickup_address is a JSON-encoded STRING with the documented Uber shape.
+    expect(typeof body.pickup_address).toBe("string");
+    const pickup = JSON.parse(String(body.pickup_address)) as Record<
+      string,
+      unknown
+    >;
+    expect(pickup.street_address).toEqual(["1 Rue de Rivoli"]);
+    expect(pickup.city).toBe("Paris");
+    expect(pickup.zip_code).toBe("75001");
+    expect(pickup.country).toBe("FR");
+
+    expect(body.pickup_latitude).toBe(48.8606);
+    expect(body.pickup_longitude).toBe(2.3376);
+    expect(body.pickup_phone_number).toBe("+33612345678");
+    expect(body.dropoff_address).toBe(ADDRESS);
   });
 
   it("returns hors_zone (deliverable false) when Uber refuses the address", async () => {

@@ -366,6 +366,143 @@ describe("B-TENANT-LIFECYCLE [3/4] tenant.updateSettings — validation", () => 
   });
 });
 
+// ===========================================================================
+// Address-first slice 1 (2026-06-11) — the FULL structured address payload
+// (display string + lat/lng + 4-component object) MUST travel together on
+// `tenant.updateSettings`. The Uber Direct quote endpoint (commit 69699b3)
+// refuses a quote without `pickup_address`; passing the structured JSON shape
+// (`{street_address,city,zip_code,country}`) along with explicit lat/lng is
+// the documented Uber-recommended path for accurate geocoding. The mutation
+// MUST therefore enforce ALL-OR-NOTHING on the 4-tuple — a half-patch (e.g.
+// address-only) would leave the row inconsistent and break the quote chain.
+// ===========================================================================
+describe("address-first slice 1 — updateSettings 4-tuple address payload", () => {
+  let t: ReturnType<typeof convexTest>;
+  let seed: Seed;
+  beforeEach(async () => {
+    t = convexTest(schema, modules);
+    seed = await seedTwoTenantsAllRoles(t);
+  });
+
+  const VALID = {
+    address: "1 Rue de Rivoli, 75001 Paris",
+    addressLat: 48.8606,
+    addressLng: 2.3376,
+    addressComponents: {
+      streetAddress: "1 Rue de Rivoli",
+      city: "Paris",
+      zipCode: "75001",
+      country: "FR",
+    },
+  };
+
+  it("kb_manager patches the full 4-tuple → all 4 fields persisted", async () => {
+    const asMgr = t.withIdentity({ subject: seed.tenantA.managerId });
+
+    await asMgr.mutation(api.lib.admin.tenantSettings.updateSettings, {
+      tenantId: seed.tenantA.tenantId,
+      patch: VALID,
+    });
+
+    const tenant = await t.run((ctx) => ctx.db.get(seed.tenantA.tenantId));
+    expect(tenant?.address).toBe(VALID.address);
+    expect(tenant?.addressLat).toBe(VALID.addressLat);
+    expect(tenant?.addressLng).toBe(VALID.addressLng);
+    expect(tenant?.addressComponents).toEqual(VALID.addressComponents);
+  });
+
+  it("address-only patch (no lat/lng/components) is rejected (INVALID_ADDRESS_PAYLOAD)", async () => {
+    const asMgr = t.withIdentity({ subject: seed.tenantA.managerId });
+
+    await expect(
+      asMgr.mutation(api.lib.admin.tenantSettings.updateSettings, {
+        tenantId: seed.tenantA.tenantId,
+        patch: { address: "1 Rue de Rivoli, 75001 Paris" },
+      }),
+    ).rejects.toThrow(/INVALID_ADDRESS_PAYLOAD/);
+
+    const tenant = await t.run((ctx) => ctx.db.get(seed.tenantA.tenantId));
+    expect(tenant?.address).toBeUndefined();
+  });
+
+  it("missing lat (only address + lng + components) is rejected", async () => {
+    const asMgr = t.withIdentity({ subject: seed.tenantA.managerId });
+
+    await expect(
+      asMgr.mutation(api.lib.admin.tenantSettings.updateSettings, {
+        tenantId: seed.tenantA.tenantId,
+        patch: {
+          address: VALID.address,
+          addressLng: VALID.addressLng,
+          addressComponents: VALID.addressComponents,
+        },
+      }),
+    ).rejects.toThrow(/INVALID_ADDRESS_PAYLOAD/);
+  });
+
+  it("invalid zipCode in components throws INVALID_ADDRESS_PAYLOAD", async () => {
+    const asMgr = t.withIdentity({ subject: seed.tenantA.managerId });
+
+    await expect(
+      asMgr.mutation(api.lib.admin.tenantSettings.updateSettings, {
+        tenantId: seed.tenantA.tenantId,
+        patch: {
+          ...VALID,
+          addressComponents: { ...VALID.addressComponents, zipCode: "7500" },
+        },
+      }),
+    ).rejects.toThrow(/INVALID_ADDRESS_PAYLOAD/);
+
+    const tenant = await t.run((ctx) => ctx.db.get(seed.tenantA.tenantId));
+    expect(tenant?.address).toBeUndefined();
+  });
+
+  it("patching other slots (branding / acceptedModes / phone) without address-tuple still works", async () => {
+    const asMgr = t.withIdentity({ subject: seed.tenantA.managerId });
+
+    await asMgr.mutation(api.lib.admin.tenantSettings.updateSettings, {
+      tenantId: seed.tenantA.tenantId,
+      patch: {
+        branding: { primaryColor: "#1B7A3D" },
+        phone: "+33 6 12 34 56 78",
+        acceptedModes: { delivery: true, clickAndCollect: true },
+      },
+    });
+
+    const tenant = await t.run((ctx) => ctx.db.get(seed.tenantA.tenantId));
+    expect(tenant?.branding).toEqual({ primaryColor: "#1B7A3D" });
+    expect(tenant?.phone).toBe("+33612345678");
+    expect(tenant?.acceptedModes).toEqual({
+      delivery: true,
+      clickAndCollect: true,
+    });
+    // Address fields untouched.
+    expect(tenant?.address).toBeUndefined();
+    expect(tenant?.addressLat).toBeUndefined();
+    expect(tenant?.addressLng).toBeUndefined();
+    expect(tenant?.addressComponents).toBeUndefined();
+  });
+
+  it("a failed address validation does NOT persist any partial change", async () => {
+    const asMgr = t.withIdentity({ subject: seed.tenantA.managerId });
+
+    // Mix a valid branding patch with an invalid address (missing lat/lng).
+    await expect(
+      asMgr.mutation(api.lib.admin.tenantSettings.updateSettings, {
+        tenantId: seed.tenantA.tenantId,
+        patch: {
+          branding: { primaryColor: "#1B7A3D" },
+          address: "1 Rue de Rivoli, 75001 Paris",
+        },
+      }),
+    ).rejects.toThrow();
+
+    const tenant = await t.run((ctx) => ctx.db.get(seed.tenantA.tenantId));
+    expect(tenant?.branding).toBeUndefined();
+    expect(tenant?.address).toBeUndefined();
+  });
+});
+
 describe("B-TENANT-LIFECYCLE [3/4] tenant.updateSettings — cross-tenant fuzz", () => {
   let t: ReturnType<typeof convexTest>;
   let seed: Seed;
