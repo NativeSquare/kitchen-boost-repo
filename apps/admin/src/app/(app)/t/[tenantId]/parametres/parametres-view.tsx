@@ -268,7 +268,13 @@ function coordonneesEditorKey(
   coordonnees: CoordonneesValue | undefined,
 ): string {
   if (coordonnees === undefined) return "coordonnees|loading";
-  return `coordonnees|${coordonnees.address ?? "-"}|${coordonnees.phone ?? "-"}`;
+  // Slice 2 (address-first) — the key includes the four address slots and
+  // the phone so a backend mutation that lands the structured siblings
+  // (post-slice-2 follow-up) triggers an editor remount that re-syncs the
+  // form, instead of keeping the editor mounted with its stale (no-lat)
+  // seed.
+  const ac = coordonnees.addressComponents;
+  return `coordonnees|${coordonnees.address ?? "-"}|${coordonnees.addressLat ?? "-"}|${coordonnees.addressLng ?? "-"}|${ac ? `${ac.streetAddress}/${ac.city}/${ac.zipCode}/${ac.country}` : "-"}|${coordonnees.phone ?? "-"}`;
 }
 
 function modesEditorKey(modes: ModesValue | undefined): string {

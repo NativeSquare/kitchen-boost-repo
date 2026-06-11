@@ -165,6 +165,19 @@ export default function ParametresPage() {
           // and seeds an empty input. `null` (the wire-level absence) maps
           // to that.
           address: settings.address ?? undefined,
+          // Slice 2 (address-first) — the structured siblings are not yet
+          // exposed by `getSettings` (manager-accessible query), so they
+          // stay `undefined` here. Net effect: any tenant who already had
+          // an `address` shows the editor's legacy warning banner
+          // (« Adresse à re-saisir via la recherche pour réactiver la
+          // livraison »), which is the correct UX for pre-slice-1 tenants.
+          // For post-slice-2 tenants, a follow-up backend slice will widen
+          // `getSettings` to include `addressLat`/`addressLng`/
+          // `addressComponents`, at which point the legacy warning will
+          // only fire on truly-legacy rows.
+          addressLat: undefined,
+          addressLng: undefined,
+          addressComponents: undefined,
           phone: settings.phone ?? undefined,
         };
   const acceptedModes: ModesValue | undefined =
