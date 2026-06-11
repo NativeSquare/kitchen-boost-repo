@@ -12,6 +12,7 @@ import {
 import { assertLegalTenantTransition } from "./tenantLifecycle";
 import {
   assertNonEmptyString,
+  isValidAddressPayload,
   isValidCustomDomain,
   isValidHexColor,
   normalisePhone,
@@ -82,9 +83,28 @@ const acceptedModesPatch = v.object({
  * source of validation shape, no FE/BE drift. Throws `INVALID_CUSTOM_DOMAIN`
  * on a bad shape.
  */
+/**
+ * Address-first slice 1 (2026-06-11) — the structured `addressComponents`
+ * sub-object the wizard / Paramètres editor (slice 2 frontend, Google Places)
+ * persists ALONGSIDE the display `address` + lat/lng. Same V1 FR-only shape as
+ * `tenants.addressComponents`.
+ */
+const addressComponentsPatch = v.object({
+  streetAddress: v.string(),
+  city: v.string(),
+  zipCode: v.string(),
+  country: v.string(),
+});
+
 const settingsPatch = v.object({
   branding: v.optional(brandingPatch),
   address: v.optional(v.string()),
+  // Address-first slice 1 (2026-06-11) — the structured siblings of `address`.
+  // The 4-tuple TRAVELS TOGETHER on every patch (enforced in the handler via
+  // `isValidAddressPayload`).
+  addressLat: v.optional(v.number()),
+  addressLng: v.optional(v.number()),
+  addressComponents: v.optional(addressComponentsPatch),
   phone: v.optional(v.string()),
   acceptedModes: v.optional(acceptedModesPatch),
   customDomain: v.optional(v.string()),
@@ -312,6 +332,14 @@ export const updateSettings = tenantMutation({ allow: ["kb_manager"] })({
     const normalised: {
       branding?: { logoUrl?: string; primaryColor?: string };
       address?: string;
+      addressLat?: number;
+      addressLng?: number;
+      addressComponents?: {
+        streetAddress: string;
+        city: string;
+        zipCode: string;
+        country: string;
+      };
       phone?: string;
       acceptedModes?: { delivery: boolean; clickAndCollect: boolean };
       customDomain?: string;
@@ -337,11 +365,44 @@ export const updateSettings = tenantMutation({ allow: ["kb_manager"] })({
       normalised.branding = branding;
     }
 
-    if (patch.address !== undefined) {
-      normalised.address = assertNonEmptyString(
-        patch.address,
-        "INVALID_ADDRESS",
-      );
+    // Address-first slice 1 (2026-06-11) — the 4-tuple all-or-nothing rule.
+    // The display string AND the structured siblings (lat/lng/components)
+    // TRAVEL TOGETHER. A patch carrying any of them MUST carry all of them, OR
+    // the call fails with `INVALID_ADDRESS_PAYLOAD` (no demi-patch). This
+    // matches the Uber-recommended pickup_address shape (cf.
+    // `lib/uberDirect/quote.ts`) and prevents the inconsistent-row state
+    // exposed by the 1st PWA E2E run (commit 69699b3).
+    //
+    // A patch with NONE of the four leaves the address fields untouched.
+    const addressTouched = [
+      patch.address,
+      patch.addressLat,
+      patch.addressLng,
+      patch.addressComponents,
+    ].some((v) => v !== undefined);
+    if (addressTouched) {
+      if (
+        patch.address === undefined ||
+        patch.addressLat === undefined ||
+        patch.addressLng === undefined ||
+        patch.addressComponents === undefined
+      ) {
+        throw new ConvexError({
+          code: "INVALID_ADDRESS_PAYLOAD",
+          message:
+            "Address patch must carry the full 4-tuple (address + addressLat + addressLng + addressComponents).",
+        });
+      }
+      isValidAddressPayload({
+        address: patch.address,
+        addressLat: patch.addressLat,
+        addressLng: patch.addressLng,
+        addressComponents: patch.addressComponents,
+      });
+      normalised.address = patch.address;
+      normalised.addressLat = patch.addressLat;
+      normalised.addressLng = patch.addressLng;
+      normalised.addressComponents = patch.addressComponents;
     }
 
     if (patch.phone !== undefined) {

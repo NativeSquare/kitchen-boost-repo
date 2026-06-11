@@ -56,6 +56,34 @@ export const tenants = defineTable({
   // these set; they are filled progressively across the wizard / paramètres
   // page. No new index: these fields are never lookup keys.
   address: v.optional(v.string()),
+  // Address-first slice 1 (2026-06-11) — `tenants.address` legacy carried only a
+  // raw display string (the gérant typed line). The 1st PWA E2E run revealed
+  // Uber Direct refuses a quote without `pickup_address`, AND recommends a
+  // structured JSON shape with explicit lat/lng for accurate geocoding (cf.
+  // `lib/uberDirect/quote.ts`). These three sibling fields carry the structured
+  // payload the wizard / Paramètres editor (slice 2 frontend, Google Places)
+  // persists ALONGSIDE the display string:
+  //  - `addressLat` / `addressLng` — geocoded coordinates (Google Places result)
+  //  - `addressComponents` — `{ streetAddress, city, zipCode, country }` shape
+  //    the backend forwards to Uber as the JSON `pickup_address` recommended
+  //    body.
+  //
+  // V1: all three stay OPTIONAL — a legacy tenant (created pre-slice 1) carries
+  // ONLY `address` and the quote fallback sends it raw (cf. quote.ts). Slice 3
+  // will gate `tenant.activate` on the full 4-tuple so a tenant cannot be
+  // activated without a Places-validated address. The mutation
+  // `tenant.updateSettings` already enforces the 4-tuple all-or-nothing
+  // (`INVALID_ADDRESS_PAYLOAD`).
+  addressLat: v.optional(v.number()),
+  addressLng: v.optional(v.number()),
+  addressComponents: v.optional(
+    v.object({
+      streetAddress: v.string(),
+      city: v.string(),
+      zipCode: v.string(),
+      country: v.string(),
+    }),
+  ),
   phone: v.optional(v.string()),
   acceptedModes: v.optional(
     v.object({

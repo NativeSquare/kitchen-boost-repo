@@ -110,3 +110,74 @@ export function assertNonEmptyString(value: string, code: string): string {
   }
   return trimmed;
 }
+
+/**
+ * Address-first slice 1 (2026-06-11) — the FULL structured address payload
+ * `tenant.updateSettings` must persist together.
+ *
+ * The PWA `requestDeliveryQuote` chain (commit 69699b3) revealed that Uber
+ * Direct refuses a quote without `pickup_address`, and recommends the
+ * structured JSON shape `{street_address[],city,state,zip_code,country}` along
+ * with explicit `pickup_latitude` / `pickup_longitude` for accurate geocoding.
+ * The 4-tuple (display string + lat/lng + 4-component object) therefore
+ * TRAVELS TOGETHER on every patch — a half-patch (e.g. address-only) would
+ * leave the row inconsistent and break the quote chain at the next E2E run.
+ *
+ * Throws `ConvexError({ code: "INVALID_ADDRESS_PAYLOAD", message: ... })` with
+ * a precise message on any defect:
+ *  - empty / whitespace-only display `address`
+ *  - non-finite `addressLat` / `addressLng` (`Number.isFinite` ⇒ rejects NaN,
+ *    ±Infinity, but accepts 0, negatives, decimals)
+ *  - empty `streetAddress` / `city`
+ *  - FR `zipCode` not matching `^\d{5}$` (V1 FR-only — Owner.com model, all
+ *    restos parisien / IdF; widening to multi-country is a V2 concern)
+ *  - `country` ≠ `"FR"` (V1 FR-only, see above)
+ *
+ * Returns `void` on success (no normalisation: callers persist the values as
+ * received from Google Places). The mutation layer wires this in BEFORE the
+ * store call so a refused patch never persists a partial change
+ * (transactional).
+ */
+export type AddressPayload = {
+  address: string;
+  addressLat: number;
+  addressLng: number;
+  addressComponents: {
+    streetAddress: string;
+    city: string;
+    zipCode: string;
+    country: string;
+  };
+};
+
+export function isValidAddressPayload(payload: AddressPayload): void {
+  const fail = (reason: string): never => {
+    throw new ConvexError({
+      code: "INVALID_ADDRESS_PAYLOAD",
+      message: `Invalid address payload: ${reason}.`,
+    });
+  };
+
+  if (typeof payload.address !== "string" || payload.address.trim() === "") {
+    fail("display `address` must be a non-empty string");
+  }
+  if (!Number.isFinite(payload.addressLat)) {
+    fail("`addressLat` must be a finite number");
+  }
+  if (!Number.isFinite(payload.addressLng)) {
+    fail("`addressLng` must be a finite number");
+  }
+  const c = payload.addressComponents;
+  if (typeof c.streetAddress !== "string" || c.streetAddress.trim() === "") {
+    fail("`addressComponents.streetAddress` must be a non-empty string");
+  }
+  if (typeof c.city !== "string" || c.city.trim() === "") {
+    fail("`addressComponents.city` must be a non-empty string");
+  }
+  if (!/^\d{5}$/.test(c.zipCode)) {
+    fail("`addressComponents.zipCode` must be a 5-digit FR postal code");
+  }
+  if (c.country !== "FR") {
+    fail('`addressComponents.country` must be "FR" (V1 FR-only)');
+  }
+}
