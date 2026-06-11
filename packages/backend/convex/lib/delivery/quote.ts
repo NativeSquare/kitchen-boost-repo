@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { api } from "../../_generated/api";
 import { action } from "../../_generated/server";
+import { type ServiceWindow, serviceWindow } from "../../table/serviceHours";
 import { isWithinServiceHours } from "../menu/serviceHours";
 import { listTenantServiceWindows, publicTenantQuery } from "../tenancy";
 import type { UberQuoteResult } from "../uberDirect/quote";
@@ -108,6 +109,43 @@ export const readServiceOpen = publicTenantQuery({
   handler: async (ctx): Promise<boolean> => {
     const windows = await listTenantServiceWindows(ctx, ctx.tenantId);
     return isWithinServiceHours(windows, Date.now());
+  },
+});
+
+/**
+ * FEATURE A (closed-resto UX) — PUBLIC read of the [[Plage horaire de service]]
+ * surfacing BOTH the live `isOpen` flag AND the raw `windows`, so the PWA can
+ * render the « resto fermé » bottom sheet at LOAD (before — and instead of — the
+ * address-first quote chain): the opening hours are known the moment the page
+ * renders, so making a customer enter an address only to learn the resto is
+ * closed is bad UX (Uber-Eats parity).
+ *
+ * Why return the WINDOWS (not just a server-computed `nextOpeningMs`):
+ *  - the client re-evaluates `isOpen` + the next-opening label against its OWN
+ *    clock on a ~30–60s interval (stale-tab: a natural 22:00 closing crosses the
+ *    wall clock without any DATA change, so Convex reactivity alone would not
+ *    push it);
+ *  - the Convex reactive subscription on this query ALSO propagates an admin
+ *    editing the hours live.
+ * A server-frozen `nextOpeningMs` would go stale the instant it is read.
+ *
+ * Same isolation contract as `readServiceOpen`: `publicTenantQuery` allows the
+ * anonymous PWA visitor, `requireTenant` still throws Forbidden for an
+ * unknown/dangling tenant, and the windows are read ONLY through the sanctioned
+ * `listTenantServiceWindows` seam scoped to `ctx.tenantId` (never raw `ctx.db`,
+ * ADR 0010).
+ */
+export const readServiceStatus = publicTenantQuery({
+  args: {},
+  returns: v.object({
+    isOpen: v.boolean(),
+    windows: v.array(serviceWindow),
+  }),
+  handler: async (
+    ctx,
+  ): Promise<{ isOpen: boolean; windows: ServiceWindow[] }> => {
+    const windows = await listTenantServiceWindows(ctx, ctx.tenantId);
+    return { isOpen: isWithinServiceHours(windows, Date.now()), windows };
   },
 });
 
