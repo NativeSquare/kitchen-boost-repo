@@ -29,6 +29,15 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useServiceStatus } from "./service-status-context";
 
 export type ClosedRestoSheetProps = {
@@ -44,6 +53,7 @@ export type ClosedRestoSheetProps = {
 export function ClosedRestoSheet({
   browseHref,
 }: ClosedRestoSheetProps = {}): React.JSX.Element | null {
+  const isMobile = useIsMobile();
   const { isOpen, nextOpeningLabel, showClosedSheetNonce } = useServiceStatus();
   // Suppress the sheet for the CURRENT closed period only.
   const [dismissed, setDismissed] = useState(false);
@@ -64,50 +74,93 @@ export function ClosedRestoSheet({
   // loading) and the customer has not dismissed this closed period.
   if (isOpen !== false || dismissed) return null;
 
+  const body = (
+    <p className="text-sm text-zinc-700">
+      Tu peux parcourir la carte en attendant. La commande rouvre à la
+      réouverture du resto.
+    </p>
+  );
+  // « Voir la carte » CTA — navigates (home → /menu) or just dismisses (already
+  // on /menu). Dismissing unmounts the sheet (setDismissed → returns null), so
+  // no Drawer/Dialog Close primitive is required on the desktop path.
+  const browseCta =
+    browseHref !== undefined ? (
+      <Link
+        href={browseHref}
+        onClick={() => setDismissed(true)}
+        className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2 text-center text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+        data-testid="closed-resto-browse"
+      >
+        Voir la carte
+      </Link>
+    ) : null;
+
+  // MOBILE — Vaul bottom sheet (unchanged: this works, do not touch it).
+  if (isMobile) {
+    return (
+      <Drawer
+        open
+        onOpenChange={(next) => {
+          if (!next) setDismissed(true);
+        }}
+      >
+        <DrawerContent data-testid="closed-resto-sheet" className="px-0">
+          <DrawerHeader>
+            <DrawerTitle>Resto fermé</DrawerTitle>
+            <DrawerDescription>{nextOpeningLabel}</DrawerDescription>
+          </DrawerHeader>
+
+          <div className="flex flex-col gap-3 px-4 pb-4">{body}</div>
+
+          <DrawerFooter>
+            {browseCta ?? (
+              <DrawerClose asChild>
+                <button
+                  type="button"
+                  onClick={() => setDismissed(true)}
+                  className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+                  data-testid="closed-resto-dismiss"
+                >
+                  Voir la carte
+                </button>
+              </DrawerClose>
+            )}
+          </DrawerFooter>
+        </DrawerContent>
+      </Drawer>
+    );
+  }
+
+  // DESKTOP — centered Radix Dialog (a bottom drawer renders full-width on wide
+  // viewports). Informational only, so no input/dropdown concerns.
   return (
-    <Drawer
+    <Dialog
       open
       onOpenChange={(next) => {
         if (!next) setDismissed(true);
       }}
     >
-      <DrawerContent data-testid="closed-resto-sheet" className="px-0">
-        <DrawerHeader>
-          <DrawerTitle>Resto fermé</DrawerTitle>
-          <DrawerDescription>{nextOpeningLabel}</DrawerDescription>
-        </DrawerHeader>
+      <DialogContent data-testid="closed-resto-sheet">
+        <DialogHeader>
+          <DialogTitle>Resto fermé</DialogTitle>
+          <DialogDescription>{nextOpeningLabel}</DialogDescription>
+        </DialogHeader>
 
-        <div className="flex flex-col gap-3 px-4 pb-4">
-          <p className="text-sm text-zinc-700">
-            Tu peux parcourir la carte en attendant. La commande rouvre à la
-            réouverture du resto.
-          </p>
-        </div>
+        {body}
 
-        <DrawerFooter>
-          {browseHref !== undefined ? (
-            <Link
-              href={browseHref}
+        <DialogFooter>
+          {browseCta ?? (
+            <button
+              type="button"
               onClick={() => setDismissed(true)}
-              className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2 text-center text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-              data-testid="closed-resto-browse"
+              className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+              data-testid="closed-resto-dismiss"
             >
               Voir la carte
-            </Link>
-          ) : (
-            <DrawerClose asChild>
-              <button
-                type="button"
-                onClick={() => setDismissed(true)}
-                className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-                data-testid="closed-resto-dismiss"
-              >
-                Voir la carte
-              </button>
-            </DrawerClose>
+            </button>
           )}
-        </DrawerFooter>
-      </DrawerContent>
-    </Drawer>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
