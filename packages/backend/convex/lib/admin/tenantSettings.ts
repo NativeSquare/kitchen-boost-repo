@@ -472,6 +472,11 @@ export const updateSettings = tenantMutation({ allow: ["kb_manager"] })({
  * Error codes the frontend can branch on:
  *  - `FORBIDDEN` / `UNAUTHENTICATED` (from the wrapper)
  *  - `NOT_FOUND` (tenant id syntactically valid but no row)
+ *  - `ACTIVATION_BLOCKED_NO_ADDRESS` (address-first slice 3) — the tenant is
+ *    missing the FULL 4-tuple `address` + `addressLat` + `addressLng` +
+ *    `addressComponents`. Runs BEFORE the lifecycle gate so the operator
+ *    sees the actionable error first (fix the address via wizard step 4 or
+ *    the Paramètres editor, retry).
  *  - `INVALID_STATE` (source status is not `pending`)
  *
  * Convex registers this by module PATH, so callers invoke
@@ -494,7 +499,35 @@ export const activate = kbAdminMutation({
       });
     }
 
-    // 2. Defer to the pure state machine — only `pending → active` legal V1.
+    // 2. Address-first slice 3 (2026-06-11) — REQUIRE the FULL 4-tuple address
+    //    payload BEFORE the lifecycle gate. A tenant can NOT be activated
+    //    without a Places-validated address (display string + lat/lng + 4
+    //    structured components), because:
+    //      - the PWA delivery quote chain (`lib/uberDirect/quote.ts`) refuses
+    //        every order with `pickup_address` missing the structured body
+    //        (slice 1 fix, PR #484);
+    //      - Stripe / branding / menu / QR / manager checks BELOW only matter
+    //        once the resto is reachable end-to-end. An unreachable resto must
+    //        not flip to `active`.
+    //    Runs BEFORE `assertLegalTenantTransition` so the operator sees the
+    //    actionable error first (fix the address, retry; the transition error
+    //    only ever surfaces once the address is fixed). The `INVALID_STATE`
+    //    branch downstream still owns the V1 non-idempotence path (active →
+    //    active on a complete-address tenant).
+    if (
+      current.address === undefined ||
+      current.address.trim() === "" ||
+      current.addressLat === undefined ||
+      current.addressLng === undefined ||
+      current.addressComponents === undefined
+    ) {
+      throw new ConvexError({
+        code: "ACTIVATION_BLOCKED_NO_ADDRESS",
+        message: "Adresse du restaurant requise pour l'activation.",
+      });
+    }
+
+    // 3. Defer to the pure state machine — only `pending → active` legal V1.
     //    Any other source status (`active`, `suspended`, `disabled`) is
     //    rejected with INVALID_STATE; covers both the illegal-source case
     //    AND the V1 non-idempotence (active → active is illegal).
