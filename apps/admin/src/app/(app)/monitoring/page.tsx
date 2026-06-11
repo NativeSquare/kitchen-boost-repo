@@ -31,6 +31,7 @@ import { useSession } from "@/lib/session";
 
 import { ALL_PASS_FILTERS, type IncidentFilters } from "./lib";
 import { MonitoringView } from "./monitoring-view";
+import { TenantsMissingAddressSection } from "./tenants-missing-address-section";
 
 /**
  * Subscribe to the wall clock through state + a 1-minute ticker so the
@@ -63,6 +64,14 @@ export default function MonitoringPage() {
     api.lib.admin.monitoring.previewIncidents,
     isAdmin ? {} : "skip",
   );
+  // Address-first slice 4 — legacy tenants whose 4-tuple is incomplete. Same
+  // root-only gate (`kbAdminQuery` backend) so we mirror the `skip` discipline
+  // here to avoid surfacing the raw Convex forbidden boundary above the
+  // UnauthorizedCard for non-root sessions.
+  const tenantsMissingAddress = useQuery(
+    api.lib.admin.addressAudit.listTenantsWithMissingAddress,
+    isAdmin ? {} : "skip",
+  );
   const now = useNow();
   const [filters, setFilters] = useState<IncidentFilters>(ALL_PASS_FILTERS);
   // Drill-down panel selection (issue #207). Owned here so `MonitoringView`
@@ -71,14 +80,21 @@ export default function MonitoringPage() {
     null,
   );
   return (
-    <MonitoringView
-      session={session}
-      incidents={incidents}
-      now={now}
-      filters={filters}
-      onFiltersChange={setFilters}
-      selectedIncident={selectedIncident}
-      onSelectedIncidentChange={setSelectedIncident}
-    />
+    <>
+      <MonitoringView
+        session={session}
+        incidents={incidents}
+        now={now}
+        filters={filters}
+        onFiltersChange={setFilters}
+        selectedIncident={selectedIncident}
+        onSelectedIncidentChange={setSelectedIncident}
+      />
+      {isAdmin ? (
+        <div className="px-4 lg:px-6 pb-6">
+          <TenantsMissingAddressSection rows={tenantsMissingAddress} />
+        </div>
+      ) : null}
+    </>
   );
 }

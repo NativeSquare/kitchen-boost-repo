@@ -13,6 +13,7 @@ import type * as crons from "../crons.js";
 import type * as e2e from "../e2e.js";
 import type * as emails from "../emails.js";
 import type * as http from "../http.js";
+import type * as lib_admin_addressAudit from "../lib/admin/addressAudit.js";
 import type * as lib_admin_contractTemplate from "../lib/admin/contractTemplate.js";
 import type * as lib_admin_contracts from "../lib/admin/contracts.js";
 import type * as lib_admin_generateContract from "../lib/admin/generateContract.js";
@@ -223,6 +224,7 @@ declare const fullApi: ApiFromModules<{
   e2e: typeof e2e;
   emails: typeof emails;
   http: typeof http;
+  "lib/admin/addressAudit": typeof lib_admin_addressAudit;
   "lib/admin/contractTemplate": typeof lib_admin_contractTemplate;
   "lib/admin/contracts": typeof lib_admin_contracts;
   "lib/admin/generateContract": typeof lib_admin_generateContract;
