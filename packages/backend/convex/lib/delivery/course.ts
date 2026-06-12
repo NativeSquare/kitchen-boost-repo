@@ -12,6 +12,7 @@ import {
   getTenantById,
   getTenantDeliveryByOrder,
   getTenantOrder,
+  getTenantPaymentByOrder,
   patchTenantDelivery,
   readCustomerFicheById,
   requireTenantOrder,
@@ -76,7 +77,9 @@ export const readCourseInputs = internalQuery({
     const order = await getTenantOrder(ctx, args.tenantId, args.orderId);
     const tenant = await getTenantById(ctx, args.tenantId);
     const customer =
-      order !== null ? await readCustomerFicheById(ctx, order.customerId) : null;
+      order !== null
+        ? await readCustomerFicheById(ctx, order.customerId)
+        : null;
     return {
       delivery,
       order,
@@ -131,8 +134,11 @@ export const applyCourseResult = internalMutation({
  * seam (which guards the state machine + records the customer aggregates). IDEMPOTENT:
  * a re-trigger after the order is already `nouvelle` (or any non-pending state) is a
  * clean no-op — the `confirmTenantOrderPayment` guard requires `en attente de
- * paiement`, so we check first and skip rather than throw. Reads the frozen pricing
- * from the order itself (set at checkout/payment). System-side (no actor); the
+ * paiement`, so we check first and skip rather than throw. The frozen pricing is
+ * read from the `payments` row (where 2.5-B `recordPaymentIntent` persisted it) —
+ * NOT from `order.pricingSnapshot`, which is undefined until THIS confirmation
+ * writes it (a delivery order carries no snapshot before it is confirmed, so
+ * reading it from the order self-blocked the gate). System-side (no actor); the
  * tenant is structural. Returns whether it confirmed on this call.
  */
 export const confirmDeliveryOrderOnCourseCreated = internalMutation({
@@ -143,12 +149,22 @@ export const confirmDeliveryOrderOnCourseCreated = internalMutation({
     // Only the gated pending state transitions; anything else (already confirmed on
     // a prior run, or aborted) is left untouched — idempotent, never a double count.
     if (order.status !== "en attente de paiement") return { confirmed: false };
-    if (order.pricingSnapshot === undefined) return { confirmed: false };
+    // The immutable charged amount lives on the `payments` row (set at
+    // `recordPaymentIntent`), not on the order (which only gets its frozen
+    // snapshot HERE, via `confirmTenantOrderPayment`). Source it from there.
+    const payment = await getTenantPaymentByOrder(
+      ctx,
+      args.tenantId,
+      args.orderId,
+    );
+    if (payment === null || payment.pricingSnapshot === undefined) {
+      return { confirmed: false };
+    }
     await confirmTenantOrderPayment(
       ctx,
       args.tenantId,
       args.orderId,
-      order.pricingSnapshot,
+      payment.pricingSnapshot,
     );
     return { confirmed: true };
   },

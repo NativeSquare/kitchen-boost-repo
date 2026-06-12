@@ -110,9 +110,15 @@ async function seedOrderWithDelivery(
       ...(customerContact?.phone !== undefined
         ? { customerPhone: customerContact.phone }
         : {}),
-      pricingSnapshot: PRICING,
+      // Realistic: a DELIVERY order carries NO frozen snapshot before it is
+      // confirmed (the snapshot lives on the `payments` row until
+      // `confirmDeliveryOrderOnCourseCreated` freezes it onto the order). Only
+      // pickup is already confirmed here. Setting it on the delivery order would
+      // mask the gate bug this suite must catch (#108 confirm reads the payment).
       createdAt: now,
-      ...(mode === "click_collect" ? { paidAt: now } : {}),
+      ...(mode === "click_collect"
+        ? { pricingSnapshot: PRICING, paidAt: now }
+        : {}),
     });
     await ctx.db.insert("payments", {
       tenantId,
