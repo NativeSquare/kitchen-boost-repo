@@ -67,9 +67,10 @@
  */
 
 import { ConvexError, v } from "convex/values";
-import { internal } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
+  internalAction,
   internalMutation,
   internalQuery,
   type MutationCtx,
@@ -4874,5 +4875,126 @@ export const e2eRecentOrdersT1 = internalQuery({
       paymentRef: o.paymentRef ?? null,
       createdAt: o.createdAt,
     }));
+  },
+});
+
+// -----------------------------------------------------------------------------
+// PAY/TRK — lecteur des delivery rows récentes (vérif propagation quoteId + course).
+// -----------------------------------------------------------------------------
+export const e2eRecentDeliveriesT1 = internalQuery({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const tenant = await ctx.db
+      .query("tenants")
+      .withIndex("by_slug", (q) => q.eq("slug", E2E_M_TENANT_SLUG))
+      .unique();
+    if (tenant === null) {
+      throw new ConvexError({
+        message: `Tenant "${E2E_M_TENANT_SLUG}" not found.`,
+      });
+    }
+    const rows = (await ctx.db.query("deliveries").collect())
+      .filter((d) => d.tenantId === tenant._id)
+      .sort((a, b) => b._creationTime - a._creationTime)
+      .slice(0, args.limit ?? 5);
+    return rows.map((d) => ({
+      deliveryId: d._id,
+      orderId: d.orderId,
+      mode: d.mode,
+      status: d.status,
+      quoteId: d.quoteId ?? null,
+      uberDeliveryId: d.uberDeliveryId ?? null,
+      incidentType: d.incidentType ?? null,
+      createdAt: d._creationTime,
+    }));
+  },
+});
+
+// -----------------------------------------------------------------------------
+// PAY/TRK diag — sonde brute Uber createDelivery (capture l'erreur exacte sans
+// paiement). Prend un quote frais via requestQuote puis appelle l'endpoint
+// deliveries avec le MÊME body que createDelivery.ts (incomplet), et renvoie le
+// status + body RAW d'Uber. Dev-only diagnostic.
+// -----------------------------------------------------------------------------
+export const e2eProbeCreateDeliveryT1 = internalAction({
+  args: { dropoffAddress: v.string() },
+  // Explicit return type: this action calls other functions via `internal`, so
+  // without an annotation TS infers `any` circularly — it would poison the
+  // `_generated/api` types and break unrelated consumers (e.g. tracking-view).
+  handler: async (ctx, args): Promise<Record<string, unknown>> => {
+    const tenantId: Id<"tenants"> = await ctx.runQuery(
+      internal.e2e._e2eResolveT1TenantId,
+      {},
+    );
+    // Fresh quote (reuses the real Uber quote path).
+    const quote = await ctx.runAction(api.lib.uberDirect.quote.requestQuote, {
+      tenantId,
+      address: args.dropoffAddress,
+    });
+    if (!quote.ok) {
+      return { stage: "quote", quote };
+    }
+    const creds = await ctx.runAction(
+      internal.lib.uberDirect.credentials.getDecryptedUberCredentialsSystem,
+      { tenantId },
+    );
+    // OAuth token.
+    const tokRes = await fetch("https://auth.uber.com/oauth/v2/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: creds.clientId,
+        client_secret: creds.clientSecret,
+        grant_type: "client_credentials",
+        scope: "eats.deliveries",
+      }).toString(),
+    });
+    const tokJson = (await tokRes.json()) as Record<string, unknown>;
+    const token = tokJson.access_token;
+    if (typeof token !== "string") {
+      return { stage: "token", tokenStatus: tokRes.status, tokJson };
+    }
+    // CURRENT (incomplete) createDelivery body — exactly what createDelivery.ts sends.
+    const res = await fetch(
+      `https://api.uber.com/v1/customers/${creds.customerId}/deliveries`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          "Idempotency-Key": `probe_${args.dropoffAddress.slice(0, 12)}_${quote.quoteId.slice(0, 8)}`,
+        },
+        body: JSON.stringify({
+          quote_id: quote.quoteId,
+          pickup_name: "Test Restaurant 1",
+          dropoff_address: args.dropoffAddress,
+          manifest_items: [{ name: "Commande", quantity: 1, size: "medium" }],
+          manifest_reference: "probe",
+        }),
+      },
+    );
+    const body = (await res.json()) as Record<string, unknown>;
+    return {
+      stage: "create",
+      quoteId: quote.quoteId,
+      createStatus: res.status,
+      body,
+    };
+  },
+});
+
+export const _e2eResolveT1TenantId = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const tenant = await ctx.db
+      .query("tenants")
+      .withIndex("by_slug", (q) => q.eq("slug", E2E_M_TENANT_SLUG))
+      .unique();
+    if (tenant === null) {
+      throw new ConvexError({
+        message: `Tenant "${E2E_M_TENANT_SLUG}" not found.`,
+      });
+    }
+    return tenant._id;
   },
 });
