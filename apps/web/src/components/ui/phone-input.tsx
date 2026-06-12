@@ -50,9 +50,19 @@ import {
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
-/** Shared skin for the number field + country trigger (matches sibling inputs). */
-const FIELD_CLASS =
-  "h-10 rounded-lg border border-zinc-300 text-base text-black focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-200";
+/**
+ * Emerald focus skin shared by the number field AND the country trigger so
+ * both halves of the control light up identically (matches the sibling
+ * firstName / email inputs in `<CheckoutForm>`).
+ */
+const FOCUS_CLASS =
+  "focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-200";
+
+/** Shared skin for the number field (matches sibling inputs). */
+const FIELD_CLASS = cn(
+  "h-10 rounded-lg border border-zinc-300 text-base text-black",
+  FOCUS_CLASS,
+);
 
 type PhoneInputProps = Omit<
   React.ComponentProps<"input">,
@@ -133,7 +143,8 @@ function CountrySelect({
           // Match the field height; own the left rounding; flush right with
           // the number input.
           className={cn(
-            "flex h-10 gap-1 rounded-e-none rounded-s-lg border-zinc-300 px-3 focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-200",
+            "flex h-10 gap-1 rounded-e-none rounded-s-lg border-zinc-300 px-3",
+            FOCUS_CLASS,
           )}
           disabled={disabled}
           aria-label="Choisir l'indicatif pays"
