@@ -81,6 +81,11 @@ export type NewPendingOrder = {
   // `NewOrder.customerPhone` — pattern extended from `address`, ADR 0010 MOAT).
   customerPhone?: string;
   restaurantNote?: string;
+  // The FRESH Uber quote id latched at click-Payer, for a DELIVERY order only — read
+  // back by `confirmPaymentSucceeded` to seed the delivery WITH a quote (so the 2.6-C
+  // course executor calls Uber instead of aborting `refused_post_payment`). Absent
+  // for `pickup` (no course gate).
+  quoteId?: string;
   items: NewOrderItem[];
 };
 
@@ -304,6 +309,10 @@ export async function insertTenantPendingOrder(
     lng: data.lng,
     customerPhone: data.customerPhone,
     restaurantNote: data.restaurantNote,
+    // Only DELIVERY binds a course to a quote; a pickup never carries one (the caller
+    // already omits it, this is belt-and-braces so a stray quoteId on a pickup never
+    // lands on the row).
+    quoteId: data.mode === "delivery" ? data.quoteId : undefined,
     createdAt: now,
   });
 

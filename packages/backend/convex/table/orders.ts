@@ -143,6 +143,14 @@ export const orders = defineTable({
   // Free-text kitchen note, ≤ 200 chars, NOT forwarded to the Uber manifest
   // (client-ordering CONTEXT "Note resto").
   restaurantNote: v.optional(v.string()),
+  // The FRESH Uber Direct quote id latched at click-Payer
+  // (`recaptureQuoteAtPayment`) for a DELIVERY order — threaded checkout → order →
+  // delivery seed so the 2.6-C course executor binds the [[Course]] to the most
+  // recent quote (Uber quotes expire). Absent for `pickup` (click & collect needs
+  // no course) and for pre-fix rows; OPTIONAL keeps the schema backward-compatible.
+  // The webhook seed (`confirmPaymentSucceeded`) reads it onto the `deliveries`
+  // row — without it the course executor spuriously aborts `refused_post_payment`.
+  quoteId: v.optional(v.string()),
   // Frozen at payment (from chantier 2.4 pricing). Absent until paid.
   pricingSnapshot: v.optional(pricingSnapshot),
   // Loose string FKs toward the payment (2.5) / delivery (2.6) records, set when
