@@ -96,16 +96,39 @@ describe("decideContactFormValid", () => {
     expect(result.phone).toBe(false);
   });
 
-  it("is invalid when phone has fewer than 6 digits", () => {
-    const result = decideContactFormValid({ ...valid, phone: "12345" });
+  it("is invalid when phone is a too-short number", () => {
+    const result = decideContactFormValid({ ...valid, phone: "06" });
     expect(result.valid).toBe(false);
     expect(result.phone).toBe(false);
   });
 
-  it("accepts a phone with 6+ digits even with spaces / + / dashes", () => {
+  it("is invalid when phone is junk digits (the Uber rejection case)", () => {
+    // Real incident : a customer submitted `124304859385935`, the payment
+    // went through, then Uber Direct rejected it post-payment with
+    // `400 dropoff_phone_number: "not valid."`. This must now fail BEFORE
+    // paying.
     const result = decideContactFormValid({
       ...valid,
-      phone: "+33 6 12 34 56 78",
+      phone: "124304859385935",
+    });
+    expect(result.valid).toBe(false);
+    expect(result.phone).toBe(false);
+  });
+
+  it("accepts a valid FR E.164 number", () => {
+    const result = decideContactFormValid({
+      ...valid,
+      phone: "+33612345678",
+    });
+    expect(result.valid).toBe(true);
+    expect(result.phone).toBe(true);
+  });
+
+  it("accepts a valid international (non-FR) E.164 number", () => {
+    const result = decideContactFormValid({
+      ...valid,
+      // UK mobile in E.164.
+      phone: "+447911123456",
     });
     expect(result.valid).toBe(true);
     expect(result.phone).toBe(true);
