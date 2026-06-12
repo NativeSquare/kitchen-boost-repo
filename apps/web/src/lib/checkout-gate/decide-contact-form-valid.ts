@@ -16,9 +16,21 @@
  *  - email     : basic `x@y.z` pattern after trim (one `@`, a dot in the
  *    domain, no whitespace). Not RFC-5322 — just enough to stop an obviously
  *    broken / empty address reaching Stripe.
- *  - phone     : non-empty after trim with at least 6 digits (ignores
- *    spaces / `+` / dashes so `+33 6 12 34 56 78` passes).
+ *  - phone     : a real, dialable number per `isValidPhoneNumber`
+ *    (libphonenumber-js). The `<PhoneInput>` control feeds this an E.164
+ *    string (e.g. `+33612345678`), so the number's country is unambiguous.
+ *    This replaces the old "≥ 6 digits" heuristic that let junk like
+ *    `124304859385935` through — that number passed the heuristic, the
+ *    payment went through, then Uber Direct's Create Delivery rejected it
+ *    post-payment (`400 dropoff_phone_number: "not valid."`) and the order
+ *    auto-aborted + auto-refunded. Gating on `isValidPhoneNumber` means a
+ *    customer can only pay with a number Uber will accept.
+ *
+ * `libphonenumber-js` is pure (no DOM / Node) so importing it keeps this
+ * module unit-testable in the vitest node env, like the rest of
+ * `lib/checkout-gate`.
  */
+import { isValidPhoneNumber } from "libphonenumber-js";
 
 /** Live contact-field values snapshotted from the form `<input>` controls. */
 export type ContactFormValues = {
@@ -47,9 +59,6 @@ export type ContactFormValidity = {
  */
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
-/** Minimum number of digits a phone must contain to count as filled-in. */
-const MIN_PHONE_DIGITS = 6;
-
 /**
  * Decide the validity of the checkout contact form. Pure: trims locally,
  * never mutates the input.
@@ -59,8 +68,12 @@ export function decideContactFormValid(
 ): ContactFormValidity {
   const firstName = values.firstName.trim().length > 0;
   const email = EMAIL_RE.test(values.email.trim());
-  const phoneDigits = values.phone.replace(/\D/g, "").length;
-  const phone = phoneDigits >= MIN_PHONE_DIGITS;
+  // The `<PhoneInput>` feeds an E.164 string (or "" when cleared). Empty /
+  // whitespace short-circuits to `false` before hitting libphonenumber-js,
+  // which otherwise just returns false anyway — the early return keeps the
+  // intent obvious.
+  const phoneRaw = values.phone.trim();
+  const phone = phoneRaw.length > 0 && isValidPhoneNumber(phoneRaw);
   return {
     valid: firstName && email && phone,
     firstName,

@@ -37,6 +37,7 @@ import type { Id } from "@packages/backend/convex/_generated/dataModel";
 import { useCart } from "@/components/cart/cart-context";
 import { useDeliveryMode } from "@/components/delivery-mode/delivery-mode-context";
 import { PushEnrollmentModal } from "@/components/checkout/push-enrollment-modal";
+import { PhoneInput } from "@/components/ui/phone-input";
 import {
   StripePaymentLazy,
   type CheckoutContactValues,
@@ -179,6 +180,16 @@ export function CheckoutForm({
       setContactValues((prev) => ({ ...prev, [field]: value }));
     };
 
+  /**
+   * Phone has its own setter : `<PhoneInput>` emits the E.164 string directly
+   * (or "" when cleared), not a DOM `ChangeEvent`. Same `contactValues.phone`
+   * semantics — the stored value is now guaranteed E.164 so Uber Direct's
+   * Create Delivery accepts it.
+   */
+  const onPhoneChange = (value: string): void => {
+    setContactValues((prev) => ({ ...prev, phone: value }));
+  };
+
   return (
     <form
       className="flex flex-col gap-6"
@@ -220,16 +231,14 @@ export function CheckoutForm({
         </label>
         <label className="flex flex-col gap-1">
           <span className="text-xs text-zinc-600">Téléphone</span>
-          <input
-            type="tel"
+          <PhoneInput
             name="phone"
             autoComplete="tel"
-            value={contactValues.phone}
-            onChange={onContactChange("phone")}
-            required
-            inputMode="tel"
-            placeholder="+33 6 12 34 56 78"
-            className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-base text-black placeholder:text-zinc-400 focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+            defaultCountry="FR"
+            international
+            value={contactValues.phone || undefined}
+            onChange={onPhoneChange}
+            placeholder="6 12 34 56 78"
           />
         </label>
       </fieldset>
