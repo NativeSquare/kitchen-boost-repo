@@ -70,7 +70,13 @@ const ARGS = {
   quoteId: "dqt_OK",
   manifestReference: "order_a_1",
   pickupName: "Buns & Bao",
+  // Uber REQUIRES these four on Create even with a quote — sourced from the tenant
+  // (pickup_*) + the customer/order (dropoff_*) by the orchestrator.
+  pickupAddress: '{"street_address":["1 rue du Resto"],"city":"Évry","state":"","zip_code":"91000","country":"FR"}',
+  pickupPhoneNumber: "+33611111111",
   dropoffAddress: "12 rue de Paris, 91000 Évry",
+  dropoffName: "Camille",
+  dropoffPhoneNumber: "+33622222222",
 };
 
 describe("2.6-C interpretCreateDeliveryResponse — pure mapping of POST /deliveries", () => {
@@ -171,8 +177,34 @@ describe("2.6-C createDelivery — internal action: system decrypt, OAuth, POST 
     const body = JSON.parse(String(createInit.body)) as Record<string, unknown>;
     expect(body.quote_id).toBe("dqt_OK");
     expect(body.manifest_reference).toBe("order_a_1");
+    // The four fields Uber REQUIRES on Create even with a quote (the bug fixed
+    // tonight: their absence returned HTTP 400 invalid_params, aborting EVERY
+    // course). pickup_* mirror the quote endpoint (tenant), dropoff_* come from
+    // the customer/order.
+    expect(body.pickup_address).toBe(ARGS.pickupAddress);
+    expect(body.pickup_phone_number).toBe("+33611111111");
+    expect(body.dropoff_name).toBe("Camille");
+    expect(body.dropoff_phone_number).toBe("+33622222222");
     // The secret is NEVER on the URL.
     expect(createUrl).not.toContain("sk_live_uber_secret_777");
+  });
+
+  it("falls back dropoff_name to \"Client\" when the customer firstName is absent (name is cosmetic, never blocks the course)", async () => {
+    fetchSpy = mockUberSequence({
+      status: 200,
+      body: { id: "del_uber_43", status: "pending" },
+    });
+
+    const { dropoffName: _omit, ...argsNoName } = ARGS;
+    const res = await t.action(
+      internal.lib.uberDirect.createDelivery.createDelivery,
+      { tenantId: seed.tenantA.tenantId, ...argsNoName },
+    );
+    expect(res).toMatchObject({ ok: true, uberDeliveryId: "del_uber_43" });
+
+    const [, createInit] = fetchSpy.mock.calls[1] as [string, RequestInit];
+    const body = JSON.parse(String(createInit.body)) as Record<string, unknown>;
+    expect(body.dropoff_name).toBe("Client");
   });
 
   it("returns refused_post_payment when Uber refuses the course (Cas A)", async () => {
