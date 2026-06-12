@@ -194,32 +194,53 @@ export function StripePaymentSection({
     resolve: (proceed: boolean) => void;
   } | null>(null);
 
-  /** Run the latching re-quote (with C&C short-circuit) + resolve the outcome. */
-  async function runLatching(): Promise<LatchingOutcome> {
+  /**
+   * Run the latching re-quote (with C&C short-circuit) and resolve the outcome,
+   * carrying the FRESH quote id from the deliverable verdict alongside it. The
+   * `quoteId` is what binds the eventual Uber [[Course]] to the most-recent quote —
+   * it is threaded into `createOrderFromCart` so the Stripe webhook can seed the
+   * delivery WITH a quote (without it the course executor aborts
+   * `refused_post_payment`). `null` for click & collect (no course, no quote).
+   */
+  async function runLatching(): Promise<{
+    outcome: LatchingOutcome;
+    freshQuoteId: string | null;
+  }> {
     if (mode === "click_and_collect") {
-      return decideLatchingOutcome({
-        mode,
-        cachedFeeCentimes: 0,
-        freshVerdict: null,
-      });
+      return {
+        outcome: decideLatchingOutcome({
+          mode,
+          cachedFeeCentimes: 0,
+          freshVerdict: null,
+        }),
+        freshQuoteId: null,
+      };
     }
     if (customerAddress === undefined) {
       // Defensive: the parent only renders the form when the customer is
       // authenticated; the address-first flow stamps `customers.address`
       // BEFORE the user can reach /checkout. If it's absent, we cannot
       // re-quote — abort fail-closed.
-      return { kind: "abort", reason: "hors_zone" };
+      return {
+        outcome: { kind: "abort", reason: "hors_zone" },
+        freshQuoteId: null,
+      };
     }
     const freshVerdict = await recaptureQuote({
       tenantId,
       address: customerAddress,
     });
-    return decideLatchingOutcome({
-      mode,
-      cachedFeeCentimes:
-        verdict !== null && verdict.deliverable ? verdict.fee : 0,
-      freshVerdict,
-    });
+    return {
+      outcome: decideLatchingOutcome({
+        mode,
+        cachedFeeCentimes:
+          verdict !== null && verdict.deliverable ? verdict.fee : 0,
+        freshVerdict,
+      }),
+      // The verdict carries `quoteId` only when deliverable — that fresh quote is
+      // the one the course must bind to.
+      freshQuoteId: freshVerdict.deliverable ? freshVerdict.quoteId : null,
+    };
   }
 
   /** Show the surge confirm modal and await user choice. */
@@ -288,8 +309,8 @@ export function StripePaymentSection({
         });
       }
 
-      // 2. Latching anti-surge.
-      const outcome = await runLatching();
+      // 2. Latching anti-surge — keep the FRESH quote id to bind the course to.
+      const { outcome, freshQuoteId } = await runLatching();
       if (outcome.kind === "abort") {
         setFatal(abortReasonToMessage(outcome.reason));
         return;
@@ -331,6 +352,10 @@ export function StripePaymentSection({
         lat: mode === "delivery" ? customerLat : undefined,
         lng: mode === "delivery" ? customerLng : undefined,
         restaurantNote: cartState.note.length > 0 ? cartState.note : undefined,
+        // Thread the FRESH latched quote id (delivery only) so the Stripe webhook
+        // seeds the delivery WITH a quote — the course executor then calls Uber
+        // instead of aborting `refused_post_payment`. `null` (C&C) → omit.
+        quoteId: freshQuoteId ?? undefined,
         items: mapCartLinesToBackend(cartState.lines),
       });
 

@@ -100,11 +100,16 @@ export const confirmPaymentSucceeded = internalMutation({
         );
       }
 
-      // Seed the fulfilment row toward the delivery domain (2.6-C executes it).
+      // Seed the fulfilment row toward the delivery domain (2.6-C executes it). For a
+      // DELIVERY order, thread the FRESH quote id latched at click-Payer (persisted on
+      // the order at checkout) so the 2.6-C course executor binds the [[Course]] to
+      // that quote and calls Uber — WITHOUT it the executor spuriously aborts
+      // `refused_post_payment` ([[Cmd avortée]]). Pickup carries no quote (no course).
       await insertTenantDelivery(ctx, payment.tenantId, {
         orderId: payment.orderId,
         mode: isPickup ? "click_collect" : "delivery",
         status: "pending",
+        quoteId: isPickup ? undefined : order.quoteId,
       });
 
       // Hand off to the delivery domain (2.6-C): once committed, create the real

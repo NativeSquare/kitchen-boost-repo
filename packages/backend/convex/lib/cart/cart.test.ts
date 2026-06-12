@@ -372,6 +372,38 @@ describe("2.3-B createOrderFromCart — checkout → en attente de paiement", ()
     expect(lines[0].modifiers[0].priceDelta).toBe(0); // frozen modifier delta
   });
 
+  it("persists the latched Uber quoteId on a DELIVERY order (threaded to the course seed)", async () => {
+    const as = t.withIdentity({ subject: eater });
+    const orderId = await as.mutation(api.lib.cart.cart.createOrderFromCart, {
+      tenantId: seed.tenantA.tenantId,
+      mode: "delivery",
+      address: "12 rue de Paris, 91000 Évry",
+      lat: 48.62,
+      lng: 2.44,
+      // The fresh quoteId latched at click-Payer (recaptureQuoteAtPayment) — it is
+      // what `confirmPaymentSucceeded` reads to seed the delivery with a quote so the
+      // course path does NOT abort with `refused_post_payment`.
+      quoteId: "qid_fresh_123",
+      items: [{ itemId: menu.friesId, quantity: 1, modifierSelections: [] }],
+    });
+    const order = await t.run((ctx) => ctx.db.get(orderId));
+    expect(order?.mode).toBe("delivery");
+    expect(order?.quoteId).toBe("qid_fresh_123");
+  });
+
+  it("a click & collect (pickup) order stores NO quoteId even if one is passed (pickup needs no course)", async () => {
+    const as = t.withIdentity({ subject: eater });
+    const orderId = await as.mutation(api.lib.cart.cart.createOrderFromCart, {
+      tenantId: seed.tenantA.tenantId,
+      mode: "pickup",
+      quoteId: "qid_should_be_ignored",
+      items: [{ itemId: menu.friesId, quantity: 1, modifierSelections: [] }],
+    });
+    const order = await t.run((ctx) => ctx.db.get(orderId));
+    expect(order?.mode).toBe("pickup");
+    expect(order?.quoteId).toBeUndefined();
+  });
+
   it("a click & collect order needs no delivery address", async () => {
     const as = t.withIdentity({ subject: eater });
     const orderId = await as.mutation(api.lib.cart.cart.createOrderFromCart, {

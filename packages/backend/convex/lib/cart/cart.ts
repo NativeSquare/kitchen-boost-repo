@@ -204,6 +204,12 @@ export const createOrderFromCart = customerMutation({
     lat: v.optional(v.number()),
     lng: v.optional(v.number()),
     restaurantNote: v.optional(v.string()),
+    // The FRESH Uber quote id latched at click-Payer (`recaptureQuoteAtPayment`),
+    // passed for a DELIVERY order so it is persisted on the order and read back by
+    // the Stripe webhook (`confirmPaymentSucceeded`) to seed the delivery WITH a
+    // quote — without it the 2.6-C course executor spuriously aborts
+    // `refused_post_payment`. Absent for `pickup` (no course gate).
+    quoteId: v.optional(v.string()),
     items: v.array(cartItem),
   },
   handler: async (ctx, args): Promise<Id<"orders">> => {
@@ -257,6 +263,9 @@ export const createOrderFromCart = customerMutation({
       lng: args.lng,
       customerPhone: fiche?.phone,
       restaurantNote: args.restaurantNote,
+      // Only DELIVERY binds a course to a quote; the seam also drops it for a pickup,
+      // but gating here keeps the intent explicit at the checkout boundary.
+      quoteId: args.mode === "delivery" ? args.quoteId : undefined,
       items: frozenItems,
     });
   },
