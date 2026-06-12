@@ -104,6 +104,36 @@ Première campagne d'exécution réelle (les bilans précédents = drains de cod
 > **Slices** : #449 (S1 tenant resolution) + #451 (S3 address-first) · **Statut** : 🟡 EN COURS — 3 scénarios prêts à tester
 >
 > Couvre : address-first BLOQUANT avant menu, Google Places autocomplete obligatoire, auto-validate au sélection, chain `signIn → getOrCreateCurrentCustomer → updateAddress → requestDeliveryQuote`, 4 verdicts (`deliverable` / `hors_zone` / `hors_horaire` / `surge`), édit adresse re-fire quote.
+>
+> **Statut 2026-06-11 (vague 2)** : A.1 ✅ (veille) · A.2 ✅ cœur validé (verdict hors_zone via Lyon → message + bouton retrait + nav /menu ; sandbox Uber confirmé renvoie `hors_zone` pour `1 Place Bellecour 69002 Lyon`) · A.3 ✅ techniquement (verdict hors_horaire via heures `closed`) MAIS **UX à refaire** (voir ci-dessous). À RE-VALIDER après le sous-agent consolidé.
+>
+> **Refonte UX dispo + livraison (sous-agent `agent/availability-and-delivery-ux` en cours, 2026-06-11)** — 2 features consolidées :
+>
+> 1. **Closed-resto au chargement (style Uber Eats)** : détecter resto fermé DÈS le load (on a les horaires, pas besoin d'attendre la saisie d'adresse) → bottom sheet « Resto fermé · Réouverture à <prochain horaire> » (`decideNextOpening` pur). Bypass de l'address-first quand fermé, menu parcourable (commande/checkout bloqués). **Onglet stale** : timer client (~30-60s) + query réactive sur les windows → si l'heure de fermeture est franchie pendant la visite, le sheet apparaît tout seul.
+> 2. **Bottom sheet adresse livraison réutilisable** : bouton « Livraison » désactivé (verdict null OU hors_zone) → taper ouvre un sheet d'adresse (« renseigne » si absente / « modifie » pré-remplie si hors_zone) au lieu d'un bouton mort ; rejoue le quote, adopte le verdict sans reload. Chaîne address→quote extraite (DRY avec address-first-form).
+>
+> Le précédent sous-agent fix-3 (cas null seul) a été abandonné (spec dépassé) ; tout est reconstruit ici proprement.
+>
+> **Bugs post-#490 corrigés (2026-06-12, sur main)** : (1) `e04f16d` — le champ Places dans le sheet n'était pas tappable (custom element non reconnu par le drag Vaul → `data-vaul-no-drag` sur le conteneur) ; (2) `ea90df1` — le champ Places ne se **montait pas du tout** dans le sheet : le hook lisait `containerRef.current` une seule fois alors que Vaul monte le contenu du Drawer en différé → passage en **callback ref** (montage au vrai attach). Avant ça, un cache Vercel servait l'ancien bundle (fausse piste initiale).
+>
+> **Preuve fee = Uber Direct réel (pas de mock)** : `requestDeliveryQuote` → `requestQuote` fait un vrai fetch `api.uber.com/.../delivery_quotes` (OAuth réel, creds sandbox déchiffrés du tenant) ; `fee`/`eta`/`quoteId` viennent de la réponse Uber. Vérifié live : `{deliverable:true, fee:590, eta:47, quoteId:"dqt_…"}`.
+>
+> **B.1 ✅** (2026-06-12) : `/menu` deep-link onglet frais → Livraison désactivée → tap → sheet « Renseigne ton adresse » → champ Places tappable → adresse livrable → Livraison s'active sans reload.
+>
+> **B.2 ✅** (2026-06-12) : adresse hors_zone (Lyon) → Livraison désactivée → tap → sheet « Modifie ton adresse » pré-rempli Lyon → nouvelle adresse Paris livrable → Livraison s'active.
+>
+> **Gap remonté → fix sous-agent `agent/edit-delivery-address` (#491)** : une fois l'adresse validée ET livrable, aucun moyen de la corriger (le sheet ne s'ouvrait que sur Livraison désactivée). Ajout d'une affordance « Modifier l'adresse » (parité Uber Eats) qui ouvre le `DeliveryAddressSheet` en mode edit même quand c'est livrable. **✅ validé** (desktop + mobile).
+>
+> **Fixes desktop + closed-resto (2026-06-12, direct sur main, plus de worktree) — TOUS validés** :
+>
+> - `33e19b2` — sheet adresse en **Dialog centré sur desktop** (Drawer/bottom-sheet sur mobile inchangé) : sur desktop le bottom-sheet pleine largeur coupait le dropdown Google. ✅
+> - `3d47f1f` — closed-resto sheet idem (Dialog desktop / Drawer mobile). ✅
+> - `a49827a` — **« Voir la carte »** fait un vrai `router.push("/menu")` (le Link s'auto-annulait) + dismiss persistant sessionStorage (pas de re-pop à l'arrivée, reset à la réouverture). ✅
+> - `6e18289` — **consultation seule** quand resto fermé : menu parcourable mais « Ajouter au panier » désactivé (« Resto fermé — commande à la réouverture »). Choix produit confirmé par Alex (parité Uber Eats). ✅
+>
+> **Stale-tab ✅** : resto basculé fermé pendant la visite `/menu` → sheet « Resto fermé » apparu tout seul (~30 s, timer client). **Closed-at-load ✅** : sheet « Réouverture demain à 11h00 » au chargement sans saisie d'adresse.
+>
+> **VAGUE 2 / 2bis CLÔTURÉE** ✅ (A.1, A.2, A.3 refondu, Feature B null+hors_zone, modifier-adresse, closed-resto load+stale-tab, consultation seule).
 
 ### A — Test A.1 : Address-first chain end-to-end verdict `deliverable`
 
@@ -200,7 +230,7 @@ Première campagne d'exécution réelle (les bilans précédents = drains de cod
 
 ## C — Cart + delivery mode toggle
 
-> **Slices** : #453 (S5 cart + Note resto + Delivery mode toggle) · **Statut** : 🟡 **TESTÉ 2026-06-11** (vague 1) — C.1 ⚠️ 2 fix en cours / C.2 ✅ (note 200 chars + persistance) / C.3 ✅ (toggle Livraison↔Retrait instant, aucun appel réseau, retour au mode delivery par défaut). **C.1** : dédup + qty + suppression + persistance OK, MAIS 2 défauts UX → fix : (1) prix du bouton « Ajouter au panier » ignorait les suppléments → live price `agent/fix-item-price` ; (2) suppléments par ligne trop discrets → affichage clarifié `agent/fix-cart-modifier-clarity`. À re-valider après merge des 3 PRs.
+> **Slices** : #453 (S5 cart + Note resto + Delivery mode toggle) · **Statut** : 🟢 **VALIDÉ 2026-06-11** (vague 1 + re-test) — C.1 ✅ (re-validé après #488 prix bouton live + #489 suppléments lisibles) / C.2 ✅ (note 200 chars + persistance) / C.3 ✅ (toggle Livraison↔Retrait instant, aucun appel réseau, retour au mode delivery par défaut). Les 2 défauts UX C.1 (prix bouton ignorait suppléments ; suppléments par ligne trop discrets) sont fixés et re-testés OK.
 >
 > Couvre : lignes panier dédupées par config item × modifiers, edit qty + suppression, Note resto 200 chars max, sous-total + frais livraison (prix barré "Offert par X" si pricing rule) + total, toggle Livraison/C&C header permanent switch sans re-quote (verdict initial cache 2 modes), mode initial cohérent avec verdict S3.
 
@@ -252,7 +282,13 @@ Première campagne d'exécution réelle (les bilans précédents = drains de cod
 
 ## CHK — Checkout + push enrollment 3 paliers
 
-> **Slices** : #454 (S6 checkout form RSC + détection canal actif) + #455 (S6a Wallet branch) + #456 (S6b Web Push branch + iOS<16.4 mask) + #457 (S6c fallback 3 niveaux + noChannelPossible) · **Statut** : 🟡 EN COURS — 5 scénarios prêts à tester
+> **Slices** : #454 (S6 checkout form RSC + détection canal actif) + #455 (S6a Wallet branch) + #456 (S6b Web Push branch + iOS<16.4 mask) + #457 (S6c fallback 3 niveaux + noChannelPossible) · **Statut** : 🟡 EN COURS — CHK.1 ✅, CHK.2 ✅ ; CHK.3/4/5 device-lourde restants.
+>
+> **Exécution vague 3 (2026-06-12, desktop Chrome)** :
+>
+> - **CHK.1 ✅** (validé session précédente — redirect panier vide + form vide + CGV 12px).
+> - **CHK.2 ✅** — gate Payer dynamique testé en pilotant la fiche Convex en direct (nouveau helper e2e `seedE2ESetCustomerCheckoutState` / `e2eFindCustomerByAddress` : retrouve la fiche par substring d'adresse, patch `pushEnrollment`). Flip realtime **↑** (`walletStatus:enrolled` → la surface Stripe remplace le bouton « Payer » <2s sans reload) **et ↓** (`revoked` → retour au bouton) confirmés. **Note d'évolution** : depuis #458 (S7 Stripe mergé), gate `active` ne montre plus un simple bouton vert mais **monte la surface de paiement Stripe** (`<StripePaymentLazy>`). Depuis #493, le bouton est aussi gaté par la validité du formulaire contact. La grille CHK.2 ci-dessous (écrite pour #454 seul, « bouton passe vert ») est donc partiellement périmée sur l'attendu visuel — le critère réel = swap bouton↔surface Stripe en realtime.
+> - **🔴 Bug PAY bloquant découvert pendant CHK.2** (voir groupe PAY) : le Payment Element s'affiche **vide** (403 sur `elements/sessions`) à cause d'un **mismatch de comptes Stripe** entre la publishable key (Vercel, plateforme `51SfflK`) et la secret key (Convex, plateforme `51SfflV` qui possède les comptes connectés). Bloque PAY.1/2/3 et TRK (qui dépend d'un paiement réussi). Fix = corriger `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` dans Vercel.
 >
 > Couvre : RSC `preloadQuery(getCurrentCustomer)` pré-remplissage form (firstName/email/phone capturés à un checkout précédent), Convex sub réactive bouton "Payer" gated dynamique, wording CGV ≥ 12px sous bouton, modal push enrollment single-screen non-skippable (Esc/click outside ignorés), branche Wallet (loader 30s + "Tester sans attendre" + "J'ai changé d'avis"), branche Web Push (`Notification.requestPermission` + masquage iOS <16.4), fallback 3 niveaux frictionnels (lien 12px → modal confirm → re-display modal initial → flag `noChannelPossible`).
 
@@ -333,7 +369,9 @@ Première campagne d'exécution réelle (les bilans précédents = drains de cod
 
 ## PAY — Stripe payment
 
-> **Slices** : #458 (S7 Stripe payment + latching surge + saved-card branch — PR #478) · **Statut** : 🟡 EN COURS — 3 scénarios prêts à tester
+> **Slices** : #458 (S7 Stripe payment + latching surge + saved-card branch — PR #478) · **Statut** : 🔴 **BLOQUÉ (config Stripe)** — 3 scénarios prêts mais le Payment Element ne se charge pas.
+>
+> **🔴 Blocker découvert 2026-06-12 (desktop Chrome)** : sur `/checkout` gate actif, le Payment Element Stripe rend une **div vide**. Console : `GET https://api.stripe.com/v1/elements/sessions?...&type=deferred_intent → 403 (Forbidden)` + `Unhandled payment Element loaderror`. **Cause racine (confirmée API)** : la **publishable key** servie par Vercel (`pk_test_51Sffl**K**…`, plateforme K) et la **secret key** Convex (`sk_test_51Sffl**V**…`, plateforme V) sont de **2 comptes Stripe différents**. Le compte connecté `acct_1TgBUq4DuUOJbMhp` appartient à V (vérifié : `charges_enabled:true`, `card_payments:active`, 0 requirement). Le client init Stripe.js avec la pk de K + `Stripe-Account: acct_1TgBUq` (que K ne possède pas) → 403. **Le code S7 est correct** (Elements deferred-intent, montant 1390 cts valide, compte connecté sain) — c'est purement une **mauvaise valeur d'env `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` dans Vercel**. **Fix** : poser la publishable de la plateforme V (commence par `pk_test_51SfflV…`) dans Vercel + redeploy. Le doc ops disait pourtant cette env « pas encore set » (PROD-SETUP-CHECKLIST ligne 164) → elle a été ajoutée après avec la clé d'un autre compte. **PAY.1/2/3 + TRK (dépend d'un paiement réussi) restent à exécuter une fois la clé corrigée.**
 >
 > Couvre : Stripe Elements lazy-loaded uniquement sur `/checkout` (vérif DevTools Network sur `/menu`), saved card cross-resto pre-selected (tile + "Utiliser autre carte"), Payment Element neuve avec Apple Pay button visible iOS + Google Pay Android, latching `recaptureQuoteAtPayment` AVANT `stripe.confirmPayment` (modal bloquante si surge), 3DS handle par SDK transparent, retry inline ≤2 attempts → 3ᵉ échec toast + `captureException` Sentry shim, redirect direct `/c/[orderId]` post-`stripe.confirmPayment`.
 >

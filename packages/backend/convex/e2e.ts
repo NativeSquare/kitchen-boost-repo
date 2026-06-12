@@ -4743,3 +4743,102 @@ export const wipeE2ECMDOrders = internalMutation({
     return { ordersDeleted, eventsDeleted };
   },
 });
+
+// -----------------------------------------------------------------------------
+// CHK.2 — pilotage live de la fiche customer pendant le test du gate Payer.
+// -----------------------------------------------------------------------------
+//
+// `customers` est GLOBAL (pas de tenantId, ADR 0010). Pendant un test E2E
+// interactif on retrouve la fiche d'Alex via un substring de son adresse
+// (stampée à l'address-first), en prenant la plus récemment créée (onglet privé
+// frais → nouvel anonymous user → `createdAt` max). On peut alors flipper
+// `pushEnrollment` (wallet/webPush/noChannelPossible) et/ou pré-remplir
+// firstName/email/phone, puis observer le gate « Payer » réagir en realtime
+// (Convex sub sur `getCurrentCustomer`).
+
+const e2ePushChannelStatus = v.union(
+  v.literal("enrolled"),
+  v.literal("not_enrolled"),
+  v.literal("revoked"),
+);
+
+export const e2eFindCustomerByAddress = internalQuery({
+  args: { addressContains: v.string() },
+  handler: async (ctx, args) => {
+    const needle = args.addressContains.toLowerCase();
+    const all = await ctx.db.query("customers").collect();
+    const matches = all
+      .filter((c) => (c.address ?? "").toLowerCase().includes(needle))
+      .sort((a, b) => b.createdAt - a.createdAt);
+    return matches.slice(0, 5).map((c) => ({
+      customerId: c._id,
+      address: c.address ?? null,
+      firstName: c.firstName ?? null,
+      email: c.email ?? null,
+      phone: c.phone ?? null,
+      pushEnrollment: c.pushEnrollment ?? null,
+      createdAt: c.createdAt,
+    }));
+  },
+});
+
+export const seedE2ESetCustomerCheckoutState = internalMutation({
+  args: {
+    addressContains: v.string(),
+    // Push enrollment overrides. `clearPush` wipes `pushEnrollment` entirely
+    // (back to gate=disabled). Otherwise the provided statuses are merged onto
+    // the existing object.
+    clearPush: v.optional(v.boolean()),
+    walletStatus: v.optional(e2ePushChannelStatus),
+    webPushStatus: v.optional(e2ePushChannelStatus),
+    a2hsStatus: v.optional(e2ePushChannelStatus),
+    noChannelPossible: v.optional(v.boolean()),
+    // Contact prefill (CHK.2 étape 4 / REC).
+    firstName: v.optional(v.string()),
+    email: v.optional(v.string()),
+    phone: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const needle = args.addressContains.toLowerCase();
+    const all = await ctx.db.query("customers").collect();
+    const target = all
+      .filter((c) => (c.address ?? "").toLowerCase().includes(needle))
+      .sort((a, b) => b.createdAt - a.createdAt)[0];
+    if (target === undefined) {
+      throw new ConvexError({
+        message: `No customer with address containing "${args.addressContains}".`,
+      });
+    }
+
+    const patch: Record<string, unknown> = {};
+    if (args.firstName !== undefined) patch.firstName = args.firstName;
+    if (args.email !== undefined) patch.email = args.email;
+    if (args.phone !== undefined) patch.phone = args.phone;
+
+    if (args.clearPush === true) {
+      patch.pushEnrollment = undefined;
+    } else {
+      const current = target.pushEnrollment ?? {};
+      const next = { ...current };
+      if (args.walletStatus !== undefined)
+        next.walletStatus = args.walletStatus;
+      if (args.webPushStatus !== undefined)
+        next.webPushStatus = args.webPushStatus;
+      if (args.a2hsStatus !== undefined) next.a2hsStatus = args.a2hsStatus;
+      if (args.noChannelPossible !== undefined)
+        next.noChannelPossible = args.noChannelPossible;
+      if (Object.keys(next).length > 0) patch.pushEnrollment = next;
+    }
+
+    await ctx.db.patch(target._id, patch);
+    const after = await ctx.db.get(target._id);
+    return {
+      customerId: target._id,
+      address: after?.address ?? null,
+      firstName: after?.firstName ?? null,
+      email: after?.email ?? null,
+      phone: after?.phone ?? null,
+      pushEnrollment: after?.pushEnrollment ?? null,
+    };
+  },
+});
