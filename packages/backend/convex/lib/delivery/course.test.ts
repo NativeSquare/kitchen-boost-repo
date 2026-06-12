@@ -79,6 +79,12 @@ async function seedOrderWithDelivery(
   t: ReturnType<typeof convexTest>,
   tenantId: Id<"tenants">,
   mode: "delivery" | "click_collect",
+  /**
+   * Optionally set the customer firstName + the order's denormalised customerPhone
+   * so the Create-body assertions can exercise the dropoff_* sourcing. Default off
+   * keeps the legacy course tests (which don't care) unchanged.
+   */
+  customerContact?: { firstName?: string; phone?: string },
 ): Promise<{ orderId: Id<"orders">; customerId: Id<"customers"> }> {
   return t.run(async (ctx) => {
     const now = Date.now();
@@ -89,6 +95,9 @@ async function seedOrderWithDelivery(
     const customerId = await ctx.db.insert("customers", {
       userId,
       createdAt: now,
+      ...(customerContact?.firstName !== undefined
+        ? { firstName: customerContact.firstName }
+        : {}),
     });
     const orderId = await ctx.db.insert("orders", {
       tenantId,
@@ -98,6 +107,9 @@ async function seedOrderWithDelivery(
       mode: mode === "click_collect" ? "pickup" : "delivery",
       source: "direct",
       address: mode === "delivery" ? "12 rue de Paris, 91000 Évry" : undefined,
+      ...(customerContact?.phone !== undefined
+        ? { customerPhone: customerContact.phone }
+        : {}),
       pricingSnapshot: PRICING,
       createdAt: now,
       ...(mode === "click_collect" ? { paidAt: now } : {}),
@@ -210,6 +222,50 @@ describe("2.6-C createCourseOnPaymentConfirmed — delivery mode creates an Uber
     expect(row?.pickupEta).toBe(1_700_000_000_000);
     // Two Uber HTTP calls: OAuth token + POST /deliveries.
     expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("threads the four Uber-required Create fields (pickup_address/phone from the tenant, dropoff_name/phone from the customer/order)", async () => {
+    // The tenant carries a structured 4-tuple address + phone (set on the wizard);
+    // the customer has a firstName and the order a denormalised phone.
+    await t.run(async (ctx) => {
+      await ctx.db.patch(seed.tenantA.tenantId, {
+        address: "1 rue du Resto, 91000 Évry",
+        addressComponents: {
+          streetAddress: "1 rue du Resto",
+          city: "Évry",
+          zipCode: "91000",
+          country: "FR",
+        },
+        phone: "+33611111111",
+      });
+    });
+    const { orderId } = await seedOrderWithDelivery(
+      t,
+      seed.tenantA.tenantId,
+      "delivery",
+      { firstName: "Camille", phone: "+33622222222" },
+    );
+    fetchSpy = mockUberCreate({
+      status: 200,
+      body: { id: "del_uber_fields", status: "pending" },
+    });
+
+    await t.action(
+      internal.lib.delivery.course.createCourseOnPaymentConfirmed,
+      { tenantId: seed.tenantA.tenantId, orderId },
+    );
+
+    // The Create call (2nd fetch) now carries the four fields whose absence
+    // returned HTTP 400 invalid_params and aborted EVERY course tonight.
+    const [, createInit] = fetchSpy.mock.calls[1] as [string, RequestInit];
+    const body = JSON.parse(String(createInit.body)) as Record<string, unknown>;
+    // pickup_address mirrors the quote endpoint: JSON-encoded structured shape.
+    expect(body.pickup_address).toBe(
+      '{"street_address":["1 rue du Resto"],"city":"Évry","state":"","zip_code":"91000","country":"FR"}',
+    );
+    expect(body.pickup_phone_number).toBe("+33611111111");
+    expect(body.dropoff_name).toBe("Camille");
+    expect(body.dropoff_phone_number).toBe("+33622222222");
   });
 
   it("#108 a created course MAKES the delivery order visible (→ nouvelle) and increments the MOAT stats — gated on course-created", async () => {
