@@ -4842,3 +4842,37 @@ export const seedE2ESetCustomerCheckoutState = internalMutation({
     };
   },
 });
+
+// -----------------------------------------------------------------------------
+// PAY/TRK — lecteur des commandes récentes de test-t1 (vérif statut post-paiement).
+// -----------------------------------------------------------------------------
+export const e2eRecentOrdersT1 = internalQuery({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const tenant = await ctx.db
+      .query("tenants")
+      .withIndex("by_slug", (q) => q.eq("slug", E2E_M_TENANT_SLUG))
+      .unique();
+    if (tenant === null) {
+      throw new ConvexError({
+        message: `Tenant "${E2E_M_TENANT_SLUG}" not found.`,
+      });
+    }
+    const rows = await ctx.db
+      .query("orders")
+      .withIndex("by_tenant", (q) => q.eq("tenantId", tenant._id))
+      .collect();
+    rows.sort((a, b) => b.createdAt - a.createdAt);
+    return rows.slice(0, args.limit ?? 5).map((o) => ({
+      orderId: o._id,
+      status: o.status,
+      mode: o.mode,
+      customerId: o.customerId,
+      total: o.pricingSnapshot?.total ?? null,
+      paidAt: o.paidAt ?? null,
+      acceptedAt: o.acceptedAt ?? null,
+      paymentRef: o.paymentRef ?? null,
+      createdAt: o.createdAt,
+    }));
+  },
+});
