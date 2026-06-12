@@ -20,13 +20,21 @@ import type { DeliveryStatus } from "../../table/deliveries";
  *    (research §1.1).
  *  - Create: `POST https://api.uber.com/v1/customers/{customer_id}/deliveries`
  *    carrying the accepted `quote_id` (which already prices+binds the resto→client
- *    route — the pickup is the resto's REGISTERED address on its own Uber
- *    sub-account, so KB does not re-send a pickup address it does not model in
- *    V1), the dropoff (the customer address from the order), ONE aggregated
- *    manifest item + `manifest_reference` = the KB order id, and an
- *    `Idempotency-Key` header (research §1.4/§1.7 — avoid a double dispatch).
- *    Returns `id` (the `uberDeliveryId`), `status`, `pickup_eta`/`dropoff_eta`,
- *    `courier`.
+ *    route) PLUS the four contact fields Uber Direct REQUIRES on Create even
+ *    alongside a quote — `pickup_address`, `pickup_phone_number`, `dropoff_name`,
+ *    `dropoff_phone_number`. The earlier assumption that the `quote_id` alone
+ *    covered the pickup was WRONG: with a valid quote Uber still returns HTTP 400
+ *    `invalid_params` ("This field is required.") for each of the four when absent,
+ *    so EVERY delivery course aborted. The pickup pair is sourced from the tenant
+ *    EXACTLY as the quote endpoint builds it (`pickup_address` is the JSON-encoded
+ *    structured shape via `uberPickupFromComponents`, falling back to the raw
+ *    address string for legacy tenants; `pickup_phone_number` is the tenant phone).
+ *    The dropoff pair is the customer's `firstName` (cosmetic — falls back to a
+ *    generic `"Client"`) and the order's denormalised `customerPhone`. We also send
+ *    the dropoff (the customer address from the order), ONE aggregated manifest
+ *    item + `manifest_reference` = the KB order id, and an `Idempotency-Key` header
+ *    (research §1.4/§1.7 — avoid a double dispatch). Returns `id` (the
+ *    `uberDeliveryId`), `status`, `pickup_eta`/`dropoff_eta`, `courier`.
  *
  * The orchestration (`createCourseOnPaymentConfirmed`) lives in `lib/delivery`;
  * this module owns ONLY the Uber conversation. A Create refusal is the PRD 40 §5
@@ -166,8 +174,24 @@ export const createDelivery = internalAction({
     manifestReference: v.string(),
     /** The resto display name (the tenant name) for the courier's manifest. */
     pickupName: v.string(),
+    /**
+     * The tenant pickup address — Uber REQUIRES it on Create even with a quote.
+     * Built by the caller EXACTLY as the quote endpoint does it: the JSON-encoded
+     * structured shape (`uberPickupFromComponents`) when the tenant has a 4-tuple,
+     * else the raw display string for a legacy tenant.
+     */
+    pickupAddress: v.string(),
+    /** The tenant phone — Uber REQUIRES `pickup_phone_number` on Create. */
+    pickupPhoneNumber: v.optional(v.string()),
     /** The customer's delivery address (from the order). */
     dropoffAddress: v.string(),
+    /**
+     * The customer's firstName for the `dropoff_name` Uber REQUIRES on Create.
+     * Cosmetic — absence must NOT block the course, so it falls back to "Client".
+     */
+    dropoffName: v.optional(v.string()),
+    /** The customer's phone (denormalised on the order) — Uber REQUIRES it. */
+    dropoffPhoneNumber: v.optional(v.string()),
   },
   returns: createDeliveryResult,
   handler: async (ctx, args): Promise<CreateDeliveryResult> => {
@@ -194,6 +218,13 @@ export const createDelivery = internalAction({
         body: JSON.stringify({
           quote_id: args.quoteId,
           pickup_name: args.pickupName,
+          // Uber REQUIRES these four on Create even with a quote (else HTTP 400
+          // invalid_params, every course aborted). pickup_* mirror the quote
+          // endpoint; dropoff_name is cosmetic so it falls back to "Client".
+          pickup_address: args.pickupAddress,
+          pickup_phone_number: args.pickupPhoneNumber,
+          dropoff_name: args.dropoffName ?? "Client",
+          dropoff_phone_number: args.dropoffPhoneNumber,
           dropoff_address: args.dropoffAddress,
           // One aggregated manifest item is enough for KB (research §1.4).
           manifest_items: [{ name: "Commande", quantity: 1, size: "medium" }],
@@ -202,6 +233,16 @@ export const createDelivery = internalAction({
       },
     );
     const json = (await res.json()) as Record<string, unknown>;
+    // Observability: a non-2xx Create is a post-payment course refusal (Cas A)
+    // that auto-refunds the customer — log the Uber status + body so future
+    // failures are diagnosable (tonight's invalid_params was impossible to
+    // diagnose because the error was swallowed).
+    if (res.status < 200 || res.status >= 300) {
+      console.error(
+        `[uberDirect.createDelivery] Uber refused the course (HTTP ${res.status}) for order ${args.manifestReference}:`,
+        JSON.stringify(json),
+      );
+    }
     return interpretCreateDeliveryResponse(res.status, json);
   },
 });

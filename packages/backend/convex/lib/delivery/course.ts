@@ -13,8 +13,10 @@ import {
   getTenantDeliveryByOrder,
   getTenantOrder,
   patchTenantDelivery,
+  readCustomerFicheById,
   requireTenantOrder,
 } from "../tenancy";
+import { uberPickupFromComponents } from "../uberDirect/quote";
 
 /**
  * 2.6-C + 2.3-fix (#108) — `createCourseOnPaymentConfirmed`: turn the [[Course]]
@@ -47,7 +49,14 @@ import {
  * (`no-untenanted-query`). It is INTERNAL — never an exposed public function.
  */
 
-/** Read the seeded delivery + its order for the course-creation decision. */
+/**
+ * Read the seeded delivery + its order + tenant for the course-creation decision,
+ * PLUS the customer's `firstName` for the Uber `dropoff_name` field. The GLOBAL
+ * `customers` table is the MOAT (ADR 0010) — reached through the sanctioned
+ * `readCustomerFicheById` seam by the order's `customerId`, never raw `ctx.db`.
+ * Only the firstName (cosmetic on the Uber manifest) crosses out; the resto still
+ * never sees the cross-tenant customers base.
+ */
 export const readCourseInputs = internalQuery({
   args: { tenantId: v.id("tenants"), orderId: v.id("orders") },
   handler: async (
@@ -57,6 +66,7 @@ export const readCourseInputs = internalQuery({
     delivery: Doc<"deliveries"> | null;
     order: Doc<"orders"> | null;
     tenant: Doc<"tenants"> | null;
+    customerFirstName: string | null;
   }> => {
     const delivery = await getTenantDeliveryByOrder(
       ctx,
@@ -65,7 +75,14 @@ export const readCourseInputs = internalQuery({
     );
     const order = await getTenantOrder(ctx, args.tenantId, args.orderId);
     const tenant = await getTenantById(ctx, args.tenantId);
-    return { delivery, order, tenant };
+    const customer =
+      order !== null ? await readCustomerFicheById(ctx, order.customerId) : null;
+    return {
+      delivery,
+      order,
+      tenant,
+      customerFirstName: customer?.firstName ?? null,
+    };
   },
 });
 
@@ -141,7 +158,7 @@ export const createCourseOnPaymentConfirmed = internalAction({
   args: { tenantId: v.id("tenants"), orderId: v.id("orders") },
   returns: v.object({ courseCreated: v.boolean() }),
   handler: async (ctx, args): Promise<{ courseCreated: boolean }> => {
-    const { delivery, order, tenant } = await ctx.runQuery(
+    const { delivery, order, tenant, customerFirstName } = await ctx.runQuery(
       internal.lib.delivery.course.readCourseInputs,
       { tenantId: args.tenantId, orderId: args.orderId },
     );
@@ -179,6 +196,16 @@ export const createCourseOnPaymentConfirmed = internalAction({
       return { courseCreated: false };
     }
 
+    // Build the tenant `pickup_address` EXACTLY as the quote endpoint does it
+    // (lib/uberDirect/quote `requestQuote`): the JSON-encoded structured shape
+    // from the 4-tuple when present, falling back to the raw display string for a
+    // legacy tenant. Uber REQUIRES `pickup_address` + `pickup_phone_number` on
+    // Create even with a quote; the pickup is the tenant's own address/phone.
+    const pickupAddress =
+      tenant.addressComponents !== undefined
+        ? JSON.stringify(uberPickupFromComponents(tenant.addressComponents))
+        : (tenant.address ?? "");
+
     const result = await ctx.runAction(
       internal.lib.uberDirect.createDelivery.createDelivery,
       {
@@ -186,7 +213,20 @@ export const createCourseOnPaymentConfirmed = internalAction({
         quoteId,
         manifestReference: args.orderId,
         pickupName: tenant.name, // the resto display name (real KB data)
+        pickupAddress,
+        ...(tenant.phone !== undefined
+          ? { pickupPhoneNumber: tenant.phone }
+          : {}),
         dropoffAddress: order.address ?? "",
+        // dropoff_name is the customer's firstName (cosmetic; createDelivery
+        // falls back to "Client" when absent); dropoff_phone_number is the
+        // denormalised customer phone on the order.
+        ...(customerFirstName !== null
+          ? { dropoffName: customerFirstName }
+          : {}),
+        ...(order.customerPhone !== undefined
+          ? { dropoffPhoneNumber: order.customerPhone }
+          : {}),
       },
     );
 
