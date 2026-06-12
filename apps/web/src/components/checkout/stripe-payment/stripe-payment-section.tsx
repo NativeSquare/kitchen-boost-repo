@@ -92,6 +92,12 @@ export type StripePaymentSectionProps = {
   customerLng: number | undefined;
   /** Live form values (firstName/email/phone) — read from the parent form. */
   getContactValues: () => CheckoutContactValues;
+  /**
+   * Contact form validity gate (root-cause fix). When `false`, the pay CTA
+   * is disabled so a customer cannot pay with an incomplete contact form.
+   * This only gates the BUTTON — the payment flow itself is untouched.
+   */
+  contactFormValid: boolean;
 };
 
 /** Cart line → backend `cartItem` shape consumed by `createOrderFromCart`. */
@@ -139,6 +145,7 @@ export function StripePaymentSection({
   customerLat,
   customerLng,
   getContactValues,
+  contactFormValid,
 }: StripePaymentSectionProps): React.JSX.Element {
   const router = useRouter();
   const stripe = useStripe();
@@ -416,6 +423,7 @@ export function StripePaymentSection({
   const payDisabled =
     isProcessing ||
     fatal !== null ||
+    !contactFormValid ||
     (branch.kind === "new-card" && !stripeReady);
 
   return (
@@ -463,6 +471,14 @@ export function StripePaymentSection({
           ? "Paiement en cours…"
           : `Payer ${formatEur(totalsRow.totalCentimes)}`}
       </button>
+
+      {/* Root-cause gate hint: surfaced only when the contact form is the
+          reason the CTA is disabled (not while processing / fatal). */}
+      {!contactFormValid && !isProcessing && fatal === null ? (
+        <p className="text-xs text-zinc-500">
+          Remplis tes coordonnées pour continuer
+        </p>
+      ) : null}
 
       <LatchingConfirmModal
         open={surgeConfirm !== null}

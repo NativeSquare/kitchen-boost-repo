@@ -29,7 +29,7 @@
  * each successful payment re-stamps the then-active CGV hash (re-consent
  * par achat, ADR 0005).
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePreloadedQuery, type Preloaded } from "convex/react";
 import { api } from "@packages/backend/convex/_generated/api";
@@ -47,6 +47,7 @@ import {
   decideCheckoutRedirect,
   decidePaymentGate,
 } from "@/lib/checkout-gate";
+import { decideContactFormValid } from "@/lib/checkout-gate/decide-contact-form-valid";
 
 /** FR currency formatter (same shape as `<CartView>` and the toggle). */
 function formatEur(centimes: number): string {
@@ -127,20 +128,24 @@ export function CheckoutForm({
     }
   }, [gate.kind, modalRequested]);
 
-  // Refs to the three contact `<input>` so `<StripePaymentLazy>` can
-  // snapshot the live values at click-Payer time (without forcing the
-  // parent to lift state out of the uncontrolled inputs).
-  const firstNameRef = useRef<HTMLInputElement>(null);
-  const emailRef = useRef<HTMLInputElement>(null);
-  const phoneRef = useRef<HTMLInputElement>(null);
-  const getContactValues = useCallback(
-    (): CheckoutContactValues => ({
-      firstName: firstNameRef.current?.value ?? "",
-      email: emailRef.current?.value ?? "",
-      phone: phoneRef.current?.value ?? "",
-    }),
-    [],
+  // Contact form state — controlled inputs so `formValid` recomputes as the
+  // user types (the root-cause fix: an uncontrolled-ref + HTML `required`
+  // form is NEVER enforced because the « Payer » CTA is a
+  // `<button type="button">`, not a submit). Lazily initialised from the
+  // preloaded fiche's prefill so a returning customer arrives VALID at mount
+  // (button enabled, no flash). Hooks live BEFORE the redirect early-return
+  // so the hook order stays stable across renders (rules-of-hooks); the
+  // initial prefill is read from `customer` which is already resolved here.
+  const [contactValues, setContactValues] = useState<CheckoutContactValues>(
+    () => decideCheckoutPrefill(customer),
   );
+  // `<StripePaymentLazy>` snapshots the live values at click-Payer time; the
+  // controlled state is now the single source of truth.
+  const getContactValues = useCallback(
+    (): CheckoutContactValues => contactValues,
+    [contactValues],
+  );
+  const formValidity = decideContactFormValid(contactValues);
 
   if (redirect.kind !== "stay") {
     // `wait`     → cart hasn't hydrated from localStorage yet: render nothing
@@ -150,7 +155,6 @@ export function CheckoutForm({
     return null;
   }
 
-  const prefill = decideCheckoutPrefill(customer);
   const totalsRow = decideCartTotals({
     subtotalCentimes: totals.subtotalCentimes,
     mode,
@@ -166,6 +170,14 @@ export function CheckoutForm({
     // `<StripePaymentLazy>` branch automatically (US 27-38).
     setModalRequested(true);
   };
+
+  /** Update one contact field; `formValidity` recomputes on the next render. */
+  const onContactChange =
+    (field: keyof CheckoutContactValues) =>
+    (e: React.ChangeEvent<HTMLInputElement>): void => {
+      const { value } = e.target;
+      setContactValues((prev) => ({ ...prev, [field]: value }));
+    };
 
   return (
     <form
@@ -184,11 +196,11 @@ export function CheckoutForm({
         <label className="flex flex-col gap-1">
           <span className="text-xs text-zinc-600">Prénom</span>
           <input
-            ref={firstNameRef}
             type="text"
             name="firstName"
             autoComplete="given-name"
-            defaultValue={prefill.firstName}
+            value={contactValues.firstName}
+            onChange={onContactChange("firstName")}
             required
             className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-base text-black placeholder:text-zinc-400 focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-200"
           />
@@ -196,11 +208,11 @@ export function CheckoutForm({
         <label className="flex flex-col gap-1">
           <span className="text-xs text-zinc-600">Email</span>
           <input
-            ref={emailRef}
             type="email"
             name="email"
             autoComplete="email"
-            defaultValue={prefill.email}
+            value={contactValues.email}
+            onChange={onContactChange("email")}
             required
             inputMode="email"
             className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-base text-black placeholder:text-zinc-400 focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-200"
@@ -209,11 +221,11 @@ export function CheckoutForm({
         <label className="flex flex-col gap-1">
           <span className="text-xs text-zinc-600">Téléphone</span>
           <input
-            ref={phoneRef}
             type="tel"
             name="phone"
             autoComplete="tel"
-            defaultValue={prefill.phone}
+            value={contactValues.phone}
+            onChange={onContactChange("phone")}
             required
             inputMode="tel"
             placeholder="+33 6 12 34 56 78"
@@ -245,6 +257,10 @@ export function CheckoutForm({
           customerLat={customer?.lat}
           customerLng={customer?.lng}
           getContactValues={getContactValues}
+          // Gate the real Stripe pay CTA on the contact form being valid
+          // (root-cause fix) — both the push gate AND the form gate must
+          // pass to pay. The Stripe payment logic itself is untouched.
+          contactFormValid={formValidity.valid}
         />
       ) : (
         // S6 — gate disabled : surface the « Payer » CTA that opens the
@@ -253,6 +269,7 @@ export function CheckoutForm({
         <PayButton
           totalCentimes={totalsRow.totalCentimes}
           onPayClick={onGateDisabledClick}
+          disabled={!formValidity.valid}
         />
       )}
 
@@ -278,18 +295,29 @@ export function CheckoutForm({
 function PayButton({
   totalCentimes,
   onPayClick,
+  disabled,
 }: {
   totalCentimes: number;
   onPayClick: () => void;
+  /** Set when the contact form is incomplete/invalid (root-cause gate). */
+  disabled: boolean;
 }): React.JSX.Element {
   return (
-    <button
-      type="button"
-      onClick={onPayClick}
-      data-gate="disabled"
-      className="rounded-lg bg-emerald-700 px-4 py-3 text-base font-semibold text-white hover:bg-emerald-800"
-    >
-      Payer {formatEur(totalCentimes)}
-    </button>
+    <div className="flex flex-col gap-1">
+      <button
+        type="button"
+        onClick={onPayClick}
+        disabled={disabled}
+        data-gate="disabled"
+        className="rounded-lg bg-emerald-700 px-4 py-3 text-base font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-emerald-700"
+      >
+        Payer {formatEur(totalCentimes)}
+      </button>
+      {disabled ? (
+        <p className="text-xs text-zinc-500">
+          Remplis tes coordonnées pour continuer
+        </p>
+      ) : null}
+    </div>
   );
 }

@@ -46,6 +46,12 @@ export type StripePaymentImplProps = {
   customerLng: number | undefined;
   /** Reads the live `<input>` form values at click-Payer time. */
   getContactValues: () => CheckoutContactValues;
+  /**
+   * Contact form validity gate (root-cause fix). When `false`, the Stripe
+   * pay CTA is disabled so the customer cannot pay with an incomplete
+   * contact form. Threaded from `<CheckoutForm>` → `<StripePaymentLazy>`.
+   */
+  contactFormValid: boolean;
 };
 
 export function StripePaymentImpl({
@@ -55,6 +61,7 @@ export function StripePaymentImpl({
   customerLat,
   customerLng,
   getContactValues,
+  contactFormValid,
 }: StripePaymentImplProps): React.JSX.Element {
   // Customer-scoped sub on the tenant's Stripe context. Reactive: a
   // resto completing onboarding while the customer is on /checkout will
@@ -113,6 +120,7 @@ export function StripePaymentImpl({
         customerLat={customerLat}
         customerLng={customerLng}
         getContactValues={getContactValues}
+        contactFormValid={contactFormValid}
       />
     </StripeElementsProvider>
   );
