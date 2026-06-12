@@ -66,6 +66,7 @@ async function seedPendingOrder(
   tenantId: Id<"tenants">,
   customerId: Id<"customers">,
   mode: "delivery" | "pickup" = "delivery",
+  quoteId?: string,
 ): Promise<Id<"orders">> {
   return t.run(async (ctx) => {
     const orderId = await ctx.db.insert("orders", {
@@ -75,6 +76,7 @@ async function seedPendingOrder(
       mode,
       source: "direct",
       address: mode === "delivery" ? "12 rue de Paris, 91000 Évry" : undefined,
+      quoteId: mode === "delivery" ? quoteId : undefined,
       createdAt: Date.now(),
     });
     await ctx.db.insert("orderItems", {
@@ -180,7 +182,13 @@ describe("2.5-B confirmPaymentSucceeded — confirms the order + seeds the cours
     t = convexTest(schema, modules);
     seed = await seedTwoTenantsAllRoles(t);
     customerA = await seedCustomer(t, "eater-a@x.fr");
-    orderId = await seedPendingOrder(t, seed.tenantA.tenantId, customerA);
+    orderId = await seedPendingOrder(
+      t,
+      seed.tenantA.tenantId,
+      customerA,
+      "delivery",
+      "qid_latched_42",
+    );
     paymentId = await seedPayment(t, seed.tenantA.tenantId, orderId, "pi_ok");
   });
 
@@ -210,6 +218,39 @@ describe("2.5-B confirmPaymentSucceeded — confirms the order + seeds the cours
     expect(deliveries).toHaveLength(1);
     expect(deliveries[0].mode).toBe("delivery");
     expect(deliveries[0].status).toBe("pending");
+    // #bug-fix — the seeded delivery carries the order's latched quoteId, so the
+    // 2.6-C course executor finds a quote and calls Uber instead of aborting with
+    // `refused_post_payment` ([[Cmd avortée]] spurious abort root cause).
+    expect(deliveries[0].quoteId).toBe("qid_latched_42");
+  });
+
+  it("#bug-fix DELIVERY without a latched quoteId still seeds the course with NO quoteId (legacy / pickup-shaped order)", async () => {
+    // An order that somehow has no quoteId (e.g. a pre-fix row) seeds a delivery with
+    // an undefined quoteId — the course executor then legitimately aborts. This pins
+    // that the seed READS the order's quoteId rather than inventing one.
+    const noQuoteCustomer = await seedCustomer(t, "eater-noquote@x.fr");
+    const noQuoteOrder = await seedPendingOrder(
+      t,
+      seed.tenantA.tenantId,
+      noQuoteCustomer,
+      "delivery",
+      // no quoteId
+    );
+    await seedPayment(t, seed.tenantA.tenantId, noQuoteOrder, "pi_noquote");
+
+    await t.mutation(internal.lib.stripe.payment.confirmPaymentSucceeded, {
+      eventId: "evt_noquote",
+      paymentIntentId: "pi_noquote",
+    });
+
+    const deliveries = await readDeliveries(
+      t,
+      seed.tenantA.tenantId,
+      noQuoteOrder,
+    );
+    expect(deliveries).toHaveLength(1);
+    expect(deliveries[0].mode).toBe("delivery");
+    expect(deliveries[0].quoteId).toBeUndefined();
   });
 
   it("#108 PICKUP: a click & collect order goes `nouvelle` + stats immediately at payment (no course gate)", async () => {
