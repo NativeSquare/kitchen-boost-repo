@@ -48,6 +48,7 @@ import {
   decidePaymentGate,
 } from "@/lib/checkout-gate";
 import { decideContactFormValid } from "@/lib/checkout-gate/decide-contact-form-valid";
+import { PhoneInput } from "@/components/ui/phone-input";
 
 /** FR currency formatter (same shape as `<CartView>` and the toggle). */
 function formatEur(centimes: number): string {
@@ -220,16 +221,13 @@ export function CheckoutForm({
         </label>
         <label className="flex flex-col gap-1">
           <span className="text-xs text-zinc-600">Téléphone</span>
-          <input
-            type="tel"
+          <PhoneInput
+            id="phone"
             name="phone"
-            autoComplete="tel"
             value={contactValues.phone}
-            onChange={onContactChange("phone")}
-            required
-            inputMode="tel"
-            placeholder="+33 6 12 34 56 78"
-            className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-base text-black placeholder:text-zinc-400 focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+            onChange={(phone) =>
+              setContactValues((prev) => ({ ...prev, phone }))
+            }
           />
         </label>
       </fieldset>

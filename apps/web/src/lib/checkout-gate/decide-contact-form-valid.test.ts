@@ -96,13 +96,33 @@ describe("decideContactFormValid", () => {
     expect(result.phone).toBe(false);
   });
 
-  it("is invalid when phone has fewer than 6 digits", () => {
+  it("is invalid when phone is too short / incomplete", () => {
     const result = decideContactFormValid({ ...valid, phone: "12345" });
     expect(result.valid).toBe(false);
     expect(result.phone).toBe(false);
   });
 
-  it("accepts a phone with 6+ digits even with spaces / + / dashes", () => {
+  it("is invalid for a junk number that is not a real phone (Uber rejects it post-payment)", () => {
+    // Regression: a free-text field once let `124304859385935` through; Uber
+    // Direct's Create Delivery rejected it after payment (auto-abort + refund).
+    const result = decideContactFormValid({
+      ...valid,
+      phone: "124304859385935",
+    });
+    expect(result.valid).toBe(false);
+    expect(result.phone).toBe(false);
+  });
+
+  it("accepts a valid E.164 number", () => {
+    const result = decideContactFormValid({
+      ...valid,
+      phone: "+33612345678",
+    });
+    expect(result.valid).toBe(true);
+    expect(result.phone).toBe(true);
+  });
+
+  it("accepts a valid number with spaces (parsed by libphonenumber)", () => {
     const result = decideContactFormValid({
       ...valid,
       phone: "+33 6 12 34 56 78",

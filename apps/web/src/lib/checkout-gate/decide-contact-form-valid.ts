@@ -20,6 +20,8 @@
  *    spaces / `+` / dashes so `+33 6 12 34 56 78` passes).
  */
 
+import { isValidPhoneNumber } from "libphonenumber-js";
+
 /** Live contact-field values snapshotted from the form `<input>` controls. */
 export type ContactFormValues = {
   firstName: string;
@@ -47,9 +49,6 @@ export type ContactFormValidity = {
  */
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
-/** Minimum number of digits a phone must contain to count as filled-in. */
-const MIN_PHONE_DIGITS = 6;
-
 /**
  * Decide the validity of the checkout contact form. Pure: trims locally,
  * never mutates the input.
@@ -59,8 +58,13 @@ export function decideContactFormValid(
 ): ContactFormValidity {
   const firstName = values.firstName.trim().length > 0;
   const email = EMAIL_RE.test(values.email.trim());
-  const phoneDigits = values.phone.replace(/\D/g, "").length;
-  const phone = phoneDigits >= MIN_PHONE_DIGITS;
+  // A REAL phone validation (libphonenumber-js) — not a digit count. The field
+  // emits E.164 (`<PhoneInput>`), and Uber Direct's Create Delivery rejects an
+  // invalid `dropoff_phone_number` POST-payment (→ auto-abort + refund). Gating
+  // « Payer » on `isValidPhoneNumber` stops a bad number ever reaching payment.
+  // `isValidPhoneNumber` returns false for empty / malformed input, so no extra
+  // emptiness guard is needed.
+  const phone = isValidPhoneNumber(values.phone.trim());
   return {
     valid: firstName && email && phone,
     firstName,

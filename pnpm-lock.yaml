@@ -534,6 +534,9 @@ importers:
       input-otp:
         specifier: ^1.4.2
         version: 1.4.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      libphonenumber-js:
+        specifier: ^1.13.6
+        version: 1.13.6
       lucide-react:
         specifier: ^0.555.0
         version: 0.555.0(react@19.2.3)
@@ -558,6 +561,9 @@ importers:
       react-hook-form:
         specifier: ^7.71.1
         version: 7.77.0(react@19.2.3)
+      react-phone-number-input:
+        specifier: ^3.4.17
+        version: 3.4.17(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       react-resizable-panels:
         specifier: ^4
         version: 4.11.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -7539,6 +7545,12 @@ packages:
         integrity: sha512-Ka+9Trutv7G8M6WT6SeiRWz792K5qEqIGEGzXKhAE6xOWAY6pPH8U+9IY3oCMv6kqTmLsv7Xh/2w2RigkePMsg==,
       }
 
+  classnames@2.5.1:
+    resolution:
+      {
+        integrity: sha512-saHYOzhIQs6wy2sVxTM6bUDsQO4F50V9RQ22qBpEdCW+I+/Wmke2HOl6lS6dTpdxVhb88/I6+Hs+438c3lfUow==,
+      }
+
   cli-cursor@2.1.0:
     resolution:
       {
@@ -7835,6 +7847,12 @@ packages:
         integrity: sha512-tJtZBBHA6vjIAaF6EnIaq6laBBP9aq/Y3ouVJjEfoHbRBcHBAHYcMh/w8LDrk2PvIMMq8gmopa5D4V8RmbrxGw==,
       }
     engines: { node: ">= 0.10" }
+
+  country-flag-icons@1.6.17:
+    resolution:
+      {
+        integrity: sha512-Nmik0289ZVZSI3c7mJR/amg6DyY7Z59b0sTFSKayeX72mHfPzCPJygwJs2pYgQULzuAyWeCUgwAJ+Dq8OR+JFw==,
+      }
 
   cross-env@10.1.0:
     resolution:
@@ -9840,6 +9858,20 @@ packages:
         integrity: sha512-lhYo5qNTQp3EvSSp3sRvXMbVQTLrvGV6DycRMJ5dm2BLMiJ30wpXKdDdgX+GmJZ5uQMucwRKHamXSst3Sj/Giw==,
       }
 
+  input-format@0.3.14:
+    resolution:
+      {
+        integrity: sha512-gHMrgrbCgmT4uK5Um5eVDUohuV9lcs95ZUUN9Px2Y0VIfjTzT2wF8Q3Z4fwLFm7c5Z2OXCm53FHoovj6SlOKdg==,
+      }
+    peerDependencies:
+      react: 19.2.3
+      react-dom: 19.2.3
+    peerDependenciesMeta:
+      react:
+        optional: true
+      react-dom:
+        optional: true
+
   input-otp@1.4.2:
     resolution:
       {
@@ -10433,6 +10465,12 @@ packages:
         integrity: sha512-+bT2uH4E5LGE7h/n3evcS/sQlJXCpIp6ym8OWJ5eV6+67Dsql/LaaT7qJBAt2rzfoa/5QBGBhxDix1dMt2kQKQ==,
       }
     engines: { node: ">= 0.8.0" }
+
+  libphonenumber-js@1.13.6:
+    resolution:
+      {
+        integrity: sha512-NdB6O6QvlGMCoG003m0YIKG2+Xw7DjmCZhmc1RH+K6HncADUbRf8TZeLegxBBN1VFyPHcNpPTKpIhYLXzJVy1Q==,
+      }
 
   lighthouse-logger@1.4.2:
     resolution:
@@ -12299,6 +12337,15 @@ packages:
     peerDependenciesMeta:
       "@types/react":
         optional: true
+
+  react-phone-number-input@3.4.17:
+    resolution:
+      {
+        integrity: sha512-1wcjhBAWHgEBAGLi5/XbeZI7Q3aEHNb2z/dHY6R2Gz70TQvu0ZoOT28NTdwtZf4lyRKXWufnTzVhLPBUD8LfmQ==,
+      }
+    peerDependencies:
+      react: 19.2.3
+      react-dom: 19.2.3
 
   react-refresh@0.14.2:
     resolution:
@@ -19132,6 +19179,8 @@ snapshots:
     dependencies:
       clsx: 2.1.1
 
+  classnames@2.5.1: {}
+
   cli-cursor@2.1.0:
     dependencies:
       restore-cursor: 2.0.0
@@ -19313,6 +19362,8 @@ snapshots:
     dependencies:
       object-assign: 4.1.1
       vary: 1.1.2
+
+  country-flag-icons@1.6.17: {}
 
   cross-env@10.1.0:
     dependencies:
@@ -20934,6 +20985,13 @@ snapshots:
     dependencies:
       css-in-js-utils: 3.1.0
 
+  input-format@0.3.14(react-dom@19.2.3(react@19.2.3))(react@19.2.3):
+    dependencies:
+      prop-types: 15.8.1
+    optionalDependencies:
+      react: 19.2.3
+      react-dom: 19.2.3(react@19.2.3)
+
   input-otp@1.4.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3):
     dependencies:
       react: 19.2.3
@@ -21286,6 +21344,8 @@ snapshots:
     dependencies:
       prelude-ls: 1.2.1
       type-check: 0.4.0
+
+  libphonenumber-js@1.13.6: {}
 
   lighthouse-logger@1.4.2:
     dependencies:
@@ -22703,6 +22763,16 @@ snapshots:
       - bufferutil
       - supports-color
       - utf-8-validate
+
+  react-phone-number-input@3.4.17(react-dom@19.2.3(react@19.2.3))(react@19.2.3):
+    dependencies:
+      classnames: 2.5.1
+      country-flag-icons: 1.6.17
+      input-format: 0.3.14(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+      libphonenumber-js: 1.13.6
+      prop-types: 15.8.1
+      react: 19.2.3
+      react-dom: 19.2.3(react@19.2.3)
 
   react-refresh@0.14.2: {}
 
