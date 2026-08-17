@@ -19,16 +19,27 @@ import { AddressFirstForm } from "./address-first-form";
 export type AddressFirstHomeProps = {
   tenantId: Id<"tenants">;
   initialAddress?: string;
+  /** Stored coordinates (REC #464) — threaded so the form can offer a ONE-TAP
+   *  confirm that re-fires the quote from the known 3-tuple, no re-typing. */
+  initialLat?: number;
+  initialLng?: number;
 };
 
 export function AddressFirstHome({
   tenantId,
   initialAddress,
+  initialLat,
+  initialLng,
 }: AddressFirstHomeProps): React.JSX.Element {
   return (
     <ServiceStatusProvider tenantId={tenantId}>
       <ClosedRestoSheet browseHref="/menu" />
-      <AddressFirstForm tenantId={tenantId} initialAddress={initialAddress} />
+      <AddressFirstForm
+        tenantId={tenantId}
+        initialAddress={initialAddress}
+        initialLat={initialLat}
+        initialLng={initialLng}
+      />
     </ServiceStatusProvider>
   );
 }

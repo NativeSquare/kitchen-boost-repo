@@ -75,6 +75,14 @@ export default async function Home() {
   // absent (first visit / 1-year expiry / private mode) the query returns
   // `null` and the input renders empty.
   let initialAddress: string | undefined = undefined;
+  // REC (#464 + #451) — the stored coordinates are threaded alongside the
+  // address so a recognised returning customer can re-fire the delivery quote
+  // from their KNOWN 3-tuple in ONE TAP (the « Confirmer · Voir le menu » CTA),
+  // with no re-typing. `getCurrentCustomer` returns the full `customers` doc,
+  // which carries `lat`/`lng` (same fields the checkout reads via
+  // `customer?.lat`/`customer?.lng`) — so NO backend/schema change is needed.
+  let initialLat: number | undefined = undefined;
+  let initialLng: number | undefined = undefined;
   // PWA-S12 (#464) — the same preloaded fiche feeds the recognition verdict
   // (banner / silent / none). Default to `null` so the un-authenticated
   // branch maps cleanly onto the `none` decision.
@@ -93,6 +101,8 @@ export default async function Home() {
     // pre-fetched value out of the `Preloaded<>` envelope (Convex docs).
     const fiche = preloadedQueryResult(preloaded);
     initialAddress = fiche?.address;
+    initialLat = fiche?.lat;
+    initialLng = fiche?.lng;
     if (fiche !== null) {
       // Narrow to the subset `decideReturnGreeting` needs — the verdict
       // intentionally surfaces ONLY `firstName` (Q3 surveillance guardrail
@@ -108,10 +118,10 @@ export default async function Home() {
   const isRecognised = greeting.kind !== "none";
   // Q3 hospitality copy : the prefilled visit reframes the action as
   // « confirme ou modifie » (vs the first-visit imperative « indique-nous »).
-  // This honours the spec bullet « bouton form passe de "Valider" à
-  // "Confirmer" si address pré-remplie » — the post-S3 form has no submit
-  // button (auto-fire on Places selection), so the cue lives in the subtitle
-  // copy rather than on a non-existent button.
+  // REC (#464 + #451) — the form now renders a primary « Confirmer · Voir le
+  // menu » CTA when the stored 3-tuple (address + lat + lng) is present, so the
+  // common returning-customer case is ONE TAP (no re-typing). The Places field
+  // stays available below it for MODIFYING the address.
   const subtitle =
     initialAddress !== undefined
       ? "Confirme ton adresse de livraison, ou modifie-la."
@@ -127,7 +137,12 @@ export default async function Home() {
           <GreetingBanner firstName={greeting.firstName} />
         )}
         <p className="text-base text-zinc-600">{subtitle}</p>
-        <AddressFirstHome tenantId={tenantId} initialAddress={initialAddress} />
+        <AddressFirstHome
+          tenantId={tenantId}
+          initialAddress={initialAddress}
+          initialLat={initialLat}
+          initialLng={initialLng}
+        />
         {isRecognised && <NotMeLink />}
       </div>
     </main>
